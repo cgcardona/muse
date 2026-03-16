@@ -41,7 +41,7 @@ app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
-    return json.loads((root / ".muse" / "repo.json").read_text())["repo_id"]
+    return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
 def _read_branch(root: pathlib.Path) -> tuple[str, pathlib.Path]:

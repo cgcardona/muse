@@ -39,10 +39,20 @@ explicit_package_bases = true
 namespace_packages = true
 warn_unreachable = true
 show_error_codes = true
+# Exclude legacy music-services and stub CLI commands that still reference
+# removed dependencies (SQLAlchemy, Pydantic, httpx, maestro.*).
+# These will be brought into scope as each file is ported.
+exclude = [
+    "muse/plugins/music/services/",
+    "muse/cli/commands/emotion_diff\\.py",
+    "muse/cli/commands/groove_check\\.py",
+]
 
 [[tool.mypy.overrides]]
 module = ["tests.*"]
 disallow_untyped_decorators = false
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
 
 [[tool.mypy.overrides]]
 module = ["mido", "toml"]

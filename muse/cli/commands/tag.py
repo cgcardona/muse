@@ -54,7 +54,7 @@ def _read_branch(root: pathlib.Path) -> str:
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
-    return json.loads((root / ".muse" / "repo.json").read_text())["repo_id"]
+    return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
 @add_app.callback(invoke_without_command=True)

@@ -26,7 +26,11 @@ def _list_branches(root: pathlib.Path) -> list[str]:
     heads_dir = root / ".muse" / "refs" / "heads"
     if not heads_dir.exists():
         return []
-    return sorted(p.name for p in heads_dir.iterdir() if p.is_file())
+    return sorted(
+        p.relative_to(heads_dir).as_posix()
+        for p in heads_dir.rglob("*")
+        if p.is_file()
+    )
 
 
 @app.callback(invoke_without_command=True)
