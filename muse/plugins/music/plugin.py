@@ -185,9 +185,19 @@ class MusicPlugin:
             else:
                 merged.pop(path, None)
 
+        # If both sides deleted the same file, that is consensus — not a conflict.
+        real_conflicts = {
+            p for p in conflict_paths
+            if not (p not in left_files and p not in right_files)
+        }
+
+        # Apply consensus deletions (both sides removed the same file).
+        for path in conflict_paths - real_conflicts:
+            merged.pop(path, None)
+
         conflicts = [
             f"Both sides modified '{p}' — manual resolution required"
-            for p in sorted(conflict_paths)
+            for p in sorted(real_conflicts)
         ]
 
         return MergeResult(
