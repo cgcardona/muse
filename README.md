@@ -117,6 +117,13 @@ A genome under CRISPR editing is a high-dimensional sequence state. Each editing
 ### 3D Spatial Design *(planned)*
 Architecture, urban planning, game world construction. Branch to explore "what if we moved the load-bearing wall." Merge the structural engineer's changes and the lighting consultant's changes against the architect's baseline. Drift detection surfaces the delta between the committed design and the as-built state.
 
+### Spacetime *(theoretical)*
+A spacetime plugin models state as a configuration of matter-energy distribution across a coordinate grid. A commit is a named configuration at a set of coordinates. A branch is a counterfactual — what would the state space look like if this mass had been positioned differently at T₀.
+
+This is exactly what large-scale physics simulation does, without the version control semantics. Adding Muse semantics — content-addressed states, causal lineage, merge — makes simulation runs composable in a way they currently are not. Two simulations that share a common initialization can be merged or compared with the same rigor that two branches of a codebase can.
+
+Whether this scales to actual spacetime is a question for physics. Whether it applies to spacetime *simulation* is just engineering.
+
 ---
 
 ## Agent Collaboration
