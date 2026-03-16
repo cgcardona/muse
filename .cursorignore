@@ -1,0 +1,23 @@
+# Cursor indexing exclusions
+
+# Git internals
+.git/worktrees/
+
+# Python bytecode
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Build / dist artifacts
+dist/
+*.egg-info/
+
+# Test and coverage caches
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Environment
+.venv/
+venv/
