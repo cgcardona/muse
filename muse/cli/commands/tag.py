@@ -22,7 +22,6 @@ import json
 import logging
 import pathlib
 import uuid
-from typing import Optional
 
 import typer
 
@@ -61,7 +60,7 @@ def _read_repo_id(root: pathlib.Path) -> str:
 def add(
     ctx: typer.Context,
     tag_name: str = typer.Argument(..., help="Tag string (e.g. emotion:joyful)."),
-    ref: Optional[str] = typer.Argument(None, help="Commit ID or branch (default: HEAD)."),
+    ref: str | None = typer.Argument(None, help="Commit ID or branch (default: HEAD)."),
 ) -> None:
     """Attach a tag to a commit."""
     root = require_repo()
@@ -85,7 +84,7 @@ def add(
 @list_app.callback(invoke_without_command=True)
 def list_tags(
     ctx: typer.Context,
-    ref: Optional[str] = typer.Argument(None, help="Commit ID to list tags for (default: all)."),
+    ref: str | None = typer.Argument(None, help="Commit ID to list tags for (default: all)."),
 ) -> None:
     """List tags."""
     root = require_repo()

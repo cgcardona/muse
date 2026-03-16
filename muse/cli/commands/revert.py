@@ -6,7 +6,6 @@ import json
 import logging
 import pathlib
 import shutil
-from typing import Optional
 
 import typer
 
@@ -42,7 +41,7 @@ def _read_repo_id(root: pathlib.Path) -> str:
 def revert(
     ctx: typer.Context,
     ref: str = typer.Argument(..., help="Commit to revert."),
-    message: Optional[str] = typer.Option(None, "-m", "--message", help="Override revert commit message."),
+    message: str | None = typer.Option(None, "-m", "--message", help="Override revert commit message."),
     no_commit: bool = typer.Option(False, "--no-commit", "-n", help="Apply changes but do not commit."),
 ) -> None:
     """Create a new commit that undoes a prior commit."""

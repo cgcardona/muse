@@ -48,13 +48,14 @@ from __future__ import annotations
 import hashlib
 import json
 import pathlib
-from typing import Any
 
 from muse.domain import (
+    DeltaManifest,
     DriftReport,
     LiveState,
     MergeResult,
     MuseDomainPlugin,
+    SnapshotManifest,
     StateDelta,
     StateSnapshot,
 )
@@ -89,20 +90,19 @@ class MusicPlugin:
             dict. The ``files`` mapping is the canonical snapshot manifest used
             by the core VCS engine for commit / checkout / diff.
         """
-        if isinstance(live_state, dict):
-            return live_state
+        if isinstance(live_state, pathlib.Path):
+            workdir = live_state
+            files: dict[str, str] = {}
+            for file_path in sorted(workdir.rglob("*")):
+                if not file_path.is_file():
+                    continue
+                if file_path.name.startswith("."):
+                    continue
+                rel = file_path.relative_to(workdir).as_posix()
+                files[rel] = _hash_file(file_path)
+            return SnapshotManifest(files=files, domain=_DOMAIN_TAG)
 
-        workdir = pathlib.Path(live_state)
-        files: dict[str, str] = {}
-        for file_path in sorted(workdir.rglob("*")):
-            if not file_path.is_file():
-                continue
-            if file_path.name.startswith("."):
-                continue
-            rel = file_path.relative_to(workdir).as_posix()
-            files[rel] = _hash_file(file_path)
-
-        return {"files": files, "domain": _DOMAIN_TAG}
+        return live_state
 
     # ------------------------------------------------------------------
     # 2. diff — compute the minimal delta between two snapshots
@@ -121,8 +121,8 @@ class MusicPlugin:
             - ``removed``:  list of paths present in *base* but not *target*.
             - ``modified``: list of paths present in both with different digests.
         """
-        base_files: dict[str, str] = base.get("files", {})
-        target_files: dict[str, str] = target.get("files", {})
+        base_files = base["files"]
+        target_files = target["files"]
 
         base_paths = set(base_files)
         target_paths = set(target_files)
@@ -132,12 +132,12 @@ class MusicPlugin:
         common = base_paths & target_paths
         modified = sorted(p for p in common if base_files[p] != target_files[p])
 
-        return {
-            "domain": _DOMAIN_TAG,
-            "added": added,
-            "removed": removed,
-            "modified": modified,
-        }
+        return DeltaManifest(
+            domain=_DOMAIN_TAG,
+            added=added,
+            removed=removed,
+            modified=modified,
+        )
 
     # ------------------------------------------------------------------
     # 3. merge — three-way reconciliation
@@ -163,9 +163,9 @@ class MusicPlugin:
             A :class:`~muse.domain.MergeResult` with the merged snapshot and
             any conflict descriptions.
         """
-        base_files: dict[str, str] = base.get("files", {})
-        left_files: dict[str, str] = left.get("files", {})
-        right_files: dict[str, str] = right.get("files", {})
+        base_files = base["files"]
+        left_files = left["files"]
+        right_files = right["files"]
 
         left_changed: set[str] = _changed_paths(base_files, left_files)
         right_changed: set[str] = _changed_paths(base_files, right_files)
@@ -201,7 +201,7 @@ class MusicPlugin:
         ]
 
         return MergeResult(
-            merged={"files": merged, "domain": _DOMAIN_TAG},
+            merged=SnapshotManifest(files=merged, domain=_DOMAIN_TAG),
             conflicts=conflicts,
         )
 
@@ -228,9 +228,9 @@ class MusicPlugin:
         live_snapshot = self.snapshot(live)
         delta = self.diff(committed, live_snapshot)
 
-        added = delta.get("added", [])
-        removed = delta.get("removed", [])
-        modified = delta.get("modified", [])
+        added = delta["added"]
+        removed = delta["removed"]
+        modified = delta["modified"]
         has_drift = bool(added or removed or modified)
 
         parts: list[str] = []
@@ -269,15 +269,15 @@ class MusicPlugin:
             The updated live state as a snapshot dict.
         """
         current = self.snapshot(live_state)
-        current_files: dict[str, str] = dict(current.get("files", {}))
+        current_files = dict(current["files"])
 
-        for path in delta.get("removed", []):
+        for path in delta["removed"]:
             current_files.pop(path, None)
 
-        for path in delta.get("added", []) + delta.get("modified", []):
+        for path in delta["added"] + delta["modified"]:
             pass
 
-        return {"files": current_files, "domain": _DOMAIN_TAG}
+        return SnapshotManifest(files=current_files, domain=_DOMAIN_TAG)
 
 
 # ---------------------------------------------------------------------------

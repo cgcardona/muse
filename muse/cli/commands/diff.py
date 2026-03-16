@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import logging
 import pathlib
-from typing import Optional
 
 import typer
 
@@ -50,8 +49,8 @@ def _print_diff(base_manifest: dict[str, str], target_manifest: dict[str, str]) 
 @app.callback(invoke_without_command=True)
 def diff(
     ctx: typer.Context,
-    commit_a: Optional[str] = typer.Argument(None, help="Base commit ID (default: HEAD)."),
-    commit_b: Optional[str] = typer.Argument(None, help="Target commit ID (default: working tree)."),
+    commit_a: str | None = typer.Argument(None, help="Base commit ID (default: HEAD)."),
+    commit_b: str | None = typer.Argument(None, help="Target commit ID (default: working tree)."),
     stat: bool = typer.Option(False, "--stat", help="Show summary statistics only."),
 ) -> None:
     """Compare working tree against HEAD, or compare two commits."""

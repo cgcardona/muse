@@ -17,7 +17,7 @@ import json
 import logging
 import pathlib
 import shutil
-from typing import Any
+from typing import TypedDict
 
 import typer
 
@@ -34,6 +34,15 @@ app = typer.Typer()
 _STASH_FILE = ".muse/stash.json"
 
 
+class StashEntry(TypedDict):
+    """A single entry in the stash stack."""
+
+    snapshot_id: str
+    manifest: dict[str, str]
+    branch: str
+    stashed_at: str
+
+
 def _read_branch(root: pathlib.Path) -> str:
     head_ref = (root / ".muse" / "HEAD").read_text().strip()
     return head_ref.removeprefix("refs/heads/").strip()
@@ -43,15 +52,15 @@ def _read_repo_id(root: pathlib.Path) -> str:
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
-def _load_stash(root: pathlib.Path) -> list[dict[str, Any]]:
+def _load_stash(root: pathlib.Path) -> list[StashEntry]:
     stash_file = root / _STASH_FILE
     if not stash_file.exists():
         return []
-    result: list[dict[str, Any]] = json.loads(stash_file.read_text())
+    result: list[StashEntry] = json.loads(stash_file.read_text())
     return result
 
 
-def _save_stash(root: pathlib.Path, stash: list[dict[str, Any]]) -> None:
+def _save_stash(root: pathlib.Path, stash: list[StashEntry]) -> None:
     (root / _STASH_FILE).write_text(json.dumps(stash, indent=2))
 
 
@@ -74,12 +83,12 @@ def stash(ctx: typer.Context) -> None:
     for rel_path, object_id in manifest.items():
         write_object_from_path(root, object_id, workdir / rel_path)
 
-    stash_entry = {
-        "snapshot_id": snapshot_id,
-        "manifest": manifest,
-        "branch": branch,
-        "stashed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-    }
+    stash_entry = StashEntry(
+        snapshot_id=snapshot_id,
+        manifest=manifest,
+        branch=branch,
+        stashed_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    )
     entries = _load_stash(root)
     entries.insert(0, stash_entry)
     _save_stash(root, entries)

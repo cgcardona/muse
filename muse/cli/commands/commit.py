@@ -18,7 +18,6 @@ import datetime
 import json
 import logging
 import pathlib
-from typing import Optional
 
 import typer
 
@@ -62,12 +61,12 @@ def _read_parent_id(ref_path: pathlib.Path) -> str | None:
 @app.callback(invoke_without_command=True)
 def commit(
     ctx: typer.Context,
-    message: Optional[str] = typer.Option(None, "-m", "--message", help="Commit message."),
+    message: str | None = typer.Option(None, "-m", "--message", help="Commit message."),
     allow_empty: bool = typer.Option(False, "--allow-empty", help="Allow committing with no changes."),
-    section: Optional[str] = typer.Option(None, "--section", help="Tag this commit with a musical section (verse, chorus, bridge…)."),
-    track: Optional[str] = typer.Option(None, "--track", help="Tag this commit with an instrument track (drums, bass, keys…)."),
-    emotion: Optional[str] = typer.Option(None, "--emotion", help="Attach an emotion label (joyful, melancholic, tense…)."),
-    author: Optional[str] = typer.Option(None, "--author", help="Override the commit author."),
+    section: str | None = typer.Option(None, "--section", help="Tag this commit with a musical section (verse, chorus, bridge…)."),
+    track: str | None = typer.Option(None, "--track", help="Tag this commit with an instrument track (drums, bass, keys…)."),
+    emotion: str | None = typer.Option(None, "--emotion", help="Attach an emotion label (joyful, melancholic, tense…)."),
+    author: str | None = typer.Option(None, "--author", help="Override the commit author."),
 ) -> None:
     """Record the current muse-work/ state as a new version."""
     if message is None and not allow_empty:

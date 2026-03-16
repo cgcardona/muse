@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import logging
 import pathlib
-from typing import Optional
 
 import typer
 
@@ -29,7 +28,7 @@ def _read_repo_id(root: pathlib.Path) -> str:
 @app.callback(invoke_without_command=True)
 def show(
     ctx: typer.Context,
-    ref: Optional[str] = typer.Argument(None, help="Commit ID or branch (default: HEAD)."),
+    ref: str | None = typer.Argument(None, help="Commit ID or branch (default: HEAD)."),
     stat: bool = typer.Option(True, "--stat/--no-stat", help="Show file change summary."),
     json_out: bool = typer.Option(False, "--json", help="Output as JSON."),
 ) -> None:
@@ -45,16 +44,23 @@ def show(
 
     if json_out:
         import json as json_mod
-        data = commit.to_dict()
+        commit_data = commit.to_dict()
         if stat:
             cur = get_commit_snapshot_manifest(root, commit.commit_id) or {}
-            par: dict[str, str] = get_commit_snapshot_manifest(root, commit.parent_commit_id) or {} if commit.parent_commit_id else {}
-            data["files_added"] = sorted(set(cur) - set(par))
-            data["files_removed"] = sorted(set(par) - set(cur))
-            data["files_modified"] = sorted(
-                p for p in set(cur) & set(par) if cur[p] != par[p]
+            par: dict[str, str] = (
+                get_commit_snapshot_manifest(root, commit.parent_commit_id) or {}
+                if commit.parent_commit_id else {}
             )
-        typer.echo(json_mod.dumps(data, indent=2, default=str))
+            stats = {
+                "files_added": sorted(set(cur) - set(par)),
+                "files_removed": sorted(set(par) - set(cur)),
+                "files_modified": sorted(
+                    p for p in set(cur) & set(par) if cur[p] != par[p]
+                ),
+            }
+            typer.echo(json_mod.dumps({**commit_data, **stats}, indent=2, default=str))
+        else:
+            typer.echo(json_mod.dumps(commit_data, indent=2, default=str))
         return
 
     typer.echo(f"commit {commit.commit_id}")

@@ -40,7 +40,6 @@ import logging
 import pathlib
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 import typer
 
@@ -105,18 +104,18 @@ def _format_date(dt: datetime) -> str:
 @app.callback(invoke_without_command=True)
 def log(
     ctx: typer.Context,
-    ref: Optional[str] = typer.Argument(None, help="Branch or commit to start from."),
+    ref: str | None = typer.Argument(None, help="Branch or commit to start from."),
     oneline: bool = typer.Option(False, "--oneline", help="One line per commit."),
     graph: bool = typer.Option(False, "--graph", help="ASCII graph."),
     stat: bool = typer.Option(False, "--stat", help="Show file change summary."),
     patch: bool = typer.Option(False, "--patch", "-p", help="Show file diff."),
     limit: int = typer.Option(_DEFAULT_LIMIT, "-n", "--max-count", help="Limit number of commits."),
-    since: Optional[str] = typer.Option(None, "--since", help="Show commits after date."),
-    until: Optional[str] = typer.Option(None, "--until", help="Show commits before date."),
-    author: Optional[str] = typer.Option(None, "--author", help="Filter by author."),
-    section: Optional[str] = typer.Option(None, "--section", help="Filter by section metadata."),
-    track: Optional[str] = typer.Option(None, "--track", help="Filter by track metadata."),
-    emotion: Optional[str] = typer.Option(None, "--emotion", help="Filter by emotion metadata."),
+    since: str | None = typer.Option(None, "--since", help="Show commits after date."),
+    until: str | None = typer.Option(None, "--until", help="Show commits before date."),
+    author: str | None = typer.Option(None, "--author", help="Filter by author."),
+    section: str | None = typer.Option(None, "--section", help="Filter by section metadata."),
+    track: str | None = typer.Option(None, "--track", help="Filter by track metadata."),
+    emotion: str | None = typer.Option(None, "--emotion", help="Filter by emotion metadata."),
 ) -> None:
     """Display commit history."""
     root = require_repo()

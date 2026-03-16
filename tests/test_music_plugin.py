@@ -5,7 +5,7 @@ import pathlib
 
 import pytest
 
-from muse.domain import DriftReport, MergeResult, MuseDomainPlugin
+from muse.domain import DriftReport, MergeResult, MuseDomainPlugin, SnapshotManifest
 from muse.plugins.music.plugin import MusicPlugin, content_hash, plugin
 
 
@@ -19,7 +19,7 @@ class TestProtocolConformance:
 
 class TestSnapshot:
     def test_from_dict_passthrough(self) -> None:
-        snap = {"files": {"a.mid": "h1"}, "domain": "music"}
+        snap = SnapshotManifest(files={"a.mid": "h1"}, domain="music")
         assert plugin.snapshot(snap) is snap
 
     def test_from_workdir(self, tmp_path: pathlib.Path) -> None:
@@ -40,34 +40,34 @@ class TestSnapshot:
 
 class TestDiff:
     def test_no_change(self) -> None:
-        snap = {"files": {"a.mid": "h1"}, "domain": "music"}
+        snap = SnapshotManifest(files={"a.mid": "h1"}, domain="music")
         delta = plugin.diff(snap, snap)
         assert delta["added"] == []
         assert delta["removed"] == []
         assert delta["modified"] == []
 
     def test_added_file(self) -> None:
-        base = {"files": {}, "domain": "music"}
-        target = {"files": {"new.mid": "h1"}, "domain": "music"}
+        base = SnapshotManifest(files={}, domain="music")
+        target = SnapshotManifest(files={"new.mid": "h1"}, domain="music")
         delta = plugin.diff(base, target)
         assert "new.mid" in delta["added"]
 
     def test_removed_file(self) -> None:
-        base = {"files": {"old.mid": "h1"}, "domain": "music"}
-        target = {"files": {}, "domain": "music"}
+        base = SnapshotManifest(files={"old.mid": "h1"}, domain="music")
+        target = SnapshotManifest(files={}, domain="music")
         delta = plugin.diff(base, target)
         assert "old.mid" in delta["removed"]
 
     def test_modified_file(self) -> None:
-        base = {"files": {"f.mid": "old"}, "domain": "music"}
-        target = {"files": {"f.mid": "new"}, "domain": "music"}
+        base = SnapshotManifest(files={"f.mid": "old"}, domain="music")
+        target = SnapshotManifest(files={"f.mid": "new"}, domain="music")
         delta = plugin.diff(base, target)
         assert "f.mid" in delta["modified"]
 
 
 class TestMerge:
-    def _snap(self, files: dict[str, str]) -> dict:
-        return {"files": files, "domain": "music"}
+    def _snap(self, files: dict[str, str]) -> SnapshotManifest:
+        return SnapshotManifest(files=files, domain="music")
 
     def test_clean_merge(self) -> None:
         base = self._snap({"a.mid": "h0", "b.mid": "h0"})
@@ -98,8 +98,8 @@ class TestMerge:
 
 
 class TestDrift:
-    def _snap(self, files: dict[str, str]) -> dict:
-        return {"files": files, "domain": "music"}
+    def _snap(self, files: dict[str, str]) -> SnapshotManifest:
+        return SnapshotManifest(files=files, domain="music")
 
     def test_no_drift(self) -> None:
         snap = self._snap({"a.mid": "h1"})
@@ -117,10 +117,10 @@ class TestDrift:
 
 class TestContentHash:
     def test_deterministic(self) -> None:
-        snap = {"files": {"a.mid": "h1"}, "domain": "music"}
+        snap = SnapshotManifest(files={"a.mid": "h1"}, domain="music")
         assert content_hash(snap) == content_hash(snap)
 
     def test_different_content_different_hash(self) -> None:
-        a = {"files": {"a.mid": "h1"}, "domain": "music"}
-        b = {"files": {"a.mid": "h2"}, "domain": "music"}
+        a = SnapshotManifest(files={"a.mid": "h1"}, domain="music")
+        b = SnapshotManifest(files={"a.mid": "h2"}, domain="music")
         assert content_hash(a) != content_hash(b)

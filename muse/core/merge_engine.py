@@ -38,10 +38,26 @@ import logging
 import pathlib
 from collections import deque
 from dataclasses import dataclass, field
+from typing import TypedDict
 
 logger = logging.getLogger(__name__)
 
 _MERGE_STATE_FILENAME = "MERGE_STATE.json"
+
+
+# ---------------------------------------------------------------------------
+# Wire-format TypedDict
+# ---------------------------------------------------------------------------
+
+
+class MergeStatePayload(TypedDict, total=False):
+    """JSON-serialisable form of an in-progress merge state."""
+
+    base_commit: str
+    ours_commit: str
+    theirs_commit: str
+    conflict_paths: list[str]
+    other_branch: str
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +87,7 @@ def read_merge_state(root: pathlib.Path) -> MergeState | None:
     if not merge_state_path.exists():
         return None
     try:
-        data: dict[str, object] = json.loads(merge_state_path.read_text())
+        data = json.loads(merge_state_path.read_text())
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning("⚠️ Failed to read %s: %s", _MERGE_STATE_FILENAME, exc)
         return None
@@ -82,7 +98,8 @@ def read_merge_state(root: pathlib.Path) -> MergeState | None:
     )
 
     def _str_or_none(key: str) -> str | None:
-        return str(data[key]) if key in data else None
+        val = data.get(key)
+        return str(val) if val is not None else None
 
     return MergeState(
         conflict_paths=conflict_paths,
@@ -104,15 +121,15 @@ def write_merge_state(
 ) -> None:
     """Write ``.muse/MERGE_STATE.json`` to signal an in-progress conflicted merge."""
     merge_state_path = root / ".muse" / _MERGE_STATE_FILENAME
-    data: dict[str, object] = {
+    payload: MergeStatePayload = {
         "base_commit": base_commit,
         "ours_commit": ours_commit,
         "theirs_commit": theirs_commit,
         "conflict_paths": sorted(conflict_paths),
     }
     if other_branch is not None:
-        data["other_branch"] = other_branch
-    merge_state_path.write_text(json.dumps(data, indent=2))
+        payload["other_branch"] = other_branch
+    merge_state_path.write_text(json.dumps(payload, indent=2))
     logger.info("✅ Wrote MERGE_STATE.json with %d conflict(s)", len(conflict_paths))
 
 

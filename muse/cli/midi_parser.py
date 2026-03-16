@@ -18,7 +18,7 @@ import dataclasses
 import logging
 import pathlib
 import xml.etree.ElementTree as ET
-from typing import Any
+from typing import TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,23 @@ logger = logging.getLogger(__name__)
 SUPPORTED_MIDI_EXTENSIONS = {".mid", ".midi"}
 SUPPORTED_XML_EXTENSIONS = {".xml", ".musicxml"}
 SUPPORTED_EXTENSIONS = SUPPORTED_MIDI_EXTENSIONS | SUPPORTED_XML_EXTENSIONS
+
+
+class MidiMeta(TypedDict):
+    """Format-specific metadata for Standard MIDI Files."""
+
+    num_tracks: int
+
+
+class MusicXMLMeta(TypedDict):
+    """Format-specific metadata for MusicXML files."""
+
+    num_parts: int
+    part_names: list[str]
+
+
+#: Union of all supported format-specific metadata shapes.
+RawMeta = MidiMeta | MusicXMLMeta
 
 
 @dataclasses.dataclass
@@ -50,7 +67,7 @@ class MuseImportData:
     tempo_bpm: float
     notes: list[NoteEvent]
     tracks: list[str]
-    raw_meta: dict[str, Any]
+    raw_meta: RawMeta
 
 
 def parse_file(path: pathlib.Path) -> MuseImportData:
@@ -153,7 +170,7 @@ def parse_midi_file(path: pathlib.Path) -> MuseImportData:
         tempo_bpm=tempo_bpm,
         notes=notes,
         tracks=tracks,
-        raw_meta={"num_tracks": len(mid.tracks)},
+        raw_meta=MidiMeta(num_tracks=len(mid.tracks)),
     )
 
 
@@ -280,7 +297,7 @@ def parse_musicxml_file(path: pathlib.Path) -> MuseImportData:
         tempo_bpm=tempo_bpm,
         notes=notes,
         tracks=tracks,
-        raw_meta={"num_parts": len(parts), "part_names": part_names},
+        raw_meta=MusicXMLMeta(num_parts=len(parts), part_names=part_names),
     )
 
 

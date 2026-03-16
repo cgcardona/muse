@@ -5,6 +5,7 @@ Reads and writes ``.muse/config.toml`` — the local repository configuration fi
 The config file supports:
 - ``[auth] token`` — bearer token for Muse Hub authentication (NEVER logged).
 - ``[remotes.<name>] url`` — remote Hub URL for push/pull sync.
+- ``[remotes.<name>] branch`` — upstream branch tracking for a remote.
 
 Token lifecycle (MVP):
   1. User obtains a token via ``POST /auth/token``.
@@ -29,12 +30,32 @@ _MUSE_DIR = ".muse"
 
 
 # ---------------------------------------------------------------------------
-# TypedDicts for structured config data
+# Named configuration types
 # ---------------------------------------------------------------------------
 
 
+class AuthEntry(TypedDict, total=False):
+    """``[auth]`` section in ``.muse/config.toml``."""
+
+    token: str
+
+
+class RemoteEntry(TypedDict, total=False):
+    """``[remotes.<name>]`` section in ``.muse/config.toml``."""
+
+    url: str
+    branch: str
+
+
+class MuseConfig(TypedDict, total=False):
+    """Structured view of the entire ``.muse/config.toml`` file."""
+
+    auth: AuthEntry
+    remotes: dict[str, RemoteEntry]
+
+
 class RemoteConfig(TypedDict):
-    """A single configured remote — name and URL."""
+    """Public-facing remote descriptor returned by :func:`list_remotes`."""
 
     name: str
     url: str
@@ -51,61 +72,78 @@ def _config_path(repo_root: pathlib.Path | None) -> pathlib.Path:
     return root / _MUSE_DIR / _CONFIG_FILENAME
 
 
-def _load_config(config_path: pathlib.Path) -> dict[str, object]:
-    """Load and parse config.toml; return empty dict if absent or unreadable."""
+def _load_config(config_path: pathlib.Path) -> MuseConfig:
+    """Load and parse config.toml; return an empty MuseConfig if absent or unreadable."""
     if not config_path.is_file():
         return {}
+
     try:
         with config_path.open("rb") as fh:
-            return tomllib.load(fh)
-    except Exception as exc: # noqa: BLE001
+            raw = tomllib.load(fh)
+    except Exception as exc:  # noqa: BLE001
         logger.warning("⚠️ Failed to parse %s: %s", config_path, exc)
         return {}
 
+    config: MuseConfig = {}
 
-def _dump_toml(data: dict[str, object]) -> str:
-    """Serialize a two-level TOML dict (tables of string values) to text.
+    auth_raw = raw.get("auth")
+    if isinstance(auth_raw, dict):
+        auth: AuthEntry = {}
+        token_val = auth_raw.get("token")
+        if isinstance(token_val, str):
+            auth["token"] = token_val
+        config["auth"] = auth
+
+    remotes_raw = raw.get("remotes")
+    if isinstance(remotes_raw, dict):
+        remotes: dict[str, RemoteEntry] = {}
+        for name, remote_raw in remotes_raw.items():
+            if isinstance(remote_raw, dict):
+                entry: RemoteEntry = {}
+                url_val = remote_raw.get("url")
+                if isinstance(url_val, str):
+                    entry["url"] = url_val
+                branch_val = remote_raw.get("branch")
+                if isinstance(branch_val, str):
+                    entry["branch"] = branch_val
+                remotes[name] = entry
+        config["remotes"] = remotes
+
+    return config
+
+
+def _dump_toml(config: MuseConfig) -> str:
+    """Serialize a MuseConfig back to TOML text.
 
     Handles the subset of TOML used by .muse/config.toml:
-    - Top-level tables (``[section]``) whose values are strings.
-    - Nested tables (``[section.subsection]``) whose values are strings.
+    - ``[auth]`` section with a ``token`` string.
+    - ``[remotes.<name>]`` sections with ``url`` and optional ``branch`` strings.
 
-    Values of other types are coerced to strings and stored as TOML strings.
     The ``[auth]`` section is always written first so the file is stable.
     """
     lines: list[str] = []
 
-    def _write_table(heading: str, mapping: dict[str, object]) -> None:
-        lines.append(f"[{heading}]")
-        for key, val in mapping.items():
-            if isinstance(val, str):
-                escaped = val.replace("\\", "\\\\").replace('"', '\\"')
-                lines.append(f'{key} = "{escaped}"')
-            else:
-                lines.append(f"{key} = {val!r}")
+    auth = config.get("auth")
+    if auth:
+        lines.append("[auth]")
+        token = auth.get("token", "")
+        if token:
+            escaped = token.replace("\\", "\\\\").replace('"', '\\"')
+            lines.append(f'token = "{escaped}"')
         lines.append("")
 
-    # Auth section first (stable ordering)
-    if "auth" in data:
-        auth_section = data["auth"]
-        if isinstance(auth_section, dict):
-            _write_table("auth", auth_section)
-
-    # Remotes (nested tables: [remotes.<name>])
-    if "remotes" in data:
-        remotes_section = data["remotes"]
-        if isinstance(remotes_section, dict):
-            for remote_name in sorted(remotes_section):
-                remote_cfg = remotes_section[remote_name]
-                if isinstance(remote_cfg, dict):
-                    _write_table(f"remotes.{remote_name}", remote_cfg)
-
-    # Any other top-level sections
-    for key, val in data.items():
-        if key in ("auth", "remotes"):
-            continue
-        if isinstance(val, dict):
-            _write_table(key, val)
+    remotes = config.get("remotes") or {}
+    for remote_name in sorted(remotes):
+        entry = remotes[remote_name]
+        lines.append(f"[remotes.{remote_name}]")
+        url = entry.get("url", "")
+        if url:
+            escaped = url.replace("\\", "\\\\").replace('"', '\\"')
+            lines.append(f'url = "{escaped}"')
+        branch = entry.get("branch", "")
+        if branch:
+            lines.append(f'branch = "{branch}"')
+        lines.append("")
 
     return "\n".join(lines)
 
@@ -136,10 +174,14 @@ def get_auth_token(repo_root: pathlib.Path | None = None) -> str | None:
         logger.debug("⚠️ No %s found at %s", _CONFIG_FILENAME, config_path)
         return None
 
-    data = _load_config(config_path)
-    auth_section = data.get("auth", {})
-    token: object = auth_section.get("token", "") if isinstance(auth_section, dict) else ""
-    if not isinstance(token, str) or not token.strip():
+    config = _load_config(config_path)
+    auth = config.get("auth")
+    if auth is None:
+        logger.debug("⚠️ [auth] section missing in %s", config_path)
+        return None
+
+    token = auth.get("token", "")
+    if not token.strip():
         logger.debug("⚠️ [auth] token missing or empty in %s", config_path)
         return None
 
@@ -165,18 +207,15 @@ def get_remote(name: str, repo_root: pathlib.Path | None = None) -> str | None:
     Returns:
         URL string, or ``None``.
     """
-    config_path = _config_path(repo_root)
-    data = _load_config(config_path)
-    remotes_section = data.get("remotes", {})
-    if not isinstance(remotes_section, dict):
+    config = _load_config(_config_path(repo_root))
+    remotes = config.get("remotes")
+    if remotes is None:
         return None
-    remote_cfg = remotes_section.get(name, {})
-    if not isinstance(remote_cfg, dict):
+    entry = remotes.get(name)
+    if entry is None:
         return None
-    url: object = remote_cfg.get("url", "")
-    if not isinstance(url, str) or not url.strip():
-        return None
-    return url.strip()
+    url = entry.get("url", "")
+    return url.strip() if url.strip() else None
 
 
 def set_remote(
@@ -197,18 +236,24 @@ def set_remote(
     config_path = _config_path(repo_root)
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
-    data = _load_config(config_path)
+    config = _load_config(config_path)
 
-    # Ensure the nested structure exists
-    if "remotes" not in data or not isinstance(data["remotes"], dict):
-        data["remotes"] = {}
-    remotes: dict[str, object] = data["remotes"] # type: ignore[assignment]
-    if name not in remotes or not isinstance(remotes[name], dict):
-        remotes[name] = {}
-    remote_entry: dict[str, object] = remotes[name] # type: ignore[assignment]
-    remote_entry["url"] = url
+    existing_remotes = config.get("remotes")
+    remotes: dict[str, RemoteEntry] = {}
+    if existing_remotes:
+        remotes.update(existing_remotes)
+    existing_entry = remotes.get(name)
+    entry: RemoteEntry = {}
+    if existing_entry is not None:
+        if "url" in existing_entry:
+            entry["url"] = existing_entry["url"]
+        if "branch" in existing_entry:
+            entry["branch"] = existing_entry["branch"]
+    entry["url"] = url
+    remotes[name] = entry
+    config["remotes"] = remotes
 
-    config_path.write_text(_dump_toml(data), encoding="utf-8")
+    config_path.write_text(_dump_toml(config), encoding="utf-8")
     logger.info("✅ Remote %r set to %s", name, url)
 
 
@@ -231,19 +276,18 @@ def remove_remote(
         KeyError: If *name* is not a configured remote.
     """
     config_path = _config_path(repo_root)
-    data = _load_config(config_path)
+    config = _load_config(config_path)
 
-    remotes_section = data.get("remotes", {})
-    if not isinstance(remotes_section, dict) or name not in remotes_section:
+    remotes = config.get("remotes")
+    if remotes is None or name not in remotes:
         raise KeyError(name)
 
-    del remotes_section[name]
-    data["remotes"] = remotes_section
+    del remotes[name]
+    config["remotes"] = remotes
 
-    config_path.write_text(_dump_toml(data), encoding="utf-8")
+    config_path.write_text(_dump_toml(config), encoding="utf-8")
     logger.info("✅ Remote %r removed from config", name)
 
-    # Remove tracking refs directory if it exists
     root = (repo_root or pathlib.Path.cwd()).resolve()
     refs_dir = root / _MUSE_DIR / "remotes" / name
     if refs_dir.is_dir():
@@ -273,21 +317,20 @@ def rename_remote(
         ValueError: If *new_name* already exists as a remote.
     """
     config_path = _config_path(repo_root)
-    data = _load_config(config_path)
+    config = _load_config(config_path)
 
-    remotes_section = data.get("remotes", {})
-    if not isinstance(remotes_section, dict) or old_name not in remotes_section:
+    remotes = config.get("remotes")
+    if remotes is None or old_name not in remotes:
         raise KeyError(old_name)
-    if new_name in remotes_section:
+    if new_name in remotes:
         raise ValueError(new_name)
 
-    remotes_section[new_name] = remotes_section.pop(old_name)
-    data["remotes"] = remotes_section
+    remotes[new_name] = remotes.pop(old_name)
+    config["remotes"] = remotes
 
-    config_path.write_text(_dump_toml(data), encoding="utf-8")
+    config_path.write_text(_dump_toml(config), encoding="utf-8")
     logger.info("✅ Remote %r renamed to %r", old_name, new_name)
 
-    # Move tracking refs directory if it exists
     root = (repo_root or pathlib.Path.cwd()).resolve()
     old_refs_dir = root / _MUSE_DIR / "remotes" / old_name
     new_refs_dir = root / _MUSE_DIR / "remotes" / new_name
@@ -308,20 +351,17 @@ def list_remotes(repo_root: pathlib.Path | None = None) -> list[RemoteConfig]:
     Returns:
         List of ``{"name": str, "url": str}`` dicts.
     """
-    config_path = _config_path(repo_root)
-    data = _load_config(config_path)
-    remotes_section = data.get("remotes", {})
-    if not isinstance(remotes_section, dict):
+    config = _load_config(_config_path(repo_root))
+    remotes = config.get("remotes")
+    if remotes is None:
         return []
 
     result: list[RemoteConfig] = []
-    for remote_name in sorted(remotes_section):
-        cfg = remotes_section[remote_name]
-        if not isinstance(cfg, dict):
-            continue
-        url_val: object = cfg.get("url", "")
-        if isinstance(url_val, str) and url_val.strip():
-            result.append(RemoteConfig(name=remote_name, url=url_val.strip()))
+    for remote_name in sorted(remotes):
+        entry = remotes[remote_name]
+        url = entry.get("url", "")
+        if url.strip():
+            result.append(RemoteConfig(name=remote_name, url=url.strip()))
 
     return result
 
@@ -416,17 +456,24 @@ def set_upstream(
     config_path = _config_path(repo_root)
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
-    data = _load_config(config_path)
+    config = _load_config(config_path)
 
-    if "remotes" not in data or not isinstance(data["remotes"], dict):
-        data["remotes"] = {}
-    remotes: dict[str, object] = data["remotes"] # type: ignore[assignment]
-    if remote_name not in remotes or not isinstance(remotes[remote_name], dict):
-        remotes[remote_name] = {}
-    remote_entry: dict[str, object] = remotes[remote_name] # type: ignore[assignment]
-    remote_entry["branch"] = branch
+    existing_remotes = config.get("remotes")
+    remotes: dict[str, RemoteEntry] = {}
+    if existing_remotes:
+        remotes.update(existing_remotes)
+    existing_entry = remotes.get(remote_name)
+    entry: RemoteEntry = {}
+    if existing_entry is not None:
+        if "url" in existing_entry:
+            entry["url"] = existing_entry["url"]
+        if "branch" in existing_entry:
+            entry["branch"] = existing_entry["branch"]
+    entry["branch"] = branch
+    remotes[remote_name] = entry
+    config["remotes"] = remotes
 
-    config_path.write_text(_dump_toml(data), encoding="utf-8")
+    config_path.write_text(_dump_toml(config), encoding="utf-8")
     logger.info("✅ Upstream for branch %r set to %s/%r", branch, remote_name, branch)
 
 
@@ -447,17 +494,14 @@ def get_upstream(
         Remote name string (e.g. ``"origin"``), or ``None`` when no upstream
         is configured for *branch*.
     """
-    config_path = _config_path(repo_root)
-    data = _load_config(config_path)
-    remotes_section = data.get("remotes", {})
-    if not isinstance(remotes_section, dict):
+    config = _load_config(_config_path(repo_root))
+    remotes = config.get("remotes")
+    if remotes is None:
         return None
 
-    for rname, remote_cfg in remotes_section.items():
-        if not isinstance(remote_cfg, dict):
-            continue
-        tracked_branch: object = remote_cfg.get("branch", "")
-        if isinstance(tracked_branch, str) and tracked_branch.strip() == branch:
-            return str(rname)
+    for rname, entry in remotes.items():
+        tracked = entry.get("branch", "")
+        if tracked.strip() == branch:
+            return rname
 
     return None
