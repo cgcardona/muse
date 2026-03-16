@@ -17,6 +17,7 @@ import json
 import logging
 import pathlib
 import shutil
+from typing import Any
 
 import typer
 
@@ -39,17 +40,18 @@ def _read_branch(root: pathlib.Path) -> str:
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
-    return json.loads((root / ".muse" / "repo.json").read_text())["repo_id"]
+    return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
-def _load_stash(root: pathlib.Path) -> list[dict]:
+def _load_stash(root: pathlib.Path) -> list[dict[str, Any]]:
     stash_file = root / _STASH_FILE
     if not stash_file.exists():
         return []
-    return json.loads(stash_file.read_text())
+    result: list[dict[str, Any]] = json.loads(stash_file.read_text())
+    return result
 
 
-def _save_stash(root: pathlib.Path, stash: list[dict]) -> None:
+def _save_stash(root: pathlib.Path, stash: list[dict[str, Any]]) -> None:
     (root / _STASH_FILE).write_text(json.dumps(stash, indent=2))
 
 

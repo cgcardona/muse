@@ -35,7 +35,7 @@ def _read_branch(root: pathlib.Path) -> str:
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
-    return json.loads((root / ".muse" / "repo.json").read_text())["repo_id"]
+    return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
 @app.callback(invoke_without_command=True)
@@ -57,13 +57,13 @@ def cherry_pick(
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
     # Delta = target vs its parent
+    base_manifest: dict[str, str] = {}
     if target.parent_commit_id:
-        base_manifest = {}
-        parent_snap = read_snapshot(root, read_commit(root, target.parent_commit_id).snapshot_id if read_commit(root, target.parent_commit_id) else "")
-        if parent_snap:
-            base_manifest = parent_snap.manifest
-    else:
-        base_manifest = {}
+        parent_commit = read_commit(root, target.parent_commit_id)
+        if parent_commit:
+            parent_snap = read_snapshot(root, parent_commit.snapshot_id)
+            if parent_snap:
+                base_manifest = parent_snap.manifest
 
     target_snap = read_snapshot(root, target.snapshot_id)
     target_manifest = target_snap.manifest if target_snap else {}

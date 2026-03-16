@@ -23,7 +23,7 @@ def _read_branch(root: pathlib.Path) -> str:
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
-    return json.loads((root / ".muse" / "repo.json").read_text())["repo_id"]
+    return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
 @app.callback(invoke_without_command=True)
@@ -47,13 +47,12 @@ def show(
         import json as json_mod
         data = commit.to_dict()
         if stat:
-            current = get_commit_snapshot_manifest(root, commit.commit_id) or {}
-            parent = get_commit_snapshot_manifest(root, commit.parent_commit_id) if commit.parent_commit_id else {}
-            parent = parent or {}
-            data["files_added"] = sorted(set(current) - set(parent))
-            data["files_removed"] = sorted(set(parent) - set(current))
+            cur = get_commit_snapshot_manifest(root, commit.commit_id) or {}
+            par: dict[str, str] = get_commit_snapshot_manifest(root, commit.parent_commit_id) or {} if commit.parent_commit_id else {}
+            data["files_added"] = sorted(set(cur) - set(par))
+            data["files_removed"] = sorted(set(par) - set(cur))
             data["files_modified"] = sorted(
-                p for p in set(current) & set(parent) if current[p] != parent[p]
+                p for p in set(cur) & set(par) if cur[p] != par[p]
             )
         typer.echo(json_mod.dumps(data, indent=2, default=str))
         return

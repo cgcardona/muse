@@ -5,9 +5,6 @@ Core VCS commands::
     init        status      log         commit      diff
     show        branch      checkout    merge       reset
     revert      stash       cherry-pick tag
-
-Music-domain analysis commands are registered lazily so that missing
-optional dependencies (e.g. services being ported) do not break the core.
 """
 from __future__ import annotations
 
@@ -36,7 +33,6 @@ cli = typer.Typer(
     no_args_is_help=True,
 )
 
-# ── Core VCS ────────────────────────────────────────────────────────────────
 cli.add_typer(init.app,         name="init",        help="Initialise a new Muse repository.")
 cli.add_typer(commit.app,       name="commit",      help="Record the current working tree as a new version.")
 cli.add_typer(status.app,       name="status",      help="Show working-tree drift against HEAD.")
@@ -51,19 +47,6 @@ cli.add_typer(revert.app,       name="revert",      help="Create a new commit th
 cli.add_typer(cherry_pick.app,  name="cherry-pick", help="Apply a specific commit's changes on top of HEAD.")
 cli.add_typer(stash.app,        name="stash",       help="Shelve and restore uncommitted changes.")
 cli.add_typer(tag.app,          name="tag",         help="Attach and query semantic tags on commits.")
-
-# ── Music domain (registered lazily — services being ported) ─────────────────
-try:
-    from muse.cli.commands import groove_check
-    cli.add_typer(groove_check.app, name="groove-check", help="Analyze rhythmic groove drift across commit history.")
-except ImportError:
-    pass
-
-try:
-    from muse.cli.commands import emotion_diff
-    cli.add_typer(emotion_diff.app, name="emotion-diff", help="Compare emotion vectors between two commits.")
-except ImportError:
-    pass
 
 
 if __name__ == "__main__":
