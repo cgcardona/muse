@@ -70,8 +70,9 @@ class MergeResult:
     """Outcome of a three-way merge between two divergent state lines.
 
     ``merged`` is the reconciled snapshot. ``conflicts`` is a list of
-    human-readable conflict descriptions that the coordinator must resolve.
-    An empty ``conflicts`` list means the merge was clean.
+    workspace-relative file paths that could not be auto-merged and require
+    manual resolution. An empty ``conflicts`` list means the merge was clean.
+    The CLI is responsible for formatting user-facing messages from these paths.
     """
 
     merged: StateSnapshot

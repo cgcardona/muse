@@ -37,8 +37,9 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.snapshot import diff_workdir_vs_snapshot
-from muse.core.store import get_head_commit_id, get_head_snapshot_manifest, read_commit
+from muse.core.store import get_head_snapshot_manifest
+from muse.domain import SnapshotManifest
+from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
 
@@ -79,9 +80,16 @@ def status(
     head_manifest = get_head_snapshot_manifest(root, repo_id, branch) or {}
     workdir = root / "muse-work"
 
-    added, modified, deleted, untracked = diff_workdir_vs_snapshot(workdir, head_manifest)
+    plugin = resolve_plugin(root)
+    committed_snap = SnapshotManifest(files=head_manifest, domain=read_domain(root))
+    report = plugin.drift(committed_snap, workdir)
+    delta = report.delta
 
-    if not any([added, modified, deleted, untracked]):
+    added: set[str] = set(delta["added"])
+    modified: set[str] = set(delta["modified"])
+    deleted: set[str] = set(delta["removed"])
+
+    if not any([added, modified, deleted]):
         if not short and not porcelain:
             typer.echo("\nNothing to commit, working tree clean")
         return
@@ -89,7 +97,7 @@ def status(
     if short or porcelain:
         for p in sorted(modified):
             typer.echo(f" M {p}")
-        for p in sorted(added | untracked):
+        for p in sorted(added):
             typer.echo(f" A {p}")
         for p in sorted(deleted):
             typer.echo(f" D {p}")
@@ -99,7 +107,7 @@ def status(
     typer.echo('  (use "muse commit -m <msg>" to record changes)\n')
     for p in sorted(modified):
         typer.echo(f"\t    modified: {p}")
-    for p in sorted(added | untracked):
+    for p in sorted(added):
         typer.echo(f"\t    new file: {p}")
     for p in sorted(deleted):
         typer.echo(f"\t     deleted: {p}")

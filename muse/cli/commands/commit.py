@@ -25,7 +25,7 @@ from muse.core.errors import ExitCode
 from muse.core.merge_engine import read_merge_state
 from muse.core.object_store import write_object_from_path
 from muse.core.repo import require_repo
-from muse.core.snapshot import build_snapshot_manifest, compute_commit_id, compute_snapshot_id
+from muse.core.snapshot import compute_commit_id, compute_snapshot_id
 from muse.core.store import (
     CommitRecord,
     SnapshotRecord,
@@ -33,6 +33,7 @@ from muse.core.store import (
     write_commit,
     write_snapshot,
 )
+from muse.plugins.registry import resolve_plugin
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,9 @@ def commit(
         typer.echo("❌ No muse-work/ directory found. Run 'muse init' first.")
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
-    manifest = build_snapshot_manifest(workdir)
+    plugin = resolve_plugin(root)
+    snap = plugin.snapshot(workdir)
+    manifest = snap["files"]
     if not manifest and not allow_empty:
         typer.echo("⚠️  muse-work/ is empty — nothing to commit.")
         raise typer.Exit(code=ExitCode.USER_ERROR)

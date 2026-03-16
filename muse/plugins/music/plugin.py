@@ -195,14 +195,9 @@ class MusicPlugin:
         for path in conflict_paths - real_conflicts:
             merged.pop(path, None)
 
-        conflicts = [
-            f"Both sides modified '{p}' — manual resolution required"
-            for p in sorted(real_conflicts)
-        ]
-
         return MergeResult(
             merged=SnapshotManifest(files=merged, domain=_DOMAIN_TAG),
-            conflicts=conflicts,
+            conflicts=sorted(real_conflicts),
         )
 
     # ------------------------------------------------------------------

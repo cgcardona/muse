@@ -24,8 +24,9 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.object_store import restore_object, write_object_from_path
 from muse.core.repo import require_repo
-from muse.core.snapshot import build_snapshot_manifest, compute_snapshot_id
+from muse.core.snapshot import compute_snapshot_id
 from muse.core.store import get_head_snapshot_manifest, read_snapshot
+from muse.plugins.registry import resolve_plugin
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,8 @@ def stash(ctx: typer.Context) -> None:
     branch = _read_branch(root)
     workdir = root / "muse-work"
 
-    manifest = build_snapshot_manifest(workdir)
+    plugin = resolve_plugin(root)
+    manifest = plugin.snapshot(workdir)["files"]
     if not manifest:
         typer.echo("Nothing to stash.")
         return

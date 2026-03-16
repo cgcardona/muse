@@ -85,8 +85,7 @@ class TestMerge:
         right = self._snap({"a.mid": "h_right"})
         result = plugin.merge(base, left, right)
         assert not result.is_clean
-        assert len(result.conflicts) == 1
-        assert "a.mid" in result.conflicts[0]
+        assert result.conflicts == ["a.mid"]
 
     def test_both_delete_same_file(self) -> None:
         base = self._snap({"a.mid": "h0", "b.mid": "h0"})
