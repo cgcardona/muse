@@ -275,33 +275,48 @@ permanent.
 The last act shows that Muse has the full surface area you'd expect from a
 modern VCS.
 
-### Step 32 — `muse cherry-pick`
+### Steps 32–38 — The audition arc *(pause here and explain this slowly)*
 
-We grab a specific commit from the `gamma` branch — the ascending melody —
-and apply it on top of `main`. Cherry-pick: same as Git, but the domain
-plugin handles the content extraction and replay.
+This sequence is subtle but it's one of the most important things Muse
+demonstrates. Watch what happens.
 
-### Step 33 — `muse show`
+`muse cherry-pick` — we grab the *ascending melody* commit from the `gamma`
+branch and replay it on top of `main`. This is an **audition**. We're not
+merging gamma — we're borrowing one idea and trying it on.
 
-Full commit detail: hash, parent, date, changed files, delta. Every commit
-is inspectable.
+Notice: this cherry-pick has no structural connection to gamma in the DAG.
+It's a content copy — a new commit with a new hash, parented to main's HEAD.
+Gamma doesn't know it happened. The two commits are not linked by an edge.
 
-### Step 34 — `muse diff`
+*(Brief pause — let the cherry-pick commit appear in the DAG)*
 
-Diff between HEAD and working state. `No differences.` Working tree is clean.
+`muse show` — we inspect what actually changed. `muse diff` — working tree
+is clean. The idea is in. Now we listen.
 
-### Steps 35–37 — `muse stash` / `muse stash pop`
+`muse stash`, `muse stash pop` — showing you can shelve unfinished work
+mid-session without losing anything. Bread and butter.
 
-Stash your uncommitted changes, do something, pop them back. Standard
-workflow, full implementation.
+Now — `muse revert`. The ascending melody doesn't fit. We undo it.
 
-### Step 38 — `muse revert`
+*(Point to the revert commit in the DAG — pause)*
 
-We undo the cherry-pick with `muse revert`. This doesn't delete the commit —
-it creates a *new* commit whose snapshot is the inverse of the change.
-Auditable. Reversible. Non-destructive.
+This is the moment. Look at what just happened in the DAG: there are now
+**two** commits sitting between the resolve and the tag. One that says
+"here's the melody." One that says "never mind." Both are permanent. Both
+are in the history forever.
 
-*(Point to the revert node in the DAG — melodic dimension lights up, because the revert undoes a melodic change)*
+That's not a mistake — that's the *point*. Six months from now, when someone
+asks "did we ever try a melody in this section?" the answer is in the DAG:
+yes, on this date, here's exactly what it was, and here's the explicit
+decision to reject it. You can check it out, listen to it, and put it back
+if you change your mind.
+
+The `descending melody B` commit on gamma? It's still there too — never
+used, never merged, never deleted. Muse doesn't garbage-collect ideas. The
+entire creative history of the project — including the roads not taken — is
+preserved.
+
+*(Let that land before moving on)*
 
 ### Steps 39–40 — `muse tag add release:v1.0` / `muse tag list`
 
