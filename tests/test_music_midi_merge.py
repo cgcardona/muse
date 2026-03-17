@@ -218,8 +218,16 @@ class TestExtractDimensions:
 
 
 class TestDimensionConflictDetail:
-    def _dims_from(self, **kwargs: object) -> MidiDimensions:
-        return extract_dimensions(_make_midi(**kwargs))  # type: ignore[arg-type]
+    def _dims_from(
+        self,
+        notes: list[tuple[int, int, int]] | None = None,
+        pitchwheel: list[tuple[int, int]] | None = None,
+        control_change: list[tuple[int, int, int]] | None = None,
+        tempo: int = 500_000,
+    ) -> MidiDimensions:
+        return extract_dimensions(_make_midi(
+            notes=notes, pitchwheel=pitchwheel, control_change=control_change, tempo=tempo
+        ))
 
     def test_unchanged_when_all_same(self) -> None:
         base = self._dims_from(notes=[(0, 60, 80)])
@@ -264,8 +272,18 @@ class TestDimensionConflictDetail:
 
 
 class TestMergeMidiDimensions:
-    def _midi(self, **kw: object) -> bytes:
-        return _make_midi(**kw)  # type: ignore[arg-type]
+    def _midi(
+        self,
+        notes: list[tuple[int, int, int]] | None = None,
+        pitchwheel: list[tuple[int, int]] | None = None,
+        control_change: list[tuple[int, int, int]] | None = None,
+        tempo: int = 500_000,
+        ticks_per_beat: int = 480,
+    ) -> bytes:
+        return _make_midi(
+            notes=notes, pitchwheel=pitchwheel, control_change=control_change,
+            tempo=tempo, ticks_per_beat=ticks_per_beat,
+        )
 
     def _rules(self, *rules: tuple[str, str, str]) -> list[AttributeRule]:
         return [AttributeRule(p, d, s, i + 1) for i, (p, d, s) in enumerate(rules)]

@@ -153,19 +153,25 @@ def _classify_event(msg: mido.Message) -> str | None:
     return None
 
 
-def _msg_to_dict(msg: mido.Message) -> dict[str, object]:
+_MsgVal = int | str | list[int]
+
+
+def _msg_to_dict(msg: mido.Message) -> dict[str, _MsgVal]:
     """Serialise a mido Message to a JSON-compatible dict."""
-    d: dict[str, object] = {"type": msg.type}
+    d: dict[str, _MsgVal] = {"type": msg.type}
     for attr in ("channel", "note", "velocity", "control", "value",
                  "pitch", "program", "numerator", "denominator",
                  "clocks_per_click", "notated_32nd_notes_per_beat",
                  "tempo", "key", "scale", "text", "data"):
         if hasattr(msg, attr):
-            val = getattr(msg, attr)
-            if isinstance(val, (bytes, bytearray)):
-                d[attr] = list(val)
-            else:
-                d[attr] = val
+            raw = getattr(msg, attr)
+            if isinstance(raw, (bytes, bytearray)):
+                d[attr] = list(raw)
+            elif isinstance(raw, str):
+                d[attr] = raw
+            elif isinstance(raw, int):
+                d[attr] = raw
+            # Other types (float, etc.) are skipped — not present in standard MIDI
     return d
 
 
