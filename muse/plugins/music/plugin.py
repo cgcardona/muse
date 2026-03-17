@@ -89,9 +89,20 @@ class MusicPlugin:
             A JSON-serialisable ``{"files": {path: sha256}, "domain": "music"}``
             dict. The ``files`` mapping is the canonical snapshot manifest used
             by the core VCS engine for commit / checkout / diff.
+
+        Ignore rules
+        ------------
+        When *live_state* is a ``pathlib.Path``, the plugin reads
+        ``.museignore`` from the repository root (the parent of ``muse-work/``)
+        and excludes any matching paths from the snapshot.  Dotfiles are always
+        excluded regardless of ``.museignore``.  See ``docs/reference/museignore.md``
+        for the full format reference.
         """
         if isinstance(live_state, pathlib.Path):
+            from muse.core.ignore import is_ignored, load_patterns
             workdir = live_state
+            repo_root = workdir.parent
+            patterns = load_patterns(repo_root)
             files: dict[str, str] = {}
             for file_path in sorted(workdir.rglob("*")):
                 if not file_path.is_file():
@@ -99,6 +110,8 @@ class MusicPlugin:
                 if file_path.name.startswith("."):
                     continue
                 rel = file_path.relative_to(workdir).as_posix()
+                if is_ignored(rel, patterns):
+                    continue
                 files[rel] = _hash_file(file_path)
             return SnapshotManifest(files=files, domain=_DOMAIN_TAG)
 

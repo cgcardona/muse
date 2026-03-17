@@ -121,6 +121,15 @@ class MuseDomainPlugin(Protocol):
         The returned ``SnapshotManifest`` must be JSON-serialisable. Muse will
         compute a SHA-256 content address from the canonical JSON form and
         store the snapshot as a blob in ``.muse/objects/``.
+
+        **``.museignore`` contract** — when *live_state* is a
+        ``pathlib.Path`` (the ``muse-work/`` directory), domain plugin
+        implementations **must** honour ``.museignore`` by calling
+        :func:`muse.core.ignore.load_patterns` on the repository root and
+        filtering out paths matched by :func:`muse.core.ignore.is_ignored`.
+        This ensures that OS artifacts, build outputs, and domain-specific
+        scratch files are never committed, regardless of which plugin is active.
+        See ``docs/reference/museignore.md`` for the full format reference.
         """
         ...
 
