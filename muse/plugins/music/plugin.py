@@ -282,7 +282,9 @@ class MusicPlugin:
                 if base_obj is not None and left_obj is not None and right_obj is not None:
                     try:
                         dim_result = merge_midi_dimensions(
-                            base_obj, left_obj, right_obj, attrs, path
+                            base_obj, left_obj, right_obj,
+                            attrs,  # list[AttributeRule]
+                            path,
                         )
                     except ValueError:
                         dim_result = None

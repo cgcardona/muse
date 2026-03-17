@@ -54,6 +54,8 @@ from dataclasses import dataclass, field
 
 import mido
 
+from muse.core.attributes import AttributeRule, resolve_strategy
+
 # ---------------------------------------------------------------------------
 # Dimension constants
 # ---------------------------------------------------------------------------
@@ -335,7 +337,7 @@ def merge_midi_dimensions(
     base_bytes: bytes,
     left_bytes: bytes,
     right_bytes: bytes,
-    attrs_rules: list[object],  # list[AttributeRule] — typed as object to avoid circular import
+    attrs_rules: list[AttributeRule],
     path: str,
 ) -> tuple[bytes, dict[str, str]] | None:
     """Attempt a dimension-level three-way merge of a MIDI file.
@@ -367,8 +369,6 @@ def merge_midi_dimensions(
     Raises:
         ValueError: If any of the byte strings cannot be parsed as MIDI.
     """
-    from muse.core.attributes import resolve_strategy  # local to avoid circular
-
     base_dims = extract_dimensions(base_bytes)
     left_dims = extract_dimensions(left_bytes)
     right_dims = extract_dimensions(right_bytes)
@@ -399,13 +399,13 @@ def merge_midi_dimensions(
             user_dim_names = [k for k, v in DIM_ALIAS.items() if v == dim] + [dim]
             strategy = "auto"
             for user_dim in user_dim_names:
-                s = resolve_strategy(attrs_rules, path, user_dim)  # type: ignore[arg-type]
+                s = resolve_strategy(attrs_rules, path, user_dim)
                 if s != "auto":
                     strategy = s
                     break
             # Also try dimension wildcard ("*")
             if strategy == "auto":
-                strategy = resolve_strategy(attrs_rules, path, "*")  # type: ignore[arg-type]
+                strategy = resolve_strategy(attrs_rules, path, "*")
 
             if strategy == "ours":
                 winning_slices[dim] = left_dims.slices[dim].events
