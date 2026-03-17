@@ -11,6 +11,7 @@ from __future__ import annotations
 import typer
 
 from muse.cli.commands import (
+    attributes,
     branch,
     cherry_pick,
     checkout,
@@ -33,6 +34,7 @@ cli = typer.Typer(
     no_args_is_help=True,
 )
 
+cli.add_typer(attributes.app,   name="attributes",  help="Display .museattributes merge-strategy rules.")
 cli.add_typer(init.app,         name="init",        help="Initialise a new Muse repository.")
 cli.add_typer(commit.app,       name="commit",      help="Record the current working tree as a new version.")
 cli.add_typer(status.app,       name="status",      help="Show working-tree drift against HEAD.")
