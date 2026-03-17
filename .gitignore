@@ -23,3 +23,6 @@ build/
 .idea/
 .vscode/
 *.swp
+
+# Tour de Force artifacts (generated, not committed)
+artifacts/
