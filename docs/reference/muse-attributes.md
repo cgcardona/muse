@@ -1,169 +1,141 @@
-# .museattributes Reference
+# `.museattributes` Reference
 
-`.museattributes` is a per-repository configuration file that declares merge strategies for specific track patterns and musical dimensions. It lives in the repository root, next to `.muse/`.
+`.museattributes` is a per-repository configuration file that declares merge
+strategies for specific paths and dimensions. It lives in the repository root,
+alongside `muse-work/`.
 
 ---
 
 ## Purpose
 
-Without `.museattributes`, every musical dimension conflict requires manual resolution, even when the resolution is obvious — for example, the drum tracks are always authoritative and should never be overwritten by a collaborator's edits.
+Without `.museattributes`, every conflict in a three-way merge requires manual
+resolution. `.museattributes` lets you encode domain knowledge once so
+`muse merge` can skip conflict detection for well-understood cases.
 
-`.museattributes` lets you encode that domain knowledge once, so `muse merge` can skip conflict detection and take the correct side automatically.
+For example: "this team's changes to the structural layer always win" can be
+expressed as a single rule rather than being resolved manually on every merge.
 
 ---
 
 ## File Format
 
-One rule per line:
-
 ```
-<track-pattern>  <dimension>  <strategy>
+<path-pattern>  <dimension>  <strategy>
 ```
 
-- **`track-pattern`** — An [`fnmatch`](https://docs.python.org/3/library/fnmatch.html) glob matched against the track name (e.g. `drums/*`, `bass/electric`, `*`).
-- **`dimension`** — A musical dimension name or `*` (all dimensions). Valid dimension names: `harmonic`, `rhythmic`, `melodic`, `structural`, `dynamic`.
-- **`strategy`** — How to resolve conflicts for matching track + dimension pairs (see table below).
+- **path-pattern** — an `fnmatch` glob matched against workspace-relative paths
+  (e.g. `drums/*`, `src/models/**, `*`)
+- **dimension** — a domain-defined dimension name, or `*` to match all dimensions
+- **strategy** — `ours | theirs | union | auto | manual`
 
-Lines starting with `#` and blank lines are ignored. Tokens are separated by any whitespace. The **first matching rule wins** — order matters.
+Lines beginning with `#` and blank lines are ignored. **First matching rule wins.**
 
 ---
 
 ## Strategies
 
-| Strategy | Meaning |
-|----------|---------|
-| `ours`   | Take the current branch's version. Skip conflict detection. |
-| `theirs` | Take the incoming branch's version. Skip conflict detection. |
-| `union`  | Attempt to include both sides (falls through to three-way merge). |
-| `auto`   | Let the merge engine decide (default when no rule matches). |
-| `manual` | Flag this dimension for mandatory manual resolution. Falls through to three-way merge. |
-
-> **Note:** `ours` and `theirs` are the only strategies that bypass conflict detection. All others participate in the normal three-way merge.
+| Strategy | Behavior |
+|---|---|
+| `ours` | Take the current branch's version unconditionally. Skip conflict detection. |
+| `theirs` | Take the incoming branch's version unconditionally. Skip conflict detection. |
+| `union` | Include both sides' changes; fall through to three-way merge. |
+| `auto` | Let the merge engine decide (default when no rule matches). |
+| `manual` | Flag this path/dimension for mandatory human resolution. |
 
 ---
 
-## Examples
-
-### Drums are always authoritative
+## Music Domain Examples
 
 ```
-# Drums are owned by the arranger — always keep ours.
-drums/*  *  ours
+# Drums are always authoritative — take ours on every dimension:
+drums/*     *          ours
+
+# Accept a collaborator's harmonic changes on key instruments:
+keys/*      harmonic   theirs
+bass/*      harmonic   theirs
+
+# Require manual review for all structural changes:
+*           structural manual
+
+# Default for everything else:
+*           *          auto
 ```
 
-### Accept collaborator's harmonic changes wholesale
+### Music Dimensions
+
+| Dimension | What it covers |
+|---|---|
+| `melodic` | Note pitch and pitch-class resolution |
+| `rhythmic` | Note start-beat and duration resolution |
+| `harmonic` | Pitch-bend event resolution |
+| `dynamic` | CC and aftertouch event resolution |
+| `structural` | Section and region-level structure |
+
+> **Implementation status:** Dimension names are parsed and validated. Wiring
+> into the merge engine's three-way reconciliation is reserved for a future
+> release. Writing dimension-specific rules now is safe — they will take effect
+> automatically once the merge engine is updated.
+
+---
+
+## Generic Domain Example
+
+The `.museattributes` format is not music-specific. Any domain plugin can define
+its own dimension names and path patterns. For a hypothetical genomics plugin:
 
 ```
-# Incoming harmonic edits from the collaborator win.
-keys/*   harmonic  theirs
-bass/*   harmonic  theirs
+# Reference sequence is always canonical:
+reference/*   *           ours
+
+# Accept collaborator's annotations:
+annotations/* semantic     theirs
+
+# All structural edits require manual review:
+*             structural   manual
+
+# Default:
+*             *            auto
 ```
 
-### Explicit per-dimension rules with fallback
-
-```
-# Drums: our rhythmic pattern is never overwritten.
-drums/*  rhythmic  ours
-
-# Melodic content from the collaborator is accepted.
-*        melodic   theirs
-
-# Everything else: normal automatic merge.
-*        *         auto
-```
-
-### Full example
-
-```
-# Percussion is always ours.
-drums/*     *         ours
-percussion  *         ours
-
-# Harmonic collaborations from the feature branch are accepted.
-keys/*      harmonic  theirs
-strings/*   harmonic  theirs
-
-# Structural sections require manual sign-off.
-*           structural  manual
-
-# Fall through to automatic merge for everything else.
-*           *           auto
-```
+The path-pattern and strategy syntax is identical. Only the dimension names
+and path conventions are domain-specific.
 
 ---
 
 ## CLI
 
-```
+```bash
 muse attributes [--json]
 ```
 
 Reads and displays the `.museattributes` rules from the current repository.
 
-**Example output:**
-
-```
-.museattributes — 3 rule(s)
-
-Track Pattern  Dimension  Strategy
--------------  ---------  --------
-drums/*        *          ours
-keys/*         harmonic   theirs
-*              *          auto
-```
-
-Use `--json` for machine-readable output:
-
-```json
-[
-  {"track_pattern": "drums/*", "dimension": "*", "strategy": "ours"},
-  {"track_pattern": "keys/*", "dimension": "harmonic", "strategy": "theirs"},
-  {"track_pattern": "*", "dimension": "*", "strategy": "auto"}
-]
-```
-
 ---
 
-## Dimension Implementation Status
+## Behavior During `muse merge`
 
-The five dimension names are all valid in `.museattributes` and are parsed correctly. However, not all dimensions are currently wired into `build_merge_result`. The table below shows the current state:
+1. `load_attributes(repo_path)` reads the file (if present).
+2. `resolve_strategy(attributes, path, dimension)` returns the first matching rule.
+3. `ours` → take the left (current HEAD) snapshot for this path.
+4. `theirs` → take the right (incoming) snapshot for this path.
+5. All other strategies → fall through to three-way merge.
 
-| Dimension | Status | Planned event-type mapping |
-|-----------|--------|---------------------------|
-| `melodic` | **Reserved — future** | Note pitch / pitch-class resolution |
-| `rhythmic` | **Reserved — future** | Note start-beat / duration resolution |
-| `harmonic` | **Reserved — future** | Pitch-bend event resolution |
-| `dynamic` | **Reserved — future** | CC and aftertouch event resolution |
-| `structural` | **Reserved — future** | Section / region-level merge |
-
-> **Current behaviour:** `build_merge_result` performs a pure three-way merge for all event
-> types (notes, CC, pitch bends, aftertouch) regardless of any `.museattributes` rules.
-> A rule such as `drums/*  rhythmic  ours` is parsed and stored correctly but has **no
-> effect on the merge outcome today**. All five dimensions are reserved for a future
-> implementation that will wire each event type to its corresponding dimension strategy.
->
-> Writing dimension-specific rules is safe — they will take effect automatically once
-> the merge engine is updated.
-
----
-
-## Behaviour During `muse merge`
-
-1. `muse merge` calls `load_attributes(repo_path)` to read the file.
-2. `resolve_strategy(attributes, track, dimension)` is available for callers to query the configured strategy for any track + dimension pair.
-3. **Dimension strategies are not yet applied inside `build_merge_result`.** All event types currently go through the normal three-way merge regardless of the resolved strategy.
-4. When dimension wiring is complete: if the resolved strategy is `ours`, the left (current) snapshot will be taken without conflict detection; if `theirs`, the right (incoming) snapshot will be taken; all other strategies (`union`, `auto`, `manual`) will fall through to the three-way merge.
+If `.museattributes` is absent, `muse merge` behaves as if all paths use `auto`.
 
 ---
 
 ## Resolution Precedence
 
-Rules are evaluated top-to-bottom. The first rule whose `track-pattern` **and** `dimension` both match (using fnmatch) wins. If no rule matches, `auto` is used.
+Rules are evaluated top-to-bottom. The first rule where **both** `path-pattern`
+and `dimension` match (via `fnmatch`) wins.
+
+If no rule matches, `auto` is used.
 
 ---
 
 ## Notes
 
-- The file is optional. If `.museattributes` does not exist, `muse merge` behaves as if all dimensions use `auto`.
-- Track names typically follow the format `<family>/<instrument>` (e.g. `drums/kick`, `bass/electric`). The exact names depend on your project's MIDI track naming.
-- `ours` and `theirs` in `.museattributes` are **positional**, not branch-named. `ours` = the branch you are merging **into** (left / current HEAD). `theirs` = the branch you are merging **from** (right / incoming).
+- `ours` and `theirs` are positional: `ours` = the branch merging INTO (current HEAD),
+  `theirs` = the branch merging FROM (incoming).
+- Path patterns follow POSIX conventions (forward slashes).
+- The file is optional. Its absence has no effect on merge correctness.
