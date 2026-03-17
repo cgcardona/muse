@@ -161,56 +161,165 @@ class MusicPlugin:
         base: StateSnapshot,
         left: StateSnapshot,
         right: StateSnapshot,
+        *,
+        repo_root: pathlib.Path | None = None,
     ) -> MergeResult:
         """Three-way merge two divergent music state lines against a common base.
 
-        A file is auto-merged when only one side changed it. A conflict is
-        recorded when both sides changed the same file relative to *base*.
+        A file is auto-merged when only one side changed it.  When both sides
+        changed the same file, the merge proceeds in two stages:
+
+        1. **File-level strategy** — if ``.museattributes`` contains an
+           ``ours`` or ``theirs`` rule matching the path (dimension ``"*"``),
+           the rule is applied and the file is removed from the conflict list.
+
+        2. **Dimension-level merge** — for ``.mid`` files that survive the
+           file-level check, the MIDI event stream is split into orthogonal
+           dimension slices (notes/melodic, harmonic, dynamic, structural).
+           Each dimension is merged independently.  Dimension-specific
+           ``ours``/``theirs`` rules in ``.museattributes`` are honoured.
+           Only dimensions where *both* sides changed AND no resolvable rule
+           exists cause a true file-level conflict.
+
+        3. **Manual override** — ``manual`` strategy in ``.museattributes``
+           forces a path into the conflict list even when the engine would
+           normally auto-resolve it.
 
         Args:
-            base:  The common ancestor snapshot.
-            left:  The current branch snapshot (ours).
-            right: The target branch snapshot (theirs).
+            base:      The common ancestor snapshot.
+            left:      The current branch snapshot (ours).
+            right:     The target branch snapshot (theirs).
+            repo_root: Repository root directory.  When provided, ``.museattributes``
+                       is loaded and the object store is accessible for MIDI
+                       dimension merge.  When ``None``, behaves as before
+                       (pure file-level conflict detection, no attributes).
 
         Returns:
-            A :class:`~muse.domain.MergeResult` with the merged snapshot and
-            any conflict descriptions.
+            A :class:`~muse.domain.MergeResult` with the merged snapshot,
+            conflict paths, applied strategy overrides, and per-file dimension
+            reports.
         """
+        import hashlib as _hashlib
+
+        from muse.core.attributes import load_attributes, resolve_strategy
+        from muse.core.object_store import read_object, write_object
+        from muse.plugins.music.midi_merge import merge_midi_dimensions
+
         base_files = base["files"]
         left_files = left["files"]
         right_files = right["files"]
 
+        attrs = load_attributes(repo_root) if repo_root is not None else []
+
         left_changed: set[str] = _changed_paths(base_files, left_files)
         right_changed: set[str] = _changed_paths(base_files, right_files)
-        conflict_paths: set[str] = left_changed & right_changed
+        all_conflict_paths: set[str] = left_changed & right_changed
 
-        merged = dict(base_files)
+        merged: dict[str, str] = dict(base_files)
 
-        for path in left_changed - conflict_paths:
+        # Apply clean single-side changes first.
+        for path in left_changed - all_conflict_paths:
             if path in left_files:
                 merged[path] = left_files[path]
             else:
                 merged.pop(path, None)
 
-        for path in right_changed - conflict_paths:
+        for path in right_changed - all_conflict_paths:
             if path in right_files:
                 merged[path] = right_files[path]
             else:
                 merged.pop(path, None)
 
-        # If both sides deleted the same file, that is consensus — not a conflict.
-        real_conflicts = {
-            p for p in conflict_paths
-            if not (p not in left_files and p not in right_files)
+        # Consensus deletions (both sides removed the same file) — not a conflict.
+        consensus_deleted = {
+            p for p in all_conflict_paths
+            if p not in left_files and p not in right_files
         }
-
-        # Apply consensus deletions (both sides removed the same file).
-        for path in conflict_paths - real_conflicts:
+        for path in consensus_deleted:
             merged.pop(path, None)
+
+        real_conflicts: set[str] = all_conflict_paths - consensus_deleted
+
+        # ------------------------------------------------------------------ #
+        # Resolution pass: apply .museattributes strategies                   #
+        # ------------------------------------------------------------------ #
+        applied_strategies: dict[str, str] = {}
+        dimension_reports: dict[str, dict[str, str]] = {}
+        final_conflicts: list[str] = []
+
+        for path in sorted(real_conflicts):
+            file_strategy = resolve_strategy(attrs, path, "*")
+
+            # --- File-level ours/theirs -----------------------------------
+            if file_strategy == "ours":
+                if path in left_files:
+                    merged[path] = left_files[path]
+                else:
+                    merged.pop(path, None)
+                applied_strategies[path] = "ours"
+                continue
+
+            if file_strategy == "theirs":
+                if path in right_files:
+                    merged[path] = right_files[path]
+                else:
+                    merged.pop(path, None)
+                applied_strategies[path] = "theirs"
+                continue
+
+            # --- MIDI dimension-level merge --------------------------------
+            if (
+                repo_root is not None
+                and path.lower().endswith(".mid")
+                and path in left_files
+                and path in right_files
+                and path in base_files
+            ):
+                base_obj = read_object(repo_root, base_files[path])
+                left_obj = read_object(repo_root, left_files[path])
+                right_obj = read_object(repo_root, right_files[path])
+
+                if base_obj is not None and left_obj is not None and right_obj is not None:
+                    try:
+                        dim_result = merge_midi_dimensions(
+                            base_obj, left_obj, right_obj,
+                            attrs,  # list[AttributeRule]
+                            path,
+                        )
+                    except ValueError:
+                        dim_result = None
+
+                    if dim_result is not None:
+                        merged_bytes, dim_report = dim_result
+                        new_hash = _hashlib.sha256(merged_bytes).hexdigest()
+                        write_object(repo_root, new_hash, merged_bytes)
+                        merged[path] = new_hash
+                        applied_strategies[path] = "dimension-merge"
+                        dimension_reports[path] = dim_report
+                        continue
+
+            # --- Remaining true conflicts ----------------------------------
+            # Honour "manual" by forcing non-conflict paths into conflicts too.
+            final_conflicts.append(path)
+
+        # Force "manual" strategy onto paths that auto-merged cleanly.
+        for path in sorted((left_changed | right_changed) - real_conflicts):
+            if path in consensus_deleted:
+                continue
+            if resolve_strategy(attrs, path, "*") == "manual":
+                final_conflicts.append(path)
+                applied_strategies[path] = "manual"
+                # Restore base version as the conflict placeholder.
+                if path in base_files:
+                    merged[path] = base_files[path]
+                else:
+                    merged.pop(path, None)
 
         return MergeResult(
             merged=SnapshotManifest(files=merged, domain=_DOMAIN_TAG),
-            conflicts=sorted(real_conflicts),
+            conflicts=sorted(final_conflicts),
+            applied_strategies=applied_strategies,
+            dimension_reports=dimension_reports,
         )
 
     # ------------------------------------------------------------------
