@@ -277,6 +277,8 @@ _HTML_TEMPLATE = """\
     .btn:hover { background: var(--border); }
     .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
     .btn.primary:hover { background: var(--accent2); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn:disabled:hover { background: var(--bg3); }
     .step-counter {
       font-size: 11px;
       font-family: var(--font-mono);
@@ -638,6 +640,8 @@ _HTML_TEMPLATE = """\
       <h2>Commit Graph</h2>
       <div class="controls">
         <button class="btn primary" id="btn-play">&#9654; Play Tour</button>
+        <button class="btn" id="btn-prev" title="Previous step (←)">&#9664;</button>
+        <button class="btn" id="btn-next" title="Next step (→)">&#9654;</button>
         <button class="btn" id="btn-reset">&#8635; Reset</button>
         <span class="step-counter" id="step-counter"></span>
       </div>
@@ -1199,9 +1203,11 @@ function revealStep(stepIdx) {
   // Highlight dimension matrix column
   highlightDimColumn(ev.commit_id || null);
 
-  // Update counter
+  // Update counter and step button states
   document.getElementById('step-counter').textContent =
     `Step ${stepIdx + 1} / ${DATA.events.length}`;
+  document.getElementById('btn-prev').disabled = (stepIdx === 0);
+  document.getElementById('btn-next').disabled = (stepIdx === DATA.events.length - 1);
 
   currentStep = stepIdx;
 }
@@ -1245,6 +1251,9 @@ function resetTour() {
   document.getElementById('log-scroll').scrollTop = 0;
   document.getElementById('dag-scroll').scrollTop = 0;
   document.getElementById('btn-play').textContent = '▶ Play Tour';
+  document.getElementById('btn-prev').disabled = true;
+  document.getElementById('btn-next').disabled = false;
+  highlightDimColumn(null);
 }
 
 /* ===== Init ===== */
@@ -1254,10 +1263,37 @@ document.addEventListener('DOMContentLoaded', () => {
   buildEventLog();
   buildDimTimeline();
 
+  document.getElementById('btn-prev').disabled = true;  // nothing to go back to yet
+
   document.getElementById('btn-play').addEventListener('click', () => {
     if (isPlaying) pauseTour(); else playTour();
   });
+  document.getElementById('btn-prev').addEventListener('click', () => {
+    pauseTour();
+    if (currentStep > 0) revealStep(currentStep - 1);
+  });
+  document.getElementById('btn-next').addEventListener('click', () => {
+    pauseTour();
+    if (currentStep < DATA.events.length - 1) revealStep(currentStep + 1);
+  });
   document.getElementById('btn-reset').addEventListener('click', resetTour);
+
+  // Keyboard shortcuts: ← → for step, Space for play/pause
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      pauseTour();
+      if (currentStep > 0) revealStep(currentStep - 1);
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      pauseTour();
+      if (currentStep < DATA.events.length - 1) revealStep(currentStep + 1);
+    } else if (e.key === ' ') {
+      e.preventDefault();
+      if (isPlaying) pauseTour(); else playTour();
+    }
+  });
 });
 </script>
 </body>
