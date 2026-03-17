@@ -1,8 +1,7 @@
 # Muse Variation Spec — Music Domain Reference
 
 > **Scope:** This spec describes the *Variation* UX pattern as implemented
-> for the music domain in the Stori DAW + Maestro backend. It is not part of
-> the core Muse VCS engine.
+> for the music domain. It is not part of the core Muse VCS engine.
 >
 > For the domain-agnostic VCS protocol, see [muse-protocol.md](muse-protocol.md).
 > For a discussion of how "Variation" might generalize across domains, see

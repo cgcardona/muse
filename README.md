@@ -212,7 +212,7 @@ No database required. Muse stores all state in the `.muse/` directory — object
 - [E2E Walkthrough](docs/architecture/muse-e2e-demo.md) — step-by-step lifecycle from `init` to merge conflict
 - [Plugin Protocol](docs/protocol/muse-protocol.md) — language-agnostic `MuseDomainPlugin` specification
 - [Domain Concepts](docs/protocol/muse-domain-concepts.md) — universal terms, cross-domain patterns, and music-specific vocabulary
-- [Variation Spec](docs/protocol/muse-variation-spec.md) — music-domain variation UX and wire contract (Stori/Maestro)
+- [Variation Spec](docs/protocol/muse-variation-spec.md) — music-domain variation UX and wire contract
 - [Type Contracts](docs/reference/type-contracts.md) — named type definitions with Mermaid diagrams
 - [`.museattributes` Reference](docs/reference/muse-attributes.md) — per-repo merge strategy overrides
 
@@ -220,6 +220,6 @@ No database required. Muse stores all state in the `.muse/` directory — object
 
 ## Origin
 
-Muse began as the version control subsystem of [Maestro](https://github.com/tellurstori/maestro), the AI music composition backend powering the [Stori DAW](https://tellurstori.com). The music domain proved the abstraction. Muse v2 generalizes it.
+Muse v1 proved the core VCS abstraction against a real, production music domain. Muse v2 generalizes that foundation into a domain-agnostic engine.
 
 *Built from the couch. March 2026.*

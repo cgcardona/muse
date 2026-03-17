@@ -40,7 +40,7 @@ Full task lifecycle:
 
 ## GitHub interactions — MCP first
 
-The `user-github` MCP server is available in every Cursor session. Prefer MCP tools over `gh` CLI.
+The `user-github` MCP server is available in every session. Prefer MCP tools over `gh` CLI.
 
 | Operation | MCP tool |
 |-----------|----------|
@@ -136,7 +136,7 @@ Run locally before opening any PR — in this exact order:
 - [ ] `python tools/typing_audit.py --dirs muse/ tests/ --max-any 0` — zero violations
 - [ ] `pytest tests/ -v` — all green
 - [ ] No `Any`, bare collections, `cast()`, `# type: ignore`, `Optional[X]`, legacy `List`/`Dict`
-- [ ] No dead code, no legacy patterns, no Maestro references
+- [ ] No dead code, no legacy patterns, no references to prior projects
 - [ ] Affected docs updated in the same commit
 - [ ] No secrets, no `print()`, no orphaned imports
 

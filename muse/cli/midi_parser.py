@@ -104,7 +104,7 @@ def parse_midi_file(path: pathlib.Path) -> MuseImportData:
     except ImportError:
         raise RuntimeError(
             "mido is required for MIDI import. "
-            "It is pre-installed in the Maestro Docker image."
+            "Install it with: pip install mido"
         )
 
     try:
