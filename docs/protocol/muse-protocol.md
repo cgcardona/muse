@@ -52,10 +52,19 @@ LiveState = Path | StateSnapshot
 # Output of diff(): three sorted lists of workspace-relative paths.
 StateDelta = dict  # must contain "added", "removed", "modified": list[str] and "domain": str
 
-# Output of merge(): the reconciled snapshot + paths that conflicted.
-# "conflicts" is a list of workspace-relative paths that could not be
-# auto-resolved. Empty list means the merge was clean.
-MergeResult = dataclass(merged: StateSnapshot, conflicts: list[str])
+# Output of merge(): the reconciled snapshot + conflict + strategy metadata.
+# "conflicts"          — workspace-relative paths that could not be auto-resolved.
+#                        Empty list means the merge was clean.
+# "applied_strategies" — path → strategy string applied by .museattributes
+#                        (e.g. {"drums/kick.mid": "ours"}).  Empty if no rules fired.
+# "dimension_reports"  — path → {dimension: winner} for files that went through
+#                        dimension-level merge (e.g. {"keys.mid": {"notes": "left"}}).
+MergeResult = dataclass(
+    merged: StateSnapshot,
+    conflicts: list[str],
+    applied_strategies: dict[str, str],
+    dimension_reports: dict[str, dict[str, str]],
+)
 
 # Output of drift(): summary of how live state diverges from committed state.
 DriftReport = dataclass(has_drift: bool, summary: str, delta: StateDelta)
@@ -97,7 +106,7 @@ Compute the minimal delta between two snapshots.
 
 ---
 
-### 3.3 `merge(base: StateSnapshot, left: StateSnapshot, right: StateSnapshot) → MergeResult`
+### 3.3 `merge(base, left, right: StateSnapshot, *, repo_root: Path | None = None) → MergeResult`
 
 Three-way merge two divergent state lines against a common ancestor.
 
@@ -105,10 +114,20 @@ Three-way merge two divergent state lines against a common ancestor.
 - `base` is the common ancestor (merge base).
 - `left` is the current branch's snapshot (ours).
 - `right` is the incoming branch's snapshot (theirs).
+- `repo_root`, when provided, is the filesystem root of the repository.
+  Implementations SHOULD use it to load `.museattributes` and apply
+  file-level or dimension-level merge strategies before falling back to
+  conflict reporting.
 - `result.merged` MUST be a valid `StateSnapshot`.
 - `result.conflicts` MUST be a list of workspace-relative path strings.
   - An empty list means the merge was clean.
   - Paths in `result.conflicts` MUST also appear in `result.merged` (placeholder state).
+- `result.applied_strategies` maps paths where a `.museattributes` rule overrode
+  the default conflict behaviour to the strategy string that was used.
+  Plugins SHOULD populate this for observability; it MAY be empty.
+- `result.dimension_reports` maps paths that received dimension-level merge to
+  a `{dimension: winner}` dict for each resolved dimension.
+  Plugins that do not support dimension merge MAY always return `{}`.
 - **Consensus deletion** (both sides deleted the same path) is NOT a conflict.
 - This method MUST NOT raise on conflict — it returns the conflict list instead.
 
@@ -221,8 +240,16 @@ class MyDomainPlugin:
             modified=sorted(p for p in set(b) & set(t) if b[p] != t[p]),
         )
 
-    def merge(self, base, left, right) -> MergeResult:
+    def merge(
+        self,
+        base: StateSnapshot,
+        left: StateSnapshot,
+        right: StateSnapshot,
+        *,
+        repo_root: pathlib.Path | None = None,
+    ) -> MergeResult:
         # ... domain-specific reconciliation ...
+        # Load .museattributes if repo_root is provided and apply strategies.
 
     def drift(self, committed, live) -> DriftReport:
         live_snap = self.snapshot(live)
