@@ -1,8 +1,7 @@
 """File-based commit and snapshot store for the Muse VCS.
 
-This module replaces the SQLAlchemy-backed ``db.py`` from the original
-Maestro-embedded implementation. All commit and snapshot metadata is stored
-as JSON files under ``.muse/`` — no external database required.
+All commit and snapshot metadata is stored as JSON files under ``.muse/`` —
+no external database required.
 
 Layout
 ------

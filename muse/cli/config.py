@@ -230,7 +230,7 @@ def set_remote(
 
     Args:
         name: Remote name (e.g. ``"origin"``).
-        url: Remote URL (e.g. ``"https://hub.example.com/musehub/repos/my-repo"``).
+        url: Remote URL (e.g. ``"https://vcs.example.com/repos/my-repo"``).
         repo_root: Repository root. Defaults to ``Path.cwd()``.
     """
     config_path = _config_path(repo_root)

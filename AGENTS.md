@@ -27,7 +27,7 @@ You do NOT:
 - **No fallback paths.** The current shape is the only shape. Every trace of the old way is deleted.
 - **No "legacy" or "deprecated" annotations.** Code marked `# deprecated` should be deleted, not annotated.
 - **No dead constants, dead regexes, dead fields.** If it can never be reached, delete it.
-- **No Maestro references.** `maestro`, `agentception`, `tourdeforce` are previous projects. They do not exist in this codebase.
+- **No references to prior projects.** External codebases do not exist here. Do not name or import them.
 
 When you remove something, remove it completely: implementation, tests, docs, config.
 
@@ -106,7 +106,7 @@ tests/
 
 ## GitHub Interactions — MCP First
 
-The `user-github` MCP server is available in every Cursor session. Prefer MCP tools over `gh` CLI.
+The `user-github` MCP server is available in every session. Prefer MCP tools over `gh` CLI.
 
 | Operation | MCP tool |
 |-----------|----------|
@@ -195,7 +195,7 @@ Run before opening any PR:
 - [ ] `python tools/typing_audit.py --dirs muse/ tests/ --max-any 0` — zero violations
 - [ ] `pytest tests/ -v` — all tests green
 - [ ] No `Any`, `object`, bare collections, `cast()`, `# type: ignore`, `Optional[X]`, `List`/`Dict`
-- [ ] No dead code, no Maestro references, no async/await
+- [ ] No dead code, no references to prior projects, no async/await
 - [ ] Affected docs updated in the same commit
 - [ ] No secrets, no `print()`, no orphaned imports
 
@@ -227,6 +227,6 @@ Run before opening any PR:
 - `async`/`await` anywhere in `muse/`.
 - Importing from `muse.plugins.*` inside `muse.core.*`.
 - Adding `fastapi`, `sqlalchemy`, `pydantic`, `httpx`, `asyncpg` as dependencies.
-- Referencing `maestro`, `agentception`, or `tourdeforce` — prior projects, fully excised.
+- Referencing external prior projects — they do not exist in this codebase.
 - `print()` for diagnostics.
 - Merging with a known failing test.
