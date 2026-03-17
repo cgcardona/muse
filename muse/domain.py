@@ -73,10 +73,25 @@ class MergeResult:
     workspace-relative file paths that could not be auto-merged and require
     manual resolution. An empty ``conflicts`` list means the merge was clean.
     The CLI is responsible for formatting user-facing messages from these paths.
+
+    ``applied_strategies`` maps each path where a ``.museattributes`` rule
+    overrode the default conflict behaviour to the strategy that was applied.
+    Paths absent from this dict were resolved by the standard three-way merge
+    logic.  Example::
+
+        {"tracks/drums.mid": "ours", "keys/piano.mid": "theirs"}
+
+    ``dimension_reports`` maps conflicting paths to their per-dimension
+    resolution detail.  Each inner dict maps a dimension name to the strategy
+    or winner chosen for that dimension (e.g. ``{"melodic": "ours", "dynamic":
+    "theirs"}``).  Only populated for files where dimension-level merge was
+    attempted.
     """
 
     merged: StateSnapshot
     conflicts: list[str] = field(default_factory=list)
+    applied_strategies: dict[str, str] = field(default_factory=dict)
+    dimension_reports: dict[str, dict[str, str]] = field(default_factory=dict)
 
     @property
     def is_clean(self) -> bool:
@@ -147,12 +162,38 @@ class MuseDomainPlugin(Protocol):
         base: StateSnapshot,
         left: StateSnapshot,
         right: StateSnapshot,
+        *,
+        repo_root: pathlib.Path | None = None,
     ) -> MergeResult:
         """Three-way merge two divergent state lines against a common base.
 
         ``base`` is the common ancestor (merge base). ``left`` and ``right``
         are the two divergent snapshots. Returns a ``MergeResult`` with the
         reconciled snapshot and any unresolvable conflicts.
+
+        **``.museattributes`` and multidimensional merge contract** — when
+        *repo_root* is provided, domain plugin implementations should:
+
+        1. Load ``.museattributes`` via
+           :func:`muse.core.attributes.load_attributes`.
+        2. For each conflicting path, call
+           :func:`muse.core.attributes.resolve_strategy` with the relevant
+           dimension name (or ``"*"`` for file-level resolution).
+        3. Apply the returned strategy:
+
+           - ``"ours"`` — take the *left* version; remove from conflict list.
+           - ``"theirs"`` — take the *right* version; remove from conflict list.
+           - ``"manual"`` — force into conflict list even if the engine would
+             auto-resolve.
+           - ``"auto"`` / ``"union"`` — defer to the engine's default logic.
+
+        4. For domain formats that support true multidimensional content (e.g.
+           MIDI: melodic, rhythmic, harmonic, dynamic, structural), attempt
+           sub-file dimension merge before falling back to a file-level conflict.
+
+        Record every override in :attr:`MergeResult.applied_strategies` and
+        per-dimension detail in :attr:`MergeResult.dimension_reports`.  See
+        ``docs/reference/muse-attributes.md`` for the full format reference.
         """
         ...
 

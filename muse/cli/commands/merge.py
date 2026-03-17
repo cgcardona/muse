@@ -120,7 +120,19 @@ def merge(
     ours_snap_obj = SnapshotManifest(files=ours_manifest, domain=domain)
     theirs_snap_obj = SnapshotManifest(files=theirs_manifest, domain=domain)
 
-    result = plugin.merge(base_snap_obj, ours_snap_obj, theirs_snap_obj)
+    result = plugin.merge(base_snap_obj, ours_snap_obj, theirs_snap_obj, repo_root=root)
+
+    # Report any .museattributes auto-resolutions.
+    if result.applied_strategies:
+        for p, strategy in sorted(result.applied_strategies.items()):
+            if strategy == "dimension-merge":
+                dim_detail = result.dimension_reports.get(p, {})
+                dim_summary = ", ".join(
+                    f"{d}={v}" for d, v in sorted(dim_detail.items())
+                )
+                typer.echo(f"  ✔ dimension-merge: {p} ({dim_summary})")
+            elif strategy != "manual":
+                typer.echo(f"  ✔ [{strategy}] {p}")
 
     if not result.is_clean:
         write_merge_state(
