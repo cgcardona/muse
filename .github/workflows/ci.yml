@@ -27,3 +27,6 @@ jobs:
 
       - name: Run mypy
         run: mypy muse/
+
+      - name: Run typing audit (ratchet = 0)
+        run: python tools/typing_audit.py --dirs muse/ tests/ --max-any 0

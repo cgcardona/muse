@@ -11,7 +11,6 @@ import json
 import logging
 import pathlib
 import shutil
-from typing import Optional
 
 import typer
 

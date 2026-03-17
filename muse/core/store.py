@@ -52,14 +52,73 @@ import json
 import logging
 import pathlib
 import uuid
-from dataclasses import asdict, dataclass, field
-from typing import Any
+from dataclasses import dataclass, field
+from typing import TypedDict
 
 logger = logging.getLogger(__name__)
 
 _COMMITS_DIR = "commits"
 _SNAPSHOTS_DIR = "snapshots"
 _TAGS_DIR = "tags"
+
+
+# ---------------------------------------------------------------------------
+# Wire-format TypedDicts (JSON-serialisable, used by to_dict / from_dict)
+# ---------------------------------------------------------------------------
+
+
+class CommitDict(TypedDict):
+    """JSON-serialisable representation of a CommitRecord."""
+
+    commit_id: str
+    repo_id: str
+    branch: str
+    snapshot_id: str
+    message: str
+    committed_at: str
+    parent_commit_id: str | None
+    parent2_commit_id: str | None
+    author: str
+    metadata: dict[str, str]
+
+
+class SnapshotDict(TypedDict):
+    """JSON-serialisable representation of a SnapshotRecord."""
+
+    snapshot_id: str
+    manifest: dict[str, str]
+    created_at: str
+
+
+class TagDict(TypedDict):
+    """JSON-serialisable representation of a TagRecord."""
+
+    tag_id: str
+    repo_id: str
+    commit_id: str
+    tag: str
+    created_at: str
+
+
+class RemoteCommitPayload(TypedDict, total=False):
+    """Wire format received from a remote during push/pull.
+
+    All fields are optional because the payload may omit fields that are
+    unknown to older protocol versions. Callers validate required fields
+    before constructing a CommitRecord from this payload.
+    """
+
+    commit_id: str
+    repo_id: str
+    branch: str
+    snapshot_id: str
+    message: str
+    committed_at: str
+    parent_commit_id: str | None
+    parent2_commit_id: str | None
+    author: str
+    metadata: dict[str, str]
+    manifest: dict[str, str]
 
 
 # ---------------------------------------------------------------------------
@@ -80,31 +139,38 @@ class CommitRecord:
     parent_commit_id: str | None = None
     parent2_commit_id: str | None = None
     author: str = ""
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, str] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
-        d = asdict(self)
-        d["committed_at"] = self.committed_at.isoformat()
-        d["metadata"] = self.metadata or {}
-        return d
+    def to_dict(self) -> CommitDict:
+        return CommitDict(
+            commit_id=self.commit_id,
+            repo_id=self.repo_id,
+            branch=self.branch,
+            snapshot_id=self.snapshot_id,
+            message=self.message,
+            committed_at=self.committed_at.isoformat(),
+            parent_commit_id=self.parent_commit_id,
+            parent2_commit_id=self.parent2_commit_id,
+            author=self.author,
+            metadata=dict(self.metadata),
+        )
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "CommitRecord":
-        committed_at_raw = d.get("committed_at", "")
+    def from_dict(cls, d: CommitDict) -> "CommitRecord":
         try:
-            committed_at = datetime.datetime.fromisoformat(str(committed_at_raw))
-        except ValueError:
+            committed_at = datetime.datetime.fromisoformat(d["committed_at"])
+        except (ValueError, KeyError):
             committed_at = datetime.datetime.now(datetime.timezone.utc)
         return cls(
-            commit_id=str(d.get("commit_id", "")),
-            repo_id=str(d.get("repo_id", "")),
-            branch=str(d.get("branch", "")),
-            snapshot_id=str(d.get("snapshot_id", "")),
-            message=str(d.get("message", "")),
+            commit_id=d["commit_id"],
+            repo_id=d["repo_id"],
+            branch=d["branch"],
+            snapshot_id=d["snapshot_id"],
+            message=d["message"],
             committed_at=committed_at,
-            parent_commit_id=d.get("parent_commit_id") or None,
-            parent2_commit_id=d.get("parent2_commit_id") or None,
-            author=str(d.get("author", "")),
+            parent_commit_id=d.get("parent_commit_id"),
+            parent2_commit_id=d.get("parent2_commit_id"),
+            author=d.get("author", ""),
             metadata=dict(d.get("metadata") or {}),
         )
 
@@ -119,22 +185,21 @@ class SnapshotRecord:
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "snapshot_id": self.snapshot_id,
-            "manifest": self.manifest,
-            "created_at": self.created_at.isoformat(),
-        }
+    def to_dict(self) -> SnapshotDict:
+        return SnapshotDict(
+            snapshot_id=self.snapshot_id,
+            manifest=self.manifest,
+            created_at=self.created_at.isoformat(),
+        )
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "SnapshotRecord":
-        created_at_raw = d.get("created_at", "")
+    def from_dict(cls, d: SnapshotDict) -> "SnapshotRecord":
         try:
-            created_at = datetime.datetime.fromisoformat(str(created_at_raw))
-        except ValueError:
+            created_at = datetime.datetime.fromisoformat(d["created_at"])
+        except (ValueError, KeyError):
             created_at = datetime.datetime.now(datetime.timezone.utc)
         return cls(
-            snapshot_id=str(d.get("snapshot_id", "")),
+            snapshot_id=d["snapshot_id"],
             manifest=dict(d.get("manifest") or {}),
             created_at=created_at,
         )
@@ -152,27 +217,26 @@ class TagRecord:
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "tag_id": self.tag_id,
-            "repo_id": self.repo_id,
-            "commit_id": self.commit_id,
-            "tag": self.tag,
-            "created_at": self.created_at.isoformat(),
-        }
+    def to_dict(self) -> TagDict:
+        return TagDict(
+            tag_id=self.tag_id,
+            repo_id=self.repo_id,
+            commit_id=self.commit_id,
+            tag=self.tag,
+            created_at=self.created_at.isoformat(),
+        )
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "TagRecord":
-        created_at_raw = d.get("created_at", "")
+    def from_dict(cls, d: TagDict) -> "TagRecord":
         try:
-            created_at = datetime.datetime.fromisoformat(str(created_at_raw))
-        except ValueError:
+            created_at = datetime.datetime.fromisoformat(d["created_at"])
+        except (ValueError, KeyError):
             created_at = datetime.datetime.now(datetime.timezone.utc)
         return cls(
-            tag_id=str(d.get("tag_id", str(uuid.uuid4()))),
-            repo_id=str(d.get("repo_id", "")),
-            commit_id=str(d.get("commit_id", "")),
-            tag=str(d.get("tag", "")),
+            tag_id=d.get("tag_id", str(uuid.uuid4())),
+            repo_id=d["repo_id"],
+            commit_id=d["commit_id"],
+            tag=d["tag"],
             created_at=created_at,
         )
 
@@ -234,9 +298,9 @@ def update_commit_metadata(
     repo_root: pathlib.Path,
     commit_id: str,
     key: str,
-    value: Any,
+    value: str,
 ) -> bool:
-    """Set a single key in a commit's metadata dict.
+    """Set a single string key in a commit's metadata dict.
 
     Returns ``True`` on success, ``False`` if the commit is not found.
     """
@@ -487,13 +551,15 @@ def get_all_tags(repo_root: pathlib.Path, repo_id: str) -> list[TagRecord]:
 # ---------------------------------------------------------------------------
 
 
-def store_pulled_commit(repo_root: pathlib.Path, commit_data: dict[str, Any]) -> bool:
+def store_pulled_commit(
+    repo_root: pathlib.Path, commit_data: RemoteCommitPayload
+) -> bool:
     """Persist a commit received from a remote into local storage.
 
     Idempotent — silently skips if the commit already exists. Returns
     ``True`` if the row was newly written, ``False`` if it already existed.
     """
-    commit_id = str(commit_data.get("commit_id", ""))
+    commit_id = commit_data.get("commit_id") or ""
     if not commit_id:
         logger.warning("⚠️ store_pulled_commit: missing commit_id — skipping")
         return False
@@ -502,23 +568,34 @@ def store_pulled_commit(repo_root: pathlib.Path, commit_data: dict[str, Any]) ->
         logger.debug("⚠️ Pulled commit %s already exists — skipped", commit_id[:8])
         return False
 
-    commit = CommitRecord.from_dict(commit_data)
-    write_commit(repo_root, commit)
+    commit_dict = CommitDict(
+        commit_id=commit_id,
+        repo_id=commit_data.get("repo_id") or "",
+        branch=commit_data.get("branch") or "",
+        snapshot_id=commit_data.get("snapshot_id") or "",
+        message=commit_data.get("message") or "",
+        committed_at=commit_data.get("committed_at") or "",
+        parent_commit_id=commit_data.get("parent_commit_id"),
+        parent2_commit_id=commit_data.get("parent2_commit_id"),
+        author=commit_data.get("author") or "",
+        metadata=dict(commit_data.get("metadata") or {}),
+    )
+    write_commit(repo_root, CommitRecord.from_dict(commit_dict))
 
     # Ensure a (possibly stub) snapshot record exists.
-    snapshot_id = str(commit_data.get("snapshot_id", ""))
+    snapshot_id = commit_data.get("snapshot_id") or ""
     if snapshot_id and read_snapshot(repo_root, snapshot_id) is None:
-        stub = SnapshotRecord(
+        manifest: dict[str, str] = dict(commit_data.get("manifest") or {})
+        write_snapshot(repo_root, SnapshotRecord(
             snapshot_id=snapshot_id,
-            manifest=dict(commit_data.get("manifest") or {}),
-        )
-        write_snapshot(repo_root, stub)
+            manifest=manifest,
+        ))
 
     return True
 
 
 def store_pulled_object_metadata(
-    repo_root: pathlib.Path, object_data: dict[str, Any]
+    repo_root: pathlib.Path, object_data: dict[str, str]
 ) -> bool:
     """Register an object descriptor received from a remote.
 

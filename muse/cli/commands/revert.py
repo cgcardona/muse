@@ -6,22 +6,20 @@ import json
 import logging
 import pathlib
 import shutil
-from typing import Optional
 
 import typer
 
 from muse.core.errors import ExitCode
-from muse.core.object_store import restore_object, write_object_from_path
+from muse.core.object_store import restore_object
 from muse.core.repo import require_repo
-from muse.core.snapshot import build_snapshot_manifest, compute_commit_id, compute_snapshot_id
+from muse.core.snapshot import compute_commit_id
 from muse.core.store import (
     CommitRecord,
-    SnapshotRecord,
     get_head_commit_id,
     read_commit,
+    read_snapshot,
     resolve_commit_ref,
     write_commit,
-    write_snapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,7 +40,7 @@ def _read_repo_id(root: pathlib.Path) -> str:
 def revert(
     ctx: typer.Context,
     ref: str = typer.Argument(..., help="Commit to revert."),
-    message: Optional[str] = typer.Option(None, "-m", "--message", help="Override revert commit message."),
+    message: str | None = typer.Option(None, "-m", "--message", help="Override revert commit message."),
     no_commit: bool = typer.Option(False, "--no-commit", "-n", help="Apply changes but do not commit."),
 ) -> None:
     """Create a new commit that undoes a prior commit."""
@@ -65,7 +63,6 @@ def revert(
         typer.echo(f"❌ Parent commit {target.parent_commit_id[:8]} not found.")
         raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
 
-    from muse.core.store import read_snapshot
     target_snapshot = read_snapshot(root, parent_commit.snapshot_id)
     if target_snapshot is None:
         typer.echo(f"❌ Snapshot {parent_commit.snapshot_id[:8]} not found.")
@@ -85,22 +82,18 @@ def revert(
 
     revert_message = message or f"Revert \"{target.message}\""
     head_commit_id = get_head_commit_id(root, branch)
-    parent_ids = [head_commit_id] if head_commit_id else []
 
-    manifest = build_snapshot_manifest(workdir)
-    snapshot_id = compute_snapshot_id(manifest)
+    # The parent snapshot is already content-addressed in the object store —
+    # reuse its snapshot_id directly rather than re-scanning the workdir.
+    snapshot_id = parent_commit.snapshot_id
     committed_at = datetime.datetime.now(datetime.timezone.utc)
     commit_id = compute_commit_id(
-        parent_ids=parent_ids,
+        parent_ids=[head_commit_id] if head_commit_id else [],
         snapshot_id=snapshot_id,
         message=revert_message,
         committed_at_iso=committed_at.isoformat(),
     )
 
-    for rel_path, object_id in manifest.items():
-        write_object_from_path(root, object_id, workdir / rel_path)
-
-    write_snapshot(root, SnapshotRecord(snapshot_id=snapshot_id, manifest=manifest))
     write_commit(root, CommitRecord(
         commit_id=commit_id,
         repo_id=repo_id,

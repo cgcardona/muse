@@ -10,28 +10,59 @@ spacetime — is a new plugin.
 """
 from __future__ import annotations
 
+import pathlib
 from dataclasses import dataclass, field
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, TypedDict, runtime_checkable
 
 
 # ---------------------------------------------------------------------------
-# Shared type primitives
+# Named snapshot and delta types
 # ---------------------------------------------------------------------------
 
 
-#: Any serializable, content-addressable representation of live state.
-#: Domain plugins define what "state" means for their domain. For music this
-#: is a HeadSnapshot (notes, velocities, CC events per region). For genomics
-#: it could be a sequence dict. The constraint is: must be JSON-serialisable.
-LiveState = Any
+class SnapshotManifest(TypedDict):
+    """Content-addressed snapshot of domain state.
+
+    ``files`` maps workspace-relative POSIX paths to their SHA-256 content
+    digests. ``domain`` identifies which plugin produced this snapshot.
+    """
+
+    files: dict[str, str]
+    domain: str
+
+
+class DeltaManifest(TypedDict):
+    """Minimal change description between two snapshots.
+
+    Each list contains workspace-relative POSIX paths. ``domain`` identifies
+    the plugin that produced this delta.
+    """
+
+    domain: str
+    added: list[str]
+    removed: list[str]
+    modified: list[str]
+
+
+# ---------------------------------------------------------------------------
+# Type aliases used in the protocol signatures
+# ---------------------------------------------------------------------------
+
+#: Live state is either an already-snapshotted manifest dict or a workdir path.
+#: The music plugin accepts both: a Path (for CLI commit/status) and a
+#: SnapshotManifest dict (for in-memory merge and diff operations).
+LiveState = SnapshotManifest | pathlib.Path
 
 #: A content-addressed, immutable snapshot of state at a point in time.
-#: Produced by ``snapshot()`` and stored as a blob under ``.muse/objects/``.
-StateSnapshot = dict[str, Any]
+StateSnapshot = SnapshotManifest
 
 #: The minimal change between two snapshots — additions, removals, mutations.
-#: Domain plugins define the delta structure. The DAG stores these as diffs.
-StateDelta = dict[str, Any]
+StateDelta = DeltaManifest
+
+
+# ---------------------------------------------------------------------------
+# Merge and drift result types
+# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -39,8 +70,9 @@ class MergeResult:
     """Outcome of a three-way merge between two divergent state lines.
 
     ``merged`` is the reconciled snapshot. ``conflicts`` is a list of
-    human-readable conflict descriptions that the coordinator must resolve.
-    An empty ``conflicts`` list means the merge was clean.
+    workspace-relative file paths that could not be auto-merged and require
+    manual resolution. An empty ``conflicts`` list means the merge was clean.
+    The CLI is responsible for formatting user-facing messages from these paths.
     """
 
     merged: StateSnapshot
@@ -62,7 +94,9 @@ class DriftReport:
 
     has_drift: bool
     summary: str = ""
-    delta: StateDelta = field(default_factory=dict)
+    delta: StateDelta = field(default_factory=lambda: DeltaManifest(
+        domain="", added=[], removed=[], modified=[],
+    ))
 
 
 # ---------------------------------------------------------------------------
@@ -84,26 +118,18 @@ class MuseDomainPlugin(Protocol):
     def snapshot(self, live_state: LiveState) -> StateSnapshot:
         """Capture current live state as a serialisable, hashable snapshot.
 
-        The returned dict must be JSON-serialisable. Muse will compute a
-        SHA-256 content address from the canonical JSON form and store the
-        snapshot as a blob in ``.muse/objects/``.
-
-        For the music plugin, ``live_state`` is a ``HeadSnapshot`` dict
-        (notes and CC events per region, track routing). The returned
-        ``StateSnapshot`` is the same structure, canonicalised for hashing.
+        The returned ``SnapshotManifest`` must be JSON-serialisable. Muse will
+        compute a SHA-256 content address from the canonical JSON form and
+        store the snapshot as a blob in ``.muse/objects/``.
         """
         ...
 
     def diff(self, base: StateSnapshot, target: StateSnapshot) -> StateDelta:
         """Compute the minimal delta between two snapshots.
 
-        The returned ``StateDelta`` describes what changed between ``base``
-        and ``target``. For music: added/removed notes, changed velocities,
-        updated CC events. For genomics: CRISPR edits. For simulation:
-        changed parameter values.
-
-        Muse stores deltas alongside commits so that ``muse show`` can display
-        a human-readable summary of what changed without reloading full blobs.
+        Returns a ``DeltaManifest`` listing which paths were added, removed,
+        or modified. Muse stores deltas alongside commits so that ``muse show``
+        can display a human-readable summary without reloading full blobs.
         """
         ...
 
@@ -118,10 +144,6 @@ class MuseDomainPlugin(Protocol):
         ``base`` is the common ancestor (merge base). ``left`` and ``right``
         are the two divergent snapshots. Returns a ``MergeResult`` with the
         reconciled snapshot and any unresolvable conflicts.
-
-        For music: notes that only one side touched are auto-merged; notes
-        that both sides touched on the same beat/pitch are conflicts. The
-        Composer agent's cognitive architecture resolves those conflicts.
         """
         ...
 
@@ -135,10 +157,6 @@ class MuseDomainPlugin(Protocol):
         Used by ``muse status`` to detect uncommitted changes. Returns a
         ``DriftReport`` describing whether the live state has diverged from
         the last committed snapshot and, if so, by how much.
-
-        For music: compares the committed MIDI state against the current DAW
-        project state. A note that was added in the DAW but not yet committed
-        shows up as drift.
         """
         ...
 
@@ -147,8 +165,5 @@ class MuseDomainPlugin(Protocol):
 
         Used by ``muse checkout`` to reconstruct a historical state. Applies
         ``delta`` on top of ``live_state`` and returns the resulting state.
-
-        For music: replays the note additions and removals from ``delta``
-        against the current DAW project, producing the target historical take.
         """
         ...

@@ -1,94 +1,294 @@
-# Muse E2E Demo — Tour de Force
+# Muse E2E Walkthrough
 
-## What it proves
+A complete tour of every Muse VCS primitive using the CLI, from `init` to
+three-way merge conflict resolution.
 
-The E2E harness exercises every Muse VCS primitive through real HTTP routes
-and a real database in a single deterministic scenario:
+---
 
-| Step | Operation | Asserts |
-|------|-----------|---------|
-| 0 | Root commit (C0) | Graph has 1 node, HEAD correct |
-| 1 | Mainline commit (C1 — keys) | Checkout executes, HEAD moves |
-| 2 | Branch A (C2 — bass) | Graph shows branch from C1 |
-| 3 | Branch B (C3 — drums) | Time-travel back to C1, then branch |
-| 4 | Merge C2 + C3 → C4 | Auto-merge, two parents, HEAD moves |
-| 5 | Conflict merge (C5 vs C6) | 409 with conflict payload |
-| 7 | Checkout traversal | C1 → C2 → C4, all transactional |
-
-## How to run
+## Setup
 
 ```bash
-docker compose exec maestro pytest tests/e2e/test_muse_e2e_harness.py -v -s
+# Install
+pip install -e ".[dev]"
+
+# Create a project directory
+mkdir my-project && cd my-project
+
+# Initialize a Muse repository (default domain: music)
+muse init
 ```
 
-The `-s` flag is important — it shows the ASCII graph, JSON dump, and
-summary table in the terminal.
+```
+Initialized empty Muse repository in my-project/.muse/
+Domain: music
+```
 
-## Expected output
+---
+
+## Step 0 — Root Commit
+
+```bash
+cp ~/some-beat.mid muse-work/beat.mid
+muse commit -m "Root: initial beat"
+```
 
 ```
-═══ Step 0: Initialize ═══
-  ✅ Root C0 committed, HEAD=c0000000
+[main a1b2c3d4] Root: initial beat
+```
 
-═══ Step 1: Mainline commit C1 (keys v1) ═══
-  ✅ C1 committed + checked out, executed=2 tool calls
+```bash
+muse log
+```
 
-═══ Step 2: Branch A — bass v1 (C2) ═══
-  ✅ C2 committed, HEAD=c2000000, graph has 3 nodes
+```
+commit a1b2c3d4 (HEAD -> main)
+Date:   2026-03-17 12:00:00 UTC
 
-═══ Step 3: Branch B — drums v1 (C3) ═══
-  ✅ C3 committed, HEAD=c3000000
+    Root: initial beat
 
-═══ Step 4: Merge C2 + C3 ═══
-  ✅ Merge commit C4=<uuid>, executed=N tool calls
-  ✅ Merge commit has parent=..., parent2=...
+ + beat.mid
+ 1 file(s) changed
+```
 
-═══ Step 5: Conflict merge demo (C5 vs C6) ═══
-  ✅ Conflict detected: N conflict(s)
-     note: Both sides added conflicting note at pitch=... beat=...
+---
 
-═══ Step 7: Checkout traversal ═══
-  → Checked out C1: executed=N, hash=...
-  → Checked out C2: executed=N, hash=...
-  → Checked out C4 (merge): executed=N, hash=...
-  ✅ All checkouts transactional
+## Step 1 — Mainline Commit
 
-════════════════════════════════════════════════════════════
-  MUSE LOG GRAPH — ASCII
-════════════════════════════════════════════════════════════
-* c4_merge merge (HEAD)
-| \
-| * c3000000 drums v1
-* | c2000000 bass v1
+```bash
+cp ~/bass-line.mid muse-work/bass.mid
+muse commit -m "Add bass line"
+muse log --oneline
+```
+
+```
+b2c3d4e5 (HEAD -> main) Add bass line
+a1b2c3d4 Root: initial beat
+```
+
+---
+
+## Step 2 — Branch A
+
+```bash
+muse branch feature/keys
+muse checkout feature/keys
+cp ~/piano.mid muse-work/keys.mid
+muse commit -m "Add piano keys"
+```
+
+---
+
+## Step 3 — Branch B (from Step 1)
+
+```bash
+# Time-travel back to the mainline
+muse checkout main
+muse branch feature/drums
+muse checkout feature/drums
+cp ~/drum-fill.mid muse-work/drums.mid
+muse commit -m "Add drum fill"
+```
+
+```bash
+muse log --graph
+```
+
+```
+* f3e4d5c6 (HEAD -> feature/drums) Add drum fill
+| * e4d5c6b7 (feature/keys) Add piano keys
 |/
-* c1000000 keys v1
-* c0000000 root
-
-════════════════════════════════════════════════════════════
-  SUMMARY
-════════════════════════════════════════════════════════════
-┌────────────────────────────────┬──────┐
-│ Commits                        │    7 │
-│ Merges                         │    1 │
-│ Branch heads                   │    3 │
-│ Conflict merges attempted      │    1 │
-│ Checkouts executed             │    7 │
-│ Drift blocks                   │    0 │
-│ Forced operations              │    7 │
-└────────────────────────────────┴──────┘
+* b2c3d4e5 (main) Add bass line
+* a1b2c3d4 Root: initial beat
 ```
 
-## Architecture
+---
 
-```
-tests/e2e/
-├── __init__.py
-├── muse_fixtures.py          # Deterministic IDs, snapshots, payload builder
-└── test_muse_e2e_harness.py  # The scenario + assertions
+## Step 4 — Clean Three-Way Merge
 
-app/api/routes/muse.py        # Production routes (variations, head, log, checkout, merge)
-app/services/muse_log_render.py  # ASCII graph + JSON + summary renderer
+```bash
+muse checkout main
+muse merge feature/keys
 ```
 
-All routes are production-grade with JWT auth. The test uses the standard
-`auth_headers` fixture from `tests/conftest.py`.
+```
+Merge complete. Commit: c4d5e6f7
+```
+
+```bash
+muse merge feature/drums
+```
+
+```
+Merge complete. Commit: d5e6f7a8
+```
+
+Both branches touched different files — no conflicts. The merge commit has two parents.
+
+```bash
+muse log --stat
+```
+
+```
+commit d5e6f7a8 (HEAD -> main)
+Parent: c4d5e6f7
+Parent: ... (merge)
+Date:   2026-03-17 12:05:00 UTC
+
+    Merge feature/drums
+
+ + drums.mid
+ 1 file(s) changed
+```
+
+---
+
+## Step 5 — Conflict Merge
+
+Both branches modify the same file:
+
+```bash
+# Branch left
+muse branch conflict/left
+muse checkout conflict/left
+echo "version-left" > muse-work/shared.mid
+muse commit -m "Left changes shared.mid"
+
+# Branch right
+muse checkout main
+muse branch conflict/right
+muse checkout conflict/right
+echo "version-right" > muse-work/shared.mid
+muse commit -m "Right changes shared.mid"
+
+# Attempt merge
+muse checkout main
+muse merge conflict/left
+muse merge conflict/right
+```
+
+```
+❌ Merge conflict in 1 file(s):
+  CONFLICT (both modified): shared.mid
+Resolve conflicts and run 'muse merge --continue'
+```
+
+```bash
+# Manually resolve: pick one or blend both
+cp my-resolved-shared.mid muse-work/shared.mid
+
+muse merge --continue -m "Merge: resolve shared.mid conflict"
+```
+
+```
+[main e6f7a8b9] Merge: resolve shared.mid conflict
+```
+
+---
+
+## Step 6 — Cherry-Pick
+
+Apply one commit's changes from a branch without merging the whole branch:
+
+```bash
+muse cherry-pick <commit-id>
+```
+
+```
+[main f7a8b9c0] Add piano keys
+```
+
+---
+
+## Step 7 — Time-Travel Checkout
+
+```bash
+# Inspect any historical commit
+muse show a1b2c3d4
+
+# Restore working tree to that exact state
+muse checkout a1b2c3d4
+```
+
+```
+HEAD is now at a1b2c3d4 Root: initial beat
+```
+
+```bash
+# Restore to branch tip
+muse checkout main
+```
+
+---
+
+## Step 8 — Revert
+
+Create a new commit that undoes a prior commit's changes:
+
+```bash
+muse revert b2c3d4e5
+```
+
+```
+[main g8a9b0c1] Revert "Add bass line"
+```
+
+The revert commit points directly to the parent snapshot — no re-scan required.
+
+---
+
+## Step 9 — Stash and Restore
+
+Temporarily set aside uncommitted work:
+
+```bash
+echo "wip" > muse-work/idea.mid
+muse stash
+# muse-work is clean — idea.mid is shelved
+
+muse stash pop
+# idea.mid is back
+```
+
+---
+
+## Step 10 — Tag a Commit
+
+```bash
+muse tag add stage:rough-mix
+muse tag list
+```
+
+```
+d5e6f7a8  stage:rough-mix
+```
+
+---
+
+## Full Summary Table
+
+| Step | Operation | Result |
+|---|---|---|
+| 0 | Root commit | HEAD=a1b2c3d4 |
+| 1 | Mainline commit | HEAD moves to b2c3d4e5 |
+| 2 | Branch feature/keys | Diverges from Step 1 |
+| 3 | Branch feature/drums | Also diverges from Step 1 |
+| 4 | Merge both branches | Auto-merged, two-parent commit |
+| 5 | Conflict merge | MERGE_STATE written; resolved manually |
+| 6 | Cherry-pick | Single commit applied |
+| 7 | Checkout traversal | HEAD detached, then restored |
+| 8 | Revert | New commit undoing prior commit |
+| 9 | Stash/pop | Working tree shelved and restored |
+| 10 | Tag | Named reference on commit |
+
+---
+
+## What This Proves
+
+Every Muse primitive works over actual files on disk with zero external
+dependencies (no database, no HTTP server, no Docker). The full lifecycle —
+commit, branch, merge, conflict, revert, cherry-pick, stash, checkout, tag
+— runs from a single `pip install` and a directory.
+
+The same lifecycle works identically for any domain that implements
+`MuseDomainPlugin`. Swap `music` for `genomics` in `muse init --domain`
+and the walkthrough above applies unchanged.

@@ -3,10 +3,9 @@
 Algorithm
 ---------
 1. Find the merge base (LCA) of HEAD and the target branch.
-2. Compute which paths changed on each side since the merge base.
-3. Detect conflicts (paths changed on both sides).
-4. If clean → apply merged manifest, write new commit, advance HEAD.
-5. If conflicts → write muse-work/ with conflict markers, write
+2. Delegate conflict detection and manifest reconciliation to the domain plugin.
+3. If clean → apply merged manifest, write new commit, advance HEAD.
+4. If conflicts → write muse-work/ with conflict markers, write
    ``.muse/MERGE_STATE.json``, exit non-zero.
 """
 from __future__ import annotations
@@ -21,9 +20,6 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.merge_engine import (
-    apply_merge,
-    detect_conflicts,
-    diff_snapshots,
     find_merge_base,
     write_merge_state,
 )
@@ -36,9 +32,12 @@ from muse.core.store import (
     get_head_commit_id,
     get_head_snapshot_manifest,
     read_commit,
+    read_snapshot,
     write_commit,
     write_snapshot,
 )
+from muse.domain import SnapshotManifest
+from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +73,8 @@ def merge(
     root = require_repo()
     repo_id = _read_repo_id(root)
     current_branch = _read_branch(root)
+    domain = read_domain(root)
+    plugin = resolve_plugin(root)
 
     if branch == current_branch:
         typer.echo("❌ Cannot merge a branch into itself.")
@@ -90,15 +91,13 @@ def merge(
         typer.echo("❌ Current branch has no commits.")
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
-    # Fast-forward check
     base_commit_id = find_merge_base(root, ours_commit_id, theirs_commit_id)
 
     if base_commit_id == theirs_commit_id:
-        typer.echo(f"Already up to date.")
+        typer.echo("Already up to date.")
         return
 
     if base_commit_id == ours_commit_id and not no_ff:
-        # Fast-forward
         theirs_commit = read_commit(root, theirs_commit_id)
         if theirs_commit:
             snapshot = json.loads((root / ".muse" / "snapshots" / f"{theirs_commit.snapshot_id}.json").read_text())
@@ -113,35 +112,32 @@ def merge(
     if base_commit_id:
         base_commit = read_commit(root, base_commit_id)
         if base_commit:
-            from muse.core.store import read_snapshot
             base_snap = read_snapshot(root, base_commit.snapshot_id)
             if base_snap:
                 base_manifest = base_snap.manifest
 
-    ours_changed = diff_snapshots(base_manifest, ours_manifest)
-    theirs_changed = diff_snapshots(base_manifest, theirs_manifest)
-    conflicts = detect_conflicts(ours_changed, theirs_changed)
+    base_snap_obj = SnapshotManifest(files=base_manifest, domain=domain)
+    ours_snap_obj = SnapshotManifest(files=ours_manifest, domain=domain)
+    theirs_snap_obj = SnapshotManifest(files=theirs_manifest, domain=domain)
 
-    if conflicts:
+    result = plugin.merge(base_snap_obj, ours_snap_obj, theirs_snap_obj)
+
+    if not result.is_clean:
         write_merge_state(
             root,
             base_commit=base_commit_id or "",
             ours_commit=ours_commit_id,
             theirs_commit=theirs_commit_id,
-            conflict_paths=list(conflicts),
+            conflict_paths=result.conflicts,
             other_branch=branch,
         )
-        typer.echo(f"❌ Merge conflict in {len(conflicts)} file(s):")
-        for p in sorted(conflicts):
-            typer.echo(f"  CONFLICT: {p}")
+        typer.echo(f"❌ Merge conflict in {len(result.conflicts)} file(s):")
+        for p in sorted(result.conflicts):
+            typer.echo(f"  CONFLICT (both modified): {p}")
         typer.echo('\nFix conflicts and run "muse commit" to complete the merge.')
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
-    merged_manifest = apply_merge(
-        base_manifest, ours_manifest, theirs_manifest,
-        ours_changed, theirs_changed, set(),
-    )
-
+    merged_manifest = result.merged["files"]
     _restore_from_manifest(root, merged_manifest)
 
     snapshot_id = compute_snapshot_id(merged_manifest)

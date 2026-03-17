@@ -1,0 +1,164 @@
+# Muse — Agent Rules
+
+## Identity
+
+Muse — domain-agnostic version control for multidimensional state. Version control is the abstraction; music is the first domain; genomics, scientific simulation, 3D spatial design, and spacetime simulation are next.
+
+- **Entry point:** `muse` CLI (Typer). No web server, no HTTP API, no database.
+- **Stack:** Python 3.11, Typer, file-based content-addressed storage (`.muse/`), synchronous I/O throughout.
+- **Plugin contract:** `MuseDomainPlugin` protocol in `muse/domain.py`. Every new domain is a new plugin — the core engine never changes.
+- **Version:** single source of truth in `pyproject.toml`.
+
+## No legacy. No deprecated. No exceptions.
+
+This is the single most repeated rule. It is a hard constraint enforced on every change.
+
+- **Delete on sight.** If you touch a file and find dead code, a deprecated API shape, a backward-compatibility shim, or a legacy fallback — delete it in the same commit.
+- **No fallback paths for old shapes.** Remove every trace of the old way.
+- **No "legacy" or "deprecated" comments.** If it's marked deprecated, delete it.
+- **No dead constants, dead regexes, dead fields.** If it can never be reached, delete it.
+
+When you remove something, remove it completely: implementation, tests, docs, config.
+
+## Branch discipline — absolute rule
+
+**Never do any work directly on `dev` or `main`.**
+
+Full task lifecycle:
+1. `git status` — must be clean before branching.
+2. `git checkout -b fix/<description>` or `feat/<description>` — always branch first.
+3. Do the work, commit on the branch.
+4. **Verify locally before opening a PR — in this exact order:**
+   ```bash
+   mypy muse/                                                           # zero errors
+   python tools/typing_audit.py --dirs muse/ tests/ --max-any 0        # zero violations
+   pytest tests/ -v                                                     # all green
+   ```
+5. Open a PR against `dev` via `gh pr create` or the GitHub MCP tool.
+6. Merge immediately (`squash` for feature→dev, `merge` for dev→main).
+7. Delete remote branch, delete local branch, `git pull origin dev`.
+
+## GitHub interactions — MCP first
+
+The `user-github` MCP server is available in every Cursor session. Prefer MCP tools over `gh` CLI.
+
+| Operation | MCP tool |
+|-----------|----------|
+| Read an issue | `issue_read` |
+| Create / edit an issue | `issue_write` |
+| List issues | `list_issues` |
+| Read a PR | `pull_request_read` |
+| Create a PR | `create_pull_request` |
+| Merge a PR | `merge_pull_request` |
+| List / create branches | `list_branches`, `create_branch` |
+| Get current user | `get_me` |
+
+Only fall back to `gh` CLI for operations the MCP server does not cover.
+
+## Architecture (do not weaken)
+
+```
+muse/
+  domain.py          → MuseDomainPlugin protocol + LiveState / StateSnapshot / StateDelta types
+  core/
+    object_store.py  → content-addressed blob storage (.muse/objects/)
+    snapshot.py      → manifest hashing, workdir diff
+    store.py         → file-based CRUD for commits, snapshots, tags (.muse/commits/ etc.)
+    merge_engine.py  → three-way merge, merge-base, conflict detection
+    repo.py          → require_repo() — locates .muse/ from cwd
+    errors.py        → ExitCode enum
+  cli/
+    app.py           → Typer root — registers all commands
+    commands/        → one file per command (init, commit, log, status, …)
+    models.py        → re-exports CommitRecord, SnapshotRecord, TagRecord
+    config.py        → .muse/config.toml helpers
+    midi_parser.py   → MIDI / MusicXML → NoteEvent (music domain utility)
+  plugins/
+    music/
+      plugin.py      → MusicPlugin — reference MuseDomainPlugin implementation
+tools/
+  typing_audit.py    → typing violation scanner (ratchet: --max-any 0)
+tests/               → pytest suite
+```
+
+**Layer rules:**
+- Commands are thin. No business logic in `cli/commands/` — delegate to `muse.core.*`.
+- `muse.core.*` is domain-agnostic. It never imports from `muse.plugins.*`.
+- `muse.plugins.music.plugin` is the only file that may import domain-specific logic.
+- New domains are new directories under `muse/plugins/`. The core engine is never modified.
+
+## Code standards
+
+- **Every Python file** has `from __future__ import annotations` as the first import, immediately after the module docstring (if present). No exceptions.
+- Type hints everywhere — 100% coverage, no untyped functions or parameters.
+- `list[X]` / `dict[K, V]` style — never `List`, `Dict`, `Optional`.
+- `X | None` — never `Optional[X]`.
+- Synchronous I/O throughout — no `async`, no `await`, no `asyncio`.
+- `logging.getLogger(__name__)` — never `print()`.
+- Sparse logs. Docstrings on public modules, classes, and functions. "Why" over "what."
+
+## Typing — zero-tolerance rules
+
+Strong types are the contract. There are no exceptions.
+
+- **No `Any`. Ever.** Use `TypedDict`, a `Protocol`, or a specific union. There is always a correct type.
+- **No `object`. Ever.** It is `Any` with a different name. Express the actual shape.
+- **No bare collections.** `list`, `dict`, `set`, `tuple` without type parameters are banned. Always `list[str]`, `dict[str, int]`, etc.
+- **No `# type: ignore`.** Fix the root cause. If a third-party library forces the issue, write a typed adapter.
+- **No `cast()`.** If you need a cast, the callee returns the wrong type — fix the callee.
+- **No `Optional[X]`.** Write `X | None`.
+- **No legacy typing imports.** `List`, `Dict`, `Set`, `Tuple` from `typing` are banned — use lowercase builtins.
+
+### What to use instead
+
+| Banned | Use instead |
+|--------|-------------|
+| `Any` | `TypedDict`, `Protocol`, specific union |
+| `object` | The actual type or a constrained union |
+| `list` (bare) | `list[X]` |
+| `dict` (bare) | `dict[K, V]` |
+| `dict[str, Any]` with known keys | `TypedDict` — if you know the keys, name them |
+| `cast(T, x)` | Fix the function producing `x` to return `T` |
+| `# type: ignore` | Fix the underlying type error |
+| `Optional[X]` | `X \| None` |
+| `List[X]`, `Dict[K,V]` | `list[X]`, `dict[K, V]` |
+
+### The known-keys rule
+
+`dict[K, V]` is correct when any key is valid at runtime (a genuine dynamic table). If you know the keys at write time, use a `TypedDict` and name them. `dict[str, Any]` with a known key structure is the highest-signal red flag — structured data being treated as unstructured.
+
+## Verification checklist
+
+Run locally before opening any PR — in this exact order:
+
+- [ ] On a feature branch, not `dev` or `main`
+- [ ] `mypy muse/` — zero errors, strict mode
+- [ ] `python tools/typing_audit.py --dirs muse/ tests/ --max-any 0` — zero violations
+- [ ] `pytest tests/ -v` — all green
+- [ ] No `Any`, bare collections, `cast()`, `# type: ignore`, `Optional[X]`, legacy `List`/`Dict`
+- [ ] No dead code, no legacy patterns, no Maestro references
+- [ ] Affected docs updated in the same commit
+- [ ] No secrets, no `print()`, no orphaned imports
+
+## Anti-patterns (never do these)
+
+- Working directly on `dev` or `main`.
+- `Any`, `object`, bare collections, `cast()`, `# type: ignore` — absolute bans.
+- `Optional[X]`, `List[X]`, `Dict[K,V]` — use modern syntax.
+- `async`/`await` anywhere in `muse/` — the CLI is synchronous by design.
+- Importing from `muse.plugins.*` inside `muse.core.*`.
+- Adding `fastapi`, `sqlalchemy`, `pydantic`, `httpx`, `asyncpg` as dependencies — the whole point of v2 is that they are gone.
+- Hardcoded paths or repo IDs outside `.muse/repo.json`.
+- `print()` for diagnostics — use `logging`.
+
+## Quick reference
+
+| Area | Module | Tests |
+|------|--------|-------|
+| Plugin contract | `muse/domain.py` | `tests/test_music_plugin.py` |
+| Object store | `muse/core/object_store.py` | `tests/test_core_snapshot.py` |
+| File store | `muse/core/store.py` | `tests/test_core_store.py` |
+| Merge engine | `muse/core/merge_engine.py` | `tests/test_core_merge_engine.py` |
+| CLI commands | `muse/cli/commands/` | `tests/test_cli_workflow.py` |
+| Music plugin | `muse/plugins/music/plugin.py` | `tests/test_music_plugin.py` |
+| Typing audit | `tools/typing_audit.py` | run with `--max-any 0` |

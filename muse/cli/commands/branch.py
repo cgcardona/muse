@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import logging
 import pathlib
-from typing import Optional
 
 import typer
 
@@ -36,8 +35,8 @@ def _list_branches(root: pathlib.Path) -> list[str]:
 @app.callback(invoke_without_command=True)
 def branch(
     ctx: typer.Context,
-    name: Optional[str] = typer.Argument(None, help="Branch name to create."),
-    delete: Optional[str] = typer.Option(None, "-d", "--delete", help="Delete a branch."),
+    name: str | None = typer.Argument(None, help="Branch name to create."),
+    delete: str | None = typer.Option(None, "-d", "--delete", help="Delete a branch."),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Show commit ID for each branch."),
     all_branches: bool = typer.Option(False, "-a", "--all", help="List all branches."),
 ) -> None:

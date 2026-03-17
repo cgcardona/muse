@@ -57,21 +57,19 @@ class MuseDomainPlugin(Protocol):
         """Apply a delta to produce a new live state (checkout execution)."""
 ```
 
-The music plugin — the reference implementation — implements these five interfaces for MIDI state: notes, velocities, controller events, pitch bends, aftertouch, and region-to-track mapping. Every other domain is a new plugin.
+The music plugin — the reference implementation — implements these five interfaces for MIDI state: notes, velocities, controller events, pitch bends, and aftertouch. Every other domain is a new plugin.
 
 ---
 
 ## Music — The Reference Implementation
 
-Music is the domain that proved the abstraction. State is a snapshot of notes and controller events per region, with track routing. Diff is note matching and event diffing. Merge is three-way reconciliation across MIDI axes. Drift compares the committed snapshot against the live DAW state. Checkout executes a replay plan against the state store.
-
-The music plugin ships with a full CLI — 70+ subcommands covering every VCS primitive plus music-domain analysis:
+Music is the domain that proved the abstraction. State is a snapshot of MIDI files on disk. Diff is file-level set difference plus content comparison. Merge is three-way reconciliation of file sets against a common ancestor. Drift compares the committed snapshot against the live working tree. Checkout incrementally applies the delta between snapshots using the plugin.
 
 ```bash
-# Initialize a Muse repository
+# Initialize a Muse repository (default domain: music)
 muse init
 
-# Stage and commit the current working tree
+# Commit the current working tree
 muse commit -m "Add verse melody"
 
 # Create and switch to a new branch
@@ -89,14 +87,11 @@ muse merge feature/chorus
 # Cherry-pick a specific commit
 muse cherry-pick <commit-id>
 
-# Binary-search for a regression
-muse bisect start --bad HEAD --good <commit-id>
+# Revert a commit (creates a new commit undoing the change)
+muse revert <commit-id>
 
-# Analyse rhythmic groove drift across history
-muse groove-check
-
-# Compare emotion vectors between two commits
-muse emotion-diff <commit-a> <commit-b>
+# Show a commit's metadata and file changes
+muse show [<ref>] [--json] [--stat]
 ```
 
 Run `muse --help` for the full command list.
@@ -163,28 +158,30 @@ This is not AI generating music from a prompt. This is structured improvisation 
 muse/
   domain.py           — MuseDomainPlugin Protocol + shared type definitions
   core/               — domain-agnostic VCS engine
-    store.py          — file-based commit/snapshot store (no external DB)
-    repo.py           — repository detection and management
-    snapshot.py       — content-addressed snapshot computation
+    store.py          — file-based commit/snapshot/tag store (no external DB)
+    repo.py           — repository detection (directory walk or MUSE_REPO_ROOT)
+    snapshot.py       — content-addressed snapshot and commit ID derivation
     object_store.py   — SHA-256 blob storage under .muse/objects/
     merge_engine.py   — three-way merge state machine
     errors.py         — exit codes and error primitives
   plugins/
+    registry.py       — maps domain names → MuseDomainPlugin instances
     music/            — music domain plugin (reference implementation)
-      plugin.py       — implements MuseDomainPlugin for MIDI state
+      plugin.py       — implements all five MuseDomainPlugin methods for MIDI state
   cli/
     app.py            — Typer application root
-    commands/         — 70+ subcommands
+    commands/         — one file per subcommand
 
 tests/
-  test_muse_*.py      — unit/integration tests
-  muse_cli/           — CLI-level tests
-  e2e/                — end-to-end tests
+  test_cli_*.py       — CLI integration tests (one per command group)
+  test_core_*.py      — core engine unit tests
+  test_music_plugin.py
+  test_plugin_registry.py
 
 docs/
-  architecture/       — canonical architecture references
-  protocol/           — language-agnostic protocol specs
-  reference/          — .museattributes format and attribute references
+  architecture/       — architecture reference and E2E walkthrough
+  protocol/           — MuseDomainPlugin protocol spec and domain concepts
+  reference/          — type contracts, .museattributes format
 ```
 
 ---
@@ -192,7 +189,10 @@ docs/
 ## Installation
 
 ```bash
-pip install muse-vcs
+# From source (recommended during v0.1.x development)
+git clone https://github.com/cgcardona/muse
+cd muse
+pip install -e ".[dev]"
 ```
 
 Core dependencies:
@@ -208,11 +208,13 @@ No database required. Muse stores all state in the `.muse/` directory — object
 
 ## Documentation
 
-- [Architecture](docs/architecture/muse-vcs.md) — full technical design
-- [E2E Demo](docs/architecture/muse-e2e-demo.md) — step-by-step lifecycle walkthrough
-- [Protocol Spec](docs/protocol/muse-protocol.md) — language-agnostic protocol definition
-- [Variation Spec](docs/protocol/muse-variation-spec.md) — variation UX and wire contract
-- [`.museattributes` Reference](docs/reference/muse-attributes.md) — per-repo merge strategies
+- [Architecture](docs/architecture/muse-vcs.md) — full technical design and module map
+- [E2E Walkthrough](docs/architecture/muse-e2e-demo.md) — step-by-step lifecycle from `init` to merge conflict
+- [Plugin Protocol](docs/protocol/muse-protocol.md) — language-agnostic `MuseDomainPlugin` specification
+- [Domain Concepts](docs/protocol/muse-domain-concepts.md) — universal terms, cross-domain patterns, and music-specific vocabulary
+- [Variation Spec](docs/protocol/muse-variation-spec.md) — music-domain variation UX and wire contract (Stori/Maestro)
+- [Type Contracts](docs/reference/type-contracts.md) — named type definitions with Mermaid diagrams
+- [`.museattributes` Reference](docs/reference/muse-attributes.md) — per-repo merge strategy overrides
 
 ---
 
