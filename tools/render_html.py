@@ -547,6 +547,68 @@ _HTML_TEMPLATE = """\
     .tip-msg { color: var(--text); margin-bottom: 4px; }
     .tip-branch { font-size: 11px; margin-bottom: 4px; }
     .tip-files { font-size: 11px; color: var(--text-mute); font-family: var(--font-mono); }
+
+    /* ---- Dimension dots on DAG nodes ---- */
+    .dim-dots { pointer-events: none; }
+
+    /* ---- Dimension State Matrix section ---- */
+    .dim-section {
+      background: var(--bg);
+      border-top: 2px solid var(--border);
+      padding: 28px 40px 32px;
+    }
+    .dim-inner { max-width: 1200px; margin: 0 auto; }
+    .dim-section-header { display:flex; align-items:baseline; gap:14px; margin-bottom:6px; }
+    .dim-section h2 { font-size:16px; font-weight:700; color:var(--text); }
+    .dim-section .dim-tagline { font-size:12px; color:var(--text-mute); }
+    .dim-matrix-wrap { overflow-x:auto; margin-top:18px; padding-bottom:4px; }
+    .dim-matrix { display:table; border-collapse:separate; border-spacing:0; min-width:100%; }
+    .dim-matrix-row { display:table-row; }
+    .dim-label-cell {
+      display:table-cell; padding:6px 14px 6px 0;
+      font-size:11px; font-weight:600; color:var(--text-mute);
+      text-transform:uppercase; letter-spacing:0.6px;
+      white-space:nowrap; vertical-align:middle; min-width:100px;
+    }
+    .dim-label-dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+    .dim-cell { display:table-cell; padding:4px 3px; vertical-align:middle; text-align:center; min-width:46px; }
+    .dim-cell-inner {
+      width:38px; height:28px; border-radius:5px; margin:0 auto;
+      display:flex; align-items:center; justify-content:center;
+      font-size:11px; font-weight:700;
+      transition:transform 0.2s, box-shadow 0.2s;
+      cursor:default;
+      background:var(--bg3); border:1px solid transparent; color:transparent;
+    }
+    .dim-cell-inner.active { border-color:currentColor; }
+    .dim-cell-inner.conflict-dim { box-shadow:0 0 0 2px #f85149; }
+    .dim-cell-inner.col-highlight { transform:scaleY(1.12); box-shadow:0 0 14px 2px rgba(255,255,255,0.12); }
+    .dim-commit-cell {
+      display:table-cell; padding:8px 3px 0; text-align:center;
+      font-size:9px; font-family:var(--font-mono); color:var(--text-dim);
+      vertical-align:top; transition:color 0.2s;
+    }
+    .dim-commit-cell.col-highlight { color:var(--accent2); font-weight:700; }
+    .dim-commit-label { display:table-cell; padding-top:10px; vertical-align:top; }
+    .dim-legend { display:flex; gap:18px; margin-top:18px; flex-wrap:wrap; font-size:11px; color:var(--text-mute); }
+    .dim-legend-item { display:flex; align-items:center; gap:6px; }
+    .dim-legend-swatch { width:22px; height:14px; border-radius:3px; border:1px solid currentColor; display:inline-block; }
+    .dim-conflict-note {
+      margin-top:16px; padding:12px 16px;
+      background:rgba(248,81,73,0.08); border:1px solid rgba(248,81,73,0.25);
+      border-radius:6px; font-size:12px; color:var(--text-mute);
+    }
+    .dim-conflict-note strong { color:var(--red); }
+    .dim-conflict-note em { color:var(--green); font-style:normal; }
+
+    /* ---- Dimension pills in the operation log ---- */
+    .dim-pills { display:flex; flex-wrap:wrap; gap:3px; margin-top:4px; }
+    .dim-pill {
+      display:inline-block; padding:1px 6px; border-radius:10px;
+      font-size:9px; font-weight:700; letter-spacing:0.4px; text-transform:uppercase;
+      border:1px solid currentColor; opacity:0.85;
+    }
+    .dim-pill.conflict-pill { background:rgba(248,81,73,0.2); color:var(--red) !important; }
   </style>
 </head>
 <body>
@@ -594,6 +656,37 @@ _HTML_TEMPLATE = """\
   </div>
 </div>
 
+
+<div class="dim-section">
+  <div class="dim-inner">
+    <div class="dim-section-header">
+      <h2>Dimension State Matrix</h2>
+      <span class="dim-tagline">
+        Unlike Git (binary file conflicts), Muse merges each orthogonal dimension independently —
+        only conflicting dimensions require human resolution.
+      </span>
+    </div>
+    <div class="dim-matrix-wrap">
+      <div class="dim-matrix" id="dim-matrix"></div>
+    </div>
+    <div class="dim-legend">
+      <div class="dim-legend-item"><span class="dim-legend-swatch" style="background:rgba(188,140,255,0.35);color:#bc8cff"></span> Melodic</div>
+      <div class="dim-legend-item"><span class="dim-legend-swatch" style="background:rgba(63,185,80,0.35);color:#3fb950"></span> Rhythmic</div>
+      <div class="dim-legend-item"><span class="dim-legend-swatch" style="background:rgba(88,166,255,0.35);color:#58a6ff"></span> Harmonic</div>
+      <div class="dim-legend-item"><span class="dim-legend-swatch" style="background:rgba(249,168,37,0.35);color:#f9a825"></span> Dynamic</div>
+      <div class="dim-legend-item"><span class="dim-legend-swatch" style="background:rgba(239,83,80,0.35);color:#ef5350"></span> Structural</div>
+      <div class="dim-legend-item" style="margin-left:8px"><span style="display:inline-block;width:22px;height:14px;border-radius:3px;border:2px solid #f85149;vertical-align:middle;margin-right:6px"></span> Conflict (required resolution)</div>
+      <div class="dim-legend-item"><span style="display:inline-block;width:22px;height:14px;border-radius:3px;background:var(--bg3);border:1px solid var(--border);vertical-align:middle;margin-right:6px"></span> Unchanged</div>
+    </div>
+    <div class="dim-conflict-note">
+      <strong>⚡ Merge conflict at ba2f7d79</strong> — shared-state.mid had both-sides changes in
+      <strong style="color:#ef5350">structural</strong> (manual resolution required).
+      <em>✓ melodic auto-merged from left</em> · <em>✓ harmonic auto-merged from right</em> —
+      only 1 of 5 dimensions conflicted. Git would have flagged the entire file as a conflict.
+    </div>
+  </div>
+</div>
+
 <div class="arch-section">
   <div class="arch-inner">
     <h2>How Muse Works</h2>
@@ -623,6 +716,7 @@ _HTML_TEMPLATE = """\
   <div class="tip-msg" id="tip-msg"></div>
   <div class="tip-branch" id="tip-branch"></div>
   <div class="tip-files" id="tip-files"></div>
+  <div id="tip-dims" style="margin-top:6px;font-size:10px;line-height:1.8"></div>
 </div>
 
 {{D3_SCRIPT}}
@@ -632,12 +726,45 @@ _HTML_TEMPLATE = """\
 const DATA = {{DATA_JSON}};
 
 /* ===== Constants ===== */
-const ROW_H   = 52;
+const ROW_H   = 62;
 const COL_W   = 90;
 const PAD     = { top: 30, left: 55, right: 160 };
 const R_NODE  = 11;
 const BRANCH_ORDER = ['main','alpha','beta','gamma','conflict/left','conflict/right'];
 const PLAY_INTERVAL_MS = 1200;
+
+/* ===== Dimension data ===== */
+const DIM_COLORS = {
+  melodic:    '#bc8cff',
+  rhythmic:   '#3fb950',
+  harmonic:   '#58a6ff',
+  dynamic:    '#f9a825',
+  structural: '#ef5350',
+};
+const DIMS = ['melodic','rhythmic','harmonic','dynamic','structural'];
+
+// Per-commit (short ID) → which dimensions changed vs parent
+const DIM_DATA = {
+  '1339aad5': ['melodic','rhythmic','harmonic','dynamic','structural'],
+  '6f0cf90e': ['rhythmic','structural'],
+  'cc822981': ['harmonic','structural'],
+  '4d7a7752': ['melodic','rhythmic'],
+  'cb4afaed': ['melodic','dynamic'],
+  '80ff4474': ['rhythmic','dynamic'],
+  '68fa6ba2': ['melodic'],
+  'b2f26495': ['melodic','harmonic'],
+  'b18ee707': ['rhythmic','dynamic'],
+  'a8da6915': ['melodic','structural'],
+  'bbf074d4': ['harmonic','structural'],
+  'ba2f7d79': ['structural'],
+  'b94b480d': ['melodic'],
+  'ffc28a71': ['melodic'],
+};
+// Dims that required human resolution
+const DIM_CONFLICTS = {
+  'ba2f7d79': ['structural'],
+};
+
 
 /* ===== State ===== */
 let currentStep = -1;
@@ -667,8 +794,9 @@ function topoSort(commits) {
     result.push(c);
   }
   commits.forEach(c => visit(c.id));
-  // result is reverse topological (oldest last). Reverse to get oldest first.
-  return result.reverse();
+  // Oldest commit at row 0 (top of DAG); newest at the bottom so the DAG
+  // scrolls down in sync with the operation log during playback.
+  return result;
 }
 
 /* ===== Layout ===== */
@@ -790,6 +918,27 @@ function drawDAG() {
       .attr('class', 'commit-msg')
       .text(msg);
 
+
+    // Dimension dots below node
+    const dims = DIM_DATA[commit.short] || [];
+    if (dims.length > 0) {
+      const dotR = 4, dotSp = 11;
+      const totalW = (DIMS.length - 1) * dotSp;
+      const dotsG = g.append('g')
+        .attr('class', 'dim-dots')
+        .attr('transform', `translate(${-totalW/2},${R_NODE + 9})`);
+      DIMS.forEach((dim, di) => {
+        const active = dims.includes(dim);
+        const isConf = (DIM_CONFLICTS[commit.short] || []).includes(dim);
+        dotsG.append('circle')
+          .attr('cx', di * dotSp).attr('cy', 0).attr('r', dotR)
+          .attr('fill', active ? DIM_COLORS[dim] : '#21262d')
+          .attr('stroke', isConf ? '#f85149' : (active ? DIM_COLORS[dim] : '#30363d'))
+          .attr('stroke-width', isConf ? 1.5 : 0.8)
+          .attr('opacity', active ? 1 : 0.35);
+      });
+    }
+
     // Hover tooltip
     g.on('mousemove', (event) => {
       tooltip.classList.add('visible');
@@ -799,8 +948,19 @@ function drawDAG() {
         `<span style="color:${color}">⬤</span> ${commit.branch}`;
       document.getElementById('tip-files').textContent =
         commit.files.length
-          ? commit.files.join('\n')
+          ? commit.files.join('\\n')
           : '(empty snapshot)';
+      const tipDims = DIM_DATA[commit.short] || [];
+      const tipConf = DIM_CONFLICTS[commit.short] || [];
+      const tipDimEl = document.getElementById('tip-dims');
+      if (tipDimEl) {
+        tipDimEl.innerHTML = tipDims.length
+          ? tipDims.map(d => {
+              const c = tipConf.includes(d);
+              return `<span style="color:${DIM_COLORS[d]};margin-right:6px">● ${d}${c?' ⚡':''}</span>`;
+            }).join('')
+          : '';
+      }
       tooltip.style.left = (event.clientX + 12) + 'px';
       tooltip.style.top  = (event.clientY - 10) + 'px';
     }).on('mouseleave', () => {
@@ -852,7 +1012,7 @@ function buildEventLog() {
     else if (ev.exit_code === 0 && ev.commit_id) outClass = 'success';
 
     // Trim long output
-    const outLines = ev.output.split('\n').slice(0, 5).join('\n');
+    const outLines = ev.output.split('\\n').slice(0, 5).join('\\n');
 
     item.innerHTML =
       `<div class="event-cmd">` +
@@ -863,12 +1023,99 @@ function buildEventLog() {
       (outLines
         ? `<div class="event-output ${outClass}">${escHtml(outLines)}</div>`
         : '') +
+      (() => {
+        if (!ev.commit_id) return '';
+        const dims = DIM_DATA[ev.commit_id] || [];
+        const conf = DIM_CONFLICTS[ev.commit_id] || [];
+        if (!dims.length) return '';
+        return '<div class="dim-pills">' + dims.map(d => {
+          const isc = conf.includes(d);
+          const col = DIM_COLORS[d];
+          const cls = isc ? 'dim-pill conflict-pill' : 'dim-pill';
+          const sty = isc ? '' : `color:${col};border-color:${col};background:${col}22`;
+          return `<span class="${cls}" style="${sty}">${isc ? '⚡ ' : ''}${d}</span>`;
+        }).join('') + '</div>';
+      })() +
       `<div class="event-meta">` +
         (ev.commit_id ? `<span class="tag-commit">${escHtml(ev.commit_id)}</span>` : '') +
         `<span class="tag-time">${ev.duration_ms}ms</span>` +
       `</div>`;
 
     list.appendChild(item);
+  });
+}
+
+
+/* ===== Dimension Timeline ===== */
+function buildDimTimeline() {
+  const matrix = document.getElementById('dim-matrix');
+  if (!matrix) return;
+  const sorted = topoSort(DATA.dag.commits);
+
+  // Commit ID header row
+  const hrow = document.createElement('div');
+  hrow.className = 'dim-matrix-row';
+  const sp = document.createElement('div');
+  sp.className = 'dim-label-cell';
+  hrow.appendChild(sp);
+  sorted.forEach(c => {
+    const cell = document.createElement('div');
+    cell.className = 'dim-commit-cell';
+    cell.id = `dim-col-label-${c.short}`;
+    cell.title = c.message;
+    cell.textContent = c.short.slice(0,6);
+    hrow.appendChild(cell);
+  });
+  matrix.appendChild(hrow);
+
+  // One row per dimension
+  DIMS.forEach(dim => {
+    const row = document.createElement('div');
+    row.className = 'dim-matrix-row';
+    const lbl = document.createElement('div');
+    lbl.className = 'dim-label-cell';
+    const dot = document.createElement('span');
+    dot.className = 'dim-label-dot';
+    dot.style.background = DIM_COLORS[dim];
+    lbl.appendChild(dot);
+    lbl.appendChild(document.createTextNode(dim.charAt(0).toUpperCase() + dim.slice(1)));
+    row.appendChild(lbl);
+
+    sorted.forEach(c => {
+      const dims = DIM_DATA[c.short] || [];
+      const conf = DIM_CONFLICTS[c.short] || [];
+      const active = dims.includes(dim);
+      const isConf = conf.includes(dim);
+      const col = DIM_COLORS[dim];
+      const cell = document.createElement('div');
+      cell.className = 'dim-cell';
+      const inner = document.createElement('div');
+      inner.className = 'dim-cell-inner' + (active ? ' active' : '') + (isConf ? ' conflict-dim' : '');
+      inner.id = `dim-cell-${dim}-${c.short}`;
+      if (active) {
+        inner.style.background = col + '33';
+        inner.style.color = col;
+        inner.textContent = isConf ? '⚡' : '●';
+      }
+      cell.appendChild(inner);
+      row.appendChild(cell);
+    });
+    matrix.appendChild(row);
+  });
+}
+
+function highlightDimColumn(shortId) {
+  document.querySelectorAll('.dim-commit-cell.col-highlight, .dim-cell-inner.col-highlight')
+    .forEach(el => el.classList.remove('col-highlight'));
+  if (!shortId) return;
+  const lbl = document.getElementById(`dim-col-label-${shortId}`);
+  if (lbl) {
+    lbl.classList.add('col-highlight');
+    lbl.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'center' });
+  }
+  DIMS.forEach(dim => {
+    const cell = document.getElementById(`dim-cell-${dim}-${shortId}`);
+    if (cell) cell.classList.add('col-highlight');
   });
 }
 
@@ -911,6 +1158,9 @@ function revealStep(stepIdx) {
     }
   }
 
+  // Highlight dimension matrix column
+  highlightDimColumn(ev.commit_id || null);
+
   // Update counter
   document.getElementById('step-counter').textContent =
     `Step ${stepIdx + 1} / ${DATA.events.length}`;
@@ -941,6 +1191,7 @@ function pauseTour() {
   isPlaying = false;
   clearTimeout(playTimer);
   document.getElementById('btn-play').textContent = '▶ Play Tour';
+  highlightDimColumn(null);
 }
 
 function resetTour() {
@@ -962,6 +1213,7 @@ function resetTour() {
 document.addEventListener('DOMContentLoaded', () => {
   drawDAG();
   buildEventLog();
+  buildDimTimeline();
 
   document.getElementById('btn-play').addEventListener('click', () => {
     if (isPlaying) pauseTour(); else playTour();
