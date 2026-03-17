@@ -1,6 +1,6 @@
 # Muse VCS — Type Contracts Reference
 
-> Updated: 2026-03-16 | Reflects every named entity in the Muse VCS surface:
+> Updated: 2026-03-17 | Reflects every named entity in the Muse VCS surface:
 > domain protocol types, store wire-format TypedDicts, in-memory dataclasses,
 > merge/config/stash types, MIDI import types, error hierarchy, and CLI enums.
 > `Any` and `object` do not exist in any production file. Every type boundary
@@ -25,12 +25,14 @@ optionality, and intended use.
    - [Wire-Format TypedDicts](#wire-format-typeddicts)
    - [In-Memory Dataclasses](#in-memory-dataclasses)
 4. [Merge Engine Types (`muse/core/merge_engine.py`)](#merge-engine-types)
-5. [Configuration Types (`muse/cli/config.py`)](#configuration-types)
-6. [MIDI / MusicXML Import Types (`muse/cli/midi_parser.py`)](#midi--musicxml-import-types)
-7. [Stash Types (`muse/cli/commands/stash.py`)](#stash-types)
-8. [Error Hierarchy (`muse/core/errors.py`)](#error-hierarchy)
-9. [Entity Hierarchy](#entity-hierarchy)
-10. [Entity Graphs (Mermaid)](#entity-graphs-mermaid)
+5. [Attributes Types (`muse/core/attributes.py`)](#attributes-types)
+6. [MIDI Dimension Merge Types (`muse/plugins/music/midi_merge.py`)](#midi-dimension-merge-types)
+7. [Configuration Types (`muse/cli/config.py`)](#configuration-types)
+8. [MIDI / MusicXML Import Types (`muse/cli/midi_parser.py`)](#midi--musicxml-import-types)
+9. [Stash Types (`muse/cli/commands/stash.py`)](#stash-types)
+10. [Error Hierarchy (`muse/core/errors.py`)](#error-hierarchy)
+11. [Entity Hierarchy](#entity-hierarchy)
+12. [Entity Graphs (Mermaid)](#entity-graphs-mermaid)
 
 ---
 
@@ -145,7 +147,9 @@ An empty `conflicts` list means the merge was clean.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `merged` | `StateSnapshot` | required | The reconciled snapshot |
-| `conflicts` | `list[str]` | `[]` | Human-readable conflict descriptions |
+| `conflicts` | `list[str]` | `[]` | Workspace-relative paths that could not be auto-merged |
+| `applied_strategies` | `dict[str, str]` | `{}` | Path → strategy applied by `.museattributes` (e.g. `{"drums/kick.mid": "ours"}`) |
+| `dimension_reports` | `dict[str, dict[str, str]]` | `{}` | Path → per-dimension winner map; only populated for MIDI files that went through dimension-level merge (e.g. `{"keys/piano.mid": {"notes": "left", "harmonic": "right"}}`) |
 
 **Property:**
 
@@ -172,9 +176,9 @@ works as a module-load sanity check.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `snapshot` | `(live_state: LiveState) -> StateSnapshot` | Capture current state as a content-addressed dict |
+| `snapshot` | `(live_state: LiveState) -> StateSnapshot` | Capture current state as a content-addressed dict; must honour `.museignore` |
 | `diff` | `(base: StateSnapshot, target: StateSnapshot) -> StateDelta` | Compute the minimal delta between two snapshots |
-| `merge` | `(base, left, right: StateSnapshot) -> MergeResult` | Three-way merge two divergent state lines |
+| `merge` | `(base, left, right: StateSnapshot, *, repo_root: pathlib.Path \| None = None) -> MergeResult` | Three-way merge; when `repo_root` is provided, load `.museattributes` and perform dimension-level merge for supported formats |
 | `drift` | `(committed: StateSnapshot, live: LiveState) -> DriftReport` | Compare committed state vs current live state |
 | `apply` | `(delta: StateDelta, live_state: LiveState) -> LiveState` | Apply a delta to produce a new live state |
 
@@ -351,6 +355,100 @@ mutation.
 | `ours_commit` | `str \| None` | `None` | Our HEAD at merge start |
 | `theirs_commit` | `str \| None` | `None` | Their HEAD at merge start |
 | `other_branch` | `str \| None` | `None` | Name of the incoming branch |
+
+---
+
+## Attributes Types
+
+**Path:** `muse/core/attributes.py`
+
+Parse and resolve `.museattributes` merge-strategy rules.  The parser produces
+a typed `AttributeRule` list; `resolve_strategy` does first-match lookup with
+`fnmatch` path patterns and dimension name matching.
+
+#### `VALID_STRATEGIES`
+
+`frozenset[str]` — The set of legal strategy strings:
+`{"ours", "theirs", "union", "auto", "manual"}`.
+
+#### `AttributeRule`
+
+`@dataclass (frozen=True)` — A single parsed rule from `.museattributes`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `path_pattern` | `str` | `fnmatch` glob matched against workspace-relative POSIX paths |
+| `dimension` | `str` | Domain axis name (e.g. `"melodic"`, `"harmonic"`) or `"*"` to match all |
+| `strategy` | `str` | One of the `VALID_STRATEGIES` strings |
+| `source_line` | `int` | 1-based line number in the file (for diagnostics); defaults to `0` |
+
+**Contracts:**
+
+- `load_attributes(root: pathlib.Path) -> list[AttributeRule]` — reads
+  `.museattributes`, returns rules in file order; raises `ValueError` for bad
+  strategy or wrong field count.
+- `resolve_strategy(rules: list[AttributeRule], path: str, dimension: str = "*") -> str` —
+  first-match lookup; returns `"auto"` when no rule matches.
+
+---
+
+## MIDI Dimension Merge Types
+
+**Path:** `muse/plugins/music/midi_merge.py`
+
+The multidimensional merge engine for the music domain.  MIDI events are
+bucketed into four orthogonal dimension slices; each slice has a content hash
+for fast change detection.  A three-way merge resolves each dimension
+independently using `.museattributes` strategies, then reconstructs a valid
+MIDI file from the winning slices.
+
+#### Constants
+
+| Name | Type | Value / Description |
+|------|------|---------------------|
+| `INTERNAL_DIMS` | `list[str]` | `["notes", "harmonic", "dynamic", "structural"]` — the four internal dimension bucket names |
+| `DIM_ALIAS` | `dict[str, str]` | Maps user-facing names to internal buckets: `"melodic" → "notes"`, `"rhythmic" → "notes"`, `"harmonic" → "harmonic"`, `"dynamic" → "dynamic"`, `"structural" → "structural"` |
+
+#### `_MsgVal`
+
+`TypeAlias = int | str | list[int]` — The set of value types that can appear
+in the serialised form of a MIDI message field.  Used by `_msg_to_dict` to
+avoid `dict[str, object]`.
+
+#### `DimensionSlice`
+
+`@dataclass` — All MIDI events belonging to one dimension of a parsed file.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | `str` | required | Internal dimension name (e.g. `"notes"`, `"harmonic"`) |
+| `events` | `list[tuple[int, mido.Message]]` | `[]` | `(abs_tick, message)` pairs sorted by ascending absolute tick |
+| `content_hash` | `str` | `""` | SHA-256 digest of the canonical JSON serialisation; computed in `__post_init__` when not provided |
+
+#### `MidiDimensions`
+
+`@dataclass` — All four dimension slices extracted from one MIDI file, plus
+file-level metadata.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ticks_per_beat` | `int` | MIDI timing resolution (pulses per quarter note) from the source file |
+| `file_type` | `int` | MIDI file type (0 = single-track, 1 = multi-track synchronous) |
+| `slices` | `dict[str, DimensionSlice]` | Internal dimension name → slice |
+
+**Method:**
+
+| Name | Signature | Description |
+|------|-----------|-------------|
+| `get` | `(user_dim: str) -> DimensionSlice` | Resolve a user-facing alias (`"melodic"`, `"rhythmic"`) or internal name to the correct slice |
+
+**Public functions:**
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `extract_dimensions` | `(midi_bytes: bytes) -> MidiDimensions` | Parse MIDI bytes and bucket events by dimension |
+| `dimension_conflict_detail` | `(base, left, right: MidiDimensions) -> dict[str, str]` | Per-dimension change report: `"unchanged"`, `"left_only"`, `"right_only"`, or `"both"` |
+| `merge_midi_dimensions` | `(base_bytes, left_bytes, right_bytes: bytes, attrs_rules: list[AttributeRule], path: str) -> tuple[bytes, dict[str, str]] \| None` | Three-way dimension merge; returns `(merged_bytes, dimension_report)` or `None` on unresolvable conflict |
 
 ---
 
@@ -531,10 +629,11 @@ Muse VCS
 │   │   └── StateDelta             — DeltaManifest
 │   │
 │   ├── Result Types
-│   │   ├── MergeResult            — dataclass: merged + conflicts list
+│   │   ├── MergeResult            — dataclass: merged + conflicts + applied_strategies + dimension_reports
 │   │   └── DriftReport            — dataclass: has_drift + summary + delta
 │   │
 │   └── MuseDomainPlugin           — Protocol (runtime_checkable): 5 methods
+│                                    merge() accepts repo_root kwarg for attribute-aware merge
 │
 ├── Store (muse/core/store.py)
 │   │
@@ -552,6 +651,17 @@ Muse VCS
 ├── Merge Engine (muse/core/merge_engine.py)
 │   ├── MergeStatePayload          — TypedDict (total=False): MERGE_STATE.json shape
 │   └── MergeState                 — dataclass (frozen): loaded in-memory merge state
+│
+├── Attributes (muse/core/attributes.py)
+│   ├── VALID_STRATEGIES           — frozenset[str]: {ours, theirs, union, auto, manual}
+│   └── AttributeRule              — dataclass (frozen): path_pattern + dimension + strategy + source_line
+│
+├── MIDI Dimension Merge (muse/plugins/music/midi_merge.py)
+│   ├── INTERNAL_DIMS              — list[str]: [notes, harmonic, dynamic, structural]
+│   ├── DIM_ALIAS                  — dict[str, str]: user-facing names → internal buckets
+│   ├── _MsgVal                    — TypeAlias: int | str | list[int]
+│   ├── DimensionSlice             — dataclass: name + events list + content_hash
+│   └── MidiDimensions             — dataclass: ticks_per_beat + file_type + slices dict
 │
 ├── Configuration (muse/cli/config.py)
 │   ├── AuthEntry                  — TypedDict (total=False): [auth] section
@@ -610,6 +720,8 @@ classDiagram
         <<dataclass>>
         +merged : StateSnapshot
         +conflicts : list~str~
+        +applied_strategies : dict~str, str~
+        +dimension_reports : dict~str, dict~str, str~~
         +is_clean : bool
     }
     class DriftReport {
@@ -622,7 +734,7 @@ classDiagram
         <<Protocol runtime_checkable>>
         +snapshot(live_state: LiveState) StateSnapshot
         +diff(base, target: StateSnapshot) StateDelta
-        +merge(base, left, right: StateSnapshot) MergeResult
+        +merge(base, left, right, *, repo_root) MergeResult
         +drift(committed: StateSnapshot, live: LiveState) DriftReport
         +apply(delta: StateDelta, live_state: LiveState) LiveState
     }
@@ -630,7 +742,7 @@ classDiagram
         <<reference implementation>>
         +snapshot(live_state) StateSnapshot
         +diff(base, target) StateDelta
-        +merge(base, left, right) MergeResult
+        +merge(base, left, right, *, repo_root) MergeResult
         +drift(committed, live) DriftReport
         +apply(delta, live_state) LiveState
     }
@@ -940,7 +1052,7 @@ classDiagram
     }
     class MergeResult {
         <<dataclass>>
-        merged: StateSnapshot · conflicts: list~str~
+        merged · conflicts · applied_strategies · dimension_reports
     }
     class DriftReport {
         <<dataclass>>
@@ -1018,6 +1130,18 @@ classDiagram
         <<TypedDict>>
         num_parts · part_names
     }
+    class AttributeRule {
+        <<dataclass frozen>>
+        path_pattern · dimension · strategy
+    }
+    class DimensionSlice {
+        <<dataclass>>
+        name · events · content_hash
+    }
+    class MidiDimensions {
+        <<dataclass>>
+        ticks_per_beat · slices: dict~str, DimensionSlice~
+    }
     class ExitCode {
         <<IntEnum>>
         SUCCESS=0 · USER_ERROR=1 · REPO_NOT_FOUND=2 · INTERNAL_ERROR=3
@@ -1053,6 +1177,63 @@ classDiagram
     MuseImportData --> MidiMeta : raw_meta (MIDI)
     MuseImportData --> MusicXMLMeta : raw_meta (XML)
 
+    AttributeRule ..> MergeResult : applied_strategies reflects
+    MidiDimensions *-- DimensionSlice : slices
+    MidiDimensions ..> MergeResult : dimension_reports reflects
+
     RepoNotFoundError --|> MuseCLIError
     MuseCLIError --> ExitCode : exit_code
+```
+
+---
+
+### Diagram 9 — Attributes and MIDI Dimension Merge
+
+The attribute rule pipeline and how it flows into the multidimensional MIDI
+merge engine.  `AttributeRule` objects are produced by `load_attributes()` and
+consumed by both `MusicPlugin.merge()` and `merge_midi_dimensions()`.
+`DimensionSlice` is the core bucket type; `MidiDimensions` groups the four
+slices for one file.
+
+```mermaid
+classDiagram
+    class AttributeRule {
+        <<dataclass frozen>>
+        +path_pattern : str
+        +dimension : str
+        +strategy : str
+        +source_line : int
+    }
+    class DimensionSlice {
+        <<dataclass>>
+        +name : str
+        +events : list~tuple~int, Message~~
+        +content_hash : str
+    }
+    class MidiDimensions {
+        <<dataclass>>
+        +ticks_per_beat : int
+        +file_type : int
+        +slices : dict~str, DimensionSlice~
+        +get(user_dim: str) DimensionSlice
+    }
+    class MergeResult {
+        <<dataclass>>
+        +merged : StateSnapshot
+        +conflicts : list~str~
+        +applied_strategies : dict~str, str~
+        +dimension_reports : dict~str, dict~str, str~~
+        +is_clean : bool
+    }
+    class MusicPlugin {
+        <<MuseDomainPlugin>>
+        +merge(base, left, right, *, repo_root) MergeResult
+    }
+
+    MusicPlugin ..> AttributeRule : load_attributes()
+    MusicPlugin ..> MidiDimensions : extract_dimensions()
+    MusicPlugin --> MergeResult : returns
+    MergeResult --> AttributeRule : applied_strategies reflects rules used
+    MidiDimensions *-- DimensionSlice : slices (4 buckets)
+    AttributeRule ..> DimensionSlice : resolve_strategy selects winner
 ```

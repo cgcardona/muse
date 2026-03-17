@@ -130,8 +130,12 @@ class MuseDomainPlugin(Protocol):
         base: StateSnapshot,
         left: StateSnapshot,
         right: StateSnapshot,
+        *,
+        repo_root: pathlib.Path | None = None,
     ) -> MergeResult:
-        """Three-way merge. Return merged snapshot + conflict paths."""
+        """Three-way merge. Loads .museattributes when repo_root is given.
+        Returns merged snapshot, conflict paths, applied_strategies, and
+        dimension_reports."""
 
     def drift(
         self,
