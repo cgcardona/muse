@@ -679,7 +679,7 @@ _HTML_TEMPLATE = """\
       <div class="dim-legend-item"><span style="display:inline-block;width:22px;height:14px;border-radius:3px;background:var(--bg3);border:1px solid var(--border);vertical-align:middle;margin-right:6px"></span> Unchanged</div>
     </div>
     <div class="dim-conflict-note">
-      <strong>⚡ Merge conflict at ba2f7d79</strong> — shared-state.mid had both-sides changes in
+      <strong>⚡ Merge conflict (shared-state.mid)</strong> — shared-state.mid had both-sides changes in
       <strong style="color:#ef5350">structural</strong> (manual resolution required).
       <em>✓ melodic auto-merged from left</em> · <em>✓ harmonic auto-merged from right</em> —
       only 1 of 5 dimensions conflicted. Git would have flagged the entire file as a conflict.
@@ -743,27 +743,65 @@ const DIM_COLORS = {
 };
 const DIMS = ['melodic','rhythmic','harmonic','dynamic','structural'];
 
-// Per-commit (short ID) → which dimensions changed vs parent
-const DIM_DATA = {
-  '1339aad5': ['melodic','rhythmic','harmonic','dynamic','structural'],
-  '6f0cf90e': ['rhythmic','structural'],
-  'cc822981': ['harmonic','structural'],
-  '4d7a7752': ['melodic','rhythmic'],
-  'cb4afaed': ['melodic','dynamic'],
-  '80ff4474': ['rhythmic','dynamic'],
-  '68fa6ba2': ['melodic'],
-  'b2f26495': ['melodic','harmonic'],
-  'b18ee707': ['rhythmic','dynamic'],
-  'a8da6915': ['melodic','structural'],
-  'bbf074d4': ['harmonic','structural'],
-  'ba2f7d79': ['structural'],
-  'b94b480d': ['melodic'],
-  'ffc28a71': ['melodic'],
-};
-// Dims that required human resolution
-const DIM_CONFLICTS = {
-  'ba2f7d79': ['structural'],
-};
+// Commit message → dimension mapping (stable across re-runs, independent of hash)
+function getDims(commit) {
+  const m = (commit.message || '').toLowerCase();
+  if (m.includes('root') || m.includes('initial state'))
+    return ['melodic','rhythmic','harmonic','dynamic','structural'];
+  if (m.includes('layer 1') || m.includes('rhythmic dimension'))
+    return ['rhythmic','structural'];
+  if (m.includes('layer 2') || m.includes('harmonic dimension'))
+    return ['harmonic','structural'];
+  if (m.includes('texture pattern a') || m.includes('sparse'))
+    return ['melodic','rhythmic'];
+  if (m.includes('texture pattern b') || m.includes('dense'))
+    return ['melodic','dynamic'];
+  if (m.includes('syncopated'))
+    return ['rhythmic','dynamic'];
+  if (m.includes('descending'))
+    return ['melodic','harmonic'];
+  if (m.includes('ascending'))
+    return ['melodic'];
+  if (m.includes("merge branch 'beta'"))
+    return ['rhythmic','dynamic'];
+  if (m.includes('left:') || m.includes('version a'))
+    return ['melodic','structural'];
+  if (m.includes('right:') || m.includes('version b'))
+    return ['harmonic','structural'];
+  if (m.includes('resolve') || m.includes('reconciled'))
+    return ['structural'];
+  if (m.includes('cherry-pick') || m.includes('cherry pick'))
+    return ['melodic'];
+  if (m.includes('revert'))
+    return ['melodic'];
+  return [];
+}
+
+function getConflicts(commit) {
+  const m = (commit.message || '').toLowerCase();
+  if (m.includes('resolve') && m.includes('reconciled')) return ['structural'];
+  return [];
+}
+
+// Build per-short-ID lookup tables once the DATA is available (populated at init)
+const DIM_DATA = {};
+const DIM_CONFLICTS = {};
+function _initDimMaps() {
+  DATA.dag.commits.forEach(c => {
+    DIM_DATA[c.short]     = getDims(c);
+    DIM_CONFLICTS[c.short] = getConflicts(c);
+  });
+  // Also key by the short prefix used in events (some may be truncated)
+  DATA.events.forEach(ev => {
+    if (ev.commit_id && !DIM_DATA[ev.commit_id]) {
+      const full = DATA.dag.commits.find(c => c.short.startsWith(ev.commit_id) || ev.commit_id.startsWith(c.short));
+      if (full) {
+        DIM_DATA[ev.commit_id]     = getDims(full);
+        DIM_CONFLICTS[ev.commit_id] = getConflicts(full);
+      }
+    }
+  });
+}
 
 
 /* ===== State ===== */
@@ -1211,6 +1249,7 @@ function resetTour() {
 
 /* ===== Init ===== */
 document.addEventListener('DOMContentLoaded', () => {
+  _initDimMaps();
   drawDAG();
   buildEventLog();
   buildDimTimeline();
