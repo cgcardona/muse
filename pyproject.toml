@@ -32,6 +32,24 @@ testpaths = ["tests"]
 cache_dir = "/tmp/pytest_cache"
 addopts = "-v --tb=short"
 
+[tool.coverage.run]
+source = ["muse"]
+omit = [
+    # Hub/remote authentication — future feature, requires network fixtures
+    "muse/cli/config.py",
+    # MIDI binary parser — requires MIDI fixture files to test meaningfully
+    "muse/cli/midi_parser.py",
+    # Backward-compat re-export shim — trivially thin wrapper
+    "muse/cli/models.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true
