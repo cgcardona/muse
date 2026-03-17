@@ -247,31 +247,40 @@ class MusicPlugin:
     def apply(self, delta: StateDelta, live_state: LiveState) -> LiveState:
         """Apply a delta to produce a new live state.
 
-        For the music plugin in CLI mode, this returns the *target* snapshot
-        dict. The actual file restoration (writing MIDI files back to
-        ``muse-work/``) is handled by ``muse checkout`` using the core
-        object store, not by this method.
+        Called by ``muse checkout`` after it has physically updated
+        ``muse-work/`` (removed deleted files, restored added/modified files
+        from the object store). This method provides the domain-level
+        post-checkout hook and returns the authoritative new live state.
 
-        This method is the semantic entry point for DAW-level integrations
-        that want to apply a delta to a live project without going through
-        the filesystem.
+        Two call modes:
+
+        * ``live_state`` is a ``pathlib.Path`` — files in the workdir have
+          already been updated by the caller.  Rescanning the directory is the
+          cheapest correct way to get the new state; all the heavy lifting was
+          done by the object store.
+
+        * ``live_state`` is a snapshot dict — only in-memory state is
+          available.  Removals are applied; added/modified paths cannot be
+          resolved without the target snapshot's content hashes, so they are
+          left to the caller.
 
         Args:
             delta:      A delta produced by :meth:`diff`.
-            live_state: The current live state to patch.
+            live_state: The workdir path (preferred) or a snapshot dict.
 
         Returns:
-            The updated live state as a snapshot dict.
+            The updated live state as a ``SnapshotManifest``.
         """
-        current = self.snapshot(live_state)
-        current_files = dict(current["files"])
+        if isinstance(live_state, pathlib.Path):
+            # Physical changes are already on disk — rescan gives correct state.
+            return self.snapshot(live_state)
 
+        # In-memory path: apply removals.  Added/modified require target-side
+        # hashes that are not carried by the delta; callers that need those
+        # should pass the workdir Path instead.
+        current_files = dict(live_state["files"])
         for path in delta["removed"]:
             current_files.pop(path, None)
-
-        for path in delta["added"] + delta["modified"]:
-            pass
-
         return SnapshotManifest(files=current_files, domain=_DOMAIN_TAG)
 
 

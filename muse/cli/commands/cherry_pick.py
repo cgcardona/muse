@@ -11,9 +11,9 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.merge_engine import write_merge_state
-from muse.core.object_store import restore_object, write_object_from_path
+from muse.core.object_store import restore_object
 from muse.core.repo import require_repo
-from muse.core.snapshot import build_snapshot_manifest, compute_commit_id, compute_snapshot_id
+from muse.core.snapshot import compute_commit_id, compute_snapshot_id
 from muse.core.store import (
     CommitRecord,
     SnapshotRecord,
@@ -107,7 +107,10 @@ def cherry_pick(
         return
 
     head_commit_id = get_head_commit_id(root, branch)
-    manifest = build_snapshot_manifest(workdir)
+    # merged_manifest contains only object IDs already in the store
+    # (sourced from base, ours, or theirs — all previously committed).
+    # No re-scan or object re-write is needed.
+    manifest = merged_manifest
     snapshot_id = compute_snapshot_id(manifest)
     committed_at = datetime.datetime.now(datetime.timezone.utc)
     commit_id = compute_commit_id(
@@ -117,8 +120,6 @@ def cherry_pick(
         committed_at_iso=committed_at.isoformat(),
     )
 
-    for rel_path, object_id in manifest.items():
-        write_object_from_path(root, object_id, workdir / rel_path)
     write_snapshot(root, SnapshotRecord(snapshot_id=snapshot_id, manifest=manifest))
     write_commit(root, CommitRecord(
         commit_id=commit_id,

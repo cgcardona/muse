@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import logging
 import pathlib
-import shutil
 
 import typer
 
@@ -21,10 +20,11 @@ from muse.core.repo import require_repo
 from muse.core.store import (
     get_head_commit_id,
     get_head_snapshot_id,
-    read_commit,
     read_snapshot,
     resolve_commit_ref,
 )
+from muse.domain import SnapshotManifest
+from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
 
@@ -40,22 +40,56 @@ def _read_repo_id(root: pathlib.Path) -> str:
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
-def _restore_workdir(root: pathlib.Path, snapshot_id: str) -> None:
-    """Replace muse-work/ with the contents of the given snapshot."""
-    snapshot = read_snapshot(root, snapshot_id)
-    if snapshot is None:
-        typer.echo(f"❌ Snapshot {snapshot_id[:8]} not found in object store.")
+def _checkout_snapshot(
+    root: pathlib.Path,
+    target_snapshot_id: str,
+    current_snapshot_id: str | None,
+) -> None:
+    """Incrementally update muse-work/ from current to target snapshot.
+
+    Uses the domain plugin to compute the delta between the two snapshots and
+    only touches files that actually changed — removing deleted paths and
+    restoring added/modified ones from the object store.  Calls
+    ``plugin.apply()`` as the domain-level post-checkout hook.
+    """
+    plugin = resolve_plugin(root)
+    domain = read_domain(root)
+
+    target_snap_rec = read_snapshot(root, target_snapshot_id)
+    if target_snap_rec is None:
+        typer.echo(f"❌ Snapshot {target_snapshot_id[:8]} not found in object store.")
         raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
 
-    workdir = root / "muse-work"
-    if workdir.exists():
-        shutil.rmtree(workdir)
-    workdir.mkdir()
+    target_snap = SnapshotManifest(files=target_snap_rec.manifest, domain=domain)
 
-    for rel_path, object_id in snapshot.manifest.items():
-        dest = workdir / rel_path
-        if not restore_object(root, object_id, dest):
+    if current_snapshot_id is not None:
+        cur_rec = read_snapshot(root, current_snapshot_id)
+        current_snap = (
+            SnapshotManifest(files=cur_rec.manifest, domain=domain)
+            if cur_rec else SnapshotManifest(files={}, domain=domain)
+        )
+    else:
+        current_snap = SnapshotManifest(files={}, domain=domain)
+
+    delta = plugin.diff(current_snap, target_snap)
+
+    workdir = root / "muse-work"
+    workdir.mkdir(exist_ok=True)
+
+    # Remove files that no longer exist in the target snapshot.
+    for rel_path in delta["removed"]:
+        fp = workdir / rel_path
+        if fp.exists():
+            fp.unlink()
+
+    # Restore added and modified files from the content-addressed store.
+    for rel_path in delta["added"] + delta["modified"]:
+        object_id = target_snap_rec.manifest[rel_path]
+        if not restore_object(root, object_id, workdir / rel_path):
             typer.echo(f"⚠️  Object {object_id[:8]} for '{rel_path}' not in local store — skipped.")
+
+    # Domain-level post-checkout hook: rescan the workdir to confirm state.
+    plugin.apply(delta, workdir)
 
 
 @app.callback(invoke_without_command=True)
@@ -70,6 +104,8 @@ def checkout(
     repo_id = _read_repo_id(root)
     current_branch = _read_current_branch(root)
     muse_dir = root / ".muse"
+
+    current_snapshot_id = get_head_snapshot_id(root, repo_id, current_branch)
 
     if create:
         ref_file = muse_dir / "refs" / "heads" / target
@@ -92,7 +128,7 @@ def checkout(
 
         target_snapshot_id = get_head_snapshot_id(root, repo_id, target)
         if target_snapshot_id:
-            _restore_workdir(root, target_snapshot_id)
+            _checkout_snapshot(root, target_snapshot_id, current_snapshot_id)
 
         (muse_dir / "HEAD").write_text(f"refs/heads/{target}\n")
         typer.echo(f"Switched to branch '{target}'")
@@ -104,6 +140,6 @@ def checkout(
         typer.echo(f"❌ '{target}' is not a branch or commit ID.")
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
-    _restore_workdir(root, commit.snapshot_id)
+    _checkout_snapshot(root, commit.snapshot_id, current_snapshot_id)
     (muse_dir / "HEAD").write_text(commit.commit_id + "\n")
     typer.echo(f"HEAD is now at {commit.commit_id[:8]} {commit.message}")
