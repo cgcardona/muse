@@ -1226,7 +1226,7 @@ domain protocol down through the store, CLI, and plugin layers.
 classDiagram
     class MuseDomainPlugin {
         <<Protocol>>
-        snapshot / diff / merge / drift / apply
+        snapshot / diff / merge / drift / apply / schema
     }
     class SnapshotManifest {
         <<TypedDict>>

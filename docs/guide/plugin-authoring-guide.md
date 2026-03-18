@@ -628,7 +628,7 @@ def test_join_idempotent() -> None:
 ## Checklist Before You Ship
 
 ```
-□ MuseDomainPlugin protocol: snapshot, diff, merge, drift, apply all implemented
+□ MuseDomainPlugin protocol: snapshot, diff, merge, drift, apply, schema all implemented
 □ schema() returns a valid DomainSchema with merge_mode set
 □ All type hints pass mypy --strict with zero errors
 □ python tools/typing_audit.py --dirs muse/ tests/ --max-any 0 passes (zero violations)
