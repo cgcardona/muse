@@ -54,6 +54,8 @@ import typer
 from muse.cli.commands import (
     attributes,
     blame,
+    forecast,
+    intent,
     branch,
     cherry_pick,
     checkout,
@@ -73,6 +75,7 @@ from muse.cli.commands import (
     impact,
     init,
     languages,
+    plan_merge,
     log,
     merge,
     mix,
@@ -83,8 +86,11 @@ from muse.cli.commands import (
     patch,
     piano_roll,
     query,
+    reconcile,
+    reserve,
     reset,
     revert,
+    shard,
     show,
     stable,
     stash,
@@ -149,6 +155,12 @@ cli.add_typer(find_symbol.app,     name="find-symbol",      help="[code] Cross-c
 cli.add_typer(impact.app,          name="impact",           help="[code] Transitive blast-radius — every caller affected if this symbol changes.")
 cli.add_typer(dead.app,            name="dead",             help="[code] Dead code candidates — symbols with no callers and no importers.")
 cli.add_typer(coverage.app,        name="coverage",         help="[code] Class interface call-coverage — which methods are actually called?")
+cli.add_typer(reserve.app,         name="reserve",          help="[coord] Advisory symbol reservation — announce intent before editing.")
+cli.add_typer(intent.app,          name="intent",           help="[coord] Declare a specific operation before executing it.")
+cli.add_typer(forecast.app,        name="forecast",         help="[coord] Predict merge conflicts from active reservations and intents.")
+cli.add_typer(plan_merge.app,      name="plan-merge",       help="[coord] Dry-run semantic merge plan — classify conflicts without writing.")
+cli.add_typer(shard.app,           name="shard",            help="[coord] Partition the codebase into N low-coupling work zones for parallel agents.")
+cli.add_typer(reconcile.app,       name="reconcile",        help="[coord] Recommend merge ordering and integration strategy from coordination state.")
 
 
 if __name__ == "__main__":
