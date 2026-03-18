@@ -51,7 +51,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import get_commit_snapshot_manifest, resolve_commit_ref
+from muse.core.store import CommitRecord, get_all_commits, get_commit_snapshot_manifest, resolve_commit_ref
 from muse.plugins.code._query import language_of, symbols_for_snapshot
 from muse.plugins.code.ast_parser import SymbolRecord
 
@@ -152,6 +152,86 @@ def _parse_predicate(
     return predicate
 
 
+class _HistoricalMatch:
+    """A symbol match found in a historical commit (--all-commits mode)."""
+
+    def __init__(
+        self,
+        address: str,
+        rec: SymbolRecord,
+        commit: CommitRecord,
+        first_seen: bool,
+    ) -> None:
+        self.address = address
+        self.rec = rec
+        self.commit = commit
+        self.first_seen = first_seen  # True when this is the oldest appearance
+
+    def to_dict(self) -> dict[str, str | int | bool]:
+        return {
+            "address": self.address,
+            "kind": self.rec["kind"],
+            "name": self.rec["name"],
+            "content_id": self.rec["content_id"],
+            "first_seen": self.first_seen,
+            "commit_id": self.commit.commit_id,
+            "commit_message": self.commit.message,
+            "committed_at": self.commit.committed_at.isoformat(),
+            "branch": self.commit.branch,
+        }
+
+
+def _query_all_commits(
+    root: pathlib.Path,
+    filters: list[Callable[[str, SymbolRecord], bool]],
+) -> list[_HistoricalMatch]:
+    """Walk every commit oldest-first, apply predicates against each snapshot.
+
+    Returns one entry per (address, commit) pair that matches.  The
+    ``first_seen`` flag is True on the oldest commit where each
+    (content_id, address) pair appears.
+    """
+    all_commits = get_all_commits(root)
+    if not all_commits:
+        return []
+    sorted_commits = sorted(all_commits, key=lambda c: c.committed_at)
+
+    results: list[_HistoricalMatch] = []
+    # Track content_id → first commit_id for first_seen annotation.
+    first_seen_map: dict[str, str] = {}
+
+    for commit in sorted_commits:
+        manifest = _manifest_for_commit(root, commit)
+        if not manifest:
+            continue
+        symbol_map = symbols_for_snapshot(root, manifest)
+        for file_path, tree in sorted(symbol_map.items()):
+            for addr, rec in sorted(tree.items(), key=lambda kv: kv[1]["lineno"]):
+                if not all(f(file_path, rec) for f in filters):
+                    continue
+                cid = rec["content_id"]
+                is_first = cid not in first_seen_map
+                if is_first:
+                    first_seen_map[cid] = commit.commit_id
+                results.append(_HistoricalMatch(addr, rec, commit, is_first))
+
+    return results
+
+
+def _manifest_for_commit(
+    root: pathlib.Path,
+    commit: CommitRecord,
+) -> dict[str, str]:
+    """Load the snapshot manifest for *commit*, returning empty dict on failure."""
+    snap_path = root / ".muse" / "snapshots" / f"{commit.snapshot_id}.json"
+    if not snap_path.exists():
+        return {}
+    try:
+        return dict(json.loads(snap_path.read_text()).get("manifest", {}))
+    except (json.JSONDecodeError, KeyError):
+        return {}
+
+
 @app.callback(invoke_without_command=True)
 def query(
     ctx: typer.Context,
@@ -162,6 +242,14 @@ def query(
     ref: str | None = typer.Option(
         None, "--commit", "-c", metavar="REF",
         help="Query a historical snapshot instead of HEAD.",
+    ),
+    all_commits: bool = typer.Option(
+        False, "--all-commits",
+        help=(
+            "Search across ALL commits (every branch). "
+            "Enables temporal hash= queries: find when a function body first appeared. "
+            "Mutually exclusive with --commit."
+        ),
     ),
     show_hashes: bool = typer.Option(
         False, "--hashes", help="Include content hashes in output.",
@@ -178,20 +266,22 @@ def query(
     Predicate syntax: ``key=value`` (exact), ``key~=value`` (contains),
     ``key^=value`` (starts with), ``key$=value`` (ends with).
 
-    The ``hash`` predicate is uniquely powerful: ``hash=a3f2c9`` finds every
-    symbol whose normalized AST matches that content hash — duplicate function
-    detection, clone tracking, and cross-module copy detection in one query.
+    The ``hash`` predicate finds every symbol whose normalized AST matches
+    that content hash — duplicate function detection, clone tracking, and
+    cross-module copy detection in one query.
 
-    All predicates are AND'd.  Use ``--commit`` to query any historical snapshot.
-    Use ``--json`` for pipeline integration.
+    With ``--all-commits``, the query searches every commit ever recorded
+    (across all branches), ordered oldest-first.  The first time each unique
+    ``content_id`` appears is marked.  This enables temporal queries:
+    "when did this function body first enter the repository?"
 
     \\b
     Examples::
 
         muse query "kind=function" "language=Python"
-        muse query "kind=method" "name^=__"
         muse query "hash=a3f2c9"
-        muse query "file~=billing" "kind=class"
+        muse query "hash=a3f2c9" --all-commits   # when did it first appear?
+        muse query "name~=validate" --all-commits --json
     """
     root = require_repo()
     repo_id = _read_repo_id(root)
@@ -199,6 +289,10 @@ def query(
 
     if not predicates:
         typer.echo("❌ At least one predicate is required.", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
+    if all_commits and ref is not None:
+        typer.echo("❌ --all-commits and --commit are mutually exclusive.", err=True)
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
     # Parse predicates.
@@ -210,6 +304,45 @@ def query(
             typer.echo(f"❌ {exc}", err=True)
             raise typer.Exit(code=ExitCode.USER_ERROR)
 
+    # ----------------------------------------------------------------
+    # --all-commits mode: temporal search across every recorded commit
+    # ----------------------------------------------------------------
+    if all_commits:
+        historical = _query_all_commits(root, filters)
+        if as_json:
+            typer.echo(json.dumps(
+                {"mode": "all-commits", "results": [h.to_dict() for h in historical]},
+                indent=2,
+            ))
+            return
+        if not historical:
+            pred_display = "  AND  ".join(predicates)
+            typer.echo(f"  (no symbols matching: {pred_display}  [searched all commits])")
+            return
+        # Deduplicate for display: show unique addresses with their first-seen commit.
+        seen_addrs: set[str] = set()
+        unique: list[_HistoricalMatch] = []
+        for h in historical:
+            if h.first_seen and h.address not in seen_addrs:
+                seen_addrs.add(h.address)
+                unique.append(h)
+        pred_display = "  AND  ".join(predicates)
+        typer.echo(f"\n{len(unique)} unique symbol(s) matching [{pred_display}] across all commits\n")
+        for h in unique:
+            date_str = h.commit.committed_at.strftime("%Y-%m-%d")
+            short_id = h.commit.commit_id[:8]
+            icon = _KIND_ICON.get(h.rec["kind"], h.rec["kind"])
+            hash_part = f"  {h.rec['content_id'][:8]}.." if show_hashes else ""
+            branch_label = f"  [{h.commit.branch}]" if h.commit.branch else ""
+            typer.echo(
+                f"  {h.address:<60}  {icon:<8}"
+                f"  first seen {short_id} {date_str}{branch_label}{hash_part}"
+            )
+        return
+
+    # ----------------------------------------------------------------
+    # Single-snapshot mode (default)
+    # ----------------------------------------------------------------
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
         typer.echo(f"❌ Commit '{ref or 'HEAD'}' not found.", err=True)
