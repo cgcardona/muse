@@ -1,6 +1,6 @@
 """Tests for muse.core.merge_engine — three-way merge logic.
 
-Extended in Phase 3 to cover the structured (operation-level) merge path via
+Extended to cover the structured (operation-level) merge path via
 :func:`~muse.core.op_transform.merge_structured` and the
 :class:`~muse.domain.StructuredMergePlugin` integration.
 """
@@ -161,7 +161,7 @@ class TestFindMergeBase:
 
 
 # ===========================================================================
-# Phase 3 — structured merge engine integration tests
+# Structured merge engine integration tests
 # ===========================================================================
 
 

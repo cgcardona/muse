@@ -1,4 +1,4 @@
-"""Tests for the Phase 3 operation-level merge engine.
+"""Tests for the operation-level merge engine.
 
 Covers every commutativity rule from the spec table, the OT transform function,
 and the full three-way ``merge_op_lists`` algorithm.  Each test is named after

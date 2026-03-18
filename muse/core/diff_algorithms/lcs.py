@@ -1,4 +1,4 @@
-"""LCS / Myers shortest-edit-script algorithm for ordered sequences — Phase 2.
+"""LCS / Myers shortest-edit-script algorithm for ordered sequences.
 
 Operates on ``list[str]`` where each string is a content ID (SHA-256 or
 deterministic hash). Two elements are considered identical iff their content
@@ -17,7 +17,7 @@ is the same algorithm as ``midi_diff.lcs_edit_script`` but operates on content
 IDs (strings) rather than ``NoteKey`` dicts, making it fully generic.
 
 The patience-diff and O(nd) Myers variants (see ``SequenceSchema.diff_algorithm``)
-are not yet implemented; both fall back to the O(nm) LCS. Phase 3 can add them
+are not yet implemented; both fall back to the O(nm) LCS.
 as an optimisation without changing the public API.
 """
 from __future__ import annotations

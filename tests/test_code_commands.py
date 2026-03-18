@@ -1,11 +1,10 @@
-"""Integration tests for all Code Domain V2 CLI commands.
+"""Integration tests for code-domain CLI commands.
 
-This module tests every command added in the 7-phase Code Domain V2 roadmap
-using a real Muse repository initialised in a tmp_path fixture.
+Uses a real Muse repository initialised in tmp_path.
 
 Coverage
 --------
-Phase 1 — Provenance & Topology
+Provenance & Topology
     muse lineage        ADDRESS [--json]
     muse api-surface    [--diff REF] [--json]
     muse codemap        [--top N] [--json]
@@ -13,18 +12,18 @@ Phase 1 — Provenance & Topology
     muse checkout-symbol ADDRESS --commit REF [--dry-run]
     muse semantic-cherry-pick ADDRESS... --from REF [--dry-run] [--json]
 
-Phase 2 — Query v2 + Temporal
+Query & Temporal Search
     muse query          PREDICATE [--all-commits] [--json]
     muse query-history  PREDICATE [--from REF] [--to REF] [--json]
 
-Phase 3 — Index Infrastructure
+Index Commands
     muse index status   [--json]
     muse index rebuild  [--index NAME]
 
-Phase 4 — Symbol Identity V2
-    muse detect-refactor --json emits schema_version:2
+Refactor Detection
+    muse detect-refactor --json (schema_version in output)
 
-Phase 5 — Multi-Agent Coordination
+Multi-Agent Coordination
     muse reserve        ADDRESS...
     muse intent         ADDRESS... --op OP
     muse forecast       [--json]
@@ -32,11 +31,11 @@ Phase 5 — Multi-Agent Coordination
     muse shard          --agents N [--json]
     muse reconcile      [--json]
 
-Phase 6 — Merge Engine V2 & Enforcement
+Structural Enforcement
     muse breakage       [--json]
     muse invariants     [--json]
 
-Phase 7 — Semantic Versioning
+Semantic Versioning Metadata
     muse log            shows SemVer for commits with bumps
     muse commit         stores sem_ver_bump in CommitRecord
 
@@ -121,7 +120,7 @@ def code_repo(repo: pathlib.Path) -> pathlib.Path:
 
 
 # ---------------------------------------------------------------------------
-# Phase 1 — muse lineage
+# muse lineage
 # ---------------------------------------------------------------------------
 
 
@@ -149,7 +148,7 @@ class TestLineage:
 
 
 # ---------------------------------------------------------------------------
-# Phase 1 — muse api-surface
+# muse api-surface
 # ---------------------------------------------------------------------------
 
 
@@ -176,7 +175,7 @@ class TestApiSurface:
 
 
 # ---------------------------------------------------------------------------
-# Phase 1 — muse codemap
+# muse codemap
 # ---------------------------------------------------------------------------
 
 
@@ -197,7 +196,7 @@ class TestCodemap:
 
 
 # ---------------------------------------------------------------------------
-# Phase 1 — muse clones
+# muse clones
 # ---------------------------------------------------------------------------
 
 
@@ -222,7 +221,7 @@ class TestClones:
 
 
 # ---------------------------------------------------------------------------
-# Phase 1 — muse checkout-symbol
+# muse checkout-symbol
 # ---------------------------------------------------------------------------
 
 
@@ -245,7 +244,7 @@ class TestCheckoutSymbol:
 
 
 # ---------------------------------------------------------------------------
-# Phase 1 — muse semantic-cherry-pick
+# muse semantic-cherry-pick
 # ---------------------------------------------------------------------------
 
 
@@ -269,7 +268,7 @@ class TestSemanticCherryPick:
 
 
 # ---------------------------------------------------------------------------
-# Phase 2 — muse query
+# muse query
 # ---------------------------------------------------------------------------
 
 
@@ -320,7 +319,7 @@ class TestQueryV2:
 
 
 # ---------------------------------------------------------------------------
-# Phase 2 — muse query-history
+# muse query-history
 # ---------------------------------------------------------------------------
 
 
@@ -351,7 +350,7 @@ class TestQueryHistory:
 
 
 # ---------------------------------------------------------------------------
-# Phase 3 — muse index
+# muse index
 # ---------------------------------------------------------------------------
 
 
@@ -391,7 +390,7 @@ class TestIndexCommands:
 
 
 # ---------------------------------------------------------------------------
-# Phase 4 — muse detect-refactor --json schema_version:2
+# muse detect-refactor
 # ---------------------------------------------------------------------------
 
 
@@ -430,7 +429,7 @@ class TestDetectRefactorV2:
 
 
 # ---------------------------------------------------------------------------
-# Phase 5 — muse reserve
+# muse reserve
 # ---------------------------------------------------------------------------
 
 
@@ -480,7 +479,7 @@ class TestReserve:
 
 
 # ---------------------------------------------------------------------------
-# Phase 5 — muse intent
+# muse intent
 # ---------------------------------------------------------------------------
 
 
@@ -508,7 +507,7 @@ class TestIntent:
 
 
 # ---------------------------------------------------------------------------
-# Phase 5 — muse forecast
+# muse forecast
 # ---------------------------------------------------------------------------
 
 
@@ -534,7 +533,7 @@ class TestForecast:
 
 
 # ---------------------------------------------------------------------------
-# Phase 5 — muse plan-merge
+# muse plan-merge
 # ---------------------------------------------------------------------------
 
 
@@ -555,7 +554,7 @@ class TestPlanMerge:
 
 
 # ---------------------------------------------------------------------------
-# Phase 5 — muse shard
+# muse shard
 # ---------------------------------------------------------------------------
 
 
@@ -581,7 +580,7 @@ class TestShard:
 
 
 # ---------------------------------------------------------------------------
-# Phase 5 — muse reconcile
+# muse reconcile
 # ---------------------------------------------------------------------------
 
 
@@ -598,7 +597,7 @@ class TestReconcile:
 
 
 # ---------------------------------------------------------------------------
-# Phase 6 — muse breakage
+# muse breakage
 # ---------------------------------------------------------------------------
 
 
@@ -626,7 +625,7 @@ class TestBreakage:
 
 
 # ---------------------------------------------------------------------------
-# Phase 6 — muse invariants
+# muse invariants
 # ---------------------------------------------------------------------------
 
 
@@ -689,7 +688,7 @@ class TestInvariants:
 
 
 # ---------------------------------------------------------------------------
-# Phase 7 — muse commit stores sem_ver_bump
+# muse commit — semantic versioning
 # ---------------------------------------------------------------------------
 
 

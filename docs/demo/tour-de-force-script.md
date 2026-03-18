@@ -537,7 +537,7 @@ In **OT Merge** — the engine asks:
 > Do these two operations commute? Can I apply them in either order and
 > get the same result?
 
-### Step 51 — `muse merge beta-notes` with Phase 3
+### Step 51 — `muse merge beta-notes` with operation-level merge
 
 ```
 $ muse merge beta-notes
@@ -659,7 +659,7 @@ This is the judgment call every plugin author makes:
 
 | Scenario | Right choice |
 |----------|-------------|
-| Human composer editing a MIDI score | Three-way merge (Phase 3) |
+| Human composer editing a MIDI score | Three-way merge (operation-level) |
 | 100 agents annotating a genome | CRDT `ORSet` |
 | DAW with multi-cursor note input | CRDT `RGA` |
 | Distributed IoT telemetry counter | CRDT `GCounter` |

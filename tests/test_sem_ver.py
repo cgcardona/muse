@@ -1,4 +1,4 @@
-"""Tests for semantic versioning metadata (Phase 7).
+"""Tests for semantic versioning metadata on StructuredDelta and CommitRecord.
 
 Coverage
 --------

@@ -23,7 +23,7 @@ Provides two tiers of classification:
 Each inferred classification carries a ``confidence`` float (0.0–1.0) and an
 ``evidence`` list of strings explaining the reasoning.
 
-These are used by ``muse detect-refactor`` to produce the enhanced v2 output.
+These are used by ``muse detect-refactor`` to produce the enhanced JSON output.
 """
 from __future__ import annotations
 

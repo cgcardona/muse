@@ -1,6 +1,6 @@
 # Muse CRDT Reference
 
-> **Audience:** Plugin authors adding Phase 4 (CRDT Semantics) to their domain plugin,
+> **Audience:** Plugin authors adding CRDT Semantics to their domain plugin,
 > or anyone curious about how Muse achieves conflict-free convergence.
 >
 > **Implementation:** `muse/core/crdts/` — six primitives, each with full type safety,

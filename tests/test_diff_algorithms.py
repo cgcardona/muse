@@ -1,4 +1,4 @@
-"""Tests for the Phase 2 diff algorithm library.
+"""Tests for the diff algorithm library.
 
 Covers all four algorithm modules (lcs, tree_edit, numerical, set_ops) and
 the schema-driven dispatch in ``muse.core.diff_algorithms``.

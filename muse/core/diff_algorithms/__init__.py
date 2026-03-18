@@ -1,4 +1,4 @@
-"""Schema-driven diff algorithm dispatch — Phase 2.
+"""Schema-driven diff algorithm dispatch.
 
 :func:`diff_by_schema` is the single entry point for all diff operations. It
 inspects ``schema["kind"]`` and dispatches to the correct algorithm module:
@@ -228,8 +228,8 @@ def _diff_map(
 
     Produces ``InsertOp`` for new keys, ``DeleteOp`` for removed keys, and
     ``ReplaceOp`` for keys whose content ID changed. The ``value_schema`` on
-    the ``MapSchema`` is informational in Phase 2; deep value diffing is a
-    Phase 3 enhancement.
+    the ``MapSchema`` is informational; deep value diffing is a
+    future enhancement.
     """
     base_keys = set(base)
     target_keys = set(target)
