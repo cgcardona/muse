@@ -92,6 +92,8 @@ from muse.cli.commands import (
     symbol_log,
     symbols,
     tag,
+    breakage,
+    invariants,
     transpose,
     velocity_profile,
 )
@@ -149,6 +151,8 @@ cli.add_typer(find_symbol.app,     name="find-symbol",      help="[code] Cross-c
 cli.add_typer(impact.app,          name="impact",           help="[code] Transitive blast-radius — every caller affected if this symbol changes.")
 cli.add_typer(dead.app,            name="dead",             help="[code] Dead code candidates — symbols with no callers and no importers.")
 cli.add_typer(coverage.app,        name="coverage",         help="[code] Class interface call-coverage — which methods are actually called?")
+cli.add_typer(breakage.app,        name="breakage",         help="[code] Detect symbol-level structural breakage in the working tree vs HEAD.")
+cli.add_typer(invariants.app,      name="invariants",       help="[code] Enforce architectural rules from .muse/invariants.toml.")
 
 
 if __name__ == "__main__":
