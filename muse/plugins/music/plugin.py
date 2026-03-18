@@ -34,31 +34,46 @@ A music snapshot is a JSON-serialisable dict:
     }
 
 The ``files`` key maps POSIX paths (relative to ``muse-work/``) to their
-SHA-256 content digests. This is the same structure that the core file-based
-store uses as a snapshot manifest — the music plugin does not add an
-abstraction layer on top of the existing content-addressed object store.
+SHA-256 content digests.
 
-For more sophisticated use cases (DAW-level integration, per-note diffs,
-emotion vectors, harmonic analysis), the snapshot can be extended with
-additional top-level keys. The core DAG engine only requires that the
-snapshot be JSON-serialisable and content-addressable.
+Delta Format (Phase 1)
+----------------------
+``diff()`` returns a ``StructuredDelta`` with typed ``DomainOp`` entries:
+
+- ``InsertOp`` — a file was added (``content_id`` = its SHA-256 hash).
+- ``DeleteOp`` — a file was removed.
+- ``ReplaceOp`` — a non-MIDI file's content changed.
+- ``PatchOp`` — a ``.mid`` file changed; ``child_ops`` contains note-level
+  ``InsertOp`` / ``DeleteOp`` entries from the Myers LCS diff.
+
+When ``repo_root`` is available, MIDI files are loaded from the object store
+and diffed at note level. Without it, modified ``.mid`` files fall back to
+``ReplaceOp``.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import pathlib
 
 from muse.domain import (
-    DeltaManifest,
+    DeleteOp,
+    DomainOp,
     DriftReport,
+    InsertOp,
     LiveState,
     MergeResult,
     MuseDomainPlugin,
+    PatchOp,
+    ReplaceOp,
     SnapshotManifest,
     StateDelta,
     StateSnapshot,
+    StructuredDelta,
 )
+
+logger = logging.getLogger(__name__)
 
 _DOMAIN_TAG = "music"
 
@@ -94,9 +109,8 @@ class MusicPlugin:
         ------------
         When *live_state* is a ``pathlib.Path``, the plugin reads
         ``.museignore`` from the repository root (the parent of ``muse-work/``)
-        and excludes any matching paths from the snapshot.  Dotfiles are always
-        excluded regardless of ``.museignore``.  See ``docs/reference/museignore.md``
-        for the full format reference.
+        and excludes any matching paths from the snapshot. Dotfiles are always
+        excluded regardless of ``.museignore``.
         """
         if isinstance(live_state, pathlib.Path):
             from muse.core.ignore import is_ignored, load_patterns
@@ -118,21 +132,36 @@ class MusicPlugin:
         return live_state
 
     # ------------------------------------------------------------------
-    # 2. diff — compute the minimal delta between two snapshots
+    # 2. diff — compute the structured delta between two snapshots
     # ------------------------------------------------------------------
 
-    def diff(self, base: StateSnapshot, target: StateSnapshot) -> StateDelta:
-        """Compute the file-level delta between two music snapshots.
+    def diff(
+        self,
+        base: StateSnapshot,
+        target: StateSnapshot,
+        *,
+        repo_root: pathlib.Path | None = None,
+    ) -> StateDelta:
+        """Compute a ``StructuredDelta`` between two music snapshots.
+
+        File additions and removals produce ``InsertOp`` and ``DeleteOp``
+        entries respectively. For modified files:
+
+        - ``.mid`` files: when ``repo_root`` is provided, load the MIDI bytes
+          from the object store and produce a ``PatchOp`` with note-level
+          ``child_ops`` from the Myers LCS diff. Falls back to ``ReplaceOp``
+          when the object store is unavailable or parsing fails.
+        - All other files: ``ReplaceOp`` with file-level content IDs.
 
         Args:
-            base:   The ancestor snapshot.
-            target: The later snapshot.
+            base:      The ancestor snapshot.
+            target:    The later snapshot.
+            repo_root: Repository root directory. When provided, MIDI files are
+                       loaded from ``.muse/objects/`` for note-level diffing.
 
         Returns:
-            A delta dict with three keys:
-            - ``added``:    list of paths present in *target* but not *base*.
-            - ``removed``:  list of paths present in *base* but not *target*.
-            - ``modified``: list of paths present in both with different digests.
+            A ``StructuredDelta`` whose ``ops`` list transforms *base* into
+            *target* and whose ``summary`` is human-readable.
         """
         base_files = base["files"]
         target_files = target["files"]
@@ -140,17 +169,46 @@ class MusicPlugin:
         base_paths = set(base_files)
         target_paths = set(target_files)
 
-        added = sorted(target_paths - base_paths)
-        removed = sorted(base_paths - target_paths)
-        common = base_paths & target_paths
-        modified = sorted(p for p in common if base_files[p] != target_files[p])
+        ops: list[DomainOp] = []
 
-        return DeltaManifest(
-            domain=_DOMAIN_TAG,
-            added=added,
-            removed=removed,
-            modified=modified,
-        )
+        # Added files → InsertOp
+        for path in sorted(target_paths - base_paths):
+            ops.append(
+                InsertOp(
+                    op="insert",
+                    address=path,
+                    position=None,
+                    content_id=target_files[path],
+                    content_summary=f"new file: {path}",
+                )
+            )
+
+        # Removed files → DeleteOp
+        for path in sorted(base_paths - target_paths):
+            ops.append(
+                DeleteOp(
+                    op="delete",
+                    address=path,
+                    position=None,
+                    content_id=base_files[path],
+                    content_summary=f"deleted: {path}",
+                )
+            )
+
+        # Modified files
+        for path in sorted(
+            p for p in base_paths & target_paths if base_files[p] != target_files[p]
+        ):
+            op = _diff_modified_file(
+                path=path,
+                old_hash=base_files[path],
+                new_hash=target_files[path],
+                repo_root=repo_root,
+            )
+            ops.append(op)
+
+        summary = _summarise_ops(ops)
+        return StructuredDelta(domain=_DOMAIN_TAG, ops=ops, summary=summary)
 
     # ------------------------------------------------------------------
     # 3. merge — three-way reconciliation
@@ -176,7 +234,7 @@ class MusicPlugin:
         2. **Dimension-level merge** — for ``.mid`` files that survive the
            file-level check, the MIDI event stream is split into orthogonal
            dimension slices (notes/melodic, harmonic, dynamic, structural).
-           Each dimension is merged independently.  Dimension-specific
+           Each dimension is merged independently. Dimension-specific
            ``ours``/``theirs`` rules in ``.museattributes`` are honoured.
            Only dimensions where *both* sides changed AND no resolvable rule
            exists cause a true file-level conflict.
@@ -184,20 +242,6 @@ class MusicPlugin:
         3. **Manual override** — ``manual`` strategy in ``.museattributes``
            forces a path into the conflict list even when the engine would
            normally auto-resolve it.
-
-        Args:
-            base:      The common ancestor snapshot.
-            left:      The current branch snapshot (ours).
-            right:     The target branch snapshot (theirs).
-            repo_root: Repository root directory.  When provided, ``.museattributes``
-                       is loaded and the object store is accessible for MIDI
-                       dimension merge.  When ``None``, behaves as before
-                       (pure file-level conflict detection, no attributes).
-
-        Returns:
-            A :class:`~muse.domain.MergeResult` with the merged snapshot,
-            conflict paths, applied strategy overrides, and per-file dimension
-            reports.
         """
         import hashlib as _hashlib
 
@@ -240,9 +284,6 @@ class MusicPlugin:
 
         real_conflicts: set[str] = all_conflict_paths - consensus_deleted
 
-        # ------------------------------------------------------------------ #
-        # Resolution pass: apply .museattributes strategies                   #
-        # ------------------------------------------------------------------ #
         applied_strategies: dict[str, str] = {}
         dimension_reports: dict[str, dict[str, str]] = {}
         final_conflicts: list[str] = []
@@ -250,7 +291,6 @@ class MusicPlugin:
         for path in sorted(real_conflicts):
             file_strategy = resolve_strategy(attrs, path, "*")
 
-            # --- File-level ours/theirs -----------------------------------
             if file_strategy == "ours":
                 if path in left_files:
                     merged[path] = left_files[path]
@@ -267,7 +307,6 @@ class MusicPlugin:
                 applied_strategies[path] = "theirs"
                 continue
 
-            # --- MIDI dimension-level merge --------------------------------
             if (
                 repo_root is not None
                 and path.lower().endswith(".mid")
@@ -283,7 +322,7 @@ class MusicPlugin:
                     try:
                         dim_result = merge_midi_dimensions(
                             base_obj, left_obj, right_obj,
-                            attrs,  # list[AttributeRule]
+                            attrs,
                             path,
                         )
                     except ValueError:
@@ -298,18 +337,14 @@ class MusicPlugin:
                         dimension_reports[path] = dim_report
                         continue
 
-            # --- Remaining true conflicts ----------------------------------
-            # Honour "manual" by forcing non-conflict paths into conflicts too.
             final_conflicts.append(path)
 
-        # Force "manual" strategy onto paths that auto-merged cleanly.
         for path in sorted((left_changed | right_changed) - real_conflicts):
             if path in consensus_deleted:
                 continue
             if resolve_strategy(attrs, path, "*") == "manual":
                 final_conflicts.append(path)
                 applied_strategies[path] = "manual"
-                # Restore base version as the conflict placeholder.
                 if path in base_files:
                     merged[path] = base_files[path]
                 else:
@@ -345,21 +380,20 @@ class MusicPlugin:
         live_snapshot = self.snapshot(live)
         delta = self.diff(committed, live_snapshot)
 
-        added = delta["added"]
-        removed = delta["removed"]
-        modified = delta["modified"]
-        has_drift = bool(added or removed or modified)
+        inserts = sum(1 for op in delta["ops"] if op["op"] == "insert")
+        deletes = sum(1 for op in delta["ops"] if op["op"] == "delete")
+        modified = sum(1 for op in delta["ops"] if op["op"] in ("replace", "patch"))
+        has_drift = bool(inserts or deletes or modified)
 
         parts: list[str] = []
-        if added:
-            parts.append(f"{len(added)} added")
-        if removed:
-            parts.append(f"{len(removed)} removed")
+        if inserts:
+            parts.append(f"{inserts} added")
+        if deletes:
+            parts.append(f"{deletes} removed")
         if modified:
-            parts.append(f"{len(modified)} modified")
+            parts.append(f"{modified} modified")
 
         summary = ", ".join(parts) if parts else "working tree clean"
-
         return DriftReport(has_drift=has_drift, summary=summary, delta=delta)
 
     # ------------------------------------------------------------------
@@ -367,48 +401,122 @@ class MusicPlugin:
     # ------------------------------------------------------------------
 
     def apply(self, delta: StateDelta, live_state: LiveState) -> LiveState:
-        """Apply a delta to produce a new live state.
+        """Apply a structured delta to produce a new live state.
 
-        Called by ``muse checkout`` after it has physically updated
-        ``muse-work/`` (removed deleted files, restored added/modified files
-        from the object store). This method provides the domain-level
-        post-checkout hook and returns the authoritative new live state.
+        When ``live_state`` is a ``pathlib.Path`` the physical files have
+        already been updated by the caller (``muse checkout`` restores objects
+        from the store before calling this). Rescanning the directory is the
+        cheapest correct way to reflect the new state.
 
-        Two call modes:
-
-        * ``live_state`` is a ``pathlib.Path`` — files in the workdir have
-          already been updated by the caller.  Rescanning the directory is the
-          cheapest correct way to get the new state; all the heavy lifting was
-          done by the object store.
-
-        * ``live_state`` is a snapshot dict — only in-memory state is
-          available.  Removals are applied; added/modified paths cannot be
-          resolved without the target snapshot's content hashes, so they are
-          left to the caller.
+        When ``live_state`` is a snapshot dict, only ``DeleteOp`` and
+        ``ReplaceOp`` at the file level can be applied in-memory. ``InsertOp``
+        at the file level requires the new content to be on disk; callers that
+        need those should pass the workdir ``pathlib.Path`` instead.
+        ``PatchOp`` entries are skipped in-memory since reconstructing patched
+        file content requires both the original bytes and the object store.
 
         Args:
-            delta:      A delta produced by :meth:`diff`.
+            delta:      A ``StructuredDelta`` produced by :meth:`diff`.
             live_state: The workdir path (preferred) or a snapshot dict.
 
         Returns:
             The updated live state as a ``SnapshotManifest``.
         """
         if isinstance(live_state, pathlib.Path):
-            # Physical changes are already on disk — rescan gives correct state.
             return self.snapshot(live_state)
 
-        # In-memory path: apply removals.  Added/modified require target-side
-        # hashes that are not carried by the delta; callers that need those
-        # should pass the workdir Path instead.
         current_files = dict(live_state["files"])
-        for path in delta["removed"]:
-            current_files.pop(path, None)
+
+        for op in delta["ops"]:
+            if op["op"] == "delete":
+                current_files.pop(op["address"], None)
+            elif op["op"] == "replace":
+                current_files[op["address"]] = op["new_content_id"]
+            elif op["op"] == "insert":
+                current_files[op["address"]] = op["content_id"]
+            # PatchOp and MoveOp: skip in-memory — caller must use workdir path.
+
         return SnapshotManifest(files=current_files, domain=_DOMAIN_TAG)
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Module-level helpers
 # ---------------------------------------------------------------------------
+
+
+def _diff_modified_file(
+    *,
+    path: str,
+    old_hash: str,
+    new_hash: str,
+    repo_root: pathlib.Path | None,
+) -> DomainOp:
+    """Produce the best available op for a modified file.
+
+    Tries deep MIDI diff when possible; falls back to ``ReplaceOp``.
+    """
+    if path.lower().endswith(".mid") and repo_root is not None:
+        from muse.core.object_store import read_object
+        from muse.plugins.music.midi_diff import diff_midi_notes
+
+        base_bytes = read_object(repo_root, old_hash)
+        target_bytes = read_object(repo_root, new_hash)
+
+        if base_bytes is not None and target_bytes is not None:
+            try:
+                child_delta = diff_midi_notes(
+                    base_bytes, target_bytes, file_path=path
+                )
+                return PatchOp(
+                    op="patch",
+                    address=path,
+                    child_ops=child_delta["ops"],
+                    child_domain=child_delta["domain"],
+                    child_summary=child_delta["summary"],
+                )
+            except (ValueError, Exception) as exc:
+                logger.debug("⚠️ MIDI deep diff failed for %r: %s", path, exc)
+
+    return ReplaceOp(
+        op="replace",
+        address=path,
+        position=None,
+        old_content_id=old_hash,
+        new_content_id=new_hash,
+        old_summary=f"{path} (previous)",
+        new_summary=f"{path} (updated)",
+    )
+
+
+def _summarise_ops(ops: list[DomainOp]) -> str:
+    """Build a human-readable summary string from a list of domain ops."""
+    inserts = 0
+    deletes = 0
+    replaces = 0
+    patches = 0
+
+    for op in ops:
+        kind = op["op"]
+        if kind == "insert":
+            inserts += 1
+        elif kind == "delete":
+            deletes += 1
+        elif kind == "replace":
+            replaces += 1
+        elif kind == "patch":
+            patches += 1
+
+    parts: list[str] = []
+    if inserts:
+        parts.append(f"{inserts} file{'s' if inserts != 1 else ''} added")
+    if deletes:
+        parts.append(f"{deletes} file{'s' if deletes != 1 else ''} removed")
+    if replaces:
+        parts.append(f"{replaces} file{'s' if replaces != 1 else ''} modified")
+    if patches:
+        parts.append(f"{patches} file{'s' if patches != 1 else ''} patched")
+
+    return ", ".join(parts) if parts else "no changes"
 
 
 def _hash_file(path: pathlib.Path) -> str:

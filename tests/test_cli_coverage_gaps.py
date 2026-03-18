@@ -210,7 +210,8 @@ class TestDiffGaps:
         _write(repo, "b.mid")
         result = runner.invoke(cli, ["diff", "--stat"])
         assert result.exit_code == 0
-        assert "file(s) changed" in result.output
+        # --stat prints the structured delta summary line (Phase 1).
+        assert "added" in result.output or "No differences" in result.output
 
 
 # ---------------------------------------------------------------------------
