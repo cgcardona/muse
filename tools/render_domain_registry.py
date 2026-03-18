@@ -1777,7 +1777,7 @@ _HTML_TEMPLATE = """\
   <a class="nav-logo" href="#">muse</a>
   <a class="nav-link" href="tour_de_force.html">Demo</a>
   <a class="nav-link current" href="index.html">Domain Registry</a>
-  <a class="nav-link" href="../docs/guide/plugin-authoring-guide.md">Plugin Guide</a>
+  <a class="nav-link" href="https://github.com/cgcardona/muse/blob/main/docs/guide/plugin-authoring-guide.md">Plugin Guide</a>
   <div class="nav-spacer"></div>
   <span class="nav-badge">v0.1.1</span>
 </nav>
@@ -2115,9 +2115,9 @@ _HTML_TEMPLATE = """\
     </div>
     <p style="margin-top:16px;font-size:13px;color:var(--mute)">
       Full walkthrough →
-      <a href="../docs/guide/plugin-authoring-guide.md">docs/guide/plugin-authoring-guide.md</a>
+      <a href="https://github.com/cgcardona/muse/blob/main/docs/guide/plugin-authoring-guide.md">docs/guide/plugin-authoring-guide.md</a>
       · CRDT extension →
-      <a href="../docs/guide/crdt-reference.md">docs/guide/crdt-reference.md</a>
+      <a href="https://github.com/cgcardona/muse/blob/main/docs/guide/crdt-reference.md">docs/guide/crdt-reference.md</a>
     </p>
   </div>
 </section>
@@ -2179,7 +2179,7 @@ _HTML_TEMPLATE = """\
   <span>
     <a href="tour_de_force.html">Demo</a> ·
     <a href="https://github.com/cgcardona/muse">GitHub</a> ·
-    <a href="../docs/guide/plugin-authoring-guide.md">Plugin Guide</a>
+    <a href="https://github.com/cgcardona/muse/blob/main/docs/guide/plugin-authoring-guide.md">Plugin Guide</a>
   </span>
 </footer>
 
