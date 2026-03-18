@@ -37,13 +37,13 @@ class TestLoadAttributes:
         assert load_attributes(tmp_path) == []
 
     def test_meta_only_returns_empty_rules(self, tmp_path: pathlib.Path) -> None:
-        _write_attrs(tmp_path, '[meta]\ndomain = "music"\n')
+        _write_attrs(tmp_path, '[meta]\ndomain = "midi"\n')
         assert load_attributes(tmp_path) == []
 
     def test_parses_single_rule(self, tmp_path: pathlib.Path) -> None:
         _write_attrs(
             tmp_path,
-            '[meta]\ndomain = "music"\n\n[[rules]]\npath = "drums/*"\ndimension = "*"\nstrategy = "ours"\n',
+            '[meta]\ndomain = "midi"\n\n[[rules]]\npath = "drums/*"\ndimension = "*"\nstrategy = "ours"\n',
         )
         rules = load_attributes(tmp_path)
         assert len(rules) == 1
@@ -55,7 +55,7 @@ class TestLoadAttributes:
     def test_parses_multiple_rules(self, tmp_path: pathlib.Path) -> None:
         content = (
             '[[rules]]\npath = "drums/*"\ndimension = "*"\nstrategy = "ours"\n\n'
-            '[[rules]]\npath = "keys/*"\ndimension = "harmonic"\nstrategy = "theirs"\n'
+            '[[rules]]\npath = "keys/*"\ndimension = "pitch_bend"\nstrategy = "theirs"\n'
         )
         _write_attrs(tmp_path, content)
         rules = load_attributes(tmp_path)
@@ -66,7 +66,7 @@ class TestLoadAttributes:
     def test_preserves_source_index(self, tmp_path: pathlib.Path) -> None:
         content = (
             '[[rules]]\npath = "drums/*"\ndimension = "*"\nstrategy = "ours"\n\n'
-            '[[rules]]\npath = "keys/*"\ndimension = "harmonic"\nstrategy = "theirs"\n'
+            '[[rules]]\npath = "keys/*"\ndimension = "pitch_bend"\nstrategy = "theirs"\n'
         )
         _write_attrs(tmp_path, content)
         rules = load_attributes(tmp_path)
@@ -100,7 +100,7 @@ class TestLoadAttributes:
             load_attributes(tmp_path)
 
     def test_all_dimension_names_accepted(self, tmp_path: pathlib.Path) -> None:
-        dims = ["melodic", "rhythmic", "harmonic", "dynamic", "structural", "*", "custom"]
+        dims = ["notes", "pitch_bend", "cc_volume", "cc_sustain", "track_structure", "*", "custom"]
         lines = "\n".join(
             f'[[rules]]\npath = "path/*"\ndimension = "{d}"\nstrategy = "auto"\n'
             for d in dims
@@ -117,7 +117,7 @@ class TestLoadAttributes:
     def test_domain_kwarg_mismatch_warns(
         self, tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture
     ) -> None:
-        _write_attrs(tmp_path, '[meta]\ndomain = "music"\n')
+        _write_attrs(tmp_path, '[meta]\ndomain = "midi"\n')
         with caplog.at_level(logging.WARNING, logger="muse.core.attributes"):
             load_attributes(tmp_path, domain="genomics")
         assert "genomics" in caplog.text
@@ -125,15 +125,15 @@ class TestLoadAttributes:
     def test_domain_kwarg_match_no_warning(
         self, tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture
     ) -> None:
-        _write_attrs(tmp_path, '[meta]\ndomain = "music"\n')
+        _write_attrs(tmp_path, '[meta]\ndomain = "midi"\n')
         with caplog.at_level(logging.WARNING, logger="muse.core.attributes"):
-            load_attributes(tmp_path, domain="music")
+            load_attributes(tmp_path, domain="midi")
         assert caplog.text == ""
 
     def test_no_domain_kwarg_no_warning(
         self, tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture
     ) -> None:
-        _write_attrs(tmp_path, '[meta]\ndomain = "music"\n')
+        _write_attrs(tmp_path, '[meta]\ndomain = "midi"\n')
         with caplog.at_level(logging.WARNING, logger="muse.core.attributes"):
             load_attributes(tmp_path)
         assert caplog.text == ""
@@ -156,9 +156,9 @@ class TestReadAttributesMeta:
         assert read_attributes_meta(tmp_path) == {}
 
     def test_meta_domain_returned(self, tmp_path: pathlib.Path) -> None:
-        _write_attrs(tmp_path, '[meta]\ndomain = "music"\n')
+        _write_attrs(tmp_path, '[meta]\ndomain = "midi"\n')
         meta = read_attributes_meta(tmp_path)
-        assert meta.get("domain") == "music"
+        assert meta.get("domain") == "midi"
 
     def test_invalid_toml_returns_empty(self, tmp_path: pathlib.Path) -> None:
         _write_attrs(tmp_path, "not valid toml [\n")
@@ -177,16 +177,16 @@ class TestResolveStrategy:
     def test_wildcard_dimension_matches_any(self) -> None:
         rules = [AttributeRule("drums/*", "*", "ours", 0)]
         assert resolve_strategy(rules, "drums/kick.mid") == "ours"
-        assert resolve_strategy(rules, "drums/kick.mid", "melodic") == "ours"
-        assert resolve_strategy(rules, "drums/kick.mid", "harmonic") == "ours"
+        assert resolve_strategy(rules, "drums/kick.mid", "notes") == "ours"
+        assert resolve_strategy(rules, "drums/kick.mid", "pitch_bend") == "ours"
 
     def test_specific_dimension_matches_exact(self) -> None:
-        rules = [AttributeRule("keys/*", "harmonic", "theirs", 0)]
-        assert resolve_strategy(rules, "keys/piano.mid", "harmonic") == "theirs"
+        rules = [AttributeRule("keys/*", "pitch_bend", "theirs", 0)]
+        assert resolve_strategy(rules, "keys/piano.mid", "pitch_bend") == "theirs"
 
     def test_specific_dimension_no_match_on_other(self) -> None:
-        rules = [AttributeRule("keys/*", "harmonic", "theirs", 0)]
-        assert resolve_strategy(rules, "keys/piano.mid", "melodic") == "auto"
+        rules = [AttributeRule("keys/*", "pitch_bend", "theirs", 0)]
+        assert resolve_strategy(rules, "keys/piano.mid", "notes") == "auto"
 
     def test_first_match_wins(self) -> None:
         rules = [
@@ -213,16 +213,16 @@ class TestResolveStrategy:
 
     def test_wildcard_dimension_in_query_matches_any_rule_dim(self) -> None:
         """When caller passes dimension='*', any rule dimension matches."""
-        rules = [AttributeRule("drums/*", "structural", "manual", 0)]
+        rules = [AttributeRule("drums/*", "track_structure", "manual", 0)]
         assert resolve_strategy(rules, "drums/kick.mid", "*") == "manual"
 
     def test_fallback_rule_order(self) -> None:
         rules = [
-            AttributeRule("keys/*", "harmonic", "theirs", 0),
+            AttributeRule("keys/*", "pitch_bend", "theirs", 0),
             AttributeRule("*", "*", "manual", 1),
         ]
-        assert resolve_strategy(rules, "keys/piano.mid", "harmonic") == "theirs"
-        assert resolve_strategy(rules, "keys/piano.mid", "dynamic") == "manual"
+        assert resolve_strategy(rules, "keys/piano.mid", "pitch_bend") == "theirs"
+        assert resolve_strategy(rules, "keys/piano.mid", "cc_volume") == "manual"
         assert resolve_strategy(rules, "drums/kick.mid") == "manual"
 
     def test_default_dimension_is_wildcard(self) -> None:
@@ -231,5 +231,5 @@ class TestResolveStrategy:
         assert resolve_strategy(rules, "any.mid") == "ours"
 
     def test_manual_strategy_returned(self) -> None:
-        rules = [AttributeRule("*", "structural", "manual", 0)]
-        assert resolve_strategy(rules, "song.mid", "structural") == "manual"
+        rules = [AttributeRule("*", "track_structure", "manual", 0)]
+        assert resolve_strategy(rules, "song.mid", "track_structure") == "manual"

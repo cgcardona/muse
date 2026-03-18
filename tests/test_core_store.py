@@ -8,6 +8,7 @@ import pathlib
 import pytest
 
 from muse.core.store import (
+    CommitDict,
     CommitRecord,
     SnapshotRecord,
     TagRecord,
@@ -59,6 +60,65 @@ def _make_snapshot(root: pathlib.Path, snapshot_id: str, manifest: dict[str, str
     s = SnapshotRecord(snapshot_id=snapshot_id, manifest=manifest)
     write_snapshot(root, s)
     return s
+
+
+class TestFormatVersion:
+    """CommitRecord.format_version tracks schema evolution."""
+
+    def test_new_commit_has_format_version_4(self, repo: pathlib.Path) -> None:
+        c = _make_commit(repo, "abc123", "snap1", "msg")
+        assert c.format_version == 4
+
+    def test_format_version_round_trips_through_json(self, repo: pathlib.Path) -> None:
+        _make_commit(repo, "abc123", "snap1", "msg")
+        loaded = read_commit(repo, "abc123")
+        assert loaded is not None
+        assert loaded.format_version == 4
+
+    def test_format_version_in_serialised_dict(self) -> None:
+        c = CommitRecord(
+            commit_id="x",
+            repo_id="r",
+            branch="main",
+            snapshot_id="s",
+            message="m",
+            committed_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+        d = c.to_dict()
+        assert "format_version" in d
+        assert d["format_version"] == 4
+
+    def test_missing_format_version_defaults_to_1(self) -> None:
+        """Existing JSON without format_version field deserialises as version 1."""
+        raw = CommitDict(
+            commit_id="abc",
+            repo_id="r",
+            branch="main",
+            snapshot_id="s",
+            message="old record",
+            committed_at="2025-01-01T00:00:00+00:00",
+        )
+        c = CommitRecord.from_dict(raw)
+        assert c.format_version == 1
+
+    def test_explicit_format_version_preserved(self) -> None:
+        raw = CommitDict(
+            commit_id="abc",
+            repo_id="r",
+            branch="main",
+            snapshot_id="s",
+            message="versioned record",
+            committed_at="2025-01-01T00:00:00+00:00",
+            format_version=2,
+        )
+        c = CommitRecord.from_dict(raw)
+        assert c.format_version == 2
+
+    def test_format_version_field_is_integer(self, repo: pathlib.Path) -> None:
+        _make_commit(repo, "abc123", "snap1", "msg")
+        loaded = read_commit(repo, "abc123")
+        assert loaded is not None
+        assert isinstance(loaded.format_version, int)
 
 
 class TestWriteReadCommit:

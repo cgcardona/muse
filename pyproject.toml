@@ -32,6 +32,7 @@ dev = [
     "pytest-cov>=7.0.0",
     "anyio>=4.9.0",
     "mypy>=1.19.0",
+    "hypothesis>=6.0.0",
 ]
 
 [build-system]

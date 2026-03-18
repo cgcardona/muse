@@ -189,11 +189,11 @@ class TestIsIgnored:
 
 
 # ---------------------------------------------------------------------------
-# Integration: MusicPlugin.snapshot() honours .museignore
+# Integration: MidiPlugin.snapshot() honours .museignore
 # ---------------------------------------------------------------------------
 
 
-class TestMusicPluginSnapshotIgnore:
+class TestMidiPluginSnapshotIgnore:
     """End-to-end: .museignore filters out paths during snapshot()."""
 
     def _make_repo(self, tmp_path: pathlib.Path) -> pathlib.Path:
@@ -205,20 +205,20 @@ class TestMusicPluginSnapshotIgnore:
     def test_snapshot_without_museignore_includes_all(
         self, tmp_path: pathlib.Path
     ) -> None:
-        from muse.plugins.music.plugin import MusicPlugin
+        from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
         workdir = root / "muse-work"
         (workdir / "beat.mid").write_text("data")
         (workdir / "session.tmp").write_text("temp")
 
-        plugin = MusicPlugin()
+        plugin = MidiPlugin()
         snap = plugin.snapshot(workdir)
         assert "beat.mid" in snap["files"]
         assert "session.tmp" in snap["files"]
 
     def test_snapshot_excludes_ignored_files(self, tmp_path: pathlib.Path) -> None:
-        from muse.plugins.music.plugin import MusicPlugin
+        from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
         workdir = root / "muse-work"
@@ -226,13 +226,13 @@ class TestMusicPluginSnapshotIgnore:
         (workdir / "session.tmp").write_text("temp")
         (root / ".museignore").write_text("*.tmp\n")
 
-        plugin = MusicPlugin()
+        plugin = MidiPlugin()
         snap = plugin.snapshot(workdir)
         assert "beat.mid" in snap["files"]
         assert "session.tmp" not in snap["files"]
 
     def test_snapshot_negation_keeps_file(self, tmp_path: pathlib.Path) -> None:
-        from muse.plugins.music.plugin import MusicPlugin
+        from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
         workdir = root / "muse-work"
@@ -240,13 +240,13 @@ class TestMusicPluginSnapshotIgnore:
         (workdir / "important.tmp").write_text("keep me")
         (root / ".museignore").write_text("*.tmp\n!important.tmp\n")
 
-        plugin = MusicPlugin()
+        plugin = MidiPlugin()
         snap = plugin.snapshot(workdir)
         assert "session.tmp" not in snap["files"]
         assert "important.tmp" in snap["files"]
 
     def test_snapshot_nested_pattern(self, tmp_path: pathlib.Path) -> None:
-        from muse.plugins.music.plugin import MusicPlugin
+        from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
         workdir = root / "muse-work"
@@ -256,13 +256,13 @@ class TestMusicPluginSnapshotIgnore:
         (renders / "preview.wav").write_text("audio")
         (root / ".museignore").write_text("renders/*.wav\n")
 
-        plugin = MusicPlugin()
+        plugin = MidiPlugin()
         snap = plugin.snapshot(workdir)
         assert "beat.mid" in snap["files"]
         assert "renders/preview.wav" not in snap["files"]
 
     def test_snapshot_dotfiles_always_excluded(self, tmp_path: pathlib.Path) -> None:
-        from muse.plugins.music.plugin import MusicPlugin
+        from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
         workdir = root / "muse-work"
@@ -270,27 +270,27 @@ class TestMusicPluginSnapshotIgnore:
         (workdir / ".DS_Store").write_bytes(b"\x00" * 16)
         # No .museignore — dotfiles excluded by the built-in rule.
 
-        plugin = MusicPlugin()
+        plugin = MidiPlugin()
         snap = plugin.snapshot(workdir)
         assert "beat.mid" in snap["files"]
         assert ".DS_Store" not in snap["files"]
 
     def test_snapshot_with_empty_museignore(self, tmp_path: pathlib.Path) -> None:
-        from muse.plugins.music.plugin import MusicPlugin
+        from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
         workdir = root / "muse-work"
         (workdir / "beat.mid").write_text("data")
         (root / ".museignore").write_text("# just a comment\n\n")
 
-        plugin = MusicPlugin()
+        plugin = MidiPlugin()
         snap = plugin.snapshot(workdir)
         assert "beat.mid" in snap["files"]
 
     def test_snapshot_directory_pattern_does_not_exclude_file(
         self, tmp_path: pathlib.Path
     ) -> None:
-        from muse.plugins.music.plugin import MusicPlugin
+        from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
         workdir = root / "muse-work"
@@ -300,7 +300,7 @@ class TestMusicPluginSnapshotIgnore:
         # Directory-only pattern — should not exclude files.
         (root / ".museignore").write_text("renders/\n")
 
-        plugin = MusicPlugin()
+        plugin = MidiPlugin()
         snap = plugin.snapshot(workdir)
         # The file is NOT excluded because trailing-/ patterns are directory-only.
         assert "renders/mix.wav" in snap["files"]

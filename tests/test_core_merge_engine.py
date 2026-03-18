@@ -33,7 +33,7 @@ from muse.domain import (
     StructuredDelta,
     StructuredMergePlugin,
 )
-from muse.plugins.music.plugin import MusicPlugin
+from muse.plugins.midi.plugin import MidiPlugin
 
 
 @pytest.fixture
@@ -186,7 +186,7 @@ def _rep(addr: str, old: str, new: str) -> ReplaceOp:
 
 
 def _delta(ops: list[DomainOp]) -> StructuredDelta:
-    return StructuredDelta(domain="music", ops=ops, summary="test")
+    return StructuredDelta(domain="midi", ops=ops, summary="test")
 
 
 class TestMergeStructuredIntegration:
@@ -245,17 +245,17 @@ def _op_key_tuple(op: DomainOp) -> tuple[str, ...]:
 
 
 class TestStructuredMergePluginProtocol:
-    """Verify MusicPlugin satisfies the StructuredMergePlugin protocol."""
+    """Verify MidiPlugin satisfies the StructuredMergePlugin protocol."""
 
     def test_music_plugin_isinstance_structured_merge_plugin(self) -> None:
-        plugin = MusicPlugin()
+        plugin = MidiPlugin()
         assert isinstance(plugin, StructuredMergePlugin)
 
     def test_merge_ops_non_conflicting_files_is_clean(self) -> None:
-        plugin = MusicPlugin()
-        base = SnapshotManifest(files={}, domain="music")
-        ours_snap = SnapshotManifest(files={"a.mid": "hash-a"}, domain="music")
-        theirs_snap = SnapshotManifest(files={"b.mid": "hash-b"}, domain="music")
+        plugin = MidiPlugin()
+        base = SnapshotManifest(files={}, domain="midi")
+        ours_snap = SnapshotManifest(files={"a.mid": "hash-a"}, domain="midi")
+        theirs_snap = SnapshotManifest(files={"b.mid": "hash-b"}, domain="midi")
         ours_ops: list[DomainOp] = [_ins("a.mid", pos=None, cid="hash-a")]
         theirs_ops: list[DomainOp] = [_ins("b.mid", pos=None, cid="hash-b")]
 
@@ -267,10 +267,10 @@ class TestStructuredMergePluginProtocol:
         assert "b.mid" in result.merged["files"]
 
     def test_merge_ops_conflicting_same_file_replace_not_clean(self) -> None:
-        plugin = MusicPlugin()
-        base = SnapshotManifest(files={"f.mid": "base-hash"}, domain="music")
-        ours_snap = SnapshotManifest(files={"f.mid": "ours-hash"}, domain="music")
-        theirs_snap = SnapshotManifest(files={"f.mid": "theirs-hash"}, domain="music")
+        plugin = MidiPlugin()
+        base = SnapshotManifest(files={"f.mid": "base-hash"}, domain="midi")
+        ours_snap = SnapshotManifest(files={"f.mid": "ours-hash"}, domain="midi")
+        theirs_snap = SnapshotManifest(files={"f.mid": "theirs-hash"}, domain="midi")
         ours_ops: list[DomainOp] = [_rep("f.mid", "base-hash", "ours-hash")]
         theirs_ops: list[DomainOp] = [_rep("f.mid", "base-hash", "theirs-hash")]
 
@@ -281,10 +281,10 @@ class TestStructuredMergePluginProtocol:
         assert "f.mid" in result.conflicts
 
     def test_merge_ops_ours_strategy_resolves_conflict(self) -> None:
-        plugin = MusicPlugin()
-        base = SnapshotManifest(files={"f.mid": "base"}, domain="music")
-        ours_snap = SnapshotManifest(files={"f.mid": "ours-v"}, domain="music")
-        theirs_snap = SnapshotManifest(files={"f.mid": "theirs-v"}, domain="music")
+        plugin = MidiPlugin()
+        base = SnapshotManifest(files={"f.mid": "base"}, domain="midi")
+        ours_snap = SnapshotManifest(files={"f.mid": "ours-v"}, domain="midi")
+        theirs_snap = SnapshotManifest(files={"f.mid": "theirs-v"}, domain="midi")
         ours_ops: list[DomainOp] = [_rep("f.mid", "base", "ours-v")]
         theirs_ops: list[DomainOp] = [_rep("f.mid", "base", "theirs-v")]
 
@@ -299,10 +299,10 @@ class TestStructuredMergePluginProtocol:
         assert not result.is_clean
 
     def test_merge_ops_delete_on_only_one_side_is_clean(self) -> None:
-        plugin = MusicPlugin()
-        base = SnapshotManifest(files={"keep.mid": "k", "remove.mid": "r"}, domain="music")
-        ours_snap = SnapshotManifest(files={"keep.mid": "k"}, domain="music")
-        theirs_snap = SnapshotManifest(files={"keep.mid": "k", "remove.mid": "r"}, domain="music")
+        plugin = MidiPlugin()
+        base = SnapshotManifest(files={"keep.mid": "k", "remove.mid": "r"}, domain="midi")
+        ours_snap = SnapshotManifest(files={"keep.mid": "k"}, domain="midi")
+        theirs_snap = SnapshotManifest(files={"keep.mid": "k", "remove.mid": "r"}, domain="midi")
         ours_ops: list[DomainOp] = [_del("remove.mid", pos=None, cid="r")]
         theirs_ops: list[DomainOp] = []
 
@@ -314,8 +314,8 @@ class TestStructuredMergePluginProtocol:
         assert "remove.mid" not in result.merged["files"]
 
     def test_merge_ops_empty_changes_returns_base(self) -> None:
-        plugin = MusicPlugin()
-        base = SnapshotManifest(files={"f.mid": "h"}, domain="music")
+        plugin = MidiPlugin()
+        base = SnapshotManifest(files={"f.mid": "h"}, domain="midi")
         result = plugin.merge_ops(base, base, base, [], [])
         assert result.is_clean is True
         assert result.merged["files"] == {"f.mid": "h"}

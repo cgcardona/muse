@@ -31,7 +31,7 @@ optionality, and intended use.
    - [In-Memory Dataclasses](#in-memory-dataclasses)
 6. [Merge Engine Types (`muse/core/merge_engine.py`)](#merge-engine-types)
 7. [Attributes Types (`muse/core/attributes.py`)](#attributes-types)
-8. [MIDI Dimension Merge Types (`muse/plugins/music/midi_merge.py`)](#midi-dimension-merge-types)
+8. [MIDI Dimension Merge Types (`muse/plugins/midi/midi_merge.py`)](#midi-dimension-merge-types)
 9. [Configuration Types (`muse/cli/config.py`)](#configuration-types)
 10. [MIDI / MusicXML Import Types (`muse/cli/midi_parser.py`)](#midi--musicxml-import-types)
 11. [Stash Types (`muse/cli/commands/stash.py`)](#stash-types)
@@ -139,7 +139,7 @@ old `DeltaManifest` path-list format with a semantically rich operation list.
 
 Each variant is a `TypedDict` with an `"op"` discriminator and an `"address"`
 identifying the element within the domain's namespace (e.g. `"note:4:60"` in
-the music domain).
+the MIDI domain).
 
 | Variant | `op` | Additional fields | Description |
 |---------|------|------------------|-------------|
@@ -176,7 +176,7 @@ An empty `conflicts` list means the merge was clean.
 | `merged` | `StateSnapshot` | required | The reconciled snapshot |
 | `conflicts` | `list[str]` | `[]` | Workspace-relative paths that could not be auto-merged |
 | `applied_strategies` | `dict[str, str]` | `{}` | Path → strategy applied by `.museattributes` (e.g. `{"drums/kick.mid": "ours"}`) |
-| `dimension_reports` | `dict[str, dict[str, str]]` | `{}` | Path → per-dimension winner map; only populated for MIDI files that went through dimension-level merge (e.g. `{"keys/piano.mid": {"notes": "left", "harmonic": "right"}}`) |
+| `dimension_reports` | `dict[str, dict[str, str]]` | `{}` | Path → per-dimension winner map; only populated for MIDI files that went through dimension-level merge (e.g. `{"keys/piano.mid": {"notes": "left", "pitch_bend": "right"}}`) |
 
 **Property:**
 
@@ -210,7 +210,7 @@ works as a module-load sanity check.
 | `apply` | `(delta: StateDelta, live_state: LiveState) -> LiveState` | Apply a delta to produce a new live state |
 | `schema` | `() -> DomainSchema` | Declare the structural shape of the domain's data (drives diff algorithm selection) |
 
-The music plugin (`muse.plugins.music.plugin`) is the reference implementation.
+The music plugin (`muse.plugins.midi.plugin`) is the reference implementation.
 Every other domain — scientific simulation, genomics, 3D spatial design,
 spacetime — implements these six methods and registers itself as a plugin.
 
@@ -288,7 +288,7 @@ and to drive informed conflict reporting during OT merge.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `name` | `str` | Dimension name (e.g. `"melodic"`, `"harmonic"`) |
+| `name` | `str` | Dimension name (e.g. `"notes"`, `"pitch_bend"`) |
 | `description` | `str` | Human-readable description for this dimension |
 | `diff_algorithm` | `str` | Algorithm to use: `"myers_lcs"`, `"tree_edit"`, `"numerical"`, or `"set_ops"` |
 
@@ -539,7 +539,7 @@ lookup with `fnmatch` path patterns and dimension name matching.
 | Field | Type | Description |
 |-------|------|-------------|
 | `path` | `str` | `fnmatch` glob matched against workspace-relative POSIX paths |
-| `dimension` | `str` | Domain axis name (e.g. `"melodic"`) or `"*"` to match all |
+| `dimension` | `str` | Domain axis name (e.g. `"notes"`) or `"*"` to match all |
 | `strategy` | `str` | One of the `VALID_STRATEGIES` strings |
 
 #### `MuseAttributesFile`
@@ -558,7 +558,7 @@ lookup with `fnmatch` path patterns and dimension name matching.
 | Field | Type | Description |
 |-------|------|-------------|
 | `path_pattern` | `str` | `fnmatch` glob matched against workspace-relative POSIX paths |
-| `dimension` | `str` | Domain axis name (e.g. `"melodic"`, `"harmonic"`) or `"*"` to match all |
+| `dimension` | `str` | Domain axis name (e.g. `"notes"`, `"pitch_bend"`) or `"*"` to match all |
 | `strategy` | `str` | One of the `VALID_STRATEGIES` strings |
 | `source_index` | `int` | 0-based index of the rule in the `[[rules]]` array; defaults to `0` |
 
@@ -576,9 +576,9 @@ lookup with `fnmatch` path patterns and dimension name matching.
 
 ## MIDI Dimension Merge Types
 
-**Path:** `muse/plugins/music/midi_merge.py`
+**Path:** `muse/plugins/midi/midi_merge.py`
 
-The multidimensional merge engine for the music domain.  MIDI events are
+The multidimensional merge engine for the MIDI domain.  MIDI events are
 bucketed into four orthogonal dimension slices; each slice has a content hash
 for fast change detection.  A three-way merge resolves each dimension
 independently using `.museattributes` strategies, then reconstructs a valid
@@ -588,8 +588,8 @@ MIDI file from the winning slices.
 
 | Name | Type | Value / Description |
 |------|------|---------------------|
-| `INTERNAL_DIMS` | `list[str]` | `["notes", "harmonic", "dynamic", "structural"]` — the four internal dimension bucket names |
-| `DIM_ALIAS` | `dict[str, str]` | Maps user-facing names to internal buckets: `"melodic" → "notes"`, `"rhythmic" → "notes"`, `"harmonic" → "harmonic"`, `"dynamic" → "dynamic"`, `"structural" → "structural"` |
+| `INTERNAL_DIMS` | `list[str]` | `["notes", "pitch_bend", "cc_volume", "track_structure"]` — the internal dimension bucket names |
+| `DIM_ALIAS` | `dict[str, str]` | Maps user-facing names to internal buckets: `"notes" → "notes"`, `"notes" → "notes"`, `"pitch_bend" → "pitch_bend"`, `"cc_volume" → "cc_volume"`, `"track_structure" → "track_structure"` |
 
 #### `_MsgVal`
 
@@ -603,7 +603,7 @@ avoid `dict[str, object]`.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `name` | `str` | required | Internal dimension name (e.g. `"notes"`, `"harmonic"`) |
+| `name` | `str` | required | Internal dimension name (e.g. `"notes"`, `"pitch_bend"`) |
 | `events` | `list[tuple[int, mido.Message]]` | `[]` | `(abs_tick, message)` pairs sorted by ascending absolute tick |
 | `content_hash` | `str` | `""` | SHA-256 digest of the canonical JSON serialisation; computed in `__post_init__` when not provided |
 
@@ -622,7 +622,7 @@ file-level metadata.
 
 | Name | Signature | Description |
 |------|-----------|-------------|
-| `get` | `(user_dim: str) -> DimensionSlice` | Resolve a user-facing alias (`"melodic"`, `"rhythmic"`) or internal name to the correct slice |
+| `get` | `(user_dim: str) -> DimensionSlice` | Resolve a user-facing alias (`"notes"`, `"notes"`) or internal name to the correct slice |
 
 **Public functions:**
 
@@ -842,8 +842,8 @@ Muse VCS
 │   ├── MuseAttributesFile         — TypedDict (total=False): full parsed file structure
 │   └── AttributeRule              — dataclass (frozen): path_pattern + dimension + strategy + source_index
 │
-├── MIDI Dimension Merge (muse/plugins/music/midi_merge.py)
-│   ├── INTERNAL_DIMS              — list[str]: [notes, harmonic, dynamic, structural]
+├── MIDI Dimension Merge (muse/plugins/midi/midi_merge.py)
+│   ├── INTERNAL_DIMS              — list[str]: [all 21 MIDI dimensions]
 │   ├── DIM_ALIAS                  — dict[str, str]: user-facing names → internal buckets
 │   ├── _MsgVal                    — TypeAlias: int | str | list[int]
 │   ├── DimensionSlice             — dataclass: name + events list + content_hash
@@ -886,7 +886,7 @@ Arrow conventions:
 
 ### Diagram 1 — Domain Protocol and Plugin Contract
 
-The `MuseDomainPlugin` protocol and the types that flow through its six methods. `MusicPlugin` is the reference implementation that proves the abstraction.
+The `MuseDomainPlugin` protocol and the types that flow through its six methods. `MidiPlugin` is the reference implementation that proves the abstraction.
 
 ```mermaid
 classDiagram
@@ -924,7 +924,7 @@ classDiagram
         +drift(committed: StateSnapshot, live: LiveState) DriftReport
         +apply(delta: StateDelta, live_state: LiveState) LiveState
     }
-    class MusicPlugin {
+    class MidiPlugin {
         <<reference implementation>>
         +snapshot(live_state) StateSnapshot
         +diff(base, target) StateDelta
@@ -937,7 +937,7 @@ classDiagram
     MuseDomainPlugin ..> DeltaManifest : StateDelta alias
     MuseDomainPlugin --> MergeResult : merge() returns
     MuseDomainPlugin --> DriftReport : drift() returns
-    MusicPlugin ..|> MuseDomainPlugin : implements
+    MidiPlugin ..|> MuseDomainPlugin : implements
     MergeResult --> SnapshotManifest : merged
     DriftReport --> DeltaManifest : delta
 ```
@@ -1377,7 +1377,7 @@ classDiagram
 
 The attribute rule pipeline and how it flows into the multidimensional MIDI
 merge engine.  `AttributeRule` objects are produced by `load_attributes()` and
-consumed by both `MusicPlugin.merge()` and `merge_midi_dimensions()`.
+consumed by both `MidiPlugin.merge()` and `merge_midi_dimensions()`.
 `DimensionSlice` is the core bucket type; `MidiDimensions` groups the four
 slices for one file.
 
@@ -1411,14 +1411,14 @@ classDiagram
         +dimension_reports : dict~str, dict~str, str~~
         +is_clean : bool
     }
-    class MusicPlugin {
+    class MidiPlugin {
         <<MuseDomainPlugin>>
         +merge(base, left, right, *, repo_root) MergeResult
     }
 
-    MusicPlugin ..> AttributeRule : load_attributes()
-    MusicPlugin ..> MidiDimensions : extract_dimensions()
-    MusicPlugin --> MergeResult : returns
+    MidiPlugin ..> AttributeRule : load_attributes()
+    MidiPlugin ..> MidiDimensions : extract_dimensions()
+    MidiPlugin --> MergeResult : returns
     MergeResult --> AttributeRule : applied_strategies reflects rules used
     MidiDimensions *-- DimensionSlice : slices (4 buckets)
     AttributeRule ..> DimensionSlice : resolve_strategy selects winner

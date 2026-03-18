@@ -138,8 +138,8 @@ ElementSchema = SequenceSchema | TreeSchema | TensorSchema | MapSchema | SetSche
 class DimensionSpec(TypedDict):
     """A named semantic sub-dimension of the domain's state.
 
-    Domains are multi-dimensional. Music has melodic, harmonic, dynamic, and
-    structural dimensions. Genomics has coding regions, regulatory elements,
+    Domains are multi-dimensional. MIDI has notes, pitch_bend, cc_volume, and
+    track_structure dimensions. Genomics has coding regions, regulatory elements,
     and metadata dimensions. 3D spatial design has geometry, materials,
     lighting, and animation dimensions.
 
@@ -148,7 +148,7 @@ class DimensionSpec(TypedDict):
     without blocking on each other.
 
     ``independent_merge`` — when ``True``, a conflict in this dimension does
-    not block merging other dimensions. When ``False`` (e.g. structural changes
+    not block merging other dimensions. When ``False`` (e.g. track_structure changes
     in a DAW session), all dimensions must wait for this one to resolve.
     """
 

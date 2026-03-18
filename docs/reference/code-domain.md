@@ -826,7 +826,7 @@ Rejects the patch and exits non-zero if the source has syntax errors.
 ```
 muse/
   plugins/code/
-    plugin.py           MusicPlugin → CodePlugin (MuseDomainPlugin + StructuredMergePlugin)
+    plugin.py           MidiPlugin → CodePlugin (MuseDomainPlugin + StructuredMergePlugin)
     ast_parser.py       Python AST → SymbolRecord; validate_syntax() for all 11 languages
     symbol_diff.py      diff_symbol_trees() — O(n) diffing, rename/move annotation
     _query.py           symbols_for_snapshot(), walk_commits(), language_of()
@@ -985,4 +985,4 @@ InferredRefactor = Literal["extract", "inline", "split", "merge", "none"]
 - [Type Contracts](type-contracts.md) — strict typing rules and enforcement
 - [CRDT Reference](crdt-reference.md) — CRDT and OT merge primitives
 - [Tour de Force — Code](../demo/tour-de-force-code.md) — full narrative walkthrough of all code commands
-- [Tour de Force — Music](../demo/tour-de-force-music.md) — music domain reference demo
+- [Tour de Force — Music](../demo/tour-de-force-music.md) — MIDI domain reference demo

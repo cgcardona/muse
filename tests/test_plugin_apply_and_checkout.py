@@ -1,8 +1,8 @@
 """Tests for plugin.apply() and the incremental checkout that wires it in.
 
 Covers:
-- MusicPlugin.apply() with a workdir path (files already updated on disk)
-- MusicPlugin.apply() with a snapshot dict (in-memory removals)
+- MidiPlugin.apply() with a workdir path (files already updated on disk)
+- MidiPlugin.apply() with a snapshot dict (in-memory removals)
 - checkout incremental delta: only changed files are touched
 - revert reuses parent snapshot_id (no re-scan)
 - cherry-pick uses merged_manifest directly (no re-scan)
@@ -17,10 +17,10 @@ from typer.testing import CliRunner
 from muse.cli.app import cli
 from muse.core.store import get_head_commit_id, read_commit, read_snapshot
 from muse.domain import DeleteOp, SnapshotManifest, StructuredDelta
-from muse.plugins.music.plugin import MusicPlugin
+from muse.plugins.midi.plugin import MidiPlugin
 
 runner = CliRunner()
-plugin = MusicPlugin()
+plugin = MidiPlugin()
 
 
 # ---------------------------------------------------------------------------
@@ -53,15 +53,15 @@ def _head_id(repo: pathlib.Path) -> str:
 
 
 # ---------------------------------------------------------------------------
-# MusicPlugin.apply() — unit tests
+# MidiPlugin.apply() — unit tests
 # ---------------------------------------------------------------------------
 
 
 def _empty_delta() -> StructuredDelta:
-    return StructuredDelta(domain="music", ops=[], summary="no changes")
+    return StructuredDelta(domain="midi", ops=[], summary="no changes")
 
 
-class TestMusicPluginApplyPath:
+class TestMidiPluginApplyPath:
     """apply() with a workdir path rescans the directory for ground truth.
 
     When live_state is a pathlib.Path, apply() ignores the delta and simply
@@ -116,7 +116,7 @@ class TestMusicPluginApplyPath:
         assert result["files"] == expected["files"]
 
 
-class TestMusicPluginApplyDict:
+class TestMidiPluginApplyDict:
     """apply() with a snapshot dict applies ops in-memory."""
 
     def _delete(self, address: str, content_id: str = "x") -> DeleteOp:
@@ -126,9 +126,9 @@ class TestMusicPluginApplyDict:
         )
 
     def test_apply_removes_deleted_paths(self) -> None:
-        snap = SnapshotManifest(files={"a.mid": "aaa", "b.mid": "bbb"}, domain="music")
+        snap = SnapshotManifest(files={"a.mid": "aaa", "b.mid": "bbb"}, domain="midi")
         delta = StructuredDelta(
-            domain="music",
+            domain="midi",
             ops=[self._delete("b.mid", "bbb")],
             summary="1 file removed",
         )
@@ -137,9 +137,9 @@ class TestMusicPluginApplyDict:
         assert "a.mid" in result["files"]
 
     def test_apply_removes_multiple_paths(self) -> None:
-        snap = SnapshotManifest(files={"a.mid": "aaa", "b.mid": "bbb", "c.mid": "ccc"}, domain="music")
+        snap = SnapshotManifest(files={"a.mid": "aaa", "b.mid": "bbb", "c.mid": "ccc"}, domain="midi")
         delta = StructuredDelta(
-            domain="music",
+            domain="midi",
             ops=[self._delete("a.mid", "aaa"), self._delete("c.mid", "ccc")],
             summary="2 files removed",
         )
@@ -147,9 +147,9 @@ class TestMusicPluginApplyDict:
         assert result["files"] == {"b.mid": "bbb"}
 
     def test_apply_nonexistent_remove_is_noop(self) -> None:
-        snap = SnapshotManifest(files={"a.mid": "aaa"}, domain="music")
+        snap = SnapshotManifest(files={"a.mid": "aaa"}, domain="midi")
         delta = StructuredDelta(
-            domain="music",
+            domain="midi",
             ops=[self._delete("ghost.mid")],
             summary="1 file removed",
         )
@@ -157,10 +157,10 @@ class TestMusicPluginApplyDict:
         assert result["files"] == {"a.mid": "aaa"}
 
     def test_apply_preserves_domain(self) -> None:
-        snap = SnapshotManifest(files={}, domain="music")
+        snap = SnapshotManifest(files={}, domain="midi")
         delta = _empty_delta()
         result = plugin.apply(delta, snap)
-        assert result["domain"] == "music"
+        assert result["domain"] == "midi"
 
 
 # ---------------------------------------------------------------------------

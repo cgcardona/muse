@@ -97,7 +97,7 @@ muse/
   plugins/
     registry.py             — domain name → MuseDomainPlugin instance
     music/
-      plugin.py             — MusicPlugin: reference implementation of all protocols
+      plugin.py             — MidiPlugin: reference implementation of all protocols
       midi_diff.py          — note-level MIDI diff and MIDI reconstruction
     scaffold/
       plugin.py             — copy-paste template for new domain plugins
@@ -376,4 +376,4 @@ format changes.
 **Why four phases?** Each phase is independently useful. A plugin that only implements
 Phase 1 gets rich operation-level `muse show` output. Phase 2 adds algorithm selection.
 Phase 3 adds sub-file auto-merge. Phase 4 adds convergent multi-agent semantics. Adoption
-is incremental and backward-compatible.
+is incremental and current.

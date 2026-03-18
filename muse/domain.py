@@ -4,7 +4,7 @@ Muse provides the DAG engine, content-addressed object store, branching,
 lineage walking, topological log graph, and merge base finder. A domain plugin
 implements these six interfaces and Muse does the rest.
 
-The music plugin (``muse.plugins.music``) is the reference implementation.
+The music plugin (``muse.plugins.midi``) is the reference implementation.
 Every other domain — scientific simulation, genomics, 3D spatial design,
 spacetime — is a new plugin.
 
@@ -47,6 +47,35 @@ from __future__ import annotations
 import pathlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, Protocol, TypedDict, runtime_checkable
+
+# Public re-exports so callers can do ``from muse.domain import MutateOp`` etc.
+__all__ = [
+    "SnapshotManifest",
+    "DomainAddress",
+    "InsertOp",
+    "DeleteOp",
+    "MoveOp",
+    "ReplaceOp",
+    "FieldMutation",
+    "MutateOp",
+    "EntityProvenance",
+    "LeafDomainOp",
+    "PatchOp",
+    "DomainOp",
+    "SemVerBump",
+    "StructuredDelta",
+    "infer_sem_ver_bump",
+    "LiveState",
+    "StateSnapshot",
+    "StateDelta",
+    "ConflictRecord",
+    "MergeResult",
+    "DriftReport",
+    "MuseDomainPlugin",
+    "StructuredMergePlugin",
+    "CRDTSnapshotManifest",
+    "CRDTPlugin",
+]
 
 if TYPE_CHECKING:
     from muse.core.schema import CRDTDimensionSpec, DomainSchema
@@ -150,8 +179,89 @@ class ReplaceOp(TypedDict):
     new_summary: str
 
 
-#: The four non-recursive (leaf) operation types.
-LeafDomainOp = InsertOp | DeleteOp | MoveOp | ReplaceOp
+class FieldMutation(TypedDict):
+    """The string-serialised before/after of a single field in a :class:`MutateOp`.
+
+    Values are always strings so that typed primitives (int, float, bool) can
+    be compared uniformly without carrying domain-specific type information in
+    the generic delta algebra.  Plugins format them according to their domain
+    conventions (e.g. ``"80"`` for a MIDI velocity, ``"C4"`` for a pitch name).
+    """
+
+    old: str
+    new: str
+
+
+class MutateOp(TypedDict):
+    """A named entity's specific fields were updated.
+
+    Unlike :class:`ReplaceOp` — which replaces an entire element atomically —
+    ``MutateOp`` records *which* specific fields of a domain entity changed.
+    This enables mutation tracking for domains that maintain stable entity
+    identity separate from content equality.
+
+    Example: a MIDI note's velocity changed from 80 to 100.  Under a pure
+    content-hash model that becomes ``DeleteOp + InsertOp`` (two different
+    content hashes).  With ``MutateOp`` and a stable ``entity_id`` the diff
+    reports "velocity 80→100 on entity C4@bar4" — lineage is preserved.
+
+    ``entity_id``
+        Stable identifier for the mutated entity, assigned at first insertion
+        and reused across all subsequent mutations (regardless of content
+        changes).
+    ``fields``
+        Mapping from field name (e.g. ``"velocity"``, ``"start_tick"``) to a
+        :class:`FieldMutation` recording the serialised old and new values.
+    ``old_content_id`` / ``new_content_id``
+        SHA-256 of the full element state before and after the mutation,
+        enabling three-way merge conflict detection identical to
+        :class:`ReplaceOp`.
+    ``position``
+        Index within the containing ordered sequence (``None`` for unordered).
+    """
+
+    op: Literal["mutate"]
+    address: DomainAddress
+    entity_id: str
+    old_content_id: str
+    new_content_id: str
+    fields: dict[str, FieldMutation]
+    old_summary: str
+    new_summary: str
+    position: int | None
+
+
+class EntityProvenance(TypedDict, total=False):
+    """Causal metadata attached to ops that create or modify tracked entities.
+
+    All fields are optional (``total=False``) because entity tracking is an
+    opt-in capability.  Plugins that implement stable entity identity populate
+    these fields when constructing :class:`InsertOp`, :class:`MutateOp`, or
+    :class:`DeleteOp` entries.  Consumers that do not understand entity
+    provenance can safely ignore them.
+
+    ``entity_id``
+        Stable domain-specific identifier for the entity (e.g. a UUID assigned
+        at the note's first insertion).
+    ``origin_op_id``
+        The ``op_id`` of the op that first created this entity.
+    ``last_modified_op_id``
+        The ``op_id`` of the most recent op that touched this entity.
+    ``created_at_commit``
+        Short-form commit ID where this entity was first introduced.
+    ``actor_id``
+        The agent or human identity that performed this op.
+    """
+
+    entity_id: str
+    origin_op_id: str
+    last_modified_op_id: str
+    created_at_commit: str
+    actor_id: str
+
+
+#: The five non-recursive (leaf) operation types.
+LeafDomainOp = InsertOp | DeleteOp | MoveOp | ReplaceOp | MutateOp
 
 
 class PatchOp(TypedDict):
@@ -418,7 +528,7 @@ class MuseDomainPlugin(Protocol):
     walking, ASCII log graph, and merge base finder. Implement these six
     methods and your domain gets the full Muse VCS for free.
 
-    Music is the reference implementation (``muse.plugins.music``).
+    Music is the reference implementation (``muse.plugins.midi``).
     """
 
     def snapshot(self, live_state: LiveState) -> StateSnapshot:
@@ -492,7 +602,7 @@ class MuseDomainPlugin(Protocol):
            - ``"auto"`` / ``"union"`` — defer to the engine's default logic.
 
         4. For domain formats that support true multidimensional content (e.g.
-           MIDI: melodic, rhythmic, harmonic, dynamic, structural), attempt
+           MIDI: notes, pitch_bend, cc_volume, track_structure), attempt
            sub-file dimension merge before falling back to a file-level conflict.
         """
         ...
@@ -533,8 +643,7 @@ class MuseDomainPlugin(Protocol):
 
         - ``top_level`` — the primary collection structure (e.g. a set of
           files, a map of chromosome names to sequences).
-        - ``dimensions`` — the semantic sub-dimensions of state (e.g. melodic,
-          harmonic, dynamic, structural for music).
+        - ``dimensions`` — the semantic sub-dimensions of state (e.g. notes, pitch_bend, cc_volume, track_structure for MIDI).
         - ``merge_mode`` — ``"three_way"`` (OT merge) or ``"crdt"`` (CRDT convergent join).
 
         The schema drives :func:`~muse.core.diff_algorithms.diff_by_schema`
@@ -566,7 +675,7 @@ class StructuredMergePlugin(MuseDomainPlugin, Protocol):
     Plugins that do not implement ``merge_ops`` fall back to the existing
     file-level ``merge()`` path automatically — no changes required.
 
-    The :class:`~muse.plugins.music.plugin.MusicPlugin` is the reference
+    The :class:`~muse.plugins.midi.plugin.MidiPlugin` is the reference
     implementation for OT-based merge.
     """
 

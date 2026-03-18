@@ -208,12 +208,18 @@ class RGA:
         all_ids = set(self_map) | set(other_map)
         for eid in all_ids:
             if eid in self_map and eid in other_map:
-                src = self_map[eid]
+                s = self_map[eid]
+                o = other_map[eid]
+                # In practice the same element_id always carries the same value
+                # (because element_id = "{timestamp}@{author}" uniquely identifies
+                # a write).  If values differ (only possible in crafted test scenarios),
+                # pick the lexicographically larger value for commutativity.
+                winning_value = s["value"] if s["value"] >= o["value"] else o["value"]
                 merged_map[eid] = {
                     "id": eid,
-                    "value": src["value"],
-                    "deleted": self_map[eid]["deleted"] or other_map[eid]["deleted"],
-                    "parent_id": src["parent_id"],
+                    "value": winning_value,
+                    "deleted": s["deleted"] or o["deleted"],
+                    "parent_id": s["parent_id"],
                 }
             elif eid in self_map:
                 src = self_map[eid]

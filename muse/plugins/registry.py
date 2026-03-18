@@ -10,7 +10,7 @@ for a new domain requires only two changes:
 
 The domain for a repository is stored in ``.muse/repo.json`` under the key
 ``"domain"``.  Repositories created before this key was introduced default to
-``"music"``.
+``'midi'``.
 """
 from __future__ import annotations
 
@@ -21,22 +21,22 @@ from muse.core.errors import MuseCLIError
 from muse.core.schema import DomainSchema
 from muse.domain import MuseDomainPlugin
 from muse.plugins.code.plugin import CodePlugin
-from muse.plugins.music.plugin import MusicPlugin
+from muse.plugins.midi.plugin import MidiPlugin
 from muse.plugins.scaffold.plugin import ScaffoldPlugin
 
 _REGISTRY: dict[str, MuseDomainPlugin] = {
     "code":     CodePlugin(),
-    "music":    MusicPlugin(),
+    "midi":    MidiPlugin(),
     "scaffold": ScaffoldPlugin(),
 }
 
-_DEFAULT_DOMAIN = "music"
+_DEFAULT_DOMAIN = "midi"
 
 
 def _read_domain(root: pathlib.Path) -> str:
     """Return the domain name stored in ``.muse/repo.json``.
 
-    Falls back to ``"music"`` for repos that pre-date the ``domain`` field.
+    Falls back to ``'midi'`` for repos that pre-date the ``domain`` field.
     """
     repo_json = root / ".muse" / "repo.json"
     try:
@@ -98,7 +98,7 @@ def schema_for(domain: str) -> DomainSchema | None:
     can decide whether an unknown domain is an error or a soft miss.
 
     Args:
-        domain: Domain name string (e.g. ``"music"``).
+        domain: Domain name string (e.g. ``'midi'``).
 
     Returns:
         The :class:`~muse.core.schema.DomainSchema` declared by the plugin,

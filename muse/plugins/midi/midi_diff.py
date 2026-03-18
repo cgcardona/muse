@@ -21,7 +21,7 @@ Additional features
 -----------------
 :func:`reconstruct_midi` — the inverse of :func:`extract_notes`. Given a list
 of :class:`NoteKey` objects and a ticks_per_beat value, produces raw MIDI bytes
-for a Type 0 single-track file. Used by ``MusicPlugin.merge_ops()`` to
+for a Type 0 single-track file. Used by ``MidiPlugin.merge_ops()`` to
 materialise a merged MIDI file after the OT engine has determined that
 two branches' note-level operations commute.
 
@@ -38,7 +38,10 @@ import hashlib
 import io
 import logging
 from dataclasses import dataclass
-from typing import Literal, TypedDict
+from typing import TYPE_CHECKING, Literal, TypedDict
+
+if TYPE_CHECKING:
+    from muse.plugins.midi.entity import EntityIndex
 
 import mido
 
@@ -341,6 +344,110 @@ def diff_midi_notes(
 
 
 # ---------------------------------------------------------------------------
+# Entity-aware diff — wrapper that produces MutateOp for field-level mutations
+# ---------------------------------------------------------------------------
+
+
+def diff_midi_notes_with_entities(
+    base_bytes: bytes,
+    target_bytes: bytes,
+    *,
+    prior_index: "EntityIndex | None" = None,
+    commit_id: str = "",
+    op_id: str = "",
+    file_path: str = "",
+    mutation_threshold_ticks: int = 10,
+    mutation_threshold_velocity: int = 20,
+) -> StructuredDelta:
+    """Compute a note-level ``StructuredDelta`` with stable entity identity.
+
+    Unlike :func:`diff_midi_notes` which maps every field-level change to a
+    ``DeleteOp + InsertOp`` pair, this function uses the entity index from the
+    parent commit to detect *mutations* — notes that are logically the same
+    entity with changed properties — and emits ``MutateOp`` entries for them.
+
+    When ``prior_index`` is ``None`` or entity tracking is unavailable for a
+    note, this function falls back to the content-hash-only diff for that note
+    (same semantics as :func:`diff_midi_notes`).
+
+    The returned ``StructuredDelta`` also includes updated entity tracking
+    metadata in the ``domain`` field tag so consumers know which delta type
+    they are receiving.
+
+    Args:
+        base_bytes:   Raw bytes of the base (ancestor) MIDI file.
+        target_bytes: Raw bytes of the target (newer) MIDI file.
+        prior_index:  Entity index from the parent commit for *file_path*.
+                      ``None`` for first-commit or untracked tracks.
+        commit_id:    Current commit ID for provenance metadata.
+        op_id:        Op log entry ID that produced this diff.
+        file_path:    Workspace-relative path for log messages.
+        mutation_threshold_ticks:    Max |Δtick| for fuzzy entity matching.
+        mutation_threshold_velocity: Max |Δvelocity| for fuzzy entity matching.
+
+    Returns:
+        A ``StructuredDelta`` with ``InsertOp``, ``DeleteOp``, and ``MutateOp``
+        entries.  Domain tag is ``"midi_notes_tracked"`` to distinguish from
+        the plain content-hash diff.
+
+    Raises:
+        ValueError: When either byte string cannot be parsed as MIDI.
+    """
+    from muse.plugins.midi.entity import assign_entity_ids, diff_with_entity_ids
+
+    base_notes, base_tpb = extract_notes(base_bytes)
+    target_notes, _ = extract_notes(target_bytes)
+    tpb = base_tpb
+
+    base_entities = assign_entity_ids(
+        base_notes,
+        prior_index,
+        commit_id=commit_id or "base",
+        op_id=op_id or "",
+        mutation_threshold_ticks=mutation_threshold_ticks,
+        mutation_threshold_velocity=mutation_threshold_velocity,
+    )
+    target_entities = assign_entity_ids(
+        target_notes,
+        prior_index,
+        commit_id=commit_id,
+        op_id=op_id,
+        mutation_threshold_ticks=mutation_threshold_ticks,
+        mutation_threshold_velocity=mutation_threshold_velocity,
+    )
+
+    ops = diff_with_entity_ids(base_entities, target_entities, tpb)
+
+    inserts = sum(1 for op in ops if op["op"] == "insert")
+    deletes = sum(1 for op in ops if op["op"] == "delete")
+    mutates = sum(1 for op in ops if op["op"] == "mutate")
+
+    parts: list[str] = []
+    if inserts:
+        parts.append(f"{inserts} note{'s' if inserts != 1 else ''} added")
+    if deletes:
+        parts.append(f"{deletes} note{'s' if deletes != 1 else ''} removed")
+    if mutates:
+        parts.append(f"{mutates} note{'s' if mutates != 1 else ''} mutated")
+    summary = ", ".join(parts) if parts else "no note changes"
+
+    logger.debug(
+        "✅ Entity-aware MIDI diff %r: +%d -%d ~%d (%d ops)",
+        file_path,
+        inserts,
+        deletes,
+        mutates,
+        len(ops),
+    )
+
+    return StructuredDelta(
+        domain="midi_notes_tracked",
+        ops=ops,
+        summary=summary,
+    )
+
+
+# ---------------------------------------------------------------------------
 # MIDI reconstruction — inverse of extract_notes
 # ---------------------------------------------------------------------------
 
@@ -358,7 +465,7 @@ def reconstruct_midi(
     order.
 
     This is the inverse of :func:`extract_notes`.  Used by
-    :func:`~muse.plugins.music.plugin._merge_patch_ops` after the OT
+    :func:`~muse.plugins.midi.plugin._merge_patch_ops` after the OT
     engine has confirmed that two branches' note sequences commute, allowing
     the merged note list to be materialised as actual MIDI bytes.
 

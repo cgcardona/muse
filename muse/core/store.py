@@ -78,6 +78,37 @@ class CommitDict(TypedDict, total=False):
     ``sem_ver_bump`` and ``breaking_changes`` are semantic versioning
     metadata.  Absent (treated as ``"none"`` / ``[]``) for older records and
     non-code domains.
+
+    Agent provenance fields (all optional, default ``""`` for older records):
+
+    ``agent_id``     Stable identity string for the committing agent or human
+                     (e.g. ``"counterpoint-bot"`` or ``"gabriel"``).
+    ``model_id``     Model identifier when the author is an AI agent
+                     (e.g. ``"claude-opus-4"``).  Empty for human authors.
+    ``toolchain_id`` Toolchain that produced the commit
+                     (e.g. ``"cursor-agent-v2"``).
+    ``prompt_hash``  SHA-256 of the instruction/prompt that triggered this
+                     commit.  Privacy-preserving: the hash identifies the
+                     prompt without storing its content.
+    ``signature``    HMAC-SHA256 hex digest of ``commit_id`` using the
+                     agent's shared key.  Verifiable with
+                     :func:`muse.core.provenance.verify_commit_hmac`.
+    ``signer_key_id`` Fingerprint of the signing key
+                     (SHA-256[:16] of the raw key bytes).
+    ``format_version`` Schema evolution counter.  Each phase of the Muse
+                     supercharge plan that extends the commit record bumps
+                     this value.  Readers use it to know which optional fields
+                     are present:
+
+                     - ``1`` — base record (commit_id, snapshot_id, parent, message, author)
+                     - ``2`` — adds ``structured_delta`` (Phase 1: Typed Delta Algebra)
+                     - ``3`` — adds ``sem_ver_bump``, ``breaking_changes``
+                               (Phase 2: Domain Schema)
+                     - ``4`` — adds agent provenance: ``agent_id``, ``model_id``,
+                               ``toolchain_id``, ``prompt_hash``, ``signature``,
+                               ``signer_key_id`` (Phase 4: Agent Identity)
+
+                     Old records without this field default to ``1``.
     """
 
     commit_id: str
@@ -93,6 +124,13 @@ class CommitDict(TypedDict, total=False):
     structured_delta: StructuredDelta | None
     sem_ver_bump: SemVerBump
     breaking_changes: list[str]
+    agent_id: str
+    model_id: str
+    toolchain_id: str
+    prompt_hash: str
+    signature: str
+    signer_key_id: str
+    format_version: int
 
 
 class SnapshotDict(TypedDict):
@@ -146,6 +184,9 @@ class CommitRecord:
     ``sem_ver_bump`` and ``breaking_changes`` are populated by the commit command
     when a code-domain delta is available.  They default to ``"none"`` and ``[]``
     for older records and non-code domains.
+
+    Agent provenance fields default to ``""`` so that existing JSON without
+    them deserialises without error.  See :class:`CommitDict` for field semantics.
     """
 
     commit_id: str
@@ -161,6 +202,15 @@ class CommitRecord:
     structured_delta: StructuredDelta | None = None
     sem_ver_bump: SemVerBump = "none"
     breaking_changes: list[str] = field(default_factory=list)
+    agent_id: str = ""
+    model_id: str = ""
+    toolchain_id: str = ""
+    prompt_hash: str = ""
+    signature: str = ""
+    signer_key_id: str = ""
+    #: Schema evolution counter — see :class:`CommitDict` for the version table.
+    #: All new commits are written at the current maximum version (4).
+    format_version: int = 4
 
     def to_dict(self) -> CommitDict:
         return CommitDict(
@@ -177,6 +227,13 @@ class CommitRecord:
             structured_delta=self.structured_delta,
             sem_ver_bump=self.sem_ver_bump,
             breaking_changes=list(self.breaking_changes),
+            agent_id=self.agent_id,
+            model_id=self.model_id,
+            toolchain_id=self.toolchain_id,
+            prompt_hash=self.prompt_hash,
+            signature=self.signature,
+            signer_key_id=self.signer_key_id,
+            format_version=self.format_version,
         )
 
     @classmethod
@@ -199,6 +256,13 @@ class CommitRecord:
             structured_delta=d.get("structured_delta"),
             sem_ver_bump=d.get("sem_ver_bump", "none"),
             breaking_changes=list(d.get("breaking_changes") or []),
+            agent_id=d.get("agent_id", ""),
+            model_id=d.get("model_id", ""),
+            toolchain_id=d.get("toolchain_id", ""),
+            prompt_hash=d.get("prompt_hash", ""),
+            signature=d.get("signature", ""),
+            signer_key_id=d.get("signer_key_id", ""),
+            format_version=d.get("format_version", 1),
         )
 
 

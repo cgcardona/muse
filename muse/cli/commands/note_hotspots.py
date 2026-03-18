@@ -35,7 +35,7 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import resolve_commit_ref
-from muse.plugins.music._query import NoteInfo, walk_commits_for_track
+from muse.plugins.midi._query import NoteInfo, walk_commits_for_track
 
 logger = logging.getLogger(__name__)
 

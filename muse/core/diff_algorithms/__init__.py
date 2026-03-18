@@ -40,10 +40,12 @@ from muse.core.diff_algorithms import set_ops as _set_ops
 from muse.core.diff_algorithms import tree_edit as _tree_edit
 from muse.core.diff_algorithms.tree_edit import TreeNode
 from muse.core.schema import (
+    DomainSchema,
     ElementSchema,
     MapSchema,
+    SetSchema,
 )
-from muse.domain import DeleteOp, DomainOp, InsertOp, ReplaceOp, StructuredDelta
+from muse.domain import DeleteOp, DomainOp, InsertOp, ReplaceOp, SnapshotManifest, StructuredDelta
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,7 @@ __all__ = [
     "TreeInput",
     "DiffInput",
     "diff_by_schema",
+    "snapshot_diff",
 ]
 
 
@@ -289,3 +292,72 @@ def _diff_map(
     summary = ", ".join(parts) if parts else "no changes"
 
     return StructuredDelta(domain=domain, ops=ops, summary=summary)
+
+
+# ---------------------------------------------------------------------------
+# Schema-driven snapshot diff — the "auto diff" for new plugin authors
+# ---------------------------------------------------------------------------
+
+
+def snapshot_diff(
+    schema: DomainSchema,
+    base: SnapshotManifest,
+    target: SnapshotManifest,
+) -> StructuredDelta:
+    """Compute a ``StructuredDelta`` from two snapshots using the declared schema.
+
+    This is the **"free diff"** promised by Phase 2 of the supercharge plan:
+    a plugin author who declares a ``DomainSchema`` via ``schema()`` can call
+    this function from their ``diff()`` implementation instead of writing
+    file-set algebra from scratch.  The core engine dispatches to the correct
+    algorithm based on the schema's ``top_level`` kind.
+
+    The function treats the ``SnapshotManifest.files`` dict as a
+    ``{path: content_hash}`` map and produces ``InsertOp``, ``DeleteOp``, and
+    ``ReplaceOp`` entries per file path.  This gives correct file-level diffs
+    for any domain whose state is a collection of files.
+
+    For sub-file granularity (e.g. MIDI note-level diffs), plugins must provide
+    their own ``diff()`` implementation — there is no general sub-file algorithm
+    because the binary format is domain-specific.  The MIDI plugin uses this
+    approach, delegating file-level ops to ``snapshot_diff`` and adding
+    ``PatchOp`` entries for changed MIDI files on top.
+
+    Args:
+        schema:  The plugin's declared ``DomainSchema`` (from ``plugin.schema()``).
+        base:    Snapshot of the earlier state (e.g. HEAD).
+        target:  Snapshot of the later state (e.g. working tree).
+
+    Returns:
+        A ``StructuredDelta`` with ``InsertOp`` / ``DeleteOp`` / ``ReplaceOp``
+        entries describing every file-level change.  The ``domain`` field is
+        taken from ``schema["domain"]``.
+
+    Example::
+
+        class MyPlugin:
+            def schema(self) -> DomainSchema:
+                return DomainSchema(domain="myplugin", ...)
+
+            def diff(self, base, target, *, repo_root=None) -> StateDelta:
+                from muse.core.diff_algorithms import snapshot_diff
+                return snapshot_diff(self.schema(), base, target)
+    """
+    domain = schema["domain"]
+    # Represent the file collection as a key→content_hash map and dispatch
+    # through diff_by_schema using a MapSchema.  _diff_map produces the correct
+    # InsertOp / DeleteOp / ReplaceOp per path without needing to know the
+    # actual file format.
+    map_schema = MapSchema(
+        kind="map",
+        key_type="file_path",
+        value_schema=SetSchema(
+            kind="set",
+            element_type="content_hash",
+            identity="by_content",
+        ),
+        identity="by_key",
+    )
+    base_input = MapInput(kind="map", entries=dict(base["files"]))
+    target_input = MapInput(kind="map", entries=dict(target["files"]))
+    return diff_by_schema(map_schema, base_input, target_input, domain=domain)
