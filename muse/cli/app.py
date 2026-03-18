@@ -71,6 +71,7 @@ from muse.cli.commands import (
     harmony,
     hotspots,
     impact,
+    index_rebuild,
     init,
     languages,
     log,
@@ -149,6 +150,7 @@ cli.add_typer(find_symbol.app,     name="find-symbol",      help="[code] Cross-c
 cli.add_typer(impact.app,          name="impact",           help="[code] Transitive blast-radius — every caller affected if this symbol changes.")
 cli.add_typer(dead.app,            name="dead",             help="[code] Dead code candidates — symbols with no callers and no importers.")
 cli.add_typer(coverage.app,        name="coverage",         help="[code] Class interface call-coverage — which methods are actually called?")
+cli.add_typer(index_rebuild.app,   name="index",            help="[code] Manage local indexes: status, rebuild symbol_history / hash_occurrence.")
 
 
 if __name__ == "__main__":
