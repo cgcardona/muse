@@ -1,4 +1,4 @@
-# Muse Tour de Force — Video Narration Script
+# Muse Tour de Force — Video Narration Script (v1.0)
 
 > **Format:** YouTube walkthrough of the Tour de Force interactive demo.
 > Open `artifacts/tour_de_force.html` before recording. Click **Play Tour**
@@ -7,6 +7,12 @@
 >
 > **Tone:** conversational, curious, a little excited — like showing a friend
 > something you built that you genuinely believe in.
+>
+> **What's new in v1.0:** After the original 5 acts, we now have **4 additional
+> acts** covering Typed Delta Algebra (Phase 1), Domain Schema & Diff Algorithms
+> (Phase 2), Operation-Level OT Merge (Phase 3), CRDT Convergent Writes (Phase 4),
+> and the live Domain Dashboard. The original 41 steps are unchanged — new acts
+> continue from step 42.
 
 ---
 
@@ -363,26 +369,343 @@ to edit the same file on the same day.
 
 ---
 
-## OUTRO (~45 s)
+## ACT 6 — Typed Delta Algebra (Steps 42–46, Phase 1)
+
+*(New section — show terminal, not the HTML demo)*
+
+*(Camera on terminal. Switch to showing raw muse commands.)*
+
+I want to show you what's under the hood now — the new engine that powers
+every operation you just saw.
+
+In v0.x, `muse show` gave you: `files modified: shared-state.mid`. That's it.
+A filename. A black box. You had no idea what changed inside the file.
+
+### Step 42 — `muse show` on a commit with note-level changes
+
+```
+$ muse show HEAD
+commit: a3f2c9...  "Alpha: texture pattern B (dense)"
+
+  patch shared-state.mid  (melodic layer)
+    insert  note C4  tick=480  vel=80  dur=240   +
+    insert  note E4  tick=720  vel=64  dur=120   +
+    delete  note G3  tick=240  vel=90  dur=480   -
+
+  3 operations: 2 added, 1 removed
+```
+
+That's Phase 1 — the **Typed Delta Algebra**. Every commit now carries a
+`StructuredDelta` — a list of typed operations. Not "file changed." Note added
+at tick 480 with velocity 80 and duration 240. That's the actual thing that
+happened.
+
+*(Pause to let that sink in)*
+
+There are five operation types:
+
+- `InsertOp` — something was added (note, row, element)
+- `DeleteOp` — something was removed
+- `MoveOp` — something was repositioned
+- `ReplaceOp` — something's value changed (has before/after content hashes)
+- `PatchOp` — a container was internally modified (carries child ops)
+
+### Step 43 — `muse diff` between two commits
+
+```
+$ muse diff HEAD~2 HEAD
+  patch tracks/bass.mid  (rhythmic layer)
+    insert  note F2  tick=0    vel=100  dur=120   +
+    insert  note F2  tick=480  vel=80   dur=120   +
+    replace note G2  tick=240  vel=90   dur=480  →  vel=70
+
+  2 added, 1 modified
+```
+
+Every diff is now operation-level. You're not comparing binary blobs —
+you're comparing structured semantic events. The merge engine works on these
+typed operations. So does the conflict detector.
+
+### Step 44 — `muse log --stat`
+
+The log now shows operation summaries inline:
+
+```
+a3f2c9  Alpha: texture pattern B (dense)
+        2 notes added, 1 note removed
+cb4afa  Alpha: texture pattern A (sparse)
+        1 note added, 3 notes removed
+```
+
+Every commit has a `summary` field — computed by the plugin at commit time,
+stored for free display later. No re-scanning. No re-parsing.
+
+---
+
+## ACT 7 — Domain Schema & Diff Algorithms (Steps 47–51, Phase 2)
+
+*(Show `muse domains` output)*
+
+### Step 47 — `muse domains`
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║              Muse Domain Plugin Dashboard                    ║
+╚══════════════════════════════════════════════════════════════╝
+
+Registered domains: 2
+──────────────────────────────────────────────────────────────
+
+  ●  music  ← active repo domain
+     Module:        plugins/music/plugin.py
+     Capabilities:  Phase 1 · Phase 2 · Phase 3 · Phase 4
+     Schema:        v1 · top_level: set · merge_mode: three_way
+     Dimensions:    melodic, harmonic, dynamic, structural
+     Description:   MIDI and audio file versioning with note-level diff
+
+  ○  scaffold
+     Module:        plugins/scaffold/plugin.py
+     Capabilities:  Phase 1 · Phase 2 · Phase 3 · Phase 4
+     Schema:        v1 · top_level: set · merge_mode: three_way
+     Dimensions:    primary, metadata
+     Description:   Scaffold domain — copy-paste this to build your own
+
+──────────────────────────────────────────────────────────────
+To scaffold a new domain:
+  muse domains --new <name>
+```
+
+This is the **Domain Dashboard** — a live inventory of every registered domain
+plugin, its capability level, and its declared schema. The `●` bullet marks
+the domain of the current repository. The `○` is a template.
+
+### Step 48 — What the schema does
+
+The `schema()` method is Phase 2. When a plugin declares its schema, the core
+engine knows:
+
+- **Melodic dimension**: `sequence` of `note_event` elements → use Myers LCS diff
+- **Harmonic dimension**: `sequence` of `chord_event` elements → use Myers LCS diff
+- **Dynamic dimension**: `tensor` of float32 values → use epsilon-tolerant numerical diff
+- **Structural dimension**: `tree` of track nodes → use Zhang-Shasha tree edit diff
+
+One schema declaration. Four different algorithms. The right algorithm for each
+dimension, automatically.
+
+### Step 49 — `muse domains --new genomics`
+
+```
+$ muse domains --new genomics
+✅ Scaffolded new domain plugin: muse/plugins/genomics/
+   Class name: GenomicsPlugin
+
+Next steps:
+  1. Implement every NotImplementedError in muse/plugins/genomics/plugin.py
+  2. Register the plugin in muse/plugins/registry.py
+  3. muse init --domain genomics
+  4. See docs/guide/plugin-authoring-guide.md for the full walkthrough
+```
+
+That's it. Thirty seconds to scaffold a fully typed, Phase 1–4 capable domain
+plugin for any structured data type you can imagine. Copy, fill in, register.
+
+*(Point to the scaffold file)*
+
+The scaffold is fully typed. Zero `Any`. Zero `object`. Zero `cast()`. It passes
+`mypy --strict` out of the box. It's a copy-paste starting point, not a toy.
+
+---
+
+## ACT 8 — Operation-Level OT Merge (Steps 52–56, Phase 3)
+
+*(Back to the conflict scenario — two branches editing the same MIDI file)*
+
+Let me show you what happens when two musicians edit the same MIDI file at
+the note level, concurrently.
+
+### Step 50 — Two branches, same file, different notes
+
+```
+Branch alpha-notes: inserts note C4 at tick 480
+Branch beta-notes:  inserts note G4 at tick 960
+```
+
+Both branches modified `melody.mid`. In old Muse — file-level merge — this
+would be a conflict. One file, both modified, done.
+
+In Phase 3 — **Operational Transformation merge** — the engine asks:
+
+> Do these two operations commute? Can I apply them in either order and
+> get the same result?
+
+### Step 51 — `muse merge beta-notes` with Phase 3
+
+```
+$ muse merge beta-notes
+✅ Merged 'beta-notes' into 'alpha-notes' (clean)
+   2 operations auto-merged:
+     insert note C4 tick=480 (from alpha-notes)
+     insert note G4 tick=960 (from beta-notes)
+   Conflicts: none
+```
+
+Two insertions at different tick positions → they commute → auto-merged.
+No human needed. The notes are in the same file. They're at different positions.
+They don't interfere.
+
+### Step 52 — When ops genuinely conflict
+
+```
+Branch left:  replace note C4 tick=480 vel=64 → vel=80
+Branch right: replace note C4 tick=480 vel=64 → vel=100
+```
+
+Now we have a real conflict: both branches changed the velocity of the *same
+note* from the *same base value* to *different target values*. That's a
+genuine disagreement. The engine flags it:
+
+```
+$ muse merge right
+❌ Merge conflict:
+  CONFLICT (op-level): melody.mid note C4 tick=480 vel (64→80 vs 64→100)
+```
+
+One note. One parameter. That's the minimal conflict unit.
+
+*(This is what "operation-level" means — the conflict detector understood
+the internal structure of your file well enough to isolate the conflict to
+a single note parameter.)*
+
+---
+
+## ACT 9 — CRDT Convergent Writes (Steps 57–61, Phase 4)
+
+*(Switch to CRDT scenario — many agents writing simultaneously)*
+
+Everything I've shown so far is for human-paced collaboration: commits once
+an hour, a day, a week. Three-way merge is exactly right for that.
+
+But what if you have twenty automated agents writing simultaneously? What if
+you're collecting telemetry from a distributed sensor network? What if your
+domain is a set of annotations where a thousand researchers are contributing
+concurrently?
+
+Three-way merge breaks down. You can't resolve 10,000 conflicts per second
+with a human.
+
+### Step 57 — CRDT mode: join always succeeds
+
+Phase 4 introduces **CRDT Semantics**. A plugin that implements `CRDTPlugin`
+replaces `merge()` with `join()`. The join is a mathematical operation on a
+**lattice** — a partial order where any two states have a unique least upper bound.
+
+The key property: **join always succeeds. No conflict state ever exists.**
+
+### Step 58 — The six CRDT primitives
+
+```python
+from muse.core.crdts import (
+    VectorClock,   # causal ordering between agents
+    LWWRegister,   # last-write-wins scalar
+    ORSet,         # unordered set — adds always win
+    RGA,           # ordered sequence — commutative insertion
+    AWMap,         # key-value map — adds win
+    GCounter,      # grow-only counter
+)
+```
+
+Each one satisfies the three lattice laws:
+
+1. `join(a, b) == join(b, a)` — order of messages doesn't matter
+2. `join(join(a, b), c) == join(a, join(b, c))` — batching is fine
+3. `join(a, a) == a` — duplicates are harmless
+
+These three laws are the mathematical guarantee that all replicas converge to
+the same state — regardless of how late or how many times messages arrive.
+
+### Step 59 — ORSet: adds always win
+
+```python
+# Agent A and Agent B write simultaneously:
+s_a, tok_a = ORSet().add("annotation-GO:0001234")
+s_b = ORSet().remove("annotation-GO:0001234")  # B doesn't know about A's add
+
+# After join:
+merged = s_a.join(s_b)
+assert "annotation-GO:0001234" in merged.elements()  # A's add survives
+```
+
+This is the semantics for a genomics annotation set: concurrent adds win.
+If you didn't know I added that annotation, your remove doesn't count. No
+silent data loss. Ever.
+
+### Step 60 — `muse merge` in CRDT mode
+
+```
+$ muse merge agent-branch-1  (CRDT mode detected)
+✅ Joined 'agent-branch-1' into HEAD
+   CRDT join: 847ms
+   Labels joined:    3 adds merged
+   Sequence joined:  RGA converged (12 elements)
+   Conflicts: none  (CRDT join never conflicts)
+```
+
+Joins never conflict. You can run `muse merge` on a thousand agent branches
+and it always succeeds. The result is always the convergent state — the
+least upper bound — of all writes.
+
+### Step 61 — When to use CRDT vs. three-way
+
+This is the judgment call every plugin author makes:
+
+| Scenario | Right choice |
+|----------|-------------|
+| Human composer editing a MIDI score | Three-way merge (Phase 3) |
+| 100 agents annotating a genome | CRDT `ORSet` |
+| DAW with multi-cursor note input | CRDT `RGA` |
+| Distributed IoT telemetry counter | CRDT `GCounter` |
+| Configuration parameter (one writer) | `LWWRegister` |
+
+CRDTs give up human arbitration in exchange for infinite scalability. Use them
+when you have more concurrent writes than humans can handle.
+
+---
+
+## OUTRO — Muse v1.0 (~60 s)
 
 *(Back to camera or full screen)*
 
-So that's Muse. It's version zero — local-only right now, music as the
-reference domain. But the architecture is domain-agnostic by design.
+So that's Muse v1.0.
 
-The same five-method plugin protocol that powers the music domain can power
-a genomics sequencer, a scientific simulation, a 3D spatial field, a neural
-network checkpoint. If your data has structure — and it does — Muse can
-understand it.
+We started with the foundation — a domain-agnostic VCS where conflicts are
+defined by dimension, not by file. That's still the core. But we've now built
+four layers on top of it that progressively close the gap between "a VCS that
+understands files" and "a VCS that understands your domain."
 
-What's next: **MuseHub** — the remote layer. Push, pull, and a PR interface
-that shows you the dimension matrix for every proposed merge before you
-accept it. The kind of diff interface that actually tells you what changed
-and why it matters.
+**Phase 1**: Every operation is typed. Every commit carries a semantic operation
+list. `muse show` tells you what changed inside the file, not just which file.
 
-If this resonated — the code is on GitHub, link in the description. Star it
-if you want to follow along. And if you're building something with structured
-state that deserves better version control — reach out. I'd love to talk.
+**Phase 2**: Every domain declares its data structure. The diff engine
+automatically selects the right algorithm — LCS for sequences, tree-edit for
+hierarchies, epsilon-tolerant for tensors, set algebra for unordered collections.
+
+**Phase 3**: Merges happen at operation granularity. Two musicians editing
+the same file at different positions don't conflict. The merge engine uses
+Operational Transformation to compute the minimal, real conflict set.
+
+**Phase 4**: For high-throughput multi-agent scenarios, CRDT semantics replace
+merge with a mathematical join that always converges. No conflict state ever
+exists. Hundreds of agents can write simultaneously.
+
+And all of this is accessible to any domain through a single five-method plugin
+interface. Music is the proof. Genomics, climate simulation, 3D spatial design,
+neural network checkpoints — any domain with structure can be versioned with Muse.
+
+`muse domains --new <your_domain>`. Thirty seconds to scaffold. Fill in the
+methods. Register. Done.
+
+The code is on GitHub. The link is in the description. If you're building
+something with structured state that deserves better version control — reach out.
 
 ---
 
@@ -400,16 +723,22 @@ zero knowledge of music. It calls five methods on a plugin object. Swap the
 plugin, get a different domain. The same commit graph, the same `muse merge`,
 different semantics.
 
+**"What's the difference between Phase 3 OT and Phase 4 CRDT?"**
+OT assumes you have a base and can identify the common ancestor. It produces
+a minimal conflict set when ops genuinely disagree. CRDT assumes there is no
+shared base — every agent writes to their local replica and the join is
+always clean. OT is right for human-paced editing; CRDT is right for
+machine-speed concurrent writes.
+
 **"Is this production-ready?"**
-v0.1.1. It's a solid foundation with strict typing, CI, tests. Not production
-for a studio yet — but the architecture is sound and the hard parts
-(content-addressed storage, three-way merge) are working.
+v1.0 is solid: strict typing, 691 passing tests, CI, four semantic layers
+fully implemented. Not production for a studio yet — but the architecture is
+sound and the hard parts (content-addressed storage, OT, CRDT) are working.
 
 **"What about performance?"**
-The demo runs in 150ms for 14 commits and 41 operations. The bottleneck will
-be large files, which is a known problem (handled by chunked object storage
-in future). The merge algorithm is O(n) in the number of MIDI events per
-dimension — fast in practice.
+The original demo runs in 150ms for 14 commits and 41 operations. The CRDT
+joins run in sub-millisecond. The bottleneck will be large files — handled
+by chunked object storage in the roadmap.
 
 ### Suggested chapter markers for YouTube
 
@@ -423,4 +752,8 @@ dimension — fast in practice.
 | 11:30 | Act 4 — The conflict (and why it's different) |
 | 16:00 | Act 5 — Full VCS surface area |
 | 18:30 | Dimension Matrix walkthrough |
-| 20:00 | Outro and what's next |
+| 20:00 | Act 6 — Typed Delta Algebra (Phase 1) |
+| 23:00 | Act 7 — Domain Schema & muse domains dashboard (Phase 2) |
+| 27:00 | Act 8 — Operation-level OT Merge (Phase 3) |
+| 31:00 | Act 9 — CRDT Convergent Writes (Phase 4) |
+| 36:00 | Outro — Muse v1.0 and what's next |
