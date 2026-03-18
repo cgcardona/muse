@@ -37,7 +37,7 @@ When you remove something, remove it completely: implementation, tests, docs, co
 
 ```
 muse/
-  domain.py          → MuseDomainPlugin protocol (the five-method contract every domain implements)
+  domain.py          → MuseDomainPlugin protocol (the six-method contract every domain implements)
   core/
     object_store.py  → content-addressed blob storage (.muse/objects/, SHA-256)
     snapshot.py      → manifest hashing, workdir diffing, commit-id computation

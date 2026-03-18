@@ -71,7 +71,7 @@ _ARCH_HTML = """\
   <div class="arch-row">
     <div class="arch-box protocol">
       <div class="box-title">MuseDomainPlugin Protocol</div>
-      <div class="box-sub">Implement 5 methods → get the full VCS for free</div>
+      <div class="box-sub">Implement 6 methods → get the full VCS for free</div>
     </div>
   </div>
   <div class="arch-connector"><div class="connector-line"></div><div class="connector-arrow">▼</div></div>
@@ -90,7 +90,7 @@ _ARCH_HTML = """\
     </div>
     <div class="arch-box plugin planned">
       <div class="box-title">YourPlugin</div>
-      <div class="box-sub">implement 5 methods<br>get VCS for free</div>
+      <div class="box-sub">implement 6 methods<br>get VCS for free</div>
     </div>
   </div>
 </div>
@@ -125,6 +125,11 @@ _ARCH_HTML = """\
     <div class="proto-method">apply</div>
     <div class="proto-sig">apply(delta, live_state) → LiveState</div>
     <div class="proto-desc">Apply a delta during checkout to reconstruct historical state</div>
+  </div>
+  <div class="proto-row">
+    <div class="proto-method">schema</div>
+    <div class="proto-sig">schema() → DomainSchema</div>
+    <div class="proto-desc">Declare data structure — drives diff algorithm selection per dimension</div>
   </div>
 </div>
 """
@@ -698,7 +703,7 @@ _HTML_TEMPLATE = """\
       Muse is a version control system for <strong>state</strong> — any multidimensional
       state that can be snapshotted, diffed, and merged. The core engine provides
       the DAG, content-addressed storage, branching, merging, time-travel, and
-      conflict resolution. A domain plugin implements <strong>5 methods</strong> and
+      conflict resolution. A domain plugin implements <strong>6 methods</strong> and
       gets everything else for free.
       <br><br>
       Music is the reference implementation. Genomics sequences, scientific simulation

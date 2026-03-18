@@ -72,7 +72,7 @@ muse domains                  # inspect your plugin's capabilities
 
 ## Core Protocol (Required)
 
-Every plugin must implement these five methods. All are synchronous. None may import from
+Every plugin must implement these six methods. All are synchronous. None may import from
 `muse.core.*` — the core engine calls you, not the other way around.
 
 ### Types you work with
