@@ -35,22 +35,18 @@ for _p in (str(_REPO_ROOT), str(_TOOLS_DIR)):
         sys.path.insert(0, _p)
 
 from muse.cli.app import cli  # noqa: E402
-from muse.core.merge_engine import clear_merge_state  # noqa: E402
+from muse.core.merge_engine import clear_merge_state  # noqa: E402  (used in act4)
 from typer.testing import CliRunner  # noqa: E402
 
 RUNNER = CliRunner()
 
 BRANCH_COLORS: dict[str, str] = {
-    "main": "#4f8ef7",
-    "alpha": "#f9a825",
-    "beta": "#66bb6a",
-    "gamma": "#ab47bc",
-    "conflict/left": "#ef5350",
+    "main":           "#4f8ef7",
+    "alpha":          "#f9a825",
+    "beta":           "#66bb6a",
+    "gamma":          "#ab47bc",
+    "conflict/left":  "#ef5350",
     "conflict/right": "#ff7043",
-    "ot-left": "#26c6da",
-    "ot-right": "#ab47bc",
-    "ot-conflict-l": "#ef5350",
-    "ot-conflict-r": "#ff7043",
 }
 
 ACT_TITLES: dict[int, str] = {
@@ -59,10 +55,6 @@ ACT_TITLES: dict[int, str] = {
     3: "Clean Merges",
     4: "Conflict & Resolution",
     5: "Advanced Operations",
-    6: "Typed Delta Algebra",
-    7: "Domain Schema",
-    8: "OT Merge",
-    9: "CRDT Primitives",
 }
 
 
@@ -374,217 +366,6 @@ def act5(root: pathlib.Path, saved_ids: dict[str, str]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Act 6 — Typed Delta Algebra
-# ---------------------------------------------------------------------------
-
-
-def act6(root: pathlib.Path) -> None:
-    """Run muse show and muse show --json to demonstrate StructuredDelta output."""
-    global _current_act
-    _current_act = 6
-    print("\n=== Act 6: Typed Delta Algebra ===")
-
-    # Show HEAD — uses the StructuredDelta stored at commit time.
-    _run("show_head", ["show"], root)
-
-    # JSON form exposes the raw StructuredDelta fields.
-    _run("show_json", ["show", "--json"], root)
-
-    # Full log with per-commit stats (summary field from StructuredDelta).
-    _run("log_stat_act6", ["log", "--stat"], root)
-
-
-# ---------------------------------------------------------------------------
-# Act 7 — Domain Schema & Diff Algorithms
-# ---------------------------------------------------------------------------
-
-
-def act7(root: pathlib.Path) -> None:
-    """Run muse domains to show the live plugin dashboard and scaffold a new domain."""
-    global _current_act
-    _current_act = 7
-    print("\n=== Act 7: Domain Schema ===")
-
-    # Human-readable dashboard — the single source of truth for registered plugins.
-    _run("domains_dashboard", ["domains"], root)
-
-    # Machine-readable JSON — for tooling and CI integration.
-    _run("domains_json", ["domains", "--json"], root)
-
-    # Scaffold a fresh plugin directory (creates muse/plugins/genomics/).
-    # We clean it up afterwards so the repo tree stays pristine.
-    _run("scaffold_genomics", ["domains", "--new", "genomics"], root)
-
-    genomics_dir = _TOOLS_DIR.parent / "muse" / "plugins" / "genomics"
-    if genomics_dir.exists():
-        import shutil
-        shutil.rmtree(genomics_dir)
-
-
-# ---------------------------------------------------------------------------
-# Act 8 — OT Merge
-# ---------------------------------------------------------------------------
-
-
-def act8(root: pathlib.Path) -> None:
-    """Two-scenario OT demonstration: commuting ops (clean) then genuine conflict."""
-    global _current_act
-    _current_act = 8
-    print("\n=== Act 8: OT Merge ===")
-
-    # --- Scenario A: independent InsertOps commute → clean OT merge -------------
-    _run("checkout_main_ot_a", ["checkout", "main"], root)
-
-    _run("checkout_ot_left", ["checkout", "-b", "ot-left"], root)
-    _write(root, "ot-notes-a.mid", "# ot-notes-a\nnotes: C4 E4 G4\ntick: 0\n")
-    _run("commit_ot_left", ["commit", "-m", "OT-left: add note sequence A (C E G)"], root)
-
-    _run("checkout_main_ot_a2", ["checkout", "main"], root)
-    _run("checkout_ot_right", ["checkout", "-b", "ot-right"], root)
-    _write(root, "ot-notes-b.mid", "# ot-notes-b\nnotes: D4 F4 A4\ntick: 480\n")
-    _run("commit_ot_right", ["commit", "-m", "OT-right: add note sequence B (D F A)"], root)
-
-    # Merge into ot-left: InsertOp("ot-notes-a.mid") and InsertOp("ot-notes-b.mid")
-    # have different addresses → they commute → OT engine auto-merges cleanly.
-    _run("checkout_ot_left2", ["checkout", "ot-left"], root)
-    _run("merge_ot_clean", ["merge", "ot-right"], root)
-
-    # --- Scenario B: both branches ReplaceOp same address → OT conflict ----------
-    _run("checkout_main_ot_b", ["checkout", "main"], root)
-    _write(root, "shared-melody.mid", "# shared-melody\nnotes: C4 G4\ntick: 0\n")
-    _run("commit_shared_base", ["commit", "-m", "Add shared melody (merge base)"], root)
-
-    _run("checkout_ot_conflict_l", ["checkout", "-b", "ot-conflict-l"], root)
-    _write(root, "shared-melody.mid", "# shared-melody\nnotes: C4 E4 G4\ntick: 0\n")
-    _run("commit_conflict_l", ["commit", "-m", "OT-conflict-left: extend melody (major triad)"], root)
-
-    _run("checkout_main_ot_b2", ["checkout", "main"], root)
-    _run("checkout_ot_conflict_r", ["checkout", "-b", "ot-conflict-r"], root)
-    _write(root, "shared-melody.mid", "# shared-melody\nnotes: C4 Eb4 G4\ntick: 0\n")
-    _run("commit_conflict_r", ["commit", "-m", "OT-conflict-right: extend melody (minor triad)"], root)
-
-    # Merge conflict-l first (fast-forward from main).
-    _run("checkout_main_ot_b3", ["checkout", "main"], root)
-    _run("merge_conflict_l_into_main", ["merge", "ot-conflict-l"], root)
-
-    # Merge conflict-r: both sides issued ReplaceOp("shared-melody.mid") from the
-    # same base → operations do not commute → OT raises a conflict.
-    _run("merge_conflict_r_into_main", ["merge", "ot-conflict-r"], root, expect_fail=True)
-
-    # Clear merge state so subsequent acts can continue cleanly.
-    clear_merge_state(root)
-
-
-# ---------------------------------------------------------------------------
-# Act 9 — CRDT Primitives
-# ---------------------------------------------------------------------------
-
-
-def act9_crdt() -> None:
-    """Directly exercise all six CRDT primitives to show convergent merge semantics."""
-    global _step, _current_act
-    _current_act = 9
-    print("\n=== Act 9: CRDT Primitives ===")
-
-    from muse.core.crdts import GCounter, LWWRegister, ORSet, VectorClock
-
-    t0 = time.perf_counter()
-
-    # ORSet — add-wins concurrent merge -------------------------------------------
-    _step += 1
-    # Both agents start from the same base that already contains the annotation.
-    base_set = ORSet()
-    base_set, _base_tok = base_set.add("annotation-GO:0001234")
-
-    # Agent A concurrently re-adds the annotation with a new token.
-    set_a, _new_tok = base_set.add("annotation-GO:0001234")
-
-    # Agent B removes the annotation using the tokens it observed from the base.
-    observed = base_set.tokens_for("annotation-GO:0001234")
-    set_b = base_set.remove("annotation-GO:0001234", observed)
-
-    merged_set = set_a.join(set_b)
-    output = "\n".join([
-        "ORSet — add-wins concurrent merge:",
-        f"  base  elements: {sorted(base_set.elements())}",
-        f"  A re-adds annotation  →  elements: {sorted(set_a.elements())}",
-        f"  B removes annotation  →  elements: {sorted(set_b.elements())}",
-        f"  join(A, B)            →  elements: {sorted(merged_set.elements())}",
-        "  [A's new token is not tombstoned — add always wins]",
-    ])
-    print(f"  ✓ ORSet: join always succeeds, add-wins preserved")
-    _events.append(EventRecord(
-        act=9, act_title="CRDT Primitives", step=_step,
-        op="crdt_orset", cmd="ORSet.join(set_a, set_b)",
-        duration_ms=round((time.perf_counter() - t0) * 1000, 2),
-        exit_code=0, output=output, commit_id=None,
-    ))
-
-    # LWWRegister — last-write-wins scalar ----------------------------------------
-    _step += 1
-    t1 = time.perf_counter()
-    reg_a = LWWRegister.from_dict({"value": "80 BPM", "timestamp": 1.0, "author": "agent-A"})
-    reg_b = LWWRegister.from_dict({"value": "120 BPM", "timestamp": 2.0, "author": "agent-B"})
-    merged_reg = reg_a.join(reg_b)
-    output = "\n".join([
-        "LWWRegister — last-write-wins scalar:",
-        f"  Agent A writes: '{reg_a.read()}' at t=1.0",
-        f"  Agent B writes: '{reg_b.read()}' at t=2.0  (later timestamp)",
-        f"  join(A, B) → '{merged_reg.read()}'  [higher timestamp wins]",
-        "  join(B, A) → same result  [commutativity]",
-    ])
-    print(f"  ✓ LWWRegister: join commutative, higher timestamp always wins")
-    _events.append(EventRecord(
-        act=9, act_title="CRDT Primitives", step=_step,
-        op="crdt_lww", cmd="LWWRegister.join(reg_a, reg_b)",
-        duration_ms=round((time.perf_counter() - t1) * 1000, 2),
-        exit_code=0, output=output, commit_id=None,
-    ))
-
-    # GCounter — grow-only distributed counter ------------------------------------
-    _step += 1
-    t2 = time.perf_counter()
-    cnt_a = GCounter().increment("agent-A").increment("agent-A")
-    cnt_b = GCounter().increment("agent-B").increment("agent-B").increment("agent-B")
-    merged_cnt = cnt_a.join(cnt_b)
-    output = "\n".join([
-        "GCounter — grow-only distributed counter:",
-        f"  Agent A increments x2  →  A slot: {cnt_a.value_for('agent-A')}",
-        f"  Agent B increments x3  →  B slot: {cnt_b.value_for('agent-B')}",
-        f"  join(A, B) global value: {merged_cnt.value()}",
-        "  [monotonically non-decreasing — joins never lose counts]",
-    ])
-    print(f"  ✓ GCounter: join is monotone, global value = {merged_cnt.value()}")
-    _events.append(EventRecord(
-        act=9, act_title="CRDT Primitives", step=_step,
-        op="crdt_gcounter", cmd="GCounter.join(cnt_a, cnt_b)",
-        duration_ms=round((time.perf_counter() - t2) * 1000, 2),
-        exit_code=0, output=output, commit_id=None,
-    ))
-
-    # VectorClock — causal ordering between agents --------------------------------
-    _step += 1
-    t3 = time.perf_counter()
-    vc_a = VectorClock().increment("agent-A")
-    vc_b = VectorClock().increment("agent-B")
-    merged_vc = vc_a.merge(vc_b)
-    output = "\n".join([
-        "VectorClock — causal ordering:",
-        f"  Agent A clock: {vc_a.to_dict()}",
-        f"  Agent B clock: {vc_b.to_dict()}",
-        f"  concurrent_with(A, B): {vc_a.concurrent_with(vc_b)}  [neither happened-before the other]",
-        f"  merge(A, B):           {merged_vc.to_dict()}          [component-wise max]",
-    ])
-    print(f"  ✓ VectorClock: causal merge correct, concurrent={vc_a.concurrent_with(vc_b)}")
-    _events.append(EventRecord(
-        act=9, act_title="CRDT Primitives", step=_step,
-        op="crdt_vclock", cmd="VectorClock.merge(vc_a, vc_b)",
-        duration_ms=round((time.perf_counter() - t3) * 1000, 2),
-        exit_code=0, output=output, commit_id=None,
-    ))
-
-
-# ---------------------------------------------------------------------------
 # DAG builder
 # ---------------------------------------------------------------------------
 
@@ -687,17 +468,11 @@ def main() -> None:
         act3(root)
         act4(root)
         act5(root, saved_ids)
-        act6(root)
-        act7(root)
-        act8(root)
 
         elapsed = time.perf_counter() - t_start
-        print(f"\n✓ Acts 1–8 complete in {elapsed:.2f}s — {_step} operations")
+        print(f"\n✓ Acts 1–5 complete in {elapsed:.2f}s — {_step} operations")
 
         dag = build_dag(root)
-
-    # Act 9 runs outside the tempdir — purely in-process CRDT API demo.
-    act9_crdt()
 
     total_commits = len(dag["commits"])
     total_branches = len(dag["branches"])
@@ -706,6 +481,8 @@ def main() -> None:
 
     elapsed_total = time.perf_counter() - t_start
     print(f"\n✓ Tour de Force complete — {_step} operations in {elapsed_total:.2f}s")
+    print("  Engine capabilities (Typed Deltas, Domain Schema, OT Merge, CRDT)")
+    print("  → see artifacts/domain_registry.html")
 
     tour: TourData = TourData(
         meta=TourMeta(
