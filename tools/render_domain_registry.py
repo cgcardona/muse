@@ -632,37 +632,52 @@ _HTML_TEMPLATE = """\
     }
     .section-lead strong { color: var(--text); }
 
-    /* ---- Stat strip ---- */
-    .stat-strip {
-      display: flex;
+    /* ---- Protocol two-col layout ---- */
+    .proto-layout {
+      display: grid;
+      grid-template-columns: 148px 1fr;
       gap: 0;
       border: 1px solid var(--border);
       border-radius: var(--r);
       overflow: hidden;
-      margin-bottom: 48px;
+      margin-bottom: 40px;
+      align-items: stretch;
+    }
+    @media (max-width: 640px) {
+      .proto-layout { grid-template-columns: 1fr; }
+      .stat-strip { border-right: none; border-bottom: 1px solid var(--border); }
+    }
+
+    /* ---- Stat strip (left column) ---- */
+    .stat-strip {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
     }
     .stat-cell {
       flex: 1;
-      padding: 20px 24px;
-      border-right: 1px solid var(--border);
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--border);
       text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
-    .stat-cell:last-child { border-right: none; }
+    .stat-cell:last-child { border-bottom: none; }
     .stat-num {
       font-family: var(--mono);
-      font-size: 28px;
+      font-size: 26px;
       font-weight: 700;
       color: var(--accent2);
       display: block;
+      line-height: 1.1;
     }
-    .stat-lbl { font-size: 12px; color: var(--mute); }
+    .stat-lbl { font-size: 11px; color: var(--mute); margin-top: 4px; line-height: 1.3; }
 
-    /* ---- Protocol table ---- */
+    /* ---- Protocol table (right column) ---- */
     .proto-table {
-      border: 1px solid var(--border);
-      border-radius: var(--r);
       overflow: hidden;
-      margin-bottom: 40px;
     }
     .proto-row {
       display: grid;
@@ -1108,48 +1123,49 @@ _HTML_TEMPLATE = """\
       cherry-pick, revert, stash, tags.
     </p>
 
-    <div class="stat-strip">
-      <div class="stat-cell"><span class="stat-num">6</span><span class="stat-lbl">methods to implement</span></div>
-      <div class="stat-cell"><span class="stat-num">14</span><span class="stat-lbl">CLI commands, free</span></div>
-      <div class="stat-cell"><span class="stat-num">∞</span><span class="stat-lbl">domains possible</span></div>
-      <div class="stat-cell"><span class="stat-num">0</span><span class="stat-lbl">core changes needed</span></div>
-    </div>
-
-    <div class="proto-table">
-      <div class="proto-row hdr">
-        <div class="proto-method">Method</div>
-        <div class="proto-sig">Signature</div>
-        <div class="proto-desc">Purpose</div>
+    <div class="proto-layout">
+      <div class="stat-strip">
+        <div class="stat-cell"><span class="stat-num">6</span><span class="stat-lbl">methods to implement</span></div>
+        <div class="stat-cell"><span class="stat-num">14</span><span class="stat-lbl">CLI commands, free</span></div>
+        <div class="stat-cell"><span class="stat-num">∞</span><span class="stat-lbl">domains possible</span></div>
+        <div class="stat-cell"><span class="stat-num">0</span><span class="stat-lbl">core changes needed</span></div>
       </div>
-      <div class="proto-row">
-        <div class="proto-method">snapshot</div>
-        <div class="proto-sig">snapshot(live) → StateSnapshot</div>
-        <div class="proto-desc">Capture current state as a content-addressable blob</div>
-      </div>
-      <div class="proto-row">
-        <div class="proto-method">diff</div>
-        <div class="proto-sig">diff(base, target) → StateDelta</div>
-        <div class="proto-desc">Compute minimal change between two snapshots (added · removed · modified)</div>
-      </div>
-      <div class="proto-row">
-        <div class="proto-method">merge</div>
-        <div class="proto-sig">merge(base, left, right) → MergeResult</div>
-        <div class="proto-desc">Three-way reconcile divergent state lines; surface conflicts per dimension</div>
-      </div>
-      <div class="proto-row">
-        <div class="proto-method">drift</div>
-        <div class="proto-sig">drift(committed, live) → DriftReport</div>
-        <div class="proto-desc">Detect uncommitted changes between HEAD and working state</div>
-      </div>
-      <div class="proto-row">
-        <div class="proto-method">apply</div>
-        <div class="proto-sig">apply(delta, live) → LiveState</div>
-        <div class="proto-desc">Apply a delta during checkout to reconstruct historical state</div>
-      </div>
-      <div class="proto-row">
-        <div class="proto-method">schema</div>
-        <div class="proto-sig">schema() → DomainSchema</div>
-        <div class="proto-desc">Declare data structure — drives diff algorithm selection per dimension</div>
+      <div class="proto-table">
+        <div class="proto-row hdr">
+          <div class="proto-method">Method</div>
+          <div class="proto-sig">Signature</div>
+          <div class="proto-desc">Purpose</div>
+        </div>
+        <div class="proto-row">
+          <div class="proto-method">snapshot</div>
+          <div class="proto-sig">snapshot(live) → StateSnapshot</div>
+          <div class="proto-desc">Capture current state as a content-addressable blob</div>
+        </div>
+        <div class="proto-row">
+          <div class="proto-method">diff</div>
+          <div class="proto-sig">diff(base, target) → StateDelta</div>
+          <div class="proto-desc">Compute minimal change between two snapshots (added · removed · modified)</div>
+        </div>
+        <div class="proto-row">
+          <div class="proto-method">merge</div>
+          <div class="proto-sig">merge(base, left, right) → MergeResult</div>
+          <div class="proto-desc">Three-way reconcile divergent state lines; surface conflicts per dimension</div>
+        </div>
+        <div class="proto-row">
+          <div class="proto-method">drift</div>
+          <div class="proto-sig">drift(committed, live) → DriftReport</div>
+          <div class="proto-desc">Detect uncommitted changes between HEAD and working state</div>
+        </div>
+        <div class="proto-row">
+          <div class="proto-method">apply</div>
+          <div class="proto-sig">apply(delta, live) → LiveState</div>
+          <div class="proto-desc">Apply a delta during checkout to reconstruct historical state</div>
+        </div>
+        <div class="proto-row">
+          <div class="proto-method">schema</div>
+          <div class="proto-sig">schema() → DomainSchema</div>
+          <div class="proto-desc">Declare data structure — drives diff algorithm selection per dimension</div>
+        </div>
       </div>
     </div>
   </div>
