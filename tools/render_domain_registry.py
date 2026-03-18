@@ -1197,7 +1197,7 @@ _HTML_TEMPLATE = """\
             carrying the address, before/after hashes, and affected dimensions.
             Machine-readable with <code>muse show --json</code>.
           </p>
-          <pre class="cap-showcase-output">{{TYPED_DELTA_EXAMPLE}}</pre>
+          <pre class="cap-showcase-output" data-lang="json">{{TYPED_DELTA_EXAMPLE}}</pre>
         </div>
       </div>
 
@@ -1419,6 +1419,75 @@ _HTML_TEMPLATE = """\
     <a href="../docs/guide/plugin-authoring-guide.md">Plugin Guide</a>
   </span>
 </footer>
+
+<script>
+(function () {
+  function esc(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function tokenizeJSON(raw) {
+    let html = '';
+    let i = 0;
+    while (i < raw.length) {
+      // Comment line starting with #
+      if (raw[i] === '#') {
+        const end = raw.indexOf('\n', i);
+        const line = end === -1 ? raw.slice(i) : raw.slice(i, end);
+        html += '<span style="color:#5c6370;font-style:italic">' + esc(line) + '</span>';
+        i += line.length;
+        continue;
+      }
+      // String literal
+      if (raw[i] === '"') {
+        let j = i + 1;
+        while (j < raw.length && raw[j] !== '"') {
+          if (raw[j] === '\\') j++;
+          j++;
+        }
+        j++;
+        const str = raw.slice(i, j);
+        // Peek past whitespace — key if followed by ':'
+        let k = j;
+        while (k < raw.length && (raw[k] === ' ' || raw[k] === '\t')) k++;
+        const color = raw[k] === ':' ? '#61afef' : '#98c379';
+        html += '<span style="color:' + color + '">' + esc(str) + '</span>';
+        i = j;
+        continue;
+      }
+      // Number (including negative)
+      if (/[\d]/.test(raw[i]) || (raw[i] === '-' && /\d/.test(raw[i + 1] || ''))) {
+        let j = i;
+        if (raw[j] === '-') j++;
+        while (j < raw.length && /[\d.eE+\-]/.test(raw[j])) j++;
+        html += '<span style="color:#d19a66">' + esc(raw.slice(i, j)) + '</span>';
+        i = j;
+        continue;
+      }
+      // Keywords: true / false / null
+      const kws = [['true', '#c678dd'], ['false', '#c678dd'], ['null', '#c678dd']];
+      let matched = false;
+      for (const [kw, col] of kws) {
+        if (raw.slice(i, i + kw.length) === kw) {
+          html += '<span style="color:' + col + '">' + kw + '</span>';
+          i += kw.length;
+          matched = true;
+          break;
+        }
+      }
+      if (matched) continue;
+      // Default character (punctuation / whitespace)
+      html += esc(raw[i]);
+      i++;
+    }
+    return html;
+  }
+
+  document.querySelectorAll('pre[data-lang="json"]').forEach(function (pre) {
+    pre.innerHTML = tokenizeJSON(pre.textContent);
+  });
+})();
+</script>
 
 </body>
 </html>
