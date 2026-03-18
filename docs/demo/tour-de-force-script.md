@@ -368,7 +368,7 @@ to edit the same file on the same day.
 
 ---
 
-## ACT 6 — Typed Delta Algebra (Steps 42–46, Phase 1)
+## ACT 6 — Typed Delta Algebra (Steps 42–46)
 
 *(New section — show terminal, not the HTML demo)*
 
@@ -394,7 +394,7 @@ commit: a3f2c9...  "Alpha: texture pattern B (dense)"
   3 operations: 2 added, 1 removed
 ```
 
-That's Phase 1 — the **Typed Delta Algebra**. Every commit now carries a
+That's the **Typed Delta Algebra**. Every commit now carries a
 `StructuredDelta` — a list of typed operations. Not "file changed." Note added
 at tick 480 with velocity 80 and duration 240. That's the actual thing that
 happened.
@@ -441,30 +441,30 @@ stored for free display later. No re-scanning. No re-parsing.
 
 ---
 
-## ACT 7 — Domain Schema & Diff Algorithms (Steps 47–51, Phase 2)
+## ACT 7 — Domain Schema & Diff Algorithms (Steps 47–51)
 
 *(Show `muse domains` output)*
 
 ### Step 47 — `muse domains`
 
 ```
-╔══════════════════════════════════════════════════════════════╗
-║              Muse Domain Plugin Dashboard                    ║
-╚══════════════════════════════════════════════════════════════╝
+╔════════════════════════════════════════════════════════════╗
+║                Muse Domain Plugin Dashboard                ║
+╚════════════════════════════════════════════════════════════╝
 
 Registered domains: 2
 ──────────────────────────────────────────────────────────────
 
   ●  music  ← active repo domain
      Module:        plugins/music/plugin.py
-     Capabilities:  Phase 1 · Phase 2 · Phase 3 · Phase 4
+     Capabilities:  Typed Deltas · Domain Schema · OT Merge
      Schema:        v1 · top_level: set · merge_mode: three_way
      Dimensions:    melodic, harmonic, dynamic, structural
      Description:   MIDI and audio file versioning with note-level diff
 
   ○  scaffold
      Module:        plugins/scaffold/plugin.py
-     Capabilities:  Phase 1 · Phase 2 · Phase 3 · Phase 4
+     Capabilities:  Typed Deltas · Domain Schema · OT Merge · CRDT
      Schema:        v1 · top_level: set · merge_mode: three_way
      Dimensions:    primary, metadata
      Description:   Scaffold domain — copy-paste this to build your own
@@ -480,7 +480,7 @@ the domain of the current repository. The `○` is a template.
 
 ### Step 48 — What the schema does
 
-The `schema()` method is Phase 2. When a plugin declares its schema, the core
+The `schema()` method is the **Domain Schema** capability. When a plugin declares its schema, the core
 engine knows:
 
 - **Melodic dimension**: `sequence` of `note_event` elements → use Myers LCS diff
@@ -505,7 +505,7 @@ Next steps:
   4. See docs/guide/plugin-authoring-guide.md for the full walkthrough
 ```
 
-That's it. Thirty seconds to scaffold a fully typed, Phase 1–4 capable domain
+That's it. Thirty seconds to scaffold a fully typed, full-capability domain
 plugin for any structured data type you can imagine. Copy, fill in, register.
 
 *(Point to the scaffold file)*
@@ -515,7 +515,7 @@ The scaffold is fully typed. Zero `Any`. Zero `object`. Zero `cast()`. It passes
 
 ---
 
-## ACT 8 — Operation-Level OT Merge (Steps 52–56, Phase 3)
+## ACT 8 — Operation-Level OT Merge (Steps 52–56)
 
 *(Back to the conflict scenario — two branches editing the same MIDI file)*
 
@@ -532,7 +532,7 @@ Branch beta-notes:  inserts note G4 at tick 960
 Both branches modified `melody.mid`. In old Muse — file-level merge — this
 would be a conflict. One file, both modified, done.
 
-In Phase 3 — **Operational Transformation merge** — the engine asks:
+In **OT Merge** — the engine asks:
 
 > Do these two operations commute? Can I apply them in either order and
 > get the same result?
@@ -577,7 +577,7 @@ a single note parameter.)*
 
 ---
 
-## ACT 9 — CRDT Convergent Writes (Steps 57–61, Phase 4)
+## ACT 9 — CRDT Convergent Writes (Steps 57–61)
 
 *(Switch to CRDT scenario — many agents writing simultaneously)*
 
@@ -594,8 +594,8 @@ with a human.
 
 ### Step 57 — CRDT mode: join always succeeds
 
-Phase 4 introduces **CRDT Semantics**. A plugin that implements `CRDTPlugin`
-replaces `merge()` with `join()`. The join is a mathematical operation on a
+**CRDT Semantics** allow a plugin that implements `CRDTPlugin` to replace
+`merge()` with `join()`. The join is a mathematical operation on a
 **lattice** — a partial order where any two states have a unique least upper bound.
 
 The key property: **join always succeeds. No conflict state ever exists.**
@@ -681,22 +681,23 @@ defined by dimension, not by file. That's still the core. But we've now built
 four layers on top of it that progressively close the gap between "a VCS that
 understands files" and "a VCS that understands your domain."
 
-**Phase 1**: Every operation is typed. Every commit carries a semantic operation
-list. `muse show` tells you what changed inside the file, not just which file.
+**Typed Deltas**: Every operation is typed. Every commit carries a semantic
+operation list. `muse show` tells you what changed inside the file, not just
+which file.
 
-**Phase 2**: Every domain declares its data structure. The diff engine
+**Domain Schema**: Every domain declares its data structure. The diff engine
 automatically selects the right algorithm — LCS for sequences, tree-edit for
 hierarchies, epsilon-tolerant for tensors, set algebra for unordered collections.
 
-**Phase 3**: Merges happen at operation granularity. Two musicians editing
+**OT Merge**: Merges happen at operation granularity. Two musicians editing
 the same file at different positions don't conflict. The merge engine uses
 Operational Transformation to compute the minimal, real conflict set.
 
-**Phase 4**: For high-throughput multi-agent scenarios, CRDT semantics replace
-merge with a mathematical join that always converges. No conflict state ever
-exists. Hundreds of agents can write simultaneously.
+**CRDT Semantics**: For high-throughput multi-agent scenarios, CRDT semantics
+replace merge with a mathematical join that always converges. No conflict state
+ever exists. Hundreds of agents can write simultaneously.
 
-And all of this is accessible to any domain through a single five-method plugin
+And all of this is accessible to any domain through a single six-method plugin
 interface. Music is the proof. Genomics, climate simulation, 3D spatial design,
 neural network checkpoints — any domain with structure can be versioned with Muse.
 
@@ -722,7 +723,7 @@ zero knowledge of music. It calls five methods on a plugin object. Swap the
 plugin, get a different domain. The same commit graph, the same `muse merge`,
 different semantics.
 
-**"What's the difference between Phase 3 OT and Phase 4 CRDT?"**
+**"What's the difference between OT Merge and CRDT Semantics?"**
 OT assumes you have a base and can identify the common ancestor. It produces
 a minimal conflict set when ops genuinely disagree. CRDT assumes there is no
 shared base — every agent writes to their local replica and the join is
@@ -730,7 +731,7 @@ always clean. OT is right for human-paced editing; CRDT is right for
 machine-speed concurrent writes.
 
 **"Is this production-ready?"**
-v0.1.1 is solid: strict typing, 691 passing tests, CI, four semantic layers
+v0.1.1 is solid: strict typing, 697 passing tests, CI, four semantic layers
 fully implemented. Not production for a studio yet — but the architecture is
 sound and the hard parts (content-addressed storage, OT, CRDT) are working.
 
@@ -751,8 +752,8 @@ by chunked object storage in the roadmap.
 | 11:30 | Act 4 — The conflict (and why it's different) |
 | 16:00 | Act 5 — Full VCS surface area |
 | 18:30 | Dimension Matrix walkthrough |
-| 20:00 | Act 6 — Typed Delta Algebra (Phase 1) |
-| 23:00 | Act 7 — Domain Schema & muse domains dashboard (Phase 2) |
-| 27:00 | Act 8 — Operation-level OT Merge (Phase 3) |
-| 31:00 | Act 9 — CRDT Convergent Writes (Phase 4) |
-| 36:00 | Outro — Muse v1.0 and what's next |
+| 20:00 | Act 6 — Typed Delta Algebra |
+| 23:00 | Act 7 — Domain Schema & muse domains dashboard |
+| 27:00 | Act 8 — Operation-level OT Merge |
+| 31:00 | Act 9 — CRDT Convergent Writes |
+| 36:00 | Outro — Muse v0.1.1 and what's next |

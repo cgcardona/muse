@@ -10,13 +10,13 @@ Output (default — no flags)::
     ─────────────────────────────────────────────────────────────
 
     music  ●  music/plugin.py
-      Capabilities:  Phase 1 · Phase 2 · Phase 3 · Phase 4
+      Capabilities:  Typed Deltas · Domain Schema · OT Merge
       Schema:        version 1.0 · merge_mode: three_way
       Elements:      note_event (sequence), dimension_axes (set)
       Dimensions:    melodic, rhythmic, harmonic, dynamic, structural
 
     scaffold  ○  scaffold/plugin.py
-      Capabilities:  Phase 1 · Phase 2 · Phase 3 · Phase 4
+      Capabilities:  Typed Deltas · Domain Schema · OT Merge · CRDT
       Schema:        version 1.0 · merge_mode: three_way
       Elements:      record (sequence), attribute_set (set)
       Dimensions:    primary, metadata
@@ -52,11 +52,11 @@ app = typer.Typer()
 # Internal types
 # ---------------------------------------------------------------------------
 
-_CapabilityLevel = Literal["Phase 1", "Phase 2", "Phase 3", "Phase 4"]
+_CapabilityLabel = Literal["Typed Deltas", "Domain Schema", "OT Merge", "CRDT"]
 
 
-def _capabilities(plugin: MuseDomainPlugin) -> list[_CapabilityLevel]:
-    """Return the capability levels the plugin implements.
+def _capabilities(plugin: MuseDomainPlugin) -> list[_CapabilityLabel]:
+    """Return the capability labels the plugin implements.
 
     Checks each optional protocol via ``isinstance`` — the same runtime
     mechanism the core engine uses during merge dispatch.
@@ -65,18 +65,19 @@ def _capabilities(plugin: MuseDomainPlugin) -> list[_CapabilityLevel]:
         plugin: A registered ``MuseDomainPlugin`` instance.
 
     Returns:
-        Sorted list of capability-level labels the plugin satisfies.
+        Capability labels in ascending order: Typed Deltas → Domain Schema
+        → OT Merge → CRDT.  Every plugin gets at least "Typed Deltas".
     """
-    caps: list[_CapabilityLevel] = ["Phase 1"]
+    caps: list[_CapabilityLabel] = ["Typed Deltas"]
     try:
         plugin.schema()
-        caps.append("Phase 2")
+        caps.append("Domain Schema")
     except NotImplementedError:
         return caps
     if isinstance(plugin, StructuredMergePlugin):
-        caps.append("Phase 3")
+        caps.append("OT Merge")
     if isinstance(plugin, CRDTPlugin):
-        caps.append("Phase 4")
+        caps.append("CRDT")
     return caps
 
 
@@ -307,7 +308,8 @@ def domains(
     """Domain plugin dashboard — list registered domains and their capabilities.
 
     Without flags: prints a human-readable table of all registered domains,
-    their Phase 1–4 capability levels, and their declared schemas.
+    their capability levels (Typed Deltas / Domain Schema / OT Merge / CRDT),
+    and their declared schemas.
 
     Use ``--new <name>`` to scaffold a new domain plugin directory from the
     scaffold template.
