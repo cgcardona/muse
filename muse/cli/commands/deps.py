@@ -35,7 +35,6 @@ Flags:
 """
 from __future__ import annotations
 
-import ast
 import json
 import logging
 import pathlib
@@ -46,6 +45,7 @@ from muse.core.errors import ExitCode
 from muse.core.object_store import read_object
 from muse.core.repo import require_repo
 from muse.core.store import get_commit_snapshot_manifest, resolve_commit_ref
+from muse.plugins.code._callgraph import build_reverse_graph, callees_for_symbol
 from muse.plugins.code._query import language_of, symbols_for_snapshot
 from muse.plugins.code.ast_parser import SEMANTIC_EXTENSIONS, SymbolTree, parse_symbols
 
@@ -133,53 +133,8 @@ def _reverse_imports(
 
 
 # ---------------------------------------------------------------------------
-# Call-graph helpers (Python only)
+# Call-graph helpers (Python only) — thin wrappers over _callgraph
 # ---------------------------------------------------------------------------
-
-
-def _call_name(func_node: ast.expr) -> str | None:
-    """Extract a readable callee name from an ``ast.Call`` func node."""
-    if isinstance(func_node, ast.Name):
-        return func_node.id
-    if isinstance(func_node, ast.Attribute):
-        # e.g.  obj.method()  → "method"
-        # e.g.  module.func() → "func"
-        return func_node.attr
-    return None
-
-
-def _find_func_node(
-    stmts: list[ast.stmt],
-    name_parts: list[str],
-) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
-    """Recursively locate a function node by its dotted qualified name."""
-    target = name_parts[0]
-    for stmt in stmts:
-        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)) and stmt.name == target:
-            if len(name_parts) == 1:
-                return stmt
-        elif isinstance(stmt, ast.ClassDef) and stmt.name == target and len(name_parts) > 1:
-            return _find_func_node(stmt.body, name_parts[1:])
-    return None
-
-
-def _python_callees(source: bytes, address: str) -> list[str]:
-    """Return sorted unique names of callees inside the Python symbol at *address*."""
-    sym_qualified = address.split("::", 1)[1] if "::" in address else address
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return []
-    func_node = _find_func_node(tree.body, sym_qualified.split("."))
-    if func_node is None:
-        return []
-    names: set[str] = set()
-    for node in ast.walk(func_node):
-        if isinstance(node, ast.Call):
-            name = _call_name(node.func)
-            if name:
-                names.add(name)
-    return sorted(names)
 
 
 def _python_callers(
@@ -187,38 +142,9 @@ def _python_callers(
     manifest: dict[str, str],
     target_name: str,
 ) -> list[str]:
-    """Return addresses of Python symbols that call *target_name*.
-
-    *target_name* is the bare function/method name extracted from the address.
-    Scans all Python files in *manifest*.
-    """
-    callers: list[str] = []
-    for file_path, obj_id in sorted(manifest.items()):
-        if pathlib.PurePosixPath(file_path).suffix.lower() not in {".py", ".pyi"}:
-            continue
-        raw = read_object(root, obj_id)
-        if raw is None:
-            continue
-        try:
-            tree = ast.parse(raw)
-        except SyntaxError:
-            continue
-        sym_tree = parse_symbols(raw, file_path)
-        # Check each symbol body for calls to target_name.
-        for addr, rec in sym_tree.items():
-            if rec["kind"] not in {"function", "async_function", "method", "async_method"}:
-                continue
-            qualified = rec["qualified_name"]
-            func_node = _find_func_node(tree.body, qualified.split("."))
-            if func_node is None:
-                continue
-            for node in ast.walk(func_node):
-                if isinstance(node, ast.Call):
-                    name = _call_name(node.func)
-                    if name == target_name:
-                        callers.append(addr)
-                        break
-    return callers
+    """Return addresses of Python symbols that call *target_name*."""
+    reverse = build_reverse_graph(root, manifest)
+    return reverse.get(target_name, [])
 
 
 # ---------------------------------------------------------------------------
@@ -295,7 +221,7 @@ def deps(
         source = src_path.read_bytes()
 
         if not reverse:
-            callees = _python_callees(source, target)
+            callees = callees_for_symbol(source, target)
             if as_json:
                 typer.echo(json.dumps({"address": target, "calls": callees}, indent=2))
                 return
