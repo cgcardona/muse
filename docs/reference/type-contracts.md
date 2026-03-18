@@ -815,7 +815,7 @@ Muse VCS
 │   │   ├── MergeResult            — dataclass: merged + conflicts + applied_strategies + dimension_reports
 │   │   └── DriftReport            — dataclass: has_drift + summary + delta
 │   │
-│   └── MuseDomainPlugin           — Protocol (runtime_checkable): 5 methods
+│   └── MuseDomainPlugin           — Protocol (runtime_checkable): 6 methods
 │                                    merge() accepts repo_root kwarg for attribute-aware merge
 │
 ├── Store (muse/core/store.py)
@@ -886,7 +886,7 @@ Arrow conventions:
 
 ### Diagram 1 — Domain Protocol and Plugin Contract
 
-The `MuseDomainPlugin` protocol and the types that flow through its five methods. `MusicPlugin` is the reference implementation that proves the abstraction.
+The `MuseDomainPlugin` protocol and the types that flow through its six methods. `MusicPlugin` is the reference implementation that proves the abstraction.
 
 ```mermaid
 classDiagram
