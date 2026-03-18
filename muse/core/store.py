@@ -54,7 +54,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import TypedDict
 
-from muse.domain import StructuredDelta
+from muse.domain import SemVerBump, StructuredDelta
 
 logger = logging.getLogger(__name__)
 
@@ -68,12 +68,16 @@ _TAGS_DIR = "tags"
 # ---------------------------------------------------------------------------
 
 
-class CommitDict(TypedDict):
+class CommitDict(TypedDict, total=False):
     """JSON-serialisable representation of a CommitRecord.
 
     ``structured_delta`` is the typed delta produced by the domain plugin's
     ``diff()`` at commit time. ``None`` on the initial commit (no parent to
     diff against).
+
+    ``sem_ver_bump`` and ``breaking_changes`` are v2 semantic versioning
+    metadata.  Absent (treated as ``"none"`` / ``[]``) for legacy records and
+    non-code domains.
     """
 
     commit_id: str
@@ -87,6 +91,8 @@ class CommitDict(TypedDict):
     author: str
     metadata: dict[str, str]
     structured_delta: StructuredDelta | None
+    sem_ver_bump: SemVerBump
+    breaking_changes: list[str]
 
 
 class SnapshotDict(TypedDict):
@@ -135,7 +141,12 @@ class RemoteCommitPayload(TypedDict, total=False):
 
 @dataclass
 class CommitRecord:
-    """An immutable commit record stored as a JSON file under .muse/commits/."""
+    """An immutable commit record stored as a JSON file under .muse/commits/.
+
+    v2 fields (``sem_ver_bump`` and ``breaking_changes``) are populated by the
+    commit command when a code-domain delta is available.  They default to
+    ``"none"`` and ``[]`` for legacy records and non-code domains.
+    """
 
     commit_id: str
     repo_id: str
@@ -148,6 +159,8 @@ class CommitRecord:
     author: str = ""
     metadata: dict[str, str] = field(default_factory=dict)
     structured_delta: StructuredDelta | None = None
+    sem_ver_bump: SemVerBump = "none"
+    breaking_changes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> CommitDict:
         return CommitDict(
@@ -162,6 +175,8 @@ class CommitRecord:
             author=self.author,
             metadata=dict(self.metadata),
             structured_delta=self.structured_delta,
+            sem_ver_bump=self.sem_ver_bump,
+            breaking_changes=list(self.breaking_changes),
         )
 
     @classmethod
@@ -182,6 +197,8 @@ class CommitRecord:
             author=d.get("author", ""),
             metadata=dict(d.get("metadata") or {}),
             structured_delta=d.get("structured_delta"),
+            sem_ver_bump=d.get("sem_ver_bump", "none"),
+            breaking_changes=list(d.get("breaking_changes") or []),
         )
 
 
