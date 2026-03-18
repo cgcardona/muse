@@ -1,4 +1,4 @@
-"""Domain schema declaration types — Phase 2.
+"""Domain schema declaration types — Phases 2 and 4.
 
 A plugin implements :meth:`~muse.domain.MuseDomainPlugin.schema` returning a
 :class:`DomainSchema` to declare the structural shape of its data. The core
@@ -11,6 +11,14 @@ engine uses this declaration to:
 
 Every schema type is a ``TypedDict`` — JSON-serialisable, zero-``Any``, and
 verifiable by mypy in strict mode.
+
+Phase 4 additions
+-----------------
+:class:`CRDTDimensionSpec` declares which CRDT primitive a dimension uses when
+``DomainSchema.merge_mode`` is ``"crdt"``.  Plugins that mix three-way and
+CRDT semantics per-dimension use :class:`CRDTDimensionSpec` for their CRDT
+dimensions and :class:`DimensionSpec` for their three-way dimensions; both are
+listed in :class:`DomainSchema`.
 
 Design note on ``MapSchema.value_schema``
 -----------------------------------------
@@ -147,6 +155,39 @@ class DimensionSpec(TypedDict):
     name: str
     description: str
     schema: ElementSchema
+    independent_merge: bool
+
+
+# ---------------------------------------------------------------------------
+# CRDT per-dimension schema (Phase 4)
+# ---------------------------------------------------------------------------
+
+#: The CRDT primitive types available for a dimension.
+CRDTPrimitive = Literal["lww_register", "or_set", "rga", "aw_map", "g_counter"]
+
+
+class CRDTDimensionSpec(TypedDict):
+    """Schema for a single dimension that uses CRDT merge semantics (Phase 4).
+
+    Plugins declare a ``CRDTDimensionSpec`` for each dimension they want the
+    core engine to merge via :meth:`~muse.domain.CRDTPlugin.join` rather than
+    the three-way merge path.
+
+    ``crdt_type`` selects the primitive:
+
+    - ``"lww_register"`` — scalar, last-write-wins (timestamps).
+    - ``"or_set"``       — unordered set, adds win over concurrent removes.
+    - ``"rga"``          — ordered sequence (collaborative text / note editing).
+    - ``"aw_map"``       — key-value map, adds win.
+    - ``"g_counter"``    — monotonically increasing integer counter.
+
+    ``independent_merge`` mirrors :class:`DimensionSpec`: when ``True``,
+    conflicts in other dimensions do not block this one.
+    """
+
+    name: str
+    description: str
+    crdt_type: CRDTPrimitive
     independent_merge: bool
 
 

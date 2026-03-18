@@ -1,4 +1,4 @@
-"""Muse VCS merge engine — fast-forward, 3-way path-level, and structured op-level merge.
+"""Muse VCS merge engine — fast-forward, 3-way, op-level, and CRDT merge.
 
 Public API
 ----------
@@ -7,6 +7,7 @@ Pure functions (no I/O):
 - :func:`diff_snapshots` — paths that changed between two snapshot manifests.
 - :func:`detect_conflicts` — paths changed on *both* branches since the base.
 - :func:`apply_merge` — build merged manifest for a conflict-free 3-way merge.
+- :func:`crdt_join_snapshots` — convergent CRDT merge (Phase 4); always succeeds.
 
 Structured (operation-level) merge — Phase 3:
 
@@ -14,6 +15,13 @@ Structured (operation-level) merge — Phase 3:
   ``merge_structured``, and :class:`~muse.core.op_transform.MergeOpsResult`.
   Plugins that implement :class:`~muse.domain.StructuredMergePlugin` use these
   functions to auto-merge non-conflicting ``DomainOp`` lists.
+
+CRDT merge — Phase 4:
+
+- :func:`crdt_join_snapshots` — detects :class:`~muse.domain.CRDTPlugin` at
+  runtime and delegates to ``plugin.join(a, b)``.  Returns a
+  :class:`~muse.domain.MergeResult` with an empty ``conflicts`` list; CRDT
+  joins never fail.
 
 File-based helpers:
 
@@ -45,7 +53,10 @@ import logging
 import pathlib
 from collections import deque
 from dataclasses import dataclass, field
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
+
+if TYPE_CHECKING:
+    from muse.domain import MergeResult, MuseDomainPlugin
 
 logger = logging.getLogger(__name__)
 
@@ -284,6 +295,82 @@ def apply_merge(
         else:
             merged.pop(path, None)
     return merged
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — CRDT convergent join
+# ---------------------------------------------------------------------------
+
+
+def crdt_join_snapshots(
+    plugin: MuseDomainPlugin,
+    a_snapshot: dict[str, str],
+    b_snapshot: dict[str, str],
+    a_vclock: dict[str, int],
+    b_vclock: dict[str, int],
+    a_crdt_state: dict[str, str],
+    b_crdt_state: dict[str, str],
+    domain: str,
+) -> MergeResult:
+    """Convergent CRDT merge — always succeeds, no conflicts possible.
+
+    Detects :class:`~muse.domain.CRDTPlugin` support via ``isinstance`` and
+    delegates to ``plugin.join(a, b)``.  The returned :class:`~muse.domain.MergeResult`
+    always has an empty ``conflicts`` list — the defining property of CRDT joins.
+
+    This function is the Phase 4 entry point for the ``muse merge`` command.
+    It is only called when ``DomainSchema.merge_mode == "crdt"`` AND the plugin
+    passes the ``isinstance(plugin, CRDTPlugin)`` check.
+
+    Args:
+        plugin:       The loaded domain plugin instance.
+        a_snapshot:   ``files`` mapping (path → content hash) for replica A.
+        b_snapshot:   ``files`` mapping (path → content hash) for replica B.
+        a_vclock:     Vector clock ``{agent_id: count}`` for replica A.
+        b_vclock:     Vector clock ``{agent_id: count}`` for replica B.
+        a_crdt_state: CRDT metadata hashes (path → blob hash) for replica A.
+        b_crdt_state: CRDT metadata hashes (path → blob hash) for replica B.
+        domain:       Domain name string (e.g. ``"music"``).
+
+    Returns:
+        A :class:`~muse.domain.MergeResult` with the joined snapshot and an
+        empty ``conflicts`` list.
+
+    Raises:
+        TypeError: When *plugin* does not implement the
+                   :class:`~muse.domain.CRDTPlugin` protocol.
+    """
+    from muse.domain import CRDTPlugin, CRDTSnapshotManifest, MergeResult, StateSnapshot
+
+    if not isinstance(plugin, CRDTPlugin):
+        raise TypeError(
+            f"crdt_join_snapshots: plugin {type(plugin).__name__!r} does not "
+            "implement CRDTPlugin — cannot use CRDT join path."
+        )
+
+    a_crdt: CRDTSnapshotManifest = {
+        "files": a_snapshot,
+        "domain": domain,
+        "vclock": a_vclock,
+        "crdt_state": a_crdt_state,
+        "schema_version": 1,
+    }
+    b_crdt: CRDTSnapshotManifest = {
+        "files": b_snapshot,
+        "domain": domain,
+        "vclock": b_vclock,
+        "crdt_state": b_crdt_state,
+        "schema_version": 1,
+    }
+
+    result_crdt = plugin.join(a_crdt, b_crdt)
+    plain_snapshot: StateSnapshot = plugin.from_crdt_state(result_crdt)
+
+    return MergeResult(
+        merged=plain_snapshot,
+        conflicts=[],
+        applied_strategies={},
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -1035,11 +1035,12 @@ test_full_merge_same_note_insert_produces_conflict
 
 ---
 
-## 6. Phase 4 — CRDT Semantics for Convergent Multi-Agent Writes
+## 6. Phase 4 — CRDT Semantics for Convergent Multi-Agent Writes ✅ Complete
 
 **Goal:** Plugin authors can opt into CRDT (Conflict-free Replicated Data Type) semantics. Merge becomes a mathematical `join` on a lattice. No conflict state ever exists. Millions of agents can write concurrently and always converge.
 
 **Estimated scope:** 6–8 weeks (significant distributed systems work).
+**Actual delivery:** Phase 4 implemented in a single session following Phases 1–3.
 
 ### 6.1 Motivation
 
@@ -1253,6 +1254,23 @@ test_crdt_merge_never_produces_conflicts
 | `muse/core/schema.py` | Add `CRDTSchema`. `DomainSchema.merge_mode` supports `"crdt"`. |
 | `muse/core/merge_engine.py` | Route to CRDT `join` when `merge_mode == "crdt"`. |
 | `tests/test_crdts.py` | **New.** |
+
+### 6.8 Phase 4 Completion Checklist
+
+- [x] `muse/core/crdts/vclock.py` — full `VectorClock` with `increment`, `merge`, `happens_before`, `concurrent_with`, `equivalent`, serialisation
+- [x] `muse/core/crdts/lww_register.py` — `LWWRegister` with timestamp tiebreak on `join`, `write`, `equivalent`, serialisation
+- [x] `muse/core/crdts/or_set.py` — `ORSet` add-wins set with `add`, `remove`, `join`, `elements`, `tokens_for`, `equivalent`, serialisation
+- [x] `muse/core/crdts/rga.py` — `RGA` with `parent_id`-tracked `insert`, `delete`, commutative `join` via tree traversal, `to_sequence`, `equivalent`, serialisation
+- [x] `muse/core/crdts/aw_map.py` — `AWMap` add-wins map with `set`, `remove`, `join`, `get`, `keys`, `to_plain_dict`, `equivalent`, serialisation
+- [x] `muse/core/crdts/g_counter.py` — `GCounter` grow-only counter with `increment`, `join`, `value`, `value_for`, `equivalent`, serialisation
+- [x] `muse/core/crdts/__init__.py` — clean re-export of all six primitives with comprehensive module docstring
+- [x] `muse/core/schema.py` — `CRDTDimensionSpec` TypedDict + `CRDTPrimitive` literal union added; module docstring updated for Phase 4
+- [x] `muse/domain.py` — `CRDTSnapshotManifest` TypedDict + `CRDTPlugin` `@runtime_checkable` sub-protocol added; module docstring updated
+- [x] `muse/core/merge_engine.py` — `crdt_join_snapshots()` function added; module docstring updated
+- [x] `tests/test_crdts.py` — 79 tests: all six CRDT primitives (correctness + all three lattice laws + serialisation), merge engine integration, cross-module lattice law battery
+- [x] `mypy muse/` — zero errors (52 source files)
+- [x] `python tools/typing_audit.py --dirs muse/ tests/ --max-any 0` — zero violations
+- [x] `pytest tests/ -v` — 691 tests green (79 new Phase 4 tests)
 
 ---
 

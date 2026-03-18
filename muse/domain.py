@@ -34,6 +34,18 @@ from ``diff()``, the merge engine checks
 ``isinstance(plugin, StructuredMergePlugin)`` and calls ``merge_ops()`` for
 fine-grained, operation-level conflict detection. Non-supporting plugins fall
 back to the existing file-level ``merge()`` path.
+
+Phase 4 — CRDT Semantics for Convergent Multi-Agent Writes
+------------------------------------------------------------
+Plugins may optionally implement :class:`CRDTPlugin`, a sub-protocol that
+replaces ``merge()`` with ``join()``.  ``join`` always succeeds — no conflict
+state ever exists.  This is the endgame for high-throughput multi-agent
+scenarios: given any two :class:`CRDTSnapshotManifest` values, ``join``
+produces a deterministic merged result regardless of message delivery order.
+
+The core engine detects ``CRDTPlugin`` via ``isinstance`` at merge time.
+``DomainSchema.merge_mode == "crdt"`` signals that the CRDT path should be
+taken.
 """
 from __future__ import annotations
 
@@ -42,7 +54,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, Protocol, TypedDict, runtime_checkable
 
 if TYPE_CHECKING:
-    from muse.core.schema import DomainSchema
+    from muse.core.schema import CRDTDimensionSpec, DomainSchema
 
 
 # ---------------------------------------------------------------------------
@@ -464,5 +476,152 @@ class StructuredMergePlugin(MuseDomainPlugin, Protocol):
         Returns:
             A :class:`MergeResult` with the reconciled snapshot and any
             remaining unresolvable conflicts.
+        """
+        ...
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — CRDT snapshot manifest and CRDTPlugin protocol
+# ---------------------------------------------------------------------------
+
+
+class CRDTSnapshotManifest(TypedDict):
+    """Extended snapshot manifest for CRDT-mode plugins.
+
+    Carries all the fields of a standard snapshot manifest plus CRDT-specific
+    metadata.  The ``files`` mapping has the same semantics as
+    :class:`SnapshotManifest` — path → content hash.  The additional fields
+    persist CRDT state between commits.
+
+    ``vclock`` records the causal state of the snapshot as a vector clock
+    ``{agent_id: event_count}``.  It is used to detect concurrent writes and
+    to resolve LWW tiebreaks when two agents write at the same logical time.
+
+    ``crdt_state`` maps per-file-path CRDT state blobs to their SHA-256 hashes
+    in the object store.  CRDT metadata (tombstones, RGA element IDs, OR-Set
+    tokens) lives here, separate from content hashes, so the content-addressed
+    store remains valid.
+
+    ``schema_version`` is always ``1`` for Phase 4.
+    """
+
+    files: dict[str, str]
+    domain: str
+    vclock: dict[str, int]
+    crdt_state: dict[str, str]
+    schema_version: Literal[1]
+
+
+@runtime_checkable
+class CRDTPlugin(MuseDomainPlugin, Protocol):
+    """Optional extension for plugins that want convergent CRDT merge semantics.
+
+    Plugins implementing this protocol replace the three-way ``merge()`` with
+    a mathematical ``join()`` on a lattice.  ``join`` always succeeds:
+
+    - **No conflict state ever exists.**
+    - Any two replicas that have received the same set of writes converge to
+      the same state, regardless of delivery order.
+    - Millions of agents can write concurrently without coordination.
+
+    The three lattice laws guaranteed by ``join``:
+
+    1. **Commutativity**: ``join(a, b) == join(b, a)``
+    2. **Associativity**: ``join(join(a, b), c) == join(a, join(b, c))``
+    3. **Idempotency**: ``join(a, a) == a``
+
+    The core engine detects support at runtime via::
+
+        isinstance(plugin, CRDTPlugin)
+
+    and routes to ``join`` when ``DomainSchema.merge_mode == "crdt"``.
+    Plugins that do not implement ``CRDTPlugin`` fall back to the existing
+    three-way ``merge()`` path.
+
+    Implementation checklist for plugin authors
+    -------------------------------------------
+    1. Override ``schema()`` to return a :class:`~muse.core.schema.DomainSchema`
+       with ``merge_mode="crdt"`` and :class:`~muse.core.schema.CRDTDimensionSpec`
+       for each CRDT dimension.
+    2. Implement ``crdt_schema()`` to declare which CRDT primitive maps to each
+       dimension.
+    3. Implement ``join(a, b)`` using the CRDT primitives in
+       :mod:`muse.core.crdts`.
+    4. Implement ``to_crdt_state(snapshot)`` to lift a plain snapshot into
+       CRDT state.
+    5. Implement ``from_crdt_state(crdt)`` to materialise a CRDT state back to
+       a plain snapshot for ``muse show`` and CLI display.
+    """
+
+    def crdt_schema(self) -> list[CRDTDimensionSpec]:
+        """Declare the CRDT type used for each dimension.
+
+        Returns a list of :class:`~muse.core.schema.CRDTDimensionSpec` — one
+        per dimension that uses CRDT semantics.  Dimensions not listed here
+        fall back to three-way merge.
+
+        Returns:
+            List of CRDT dimension declarations.
+        """
+        ...
+
+    def join(
+        self,
+        a: CRDTSnapshotManifest,
+        b: CRDTSnapshotManifest,
+    ) -> CRDTSnapshotManifest:
+        """Merge two CRDT snapshots by computing their lattice join.
+
+        This operation is:
+
+        - Commutative: ``join(a, b) == join(b, a)``
+        - Associative: ``join(join(a, b), c) == join(a, join(b, c))``
+        - Idempotent: ``join(a, a) == a``
+
+        These three properties guarantee convergence regardless of message
+        order or delivery count.
+
+        The implementation should use the CRDT primitives in
+        :mod:`muse.core.crdts` (one primitive per declared CRDT dimension),
+        compute the per-dimension joins, then rebuild the ``files`` manifest
+        and ``vclock`` from the results.
+
+        Args:
+            a: First CRDT snapshot manifest.
+            b: Second CRDT snapshot manifest.
+
+        Returns:
+            A new :class:`CRDTSnapshotManifest` that is the join of *a* and *b*.
+        """
+        ...
+
+    def to_crdt_state(self, snapshot: StateSnapshot) -> CRDTSnapshotManifest:
+        """Lift a plain snapshot into CRDT state representation.
+
+        Called when importing a snapshot that was created before this plugin
+        opted into CRDT mode.  The implementation should initialise fresh CRDT
+        primitives from the snapshot content, with an empty vector clock.
+
+        Args:
+            snapshot: A plain :class:`StateSnapshot` to lift.
+
+        Returns:
+            A :class:`CRDTSnapshotManifest` with the same content and empty
+            CRDT metadata (zero vector clock, empty ``crdt_state``).
+        """
+        ...
+
+    def from_crdt_state(self, crdt: CRDTSnapshotManifest) -> StateSnapshot:
+        """Materialise a CRDT state back to a plain snapshot.
+
+        Used by ``muse show``, ``muse status``, and CLI commands that need a
+        standard :class:`StateSnapshot` view of a CRDT-mode snapshot.
+
+        Args:
+            crdt: A :class:`CRDTSnapshotManifest` to materialise.
+
+        Returns:
+            A plain :class:`StateSnapshot` with the visible (non-tombstoned)
+            content.
         """
         ...
