@@ -14,7 +14,7 @@ Usage
 Output
 ------
     artifacts/tour_de_force.json   — structured event log + DAG
-    artifacts/tour_de_force.html   — shareable visualization
+    artifacts/demo.html            — shareable visualization
 """
 from __future__ import annotations
 
@@ -507,7 +507,7 @@ def main() -> None:
     print(f"✓ JSON  → {json_path}")
 
     if not args.json_only:
-        html_path = output_dir / "tour_de_force.html"
+        html_path = output_dir / "demo.html"
         # render_html is importable because _TOOLS_DIR was added to sys.path above.
         import render_html as _render_html
         _render_html.render(tour, html_path)
