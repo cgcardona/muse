@@ -89,6 +89,7 @@ from muse.cli.commands import (
     harmony,
     hotspots,
     impact,
+    index_rebuild,
     init,
     languages,
     lineage,
@@ -177,6 +178,7 @@ cli.add_typer(codemap.app,         name="codemap",          help="[code] Semanti
 cli.add_typer(clones.app,          name="clones",           help="[code] Find exact and near-duplicate symbols (body_hash / signature_id clusters).")
 cli.add_typer(checkout_symbol.app, name="checkout-symbol",  help="[code] Restore a historical version of one symbol into the working tree.")
 cli.add_typer(semantic_cherry_pick.app, name="semantic-cherry-pick", help="[code] Cherry-pick named symbols from a historical commit into the working tree.")
+cli.add_typer(index_rebuild.app,   name="index",            help="[code] Manage local indexes: status, rebuild symbol_history / hash_occurrence.")
 
 
 if __name__ == "__main__":
