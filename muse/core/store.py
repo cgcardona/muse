@@ -95,9 +95,8 @@ class CommitDict(TypedDict, total=False):
                      :func:`muse.core.provenance.verify_commit_hmac`.
     ``signer_key_id`` Fingerprint of the signing key
                      (SHA-256[:16] of the raw key bytes).
-    ``format_version`` Schema evolution counter.  Each phase of the Muse
-                     supercharge plan that extends the commit record bumps
-                     this value.  Readers use it to know which optional fields
+    ``format_version`` Schema evolution counter.  Each architecture phase
+                     that extends the commit record bumps this value.  Readers use it to know which optional fields
                      are present:
 
                      - ``1`` — base record (commit_id, snapshot_id, parent, message, author)

@@ -1,7 +1,7 @@
 """Voice-aware Music RGA — experimental CRDT for live MIDI note sequences.
 
 This module is a **research prototype** for the live collaboration foundation
-described in the Muse supercharge plan.  It is NOT wired into the production
+described in the Muse live collaboration architecture.  It is NOT wired into the production
 merge path.  Its purpose is to:
 
 1. Demonstrate that concurrent note insertions can be made commutative.
