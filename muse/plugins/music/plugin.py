@@ -57,6 +57,14 @@ import json
 import logging
 import pathlib
 
+from muse.core.schema import (
+    DimensionSpec,
+    DomainSchema,
+    SequenceSchema,
+    SetSchema,
+    TensorSchema,
+    TreeSchema,
+)
 from muse.domain import (
     DeleteOp,
     DomainOp,
@@ -437,6 +445,95 @@ class MusicPlugin:
             # PatchOp and MoveOp: skip in-memory — caller must use workdir path.
 
         return SnapshotManifest(files=current_files, domain=_DOMAIN_TAG)
+
+    # ------------------------------------------------------------------
+    # 6. schema — declare structural schema for the algorithm library
+    # ------------------------------------------------------------------
+
+    def schema(self) -> DomainSchema:
+        """Return the full structural schema for the music domain.
+
+        Declares four semantic dimensions — melodic, harmonic, dynamic, and
+        structural — that the core diff algorithm library (Phase 2) and merge
+        engine (Phase 3) use to drive per-dimension operations.
+
+        Top level is a ``SetSchema``: the music workspace is an unordered
+        collection of audio/MIDI files, each identified by its SHA-256 content
+        hash.
+
+        Dimensions:
+
+        - **melodic** — the sequence of note events over time. LCS-diffed so
+          that insertions and deletions of individual notes are surfaced.
+        - **harmonic** — the sequence of chord events and key-signature changes.
+          LCS-diffed independently of the melodic dimension.
+        - **dynamic** — velocity and expression curves as a 1-D float tensor.
+          Epsilon of 1.0 ignores sub-1-velocity noise; sparse mode emits one
+          ``ReplaceOp`` per changed event.
+        - **structural** — track layout, time signatures, and tempo map as a
+          labeled ordered tree. Structural changes are non-independent: they
+          block merging all other dimensions until resolved, because a tempo
+          change shifts the meaning of every subsequent note position.
+        """
+        return DomainSchema(
+            domain=_DOMAIN_TAG,
+            description="MIDI and audio file versioning with note-level diff",
+            top_level=SetSchema(
+                kind="set",
+                element_type="audio_file",
+                identity="by_content",
+            ),
+            dimensions=[
+                DimensionSpec(
+                    name="melodic",
+                    description="Note pitches and durations over time",
+                    schema=SequenceSchema(
+                        kind="sequence",
+                        element_type="note_event",
+                        identity="by_position",
+                        diff_algorithm="lcs",
+                        alphabet=None,
+                    ),
+                    independent_merge=True,
+                ),
+                DimensionSpec(
+                    name="harmonic",
+                    description="Chord progressions and key signatures",
+                    schema=SequenceSchema(
+                        kind="sequence",
+                        element_type="chord_event",
+                        identity="by_position",
+                        diff_algorithm="lcs",
+                        alphabet=None,
+                    ),
+                    independent_merge=True,
+                ),
+                DimensionSpec(
+                    name="dynamic",
+                    description="Velocity and expression curves",
+                    schema=TensorSchema(
+                        kind="tensor",
+                        dtype="float32",
+                        rank=1,
+                        epsilon=1.0,
+                        diff_mode="sparse",
+                    ),
+                    independent_merge=True,
+                ),
+                DimensionSpec(
+                    name="structural",
+                    description="Track layout, time signatures, tempo map",
+                    schema=TreeSchema(
+                        kind="tree",
+                        node_type="track_node",
+                        diff_algorithm="zhang_shasha",
+                    ),
+                    independent_merge=False,
+                ),
+            ],
+            merge_mode="three_way",
+            schema_version=1,
+        )
 
 
 # ---------------------------------------------------------------------------

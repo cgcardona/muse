@@ -1,7 +1,14 @@
 # Muse — Supercharge Plan: From File-Hash MVP to Universal Multidimensional VCS
 
-> **Status:** Working document — pre-implementation spec.
+> **Status:** Active implementation — Phase 1 complete, Phase 2 in progress.
 > No backward compatibility constraints. We own every line.
+>
+> | Phase | Status | Branch / PR |
+> |-------|--------|-------------|
+> | Phase 1 — Typed Delta Algebra | ✅ **Complete** — merged to `dev` ([PR #13](https://github.com/cgcardona/muse/pull/13)) | `feat/phase-1-typed-delta-algebra` |
+> | Phase 2 — Domain Schema & Diff Algorithm Library | 🔄 **In progress** | `feat/phase-2-domain-schema-diff-library` |
+> | Phase 3 — Operation-Level Merge Engine | ⏳ Pending Phase 2 | — |
+> | Phase 4 — CRDT Semantics | ⏳ Pending Phase 3 | — |
 
 ---
 
@@ -354,6 +361,17 @@ test_midi_diff_summary_string_is_human_readable
 | `tests/test_structured_delta.py` | **New.** All Phase 1 tests. |
 | `tests/test_midi_diff.py` | **New.** MIDI diff algorithm tests. |
 | `tests/test_music_plugin.py` | Update to assert `StructuredDelta` return type. |
+
+### 3.10 Phase 1 Completion Checklist
+
+- [x] `DeltaManifest` is gone; `StructuredDelta` is the only `StateDelta`
+- [x] Music plugin's `diff()` returns `StructuredDelta` with `PatchOp` for `.mid` files
+- [x] `muse show <commit>` displays note-level diff summary
+- [x] `mypy muse/` — zero errors
+- [x] `python tools/typing_audit.py --dirs muse/ tests/ --max-any 0` — zero violations
+- [x] All new test cases pass (38 in `test_structured_delta.py`, 29 in `test_midi_diff.py`)
+- [x] `.muse/` added to `.gitignore` (housekeeping fix — PR #14)
+- [x] CI trigger narrowed to PRs targeting `main` only
 
 ---
 

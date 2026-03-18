@@ -18,6 +18,7 @@ import json
 import pathlib
 
 from muse.core.errors import MuseCLIError
+from muse.core.schema import DomainSchema
 from muse.domain import MuseDomainPlugin
 from muse.plugins.music.plugin import MusicPlugin
 
@@ -83,3 +84,23 @@ def read_domain(root: pathlib.Path) -> str:
 def registered_domains() -> list[str]:
     """Return the sorted list of registered domain names."""
     return sorted(_REGISTRY)
+
+
+def schema_for(domain: str) -> DomainSchema | None:
+    """Return the ``DomainSchema`` for *domain*, or ``None`` if not registered.
+
+    Allows the CLI and merge engine to look up a domain's schema without
+    holding a plugin instance. Returns ``None`` rather than raising so callers
+    can decide whether an unknown domain is an error or a soft miss.
+
+    Args:
+        domain: Domain name string (e.g. ``"music"``).
+
+    Returns:
+        The :class:`~muse.core.schema.DomainSchema` declared by the plugin,
+        or ``None`` if *domain* is not in the registry.
+    """
+    plugin = _REGISTRY.get(domain)
+    if plugin is None:
+        return None
+    return plugin.schema()
