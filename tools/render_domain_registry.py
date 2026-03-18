@@ -1391,7 +1391,7 @@ _HTML_TEMPLATE = """\
   </div>
   <div class="musehub-status">
     <div class="mh-dot"></div>
-    MuseHub — planned · building in public at github.com/cgcardona/muse
+    MuseHub — planned · building in public at <a href="https://github.com/cgcardona/musehub" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;text-underline-offset:3px;">github.com/cgcardona/musehub</a>
   </div>
 </div>
 
