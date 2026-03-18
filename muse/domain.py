@@ -1,8 +1,8 @@
-"""MuseDomainPlugin — the five-interface protocol that defines a Muse domain.
+"""MuseDomainPlugin — the six-interface protocol that defines a Muse domain.
 
 Muse provides the DAG engine, content-addressed object store, branching,
 lineage walking, topological log graph, and merge base finder. A domain plugin
-implements these five interfaces and Muse does the rest.
+implements these six interfaces and Muse does the rest.
 
 The music plugin (``muse.plugins.music``) is the reference implementation.
 Every other domain — scientific simulation, genomics, 3D spatial design,
@@ -17,12 +17,23 @@ address it touched, and a content-addressed ID for the before/after content.
 
 This replaces ``DeltaManifest`` entirely. Plugins that previously returned
 ``DeltaManifest`` must now return ``StructuredDelta``.
+
+Phase 2 — Domain Schema & Diff Algorithm Library
+-------------------------------------------------
+``schema()`` is now the sixth protocol method. Plugins return a
+``DomainSchema`` declaring their data structure. The core engine uses this
+declaration to drive diff algorithm selection via
+:func:`~muse.core.diff_algorithms.diff_by_schema`, and the merge engine
+(Phase 3) will use it for informed conflict detection.
 """
 from __future__ import annotations
 
 import pathlib
 from dataclasses import dataclass, field
-from typing import Literal, Protocol, TypedDict, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, TypedDict, runtime_checkable
+
+if TYPE_CHECKING:
+    from muse.core.schema import DomainSchema
 
 
 # ---------------------------------------------------------------------------
@@ -330,5 +341,25 @@ class MuseDomainPlugin(Protocol):
         ``pathlib.Path``, the plugin reads the content from the object store.
         When ``live_state`` is a ``SnapshotManifest``, only ``DeleteOp`` and
         ``ReplaceOp`` at the file level can be applied in-memory.
+        """
+        ...
+
+    def schema(self) -> DomainSchema:
+        """Declare the structural schema of this domain's state.
+
+        The core engine calls this once at plugin registration time. Plugins
+        must return a stable, deterministic :class:`~muse.core.schema.DomainSchema`
+        describing:
+
+        - ``top_level`` — the primary collection structure (e.g. a set of
+          files, a map of chromosome names to sequences).
+        - ``dimensions`` — the semantic sub-dimensions of state (e.g. melodic,
+          harmonic, dynamic, structural for music).
+        - ``merge_mode`` — ``"three_way"`` (Phases 1–3) or ``"crdt"`` (Phase 4).
+
+        The schema drives :func:`~muse.core.diff_algorithms.diff_by_schema`
+        algorithm selection and the Phase 3 merge engine's conflict detection.
+
+        See :mod:`muse.core.schema` for all available element schema types.
         """
         ...

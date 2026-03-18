@@ -1,27 +1,26 @@
 """MIDI note-level diff for the Muse music plugin.
 
-Implements the Myers / LCS shortest-edit-script algorithm on MIDI note
-sequences, producing a ``StructuredDelta`` with note-level ``InsertOp``,
-``DeleteOp``, and ``ReplaceOp`` entries inside a ``PatchOp``.
-
-This is what lets ``muse show`` display "C4 added at beat 3.5" rather than
-"tracks/drums.mid modified".
+Produces a ``StructuredDelta`` with note-level ``InsertOp`` and ``DeleteOp``
+entries from two MIDI byte strings. This is what lets ``muse show`` display
+"C4 added at beat 3.5" rather than "tracks/drums.mid modified".
 
 Algorithm
 ---------
 1. Parse MIDI bytes and extract paired note events (note_on + note_off)
    sorted by start tick.
 2. Represent each note as a ``NoteKey`` TypedDict with five fields.
-3. Run the O(nm) LCS dynamic-programming algorithm on the two note sequences.
-4. Traceback to produce a shortest edit script of keep / insert / delete steps.
-5. Map edit steps to typed ``DomainOp`` instances.
-6. Wrap the ops in a ``StructuredDelta`` with a human-readable summary.
+3. Convert each ``NoteKey`` to its deterministic content ID (SHA-256 of the
+   five fields).
+4. Delegate to :func:`~muse.core.diff_algorithms.lcs.myers_ses` — the shared
+   LCS implementation from the Phase 2 algorithm library — for the SES.
+5. Map edit steps to typed ``DomainOp`` instances using the note's content
+   ID and a human-readable summary string.
+6. Wrap the ops in a ``StructuredDelta``.
 
 Public API
 ----------
-- :class:`NoteKey` — hashable note identity.
+- :class:`NoteKey` — typed MIDI note identity.
 - :func:`extract_notes` — MIDI bytes → sorted ``list[NoteKey]``.
-- :func:`lcs_edit_script` — LCS shortest edit script on two note lists.
 - :func:`diff_midi_notes` — top-level: MIDI bytes × 2 → ``StructuredDelta``.
 """
 from __future__ import annotations
@@ -34,6 +33,7 @@ from typing import Literal, TypedDict
 
 import mido
 
+from muse.core.diff_algorithms.lcs import myers_ses
 from muse.domain import (
     DeleteOp,
     DomainOp,
@@ -69,23 +69,6 @@ class NoteKey(TypedDict):
     start_tick: int
     duration_ticks: int
     channel: int
-
-
-# ---------------------------------------------------------------------------
-# Edit step — output of the LCS traceback
-# ---------------------------------------------------------------------------
-
-EditKind = Literal["keep", "insert", "delete"]
-
-
-@dataclass(frozen=True)
-class EditStep:
-    """One step in the shortest edit script."""
-
-    kind: EditKind
-    base_index: int    # index in the base note sequence
-    target_index: int  # index in the target note sequence
-    note: NoteKey
 
 
 # ---------------------------------------------------------------------------
@@ -196,8 +179,20 @@ def extract_notes(midi_bytes: bytes) -> tuple[list[NoteKey], int]:
 
 
 # ---------------------------------------------------------------------------
-# LCS / Myers algorithm
+# NoteKey-level edit script — adapter over the core LCS
 # ---------------------------------------------------------------------------
+
+EditKind = Literal["keep", "insert", "delete"]
+
+
+@dataclass(frozen=True)
+class EditStep:
+    """One step in the note-level edit script produced by :func:`lcs_edit_script`."""
+
+    kind: EditKind
+    base_index: int
+    target_index: int
+    note: NoteKey
 
 
 def lcs_edit_script(
@@ -206,46 +201,35 @@ def lcs_edit_script(
 ) -> list[EditStep]:
     """Compute the shortest edit script transforming *base* into *target*.
 
-    Uses the standard O(n·m) LCS dynamic-programming algorithm followed by
-    linear-time traceback. Two notes are matched iff all five ``NoteKey``
-    fields are equal.
+    Converts each ``NoteKey`` to its content ID, delegates to
+    :func:`~muse.core.diff_algorithms.lcs.myers_ses` for the SES, then maps
+    the result back to :class:`EditStep` entries carrying the original
+    ``NoteKey`` values.
+
+    Two notes are matched iff all five ``NoteKey`` fields are equal. This is
+    correct: a pitch change, velocity change, or timing shift is a delete of
+    the old note and an insert of the new one.
 
     Args:
         base:   The base (ancestor) note sequence.
         target: The target (newer) note sequence.
 
     Returns:
-        A list of ``EditStep`` with kind ``"keep"``, ``"insert"``, or
-        ``"delete"`` that transforms *base* into *target* in order.
-        The list is minimal: ``len(keep steps) == LCS length``.
+        A list of :class:`EditStep` entries (keep / insert / delete).
     """
-    n, m = len(base), len(target)
+    base_ids = [_note_content_id(n) for n in base]
+    target_ids = [_note_content_id(n) for n in target]
+    raw_steps = myers_ses(base_ids, target_ids)
 
-    # dp[i][j] = length of LCS of base[i:] and target[j:]
-    dp: list[list[int]] = [[0] * (m + 1) for _ in range(n + 1)]
-    for i in range(n - 1, -1, -1):
-        for j in range(m - 1, -1, -1):
-            if base[i] == target[j]:
-                dp[i][j] = dp[i + 1][j + 1] + 1
-            else:
-                dp[i][j] = max(dp[i + 1][j], dp[i][j + 1])
-
-    # Traceback: reconstruct the edit script.
-    steps: list[EditStep] = []
-    i, j = 0, 0
-    while i < n or j < m:
-        if i < n and j < m and base[i] == target[j]:
-            steps.append(EditStep("keep", i, j, base[i]))
-            i += 1
-            j += 1
-        elif j < m and (i >= n or dp[i][j + 1] >= dp[i + 1][j]):
-            steps.append(EditStep("insert", i, j, target[j]))
-            j += 1
+    result: list[EditStep] = []
+    for step in raw_steps:
+        if step.kind == "keep":
+            result.append(EditStep("keep", step.base_index, step.target_index, base[step.base_index]))
+        elif step.kind == "insert":
+            result.append(EditStep("insert", step.base_index, step.target_index, target[step.target_index]))
         else:
-            steps.append(EditStep("delete", i, j, base[i]))
-            i += 1
-
-    return steps
+            result.append(EditStep("delete", step.base_index, step.target_index, base[step.base_index]))
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -261,15 +245,15 @@ def diff_midi_notes(
 ) -> StructuredDelta:
     """Compute a note-level ``StructuredDelta`` between two MIDI files.
 
-    Parses both files, runs LCS on their note sequences, and returns a
-    ``StructuredDelta`` suitable for embedding in a ``PatchOp.child_ops``
-    list or storing directly as a commit's ``structured_delta``.
+    Parses both files, converts each note to its content ID, delegates to the
+    core :func:`~muse.core.diff_algorithms.lcs.myers_ses` for the SES, then
+    maps the edit steps to typed ``DomainOp`` instances.
 
     Args:
-        base_bytes:  Raw bytes of the base (ancestor) MIDI file.
+        base_bytes:   Raw bytes of the base (ancestor) MIDI file.
         target_bytes: Raw bytes of the target (newer) MIDI file.
-        file_path:   Workspace-relative path of the file being diffed.
-                     Used only in log messages and ``content_summary`` strings.
+        file_path:    Workspace-relative path of the file being diffed (used
+                      only in log messages and ``content_summary`` strings).
 
     Returns:
         A ``StructuredDelta`` with ``InsertOp`` and ``DeleteOp`` entries for
@@ -281,9 +265,16 @@ def diff_midi_notes(
     """
     base_notes, base_tpb = extract_notes(base_bytes)
     target_notes, target_tpb = extract_notes(target_bytes)
-    tpb = base_tpb  # use base ticks_per_beat for summary formatting
+    tpb = base_tpb  # use base ticks_per_beat for human-readable summaries
 
-    steps = lcs_edit_script(base_notes, target_notes)
+    # Convert NoteKey → content ID, then delegate LCS to the core algorithm.
+    base_ids = [_note_content_id(n) for n in base_notes]
+    target_ids = [_note_content_id(n) for n in target_notes]
+    steps = myers_ses(base_ids, target_ids)
+
+    # Build a content-ID → NoteKey lookup so we can produce rich summaries.
+    base_by_id = {_note_content_id(n): n for n in base_notes}
+    target_by_id = {_note_content_id(n): n for n in target_notes}
 
     child_ops: list[DomainOp] = []
     inserts = 0
@@ -291,24 +282,28 @@ def diff_midi_notes(
 
     for step in steps:
         if step.kind == "insert":
+            note = target_by_id.get(step.item)
+            summary = _note_summary(note, tpb) if note else step.item[:12]
             child_ops.append(
                 InsertOp(
                     op="insert",
                     address=f"note:{step.target_index}",
                     position=step.target_index,
-                    content_id=_note_content_id(step.note),
-                    content_summary=_note_summary(step.note, tpb),
+                    content_id=step.item,
+                    content_summary=summary,
                 )
             )
             inserts += 1
         elif step.kind == "delete":
+            note = base_by_id.get(step.item)
+            summary = _note_summary(note, tpb) if note else step.item[:12]
             child_ops.append(
                 DeleteOp(
                     op="delete",
                     address=f"note:{step.base_index}",
                     position=step.base_index,
-                    content_id=_note_content_id(step.note),
-                    content_summary=_note_summary(step.note, tpb),
+                    content_id=step.item,
+                    content_summary=summary,
                 )
             )
             deletes += 1
@@ -322,7 +317,7 @@ def diff_midi_notes(
     child_summary = ", ".join(parts) if parts else "no note changes"
 
     logger.debug(
-        "✅ MIDI diff %r: +%d -%d notes (%d LCS steps)",
+        "✅ MIDI diff %r: +%d -%d notes (%d SES steps)",
         file_path,
         inserts,
         deletes,
