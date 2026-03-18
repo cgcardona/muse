@@ -46,6 +46,11 @@ Code-domain semantic commands — Phase 4 (call-graph tier)::
     impact          transitive blast-radius — what breaks if this function changes?
     dead            dead code detection — symbols with no callers and no importers
     coverage        class interface call-coverage — which methods are actually used?
+
+Code-domain semantic commands — Phase 5 (query v2 + temporal)::
+
+    query           predicate DSL v2 — OR, NOT, grouping, new fields, schema_version
+    query-history   temporal symbol search across a commit range
 """
 from __future__ import annotations
 
@@ -83,6 +88,7 @@ from muse.cli.commands import (
     patch,
     piano_roll,
     query,
+    query_history,
     reset,
     revert,
     show,
@@ -143,7 +149,8 @@ cli.add_typer(coupling.app,        name="coupling",         help="[code] File co
 cli.add_typer(compare.app,         name="compare",          help="[code] Deep semantic comparison between any two historical snapshots.")
 cli.add_typer(languages.app,       name="languages",        help="[code] Language and symbol-type breakdown of a snapshot.")
 cli.add_typer(patch.app,           name="patch",            help="[code] Surgical semantic patch — modify exactly one named symbol (all-language syntax validation).")
-cli.add_typer(query.app,           name="query",            help="[code] Symbol graph predicate DSL — SQL for your codebase (--all-commits for temporal search).")
+cli.add_typer(query.app,           name="query",            help="[code] Symbol graph predicate DSL v2 — OR/NOT/grouping, --all-commits temporal search.")
+cli.add_typer(query_history.app,   name="query-history",    help="[code] Temporal symbol search — first seen, last seen, change count across a commit range.")
 cli.add_typer(deps.app,            name="deps",             help="[code] Import graph + Python call-graph; --reverse for callers/importers.")
 cli.add_typer(find_symbol.app,     name="find-symbol",      help="[code] Cross-commit, cross-branch symbol search by hash, name, or kind.")
 cli.add_typer(impact.app,          name="impact",           help="[code] Transitive blast-radius — every caller affected if this symbol changes.")
