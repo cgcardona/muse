@@ -440,6 +440,41 @@ def get_all_commits(repo_root: pathlib.Path) -> list[CommitRecord]:
     return results
 
 
+def walk_commits_between(
+    repo_root: pathlib.Path,
+    to_commit_id: str,
+    from_commit_id: str | None = None,
+    max_commits: int = 10_000,
+) -> list[CommitRecord]:
+    """Return commits reachable from *to_commit_id*, stopping before *from_commit_id*.
+
+    Walks the parent chain from *to_commit_id* backwards.  Returns commits in
+    newest-first order (callers can reverse for oldest-first).
+
+    Args:
+        repo_root:      Repository root.
+        to_commit_id:   Inclusive end of the range.
+        from_commit_id: Exclusive start; ``None`` means walk to the initial commit.
+        max_commits:    Safety cap.
+
+    Returns:
+        List of ``CommitRecord`` objects, newest first.
+    """
+    commits: list[CommitRecord] = []
+    seen: set[str] = set()
+    current_id: str | None = to_commit_id
+    while current_id and current_id not in seen and len(commits) < max_commits:
+        seen.add(current_id)
+        if current_id == from_commit_id:
+            break
+        commit = read_commit(repo_root, current_id)
+        if commit is None:
+            break
+        commits.append(commit)
+        current_id = commit.parent_commit_id
+    return commits
+
+
 # ---------------------------------------------------------------------------
 # Snapshot operations
 # ---------------------------------------------------------------------------
