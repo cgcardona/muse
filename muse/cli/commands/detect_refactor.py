@@ -343,8 +343,10 @@ def detect_refactor(
     if as_json:
         typer.echo(json.dumps(
             {
+                "schema_version": 2,
                 "from": from_label,
                 "to": to_label,
+                "total": len(all_events),
                 "events": [e.to_dict() for e in all_events],
             },
             indent=2,

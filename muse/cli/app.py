@@ -33,30 +33,81 @@ Code-domain semantic commands — Phase 2 (paradigm shift)::
     coupling        file co-change analysis — hidden dependencies
     compare         semantic comparison between any two historical snapshots
     languages       language and symbol-type breakdown
-    patch           surgical semantic patch — modify exactly one symbol
-    query           symbol graph predicate DSL — SQL for your codebase
+    patch           surgical semantic patch — modify exactly one symbol (all-language validation)
+    query           symbol graph predicate DSL — SQL for your codebase (--all-commits mode)
+
+Code-domain semantic commands — Phase 3 (gap-closers)::
+
+    deps            import graph + Python call-graph with --reverse
+    find-symbol     cross-commit, cross-branch content_id / name search
+
+Code-domain semantic commands — Phase 4 (call-graph tier)::
+
+    impact          transitive blast-radius — what breaks if this function changes?
+    dead            dead code detection — symbols with no callers and no importers
+    coverage        class interface call-coverage — which methods are actually used?
+
+Code-domain semantic commands — Phase 5 (query v2 + temporal)::
+
+    query           predicate DSL v2 — OR, NOT, grouping, new fields, schema_version
+    query-history   temporal symbol search across a commit range
+
+Code-domain semantic commands — Phase 6 (provenance + topology)::
+
+    lineage         full provenance chain of a symbol through commit history
+    api-surface     public API surface and how it changed between commits
+    codemap         semantic topology — cycles, centrality, boundary files
+    clones          find exact and near-duplicate symbols across the snapshot
+    checkout-symbol restore a historical version of a specific symbol
+    semantic-cherry-pick  cherry-pick named symbols from a historical commit
+
+Code-domain semantic commands — Phase 7 (index acceleration)::
+
+    index           manage local indexes: status, rebuild symbol_history / hash_occurrence
+
+Multi-agent coordination commands::
+
+    reserve         advisory symbol reservation — announce intent before editing
+    intent          declare a specific operation before executing it
+    forecast        predict merge conflicts from active reservations and intents
+    plan-merge      dry-run semantic merge plan — classify conflicts without writing
+    shard           partition the codebase into N low-coupling work zones
+    reconcile       recommend merge ordering and integration strategy
 """
 from __future__ import annotations
 
 import typer
 
 from muse.cli.commands import (
+    api_surface,
     attributes,
     blame,
     branch,
     cherry_pick,
     checkout,
+    checkout_symbol,
+    clones,
+    codemap,
     commit,
     compare,
     coupling,
+    coverage,
+    dead,
+    deps,
     detect_refactor,
     diff,
     domains,
+    find_symbol,
+    forecast,
     grep,
     harmony,
     hotspots,
+    impact,
+    index_rebuild,
     init,
+    intent,
     languages,
+    lineage,
     log,
     merge,
     mix,
@@ -66,9 +117,15 @@ from muse.cli.commands import (
     notes,
     patch,
     piano_roll,
+    plan_merge,
     query,
+    query_history,
+    reconcile,
+    reserve,
     reset,
     revert,
+    semantic_cherry_pick,
+    shard,
     show,
     stable,
     stash,
@@ -76,6 +133,8 @@ from muse.cli.commands import (
     symbol_log,
     symbols,
     tag,
+    breakage,
+    invariants,
     transpose,
     velocity_profile,
 )
@@ -126,8 +185,31 @@ cli.add_typer(stable.app,          name="stable",           help="[code] Symbol 
 cli.add_typer(coupling.app,        name="coupling",         help="[code] File co-change analysis — discover hidden semantic dependencies.")
 cli.add_typer(compare.app,         name="compare",          help="[code] Deep semantic comparison between any two historical snapshots.")
 cli.add_typer(languages.app,       name="languages",        help="[code] Language and symbol-type breakdown of a snapshot.")
-cli.add_typer(patch.app,           name="patch",            help="[code] Surgical semantic patch — modify exactly one named symbol.")
-cli.add_typer(query.app,           name="query",            help="[code] Symbol graph predicate DSL — SQL for your codebase.")
+cli.add_typer(patch.app,           name="patch",            help="[code] Surgical semantic patch — modify exactly one named symbol (all-language syntax validation).")
+cli.add_typer(query.app,           name="query",            help="[code] Symbol graph predicate DSL v2 — OR/NOT/grouping, --all-commits temporal search.")
+cli.add_typer(query_history.app,   name="query-history",    help="[code] Temporal symbol search — first seen, last seen, change count across a commit range.")
+cli.add_typer(deps.app,            name="deps",             help="[code] Import graph + Python call-graph; --reverse for callers/importers.")
+cli.add_typer(find_symbol.app,     name="find-symbol",      help="[code] Cross-commit, cross-branch symbol search by hash, name, or kind.")
+cli.add_typer(impact.app,          name="impact",           help="[code] Transitive blast-radius — every caller affected if this symbol changes.")
+cli.add_typer(dead.app,            name="dead",             help="[code] Dead code candidates — symbols with no callers and no importers.")
+cli.add_typer(coverage.app,        name="coverage",         help="[code] Class interface call-coverage — which methods are actually called?")
+cli.add_typer(lineage.app,         name="lineage",          help="[code] Full provenance chain of a symbol — created, renamed, moved, copied, deleted.")
+cli.add_typer(api_surface.app,     name="api-surface",      help="[code] Public API surface at a commit; --diff to show added/removed/changed symbols.")
+cli.add_typer(codemap.app,         name="codemap",          help="[code] Semantic topology — module sizes, import cycles, centrality, boundary files.")
+cli.add_typer(clones.app,          name="clones",           help="[code] Find exact and near-duplicate symbols (body_hash / signature_id clusters).")
+cli.add_typer(checkout_symbol.app, name="checkout-symbol",  help="[code] Restore a historical version of one symbol into the working tree.")
+cli.add_typer(semantic_cherry_pick.app, name="semantic-cherry-pick", help="[code] Cherry-pick named symbols from a historical commit into the working tree.")
+cli.add_typer(index_rebuild.app,   name="index",            help="[code] Manage local indexes: status, rebuild symbol_history / hash_occurrence.")
+cli.add_typer(breakage.app,        name="breakage",         help="[code] Detect symbol-level structural breakage in the working tree vs HEAD.")
+cli.add_typer(invariants.app,      name="invariants",       help="[code] Enforce architectural rules from .muse/invariants.toml.")
+
+# Multi-agent coordination commands
+cli.add_typer(reserve.app,         name="reserve",          help="[coord] Advisory symbol reservation — announce intent before editing.")
+cli.add_typer(intent.app,          name="intent",           help="[coord] Declare a specific operation before executing it.")
+cli.add_typer(forecast.app,        name="forecast",         help="[coord] Predict merge conflicts from active reservations and intents.")
+cli.add_typer(plan_merge.app,      name="plan-merge",       help="[coord] Dry-run semantic merge plan — classify conflicts without writing.")
+cli.add_typer(shard.app,           name="shard",            help="[coord] Partition the codebase into N low-coupling work zones for parallel agents.")
+cli.add_typer(reconcile.app,       name="reconcile",        help="[coord] Recommend merge ordering and integration strategy from coordination state.")
 
 
 if __name__ == "__main__":

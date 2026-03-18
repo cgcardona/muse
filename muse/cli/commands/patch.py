@@ -40,7 +40,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.plugins.code.ast_parser import parse_symbols
+from muse.plugins.code.ast_parser import parse_symbols, validate_syntax
 
 logger = logging.getLogger(__name__)
 
@@ -161,15 +161,11 @@ def patch(
     new_lines = lines[: start_line - 1] + [new_body] + lines[end_line:]
     new_content = "".join(new_lines)
 
-    # Verify the patched file is still parseable (for languages we understand).
-    suffix = pathlib.PurePosixPath(rel_path).suffix.lower()
-    if suffix in {".py", ".pyi"}:
-        import ast as _ast
-        try:
-            _ast.parse(new_content)
-        except SyntaxError as exc:
-            typer.echo(f"❌ Patched file has a syntax error: {exc}", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+    # Verify the patched file is still parseable for all supported languages.
+    syntax_error = validate_syntax(new_content.encode("utf-8"), rel_path)
+    if syntax_error is not None:
+        typer.echo(f"❌ Patched file has a {syntax_error}", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
 
     if dry_run:
         typer.echo(f"\n[dry-run] Would patch {rel_path}")

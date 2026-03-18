@@ -35,7 +35,7 @@ from muse.core.store import (
     write_commit,
     write_snapshot,
 )
-from muse.domain import SnapshotManifest, StructuredDelta
+from muse.domain import SemVerBump, SnapshotManifest, StructuredDelta, infer_sem_ver_bump
 from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
@@ -135,6 +135,8 @@ def commit(
     # Compute a structured delta against the parent snapshot so muse show
     # can display note-level changes without reloading blobs.
     structured_delta: StructuredDelta | None = None
+    sem_ver_bump: SemVerBump = "none"
+    breaking_changes: list[str] = []
     if parent_id is not None:
         parent_commit_rec = read_commit(root, parent_id)
         if parent_commit_rec is not None:
@@ -150,6 +152,12 @@ def commit(
                 except Exception:
                     structured_delta = None
 
+    # Infer semantic version bump from the structured delta.
+    if structured_delta is not None:
+        sem_ver_bump, breaking_changes = infer_sem_ver_bump(structured_delta)
+        structured_delta["sem_ver_bump"] = sem_ver_bump
+        structured_delta["breaking_changes"] = breaking_changes
+
     write_commit(root, CommitRecord(
         commit_id=commit_id,
         repo_id=repo_id,
@@ -161,6 +169,8 @@ def commit(
         author=author or "",
         metadata=metadata,
         structured_delta=structured_delta,
+        sem_ver_bump=sem_ver_bump,
+        breaking_changes=breaking_changes,
     ))
 
     ref_path.parent.mkdir(parents=True, exist_ok=True)
