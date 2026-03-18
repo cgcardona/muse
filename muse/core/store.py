@@ -75,8 +75,8 @@ class CommitDict(TypedDict, total=False):
     ``diff()`` at commit time. ``None`` on the initial commit (no parent to
     diff against).
 
-    ``sem_ver_bump`` and ``breaking_changes`` are v2 semantic versioning
-    metadata.  Absent (treated as ``"none"`` / ``[]``) for legacy records and
+    ``sem_ver_bump`` and ``breaking_changes`` are semantic versioning
+    metadata.  Absent (treated as ``"none"`` / ``[]``) for older records and
     non-code domains.
     """
 
@@ -143,9 +143,9 @@ class RemoteCommitPayload(TypedDict, total=False):
 class CommitRecord:
     """An immutable commit record stored as a JSON file under .muse/commits/.
 
-    v2 fields (``sem_ver_bump`` and ``breaking_changes``) are populated by the
-    commit command when a code-domain delta is available.  They default to
-    ``"none"`` and ``[]`` for legacy records and non-code domains.
+    ``sem_ver_bump`` and ``breaking_changes`` are populated by the commit command
+    when a code-domain delta is available.  They default to ``"none"`` and ``[]``
+    for older records and non-code domains.
     """
 
     commit_id: str

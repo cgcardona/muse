@@ -1,4 +1,4 @@
-"""Tests for Phase 2 domain schema declaration and plugin registry lookup.
+"""Tests for domain schema declaration and plugin registry lookup.
 
 Verifies that:
 - ``MusicPlugin.schema()`` returns a fully-typed ``DomainSchema``.

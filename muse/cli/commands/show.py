@@ -101,7 +101,7 @@ def show(
     if not stat:
         return
 
-    # Prefer the structured delta stored on the commit (Phase 1+).
+    # Prefer the structured delta stored on the commit.
     # It carries rich note-level detail and is faster (no blob reloading).
     if commit.structured_delta is not None:
         delta = commit.structured_delta

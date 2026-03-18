@@ -18,14 +18,11 @@ Music-domain semantic commands (impossible in Git)::
     transpose       transpose all notes by N semitones (agent command)
     mix             combine two MIDI tracks into one (agent command)
 
-Code-domain semantic commands — Phase 1 (impossible in Git)::
+Code-domain semantic commands — symbol graph::
 
     symbols         list every semantic symbol in a snapshot
     symbol-log      track a single symbol through commit history
     detect-refactor report semantic refactoring operations across commits
-
-Code-domain semantic commands — Phase 2 (paradigm shift)::
-
     grep            search the symbol graph by name / kind / language
     blame           show which commit last touched a specific symbol
     hotspots        symbol churn leaderboard — which functions change most
@@ -34,25 +31,18 @@ Code-domain semantic commands — Phase 2 (paradigm shift)::
     compare         semantic comparison between any two historical snapshots
     languages       language and symbol-type breakdown
     patch           surgical semantic patch — modify exactly one symbol (all-language validation)
-    query           symbol graph predicate DSL — SQL for your codebase (--all-commits mode)
-
-Code-domain semantic commands — Phase 3 (gap-closers)::
-
+    query           symbol graph predicate DSL — OR, NOT, grouping, --all-commits temporal search
+    query-history   temporal symbol search across a commit range
     deps            import graph + Python call-graph with --reverse
     find-symbol     cross-commit, cross-branch content_id / name search
 
-Code-domain semantic commands — Phase 4 (call-graph tier)::
+Code-domain semantic commands — call-graph tier::
 
     impact          transitive blast-radius — what breaks if this function changes?
     dead            dead code detection — symbols with no callers and no importers
     coverage        class interface call-coverage — which methods are actually used?
 
-Code-domain semantic commands — Phase 5 (query v2 + temporal)::
-
-    query           predicate DSL v2 — OR, NOT, grouping, new fields, schema_version
-    query-history   temporal symbol search across a commit range
-
-Code-domain semantic commands — Phase 6 (provenance + topology)::
+Code-domain semantic commands — provenance & topology::
 
     lineage         full provenance chain of a symbol through commit history
     api-surface     public API surface and how it changed between commits
@@ -61,7 +51,7 @@ Code-domain semantic commands — Phase 6 (provenance + topology)::
     checkout-symbol restore a historical version of a specific symbol
     semantic-cherry-pick  cherry-pick named symbols from a historical commit
 
-Code-domain semantic commands — Phase 7 (index acceleration)::
+Code-domain semantic commands — index acceleration::
 
     index           manage local indexes: status, rebuild symbol_history / hash_occurrence
 
@@ -186,7 +176,7 @@ cli.add_typer(coupling.app,        name="coupling",         help="[code] File co
 cli.add_typer(compare.app,         name="compare",          help="[code] Deep semantic comparison between any two historical snapshots.")
 cli.add_typer(languages.app,       name="languages",        help="[code] Language and symbol-type breakdown of a snapshot.")
 cli.add_typer(patch.app,           name="patch",            help="[code] Surgical semantic patch — modify exactly one named symbol (all-language syntax validation).")
-cli.add_typer(query.app,           name="query",            help="[code] Symbol graph predicate DSL v2 — OR/NOT/grouping, --all-commits temporal search.")
+cli.add_typer(query.app,           name="query",            help="[code] Symbol graph predicate DSL — OR/NOT/grouping, --all-commits temporal search.")
 cli.add_typer(query_history.app,   name="query-history",    help="[code] Temporal symbol search — first seen, last seen, change count across a commit range.")
 cli.add_typer(deps.app,            name="deps",             help="[code] Import graph + Python call-graph; --reverse for callers/importers.")
 cli.add_typer(find_symbol.app,     name="find-symbol",      help="[code] Cross-commit, cross-branch symbol search by hash, name, or kind.")

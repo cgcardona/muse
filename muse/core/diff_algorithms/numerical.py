@@ -1,4 +1,4 @@
-"""Sparse / block / full tensor diff for numerical arrays — Phase 2.
+"""Sparse / block / full tensor diff for numerical arrays.
 
 Diffs flat 1-D numerical arrays element-wise with an epsilon tolerance.
 Floating-point values within ``schema.epsilon`` of each other are not
