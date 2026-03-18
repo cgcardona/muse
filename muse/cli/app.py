@@ -60,6 +60,19 @@ Code-domain semantic commands — Phase 6 (provenance + topology)::
     clones          find exact and near-duplicate symbols across the snapshot
     checkout-symbol restore a historical version of a specific symbol
     semantic-cherry-pick  cherry-pick named symbols from a historical commit
+
+Code-domain semantic commands — Phase 7 (index acceleration)::
+
+    index           manage local indexes: status, rebuild symbol_history / hash_occurrence
+
+Multi-agent coordination commands::
+
+    reserve         advisory symbol reservation — announce intent before editing
+    intent          declare a specific operation before executing it
+    forecast        predict merge conflicts from active reservations and intents
+    plan-merge      dry-run semantic merge plan — classify conflicts without writing
+    shard           partition the codebase into N low-coupling work zones
+    reconcile       recommend merge ordering and integration strategy
 """
 from __future__ import annotations
 
@@ -85,12 +98,14 @@ from muse.cli.commands import (
     diff,
     domains,
     find_symbol,
+    forecast,
     grep,
     harmony,
     hotspots,
     impact,
     index_rebuild,
     init,
+    intent,
     languages,
     lineage,
     log,
@@ -102,11 +117,15 @@ from muse.cli.commands import (
     notes,
     patch,
     piano_roll,
+    plan_merge,
     query,
     query_history,
+    reconcile,
+    reserve,
     reset,
     revert,
     semantic_cherry_pick,
+    shard,
     show,
     stable,
     stash,
@@ -179,6 +198,14 @@ cli.add_typer(clones.app,          name="clones",           help="[code] Find ex
 cli.add_typer(checkout_symbol.app, name="checkout-symbol",  help="[code] Restore a historical version of one symbol into the working tree.")
 cli.add_typer(semantic_cherry_pick.app, name="semantic-cherry-pick", help="[code] Cherry-pick named symbols from a historical commit into the working tree.")
 cli.add_typer(index_rebuild.app,   name="index",            help="[code] Manage local indexes: status, rebuild symbol_history / hash_occurrence.")
+
+# Multi-agent coordination commands
+cli.add_typer(reserve.app,         name="reserve",          help="[coord] Advisory symbol reservation — announce intent before editing.")
+cli.add_typer(intent.app,          name="intent",           help="[coord] Declare a specific operation before executing it.")
+cli.add_typer(forecast.app,        name="forecast",         help="[coord] Predict merge conflicts from active reservations and intents.")
+cli.add_typer(plan_merge.app,      name="plan-merge",       help="[coord] Dry-run semantic merge plan — classify conflicts without writing.")
+cli.add_typer(shard.app,           name="shard",            help="[coord] Partition the codebase into N low-coupling work zones for parallel agents.")
+cli.add_typer(reconcile.app,       name="reconcile",        help="[coord] Recommend merge ordering and integration strategy from coordination state.")
 
 
 if __name__ == "__main__":
