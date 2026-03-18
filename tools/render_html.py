@@ -177,28 +177,11 @@ _HTML_TEMPLATE = """\
       min-height: 100vh;
     }
 
-    /* ---- Header ---- */
+    /* ---- Stats header ---- */
     header {
       background: var(--bg2);
       border-bottom: 1px solid var(--border);
-      padding: 24px 40px;
-    }
-    .header-top {
-      display: flex;
-      align-items: baseline;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-    header h1 {
-      font-size: 28px;
-      font-weight: 700;
-      letter-spacing: -0.5px;
-      color: var(--accent2);
-      font-family: var(--font-mono);
-    }
-    .tagline {
-      color: var(--text-mute);
-      font-size: 14px;
+      padding: 16px 40px;
     }
     .stats-bar {
       display: flex;
@@ -225,26 +208,6 @@ _HTML_TEMPLATE = """\
       letter-spacing: 0.8px;
     }
     .stat-sep { color: var(--border); font-size: 22px; align-self: center; }
-    .header-nav-link {
-      margin-left: auto;
-      font-size: 12px;
-      color: var(--accent2);
-      text-decoration: none;
-      border: 1px solid rgba(88,166,255,0.3);
-      border-radius: 4px;
-      padding: 4px 12px;
-      transition: background 0.15s;
-    }
-    .header-nav-link:hover { background: rgba(88,166,255,0.08); }
-    .version-badge {
-      margin-left: auto;
-      padding: 4px 10px;
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      font-size: 12px;
-      font-family: var(--font-mono);
-      color: var(--text-mute);
-    }
 
     /* ---- Main layout ---- */
     .main-container {
@@ -886,16 +849,66 @@ _HTML_TEMPLATE = """\
       border:1px solid currentColor; opacity:0.85;
     }
     .dim-pill.conflict-pill { background:rgba(248,81,73,0.2); color:var(--red) !important; }
+
+    /* ---- shared nav ---- */
+    nav {
+      background: var(--header-bg);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 0 40px;
+      display: flex;
+      align-items: center;
+      gap: 0;
+      height: 52px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .nav-logo {
+      font-family: var(--mono);
+      font-size: 16px;
+      font-weight: 700;
+      color: #6ea8fe;
+      margin-right: 32px;
+      text-decoration: none;
+    }
+    .nav-logo:hover { text-decoration: none; }
+    .nav-link {
+      font-size: 13px;
+      color: rgba(255,255,255,0.45);
+      padding: 0 14px;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      border-bottom: 2px solid transparent;
+      text-decoration: none;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .nav-link:hover { color: #e6edf3; text-decoration: none; }
+    .nav-link.current { color: #e6edf3; border-bottom-color: #6ea8fe; }
+    .nav-spacer { flex: 1; }
+    .nav-badge {
+      font-size: 11px;
+      background: rgba(79,142,247,0.12);
+      border: 1px solid rgba(79,142,247,0.3);
+      color: #6ea8fe;
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-family: var(--mono);
+    }
   </style>
 </head>
 <body>
 
+<nav>
+  <a class="nav-logo" href="index.html">muse</a>
+  <a class="nav-link current" href="demo.html">Demo</a>
+  <a class="nav-link" href="index.html">Domain Registry</a>
+  <a class="nav-link" href="https://github.com/cgcardona/muse/blob/main/docs/guide/plugin-authoring-guide.md">Plugin Guide</a>
+  <div class="nav-spacer"></div>
+  <span class="nav-badge">v{{VERSION}}</span>
+</nav>
+
 <header>
-  <div class="header-top">
-    <h1>muse</h1>
-    <span class="tagline">Demo · domain-agnostic version control for multidimensional state</span>
-    <span class="version-badge">v{{VERSION}} · {{DOMAIN}} domain · {{ELAPSED}}s</span>
-  </div>
   <div class="stats-bar">
     <div class="stat"><span class="stat-num">{{COMMITS}}</span><span class="stat-label">Commits</span></div>
     <div class="stat-sep">·</div>
