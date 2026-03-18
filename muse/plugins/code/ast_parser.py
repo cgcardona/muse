@@ -89,7 +89,25 @@ SymbolKind = Literal[
 
 
 class SymbolRecord(TypedDict):
-    """Content-addressed record for a single named symbol in source code."""
+    """Content-addressed record for a single named symbol in source code.
+
+    Hash dimensions (v2)
+    --------------------
+    ``content_id``
+        SHA-256 of the full normalized symbol (name + signature + body).
+    ``body_hash``
+        SHA-256 of body statements only.  Same body, different name → rename.
+    ``signature_id``
+        SHA-256 of ``"name(args) -> return"``.  Stable across body changes.
+    ``metadata_id``
+        SHA-256 of metadata that wraps the symbol but is not part of its body:
+        decorators, ``async`` flag, class bases, visibility modifiers (where
+        extractable by the language adapter).  Empty string for legacy records
+        or adapters that do not support metadata extraction.
+    ``canonical_key``
+        Stable machine handle: ``{file}#{scope_path}#{kind}#{name}#{lineno}``.
+        Disambiguates overloads and nested scopes.  Unique within a snapshot.
+    """
 
     kind: SymbolKind
     name: str
@@ -97,6 +115,8 @@ class SymbolRecord(TypedDict):
     content_id: str      # SHA-256 of full normalized AST (name + signature + body)
     body_hash: str       # SHA-256 of body stmts only — for rename detection
     signature_id: str    # SHA-256 of "name(args)->return" — for impl-only changes
+    metadata_id: str     # SHA-256 of decorator/async/bases metadata (v2; "" = pre-v2)
+    canonical_key: str   # {file}#{scope}#{kind}#{name}#{lineno} — stable handle
     lineno: int
     end_lineno: int
 
@@ -233,12 +253,15 @@ def _extract_stmts(
                 kind = "async_function" if is_async else "function"
             qualified = f"{class_prefix}{node.name}"
             addr = f"{file_path}::{qualified}"
-            out[addr] = _make_func_record(node, node.name, qualified, kind)
+            out[addr] = _make_func_record(
+                node, node.name, qualified, kind,
+                file_path=file_path, class_prefix=class_prefix,
+            )
 
         elif isinstance(node, ast.ClassDef):
             qualified = f"{class_prefix}{node.name}"
             addr = f"{file_path}::{qualified}"
-            out[addr] = _make_class_record(node, qualified)
+            out[addr] = _make_class_record(node, qualified, file_path=file_path)
             _extract_stmts(node.body, file_path, f"{qualified}.", out)
 
         elif isinstance(node, (ast.Assign, ast.AnnAssign)) and not class_prefix:
@@ -246,12 +269,40 @@ def _extract_stmts(
             # as part of the parent class's content_id.
             for name in _assignment_names(node):
                 addr = f"{file_path}::{name}"
-                out[addr] = _make_var_record(node, name)
+                out[addr] = _make_var_record(node, name, file_path=file_path)
 
         elif isinstance(node, (ast.Import, ast.ImportFrom)) and not class_prefix:
             for name in _import_names(node):
                 addr = f"{file_path}::import::{name}"
-                out[addr] = _make_import_record(node, name)
+                out[addr] = _make_import_record(node, name, file_path=file_path)
+
+
+def _compute_metadata_id_func(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    """SHA-256 of Python function metadata: decorators + async flag."""
+    dec_src = " ".join(ast.unparse(d) for d in node.decorator_list)
+    async_flag = "async" if isinstance(node, ast.AsyncFunctionDef) else "sync"
+    return _sha256(f"{async_flag}:{dec_src}")
+
+
+def _compute_metadata_id_class(node: ast.ClassDef) -> str:
+    """SHA-256 of Python class metadata: decorators + bases."""
+    dec_src = " ".join(ast.unparse(d) for d in node.decorator_list)
+    base_src = ", ".join(ast.unparse(b) for b in node.bases)
+    return _sha256(f"{dec_src}:{base_src}")
+
+
+def _canonical_key(
+    file_path: str, scope: str, kind: str, name: str, lineno: int
+) -> str:
+    """Return the canonical machine handle for a symbol.
+
+    Format: ``{file}#{scope}#{kind}#{name}#{lineno}``
+
+    ``scope`` is the dotted class prefix (e.g. ``User.``) or empty for
+    top-level symbols.  This key is unique within a snapshot and stable
+    across renames (by lineno), though lineno drift after edits is expected.
+    """
+    return f"{file_path}#{scope}#{kind}#{name}#{lineno}"
 
 
 def _make_func_record(
@@ -259,6 +310,8 @@ def _make_func_record(
     name: str,
     qualified_name: str,
     kind: SymbolKind,
+    file_path: str = "",
+    class_prefix: str = "",
 ) -> SymbolRecord:
     full_src = ast.unparse(node)
     body_src = "\n".join(ast.unparse(s) for s in node.body)
@@ -271,12 +324,18 @@ def _make_func_record(
         content_id=_sha256(full_src),
         body_hash=_sha256(body_src),
         signature_id=_sha256(f"{name}({args_src})->{ret_src}"),
+        metadata_id=_compute_metadata_id_func(node),
+        canonical_key=_canonical_key(file_path, class_prefix, kind, name, node.lineno),
         lineno=node.lineno,
         end_lineno=node.end_lineno or node.lineno,
     )
 
 
-def _make_class_record(node: ast.ClassDef, qualified_name: str) -> SymbolRecord:
+def _make_class_record(
+    node: ast.ClassDef,
+    qualified_name: str,
+    file_path: str = "",
+) -> SymbolRecord:
     full_src = ast.unparse(node)
     base_src = ", ".join(ast.unparse(b) for b in node.bases) if node.bases else ""
     # Body hash captures class structure (bases + method names) but NOT method
@@ -295,12 +354,18 @@ def _make_class_record(node: ast.ClassDef, qualified_name: str) -> SymbolRecord:
         content_id=_sha256(full_src),
         body_hash=_sha256(structure),
         signature_id=_sha256(header),
+        metadata_id=_compute_metadata_id_class(node),
+        canonical_key=_canonical_key(file_path, "", "class", node.name, node.lineno),
         lineno=node.lineno,
         end_lineno=node.end_lineno or node.lineno,
     )
 
 
-def _make_var_record(node: ast.Assign | ast.AnnAssign, name: str) -> SymbolRecord:
+def _make_var_record(
+    node: ast.Assign | ast.AnnAssign,
+    name: str,
+    file_path: str = "",
+) -> SymbolRecord:
     normalized = ast.unparse(node)
     return SymbolRecord(
         kind="variable",
@@ -309,13 +374,17 @@ def _make_var_record(node: ast.Assign | ast.AnnAssign, name: str) -> SymbolRecor
         content_id=_sha256(normalized),
         body_hash=_sha256(normalized),
         signature_id=_sha256(name),
+        metadata_id="",
+        canonical_key=_canonical_key(file_path, "", "variable", name, node.lineno),
         lineno=node.lineno,
         end_lineno=node.end_lineno or node.lineno,
     )
 
 
 def _make_import_record(
-    node: ast.Import | ast.ImportFrom, name: str
+    node: ast.Import | ast.ImportFrom,
+    name: str,
+    file_path: str = "",
 ) -> SymbolRecord:
     normalized = ast.unparse(node)
     return SymbolRecord(
@@ -325,6 +394,8 @@ def _make_import_record(
         content_id=_sha256(normalized),
         body_hash=_sha256(normalized),
         signature_id=_sha256(name),
+        metadata_id="",
+        canonical_key=_canonical_key(file_path, "", "import", name, node.lineno),
         lineno=node.lineno,
         end_lineno=node.lineno,
     )
@@ -531,6 +602,9 @@ class TreeSitterAdapter:
                     else b""
                 )
 
+                sym_lineno = sym_node.start_point[0] + 1
+                # Determine class prefix for canonical_key (dotted scope path).
+                scope_prefix = ".".join(qualified.split(".")[:-1]) + "." if "." in qualified else ""
                 symbols[addr] = SymbolRecord(
                     kind=kind,
                     name=name_txt,
@@ -538,7 +612,12 @@ class TreeSitterAdapter:
                     content_id=_sha256_bytes(_norm_ws(node_bytes)),
                     body_hash=_sha256_bytes(_norm_ws(body_bytes)),
                     signature_id=_sha256_bytes(_norm_ws(name_bytes + params_bytes)),
-                    lineno=sym_node.start_point[0] + 1,
+                    # metadata_id: tree-sitter adapters extract annotations/visibility
+                    # where available.  Currently stubbed as "" — future adapters can
+                    # enrich this by reading modifier nodes.
+                    metadata_id="",
+                    canonical_key=_canonical_key(file_path, scope_prefix, kind, name_txt, sym_lineno),
+                    lineno=sym_lineno,
                     end_lineno=sym_node.end_point[0] + 1,
                 )
             return symbols
