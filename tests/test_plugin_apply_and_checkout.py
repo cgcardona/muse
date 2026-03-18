@@ -16,7 +16,7 @@ from typer.testing import CliRunner
 
 from muse.cli.app import cli
 from muse.core.store import get_head_commit_id, read_commit, read_snapshot
-from muse.domain import DeltaManifest, SnapshotManifest
+from muse.domain import DeleteOp, SnapshotManifest, StructuredDelta
 from muse.plugins.music.plugin import MusicPlugin
 
 runner = CliRunner()
@@ -57,8 +57,16 @@ def _head_id(repo: pathlib.Path) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _empty_delta() -> StructuredDelta:
+    return StructuredDelta(domain="music", ops=[], summary="no changes")
+
+
 class TestMusicPluginApplyPath:
-    """apply() with a workdir path rescans the directory for ground truth."""
+    """apply() with a workdir path rescans the directory for ground truth.
+
+    When live_state is a pathlib.Path, apply() ignores the delta and simply
+    rescans the directory — the physical filesystem is the source of truth.
+    """
 
     def test_apply_returns_snapshot_of_workdir(self, tmp_path: pathlib.Path) -> None:
         workdir = tmp_path / "work"
@@ -66,12 +74,10 @@ class TestMusicPluginApplyPath:
         (workdir / "a.mid").write_bytes(b"midi-a")
         (workdir / "b.mid").write_bytes(b"midi-b")
 
-        snap_a = plugin.snapshot(workdir)
-        # Simulate remove b.mid physically
+        # Simulate remove b.mid physically before calling apply.
         (workdir / "b.mid").unlink()
 
-        delta = DeltaManifest(domain="music", added=[], removed=["b.mid"], modified=[])
-        result = plugin.apply(delta, workdir)
+        result = plugin.apply(_empty_delta(), workdir)
 
         assert "b.mid" not in result["files"]
         assert "a.mid" in result["files"]
@@ -81,10 +87,9 @@ class TestMusicPluginApplyPath:
         workdir.mkdir()
         (workdir / "a.mid").write_bytes(b"original")
 
-        delta = DeltaManifest(domain="music", added=["new.mid"], removed=[], modified=[])
-        # Add file physically before calling apply
+        # Add file physically before calling apply.
         (workdir / "new.mid").write_bytes(b"new content")
-        result = plugin.apply(delta, workdir)
+        result = plugin.apply(_empty_delta(), workdir)
 
         assert "new.mid" in result["files"]
 
@@ -95,10 +100,9 @@ class TestMusicPluginApplyPath:
 
         snap_v1 = plugin.snapshot(workdir)
 
-        # Modify physically
+        # Modify physically, then apply rescans.
         (workdir / "a.mid").write_bytes(b"v2")
-        delta = DeltaManifest(domain="music", added=[], removed=[], modified=["a.mid"])
-        result = plugin.apply(delta, workdir)
+        result = plugin.apply(_empty_delta(), workdir)
 
         assert result["files"]["a.mid"] != snap_v1["files"]["a.mid"]
 
@@ -107,37 +111,54 @@ class TestMusicPluginApplyPath:
         workdir.mkdir()
         (workdir / "a.mid").write_bytes(b"data")
 
-        delta = DeltaManifest(domain="music", added=[], removed=[], modified=[])
-        result = plugin.apply(delta, workdir)
+        result = plugin.apply(_empty_delta(), workdir)
         expected = plugin.snapshot(workdir)
         assert result["files"] == expected["files"]
 
 
 class TestMusicPluginApplyDict:
-    """apply() with a snapshot dict applies removals in-memory."""
+    """apply() with a snapshot dict applies ops in-memory."""
+
+    def _delete(self, address: str, content_id: str = "x") -> DeleteOp:
+        return DeleteOp(
+            op="delete", address=address, position=None,
+            content_id=content_id, content_summary=f"deleted: {address}",
+        )
 
     def test_apply_removes_deleted_paths(self) -> None:
         snap = SnapshotManifest(files={"a.mid": "aaa", "b.mid": "bbb"}, domain="music")
-        delta = DeltaManifest(domain="music", added=[], removed=["b.mid"], modified=[])
+        delta = StructuredDelta(
+            domain="music",
+            ops=[self._delete("b.mid", "bbb")],
+            summary="1 file removed",
+        )
         result = plugin.apply(delta, snap)
         assert "b.mid" not in result["files"]
         assert "a.mid" in result["files"]
 
     def test_apply_removes_multiple_paths(self) -> None:
         snap = SnapshotManifest(files={"a.mid": "aaa", "b.mid": "bbb", "c.mid": "ccc"}, domain="music")
-        delta = DeltaManifest(domain="music", added=[], removed=["a.mid", "c.mid"], modified=[])
+        delta = StructuredDelta(
+            domain="music",
+            ops=[self._delete("a.mid", "aaa"), self._delete("c.mid", "ccc")],
+            summary="2 files removed",
+        )
         result = plugin.apply(delta, snap)
         assert result["files"] == {"b.mid": "bbb"}
 
     def test_apply_nonexistent_remove_is_noop(self) -> None:
         snap = SnapshotManifest(files={"a.mid": "aaa"}, domain="music")
-        delta = DeltaManifest(domain="music", added=[], removed=["ghost.mid"], modified=[])
+        delta = StructuredDelta(
+            domain="music",
+            ops=[self._delete("ghost.mid")],
+            summary="1 file removed",
+        )
         result = plugin.apply(delta, snap)
         assert result["files"] == {"a.mid": "aaa"}
 
     def test_apply_preserves_domain(self) -> None:
         snap = SnapshotManifest(files={}, domain="music")
-        delta = DeltaManifest(domain="music", added=[], removed=[], modified=[])
+        delta = _empty_delta()
         result = plugin.apply(delta, snap)
         assert result["domain"] == "music"
 

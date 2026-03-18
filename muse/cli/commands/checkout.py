@@ -77,13 +77,20 @@ def _checkout_snapshot(
     workdir.mkdir(exist_ok=True)
 
     # Remove files that no longer exist in the target snapshot.
-    for rel_path in delta["removed"]:
+    removed = [op["address"] for op in delta["ops"] if op["op"] == "delete"]
+    for rel_path in removed:
         fp = workdir / rel_path
         if fp.exists():
             fp.unlink()
 
     # Restore added and modified files from the content-addressed store.
-    for rel_path in delta["added"] + delta["modified"]:
+    # InsertOp, ReplaceOp, and PatchOp all mean the file's content changed;
+    # the authoritative hash for each is in the target snapshot manifest.
+    to_restore = [
+        op["address"] for op in delta["ops"]
+        if op["op"] in ("insert", "replace", "patch")
+    ]
+    for rel_path in to_restore:
         object_id = target_snap_rec.manifest[rel_path]
         if not restore_object(root, object_id, workdir / rel_path):
             typer.echo(f"⚠️  Object {object_id[:8]} for '{rel_path}' not in local store — skipped.")

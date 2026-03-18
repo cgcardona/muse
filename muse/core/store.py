@@ -54,6 +54,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import TypedDict
 
+from muse.domain import StructuredDelta
+
 logger = logging.getLogger(__name__)
 
 _COMMITS_DIR = "commits"
@@ -67,7 +69,12 @@ _TAGS_DIR = "tags"
 
 
 class CommitDict(TypedDict):
-    """JSON-serialisable representation of a CommitRecord."""
+    """JSON-serialisable representation of a CommitRecord.
+
+    ``structured_delta`` is the Phase-1 typed delta produced by the domain
+    plugin's ``diff()`` at commit time. ``None`` for commits created before
+    Phase 1 or on the initial commit (no parent to diff against).
+    """
 
     commit_id: str
     repo_id: str
@@ -79,6 +86,7 @@ class CommitDict(TypedDict):
     parent2_commit_id: str | None
     author: str
     metadata: dict[str, str]
+    structured_delta: StructuredDelta | None
 
 
 class SnapshotDict(TypedDict):
@@ -139,6 +147,7 @@ class CommitRecord:
     parent2_commit_id: str | None = None
     author: str = ""
     metadata: dict[str, str] = field(default_factory=dict)
+    structured_delta: StructuredDelta | None = None
 
     def to_dict(self) -> CommitDict:
         return CommitDict(
@@ -152,6 +161,7 @@ class CommitRecord:
             parent2_commit_id=self.parent2_commit_id,
             author=self.author,
             metadata=dict(self.metadata),
+            structured_delta=self.structured_delta,
         )
 
     @classmethod
@@ -171,6 +181,7 @@ class CommitRecord:
             parent2_commit_id=d.get("parent2_commit_id"),
             author=d.get("author", ""),
             metadata=dict(d.get("metadata") or {}),
+            structured_delta=d.get("structured_delta"),
         )
 
 
@@ -578,6 +589,7 @@ def store_pulled_commit(
         parent2_commit_id=commit_data.get("parent2_commit_id"),
         author=commit_data.get("author") or "",
         metadata=dict(commit_data.get("metadata") or {}),
+        structured_delta=None,
     )
     write_commit(repo_root, CommitRecord.from_dict(commit_dict))
 

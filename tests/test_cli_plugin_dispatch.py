@@ -15,13 +15,15 @@ from typer.testing import CliRunner
 
 from muse.cli.app import cli
 from muse.domain import (
-    DeltaManifest,
+    DeleteOp,
     DriftReport,
+    InsertOp,
     LiveState,
     MergeResult,
     MuseDomainPlugin,
     SnapshotManifest,
     StateSnapshot,
+    StructuredDelta,
 )
 from muse.plugins.music.plugin import MusicPlugin
 
@@ -141,7 +143,12 @@ class TestStatusDispatch:
         _write(repo, "beat.mid")
         _commit()
 
-        fake_delta = DeltaManifest(domain="music", added=["injected.mid"], removed=[], modified=[])
+        fake_delta = StructuredDelta(
+            domain="music",
+            ops=[InsertOp(op="insert", address="injected.mid", position=None,
+                          content_id="abc123", content_summary="new file: injected.mid")],
+            summary="1 file added",
+        )
         fake_report = DriftReport(has_drift=True, summary="1 added", delta=fake_delta)
 
         with patch("muse.cli.commands.status.resolve_plugin") as mock_resolve:
@@ -217,11 +224,15 @@ class TestDiffDispatch:
         _write(repo, "beat.mid")
         _commit()
 
-        fake_delta = DeltaManifest(
+        fake_delta = StructuredDelta(
             domain="music",
-            added=["injected.mid"],
-            removed=["gone.mid"],
-            modified=[],
+            ops=[
+                InsertOp(op="insert", address="injected.mid", position=None,
+                         content_id="abc123", content_summary="new file: injected.mid"),
+                DeleteOp(op="delete", address="gone.mid", position=None,
+                         content_id="def456", content_summary="deleted: gone.mid"),
+            ],
+            summary="1 file added, 1 file removed",
         )
         with patch("muse.cli.commands.diff.resolve_plugin") as mock_resolve:
             real_plugin = MusicPlugin()

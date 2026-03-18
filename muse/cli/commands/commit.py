@@ -30,10 +30,13 @@ from muse.core.store import (
     CommitRecord,
     SnapshotRecord,
     get_head_snapshot_id,
+    read_commit,
+    read_snapshot,
     write_commit,
     write_snapshot,
 )
-from muse.plugins.registry import resolve_plugin
+from muse.domain import SnapshotManifest, StructuredDelta
+from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +132,24 @@ def commit(
 
     write_snapshot(root, SnapshotRecord(snapshot_id=snapshot_id, manifest=manifest))
 
+    # Compute a structured delta against the parent snapshot so muse show
+    # can display note-level changes without reloading blobs.
+    structured_delta: StructuredDelta | None = None
+    if parent_id is not None:
+        parent_commit_rec = read_commit(root, parent_id)
+        if parent_commit_rec is not None:
+            parent_snap_record = read_snapshot(root, parent_commit_rec.snapshot_id)
+            if parent_snap_record is not None:
+                domain = read_domain(root)
+                base_snap = SnapshotManifest(
+                    files=dict(parent_snap_record.manifest),
+                    domain=domain,
+                )
+                try:
+                    structured_delta = plugin.diff(base_snap, snap, repo_root=root)
+                except Exception:
+                    structured_delta = None
+
     write_commit(root, CommitRecord(
         commit_id=commit_id,
         repo_id=repo_id,
@@ -139,6 +160,7 @@ def commit(
         parent_commit_id=parent_id,
         author=author or "",
         metadata=metadata,
+        structured_delta=structured_delta,
     ))
 
     ref_path.parent.mkdir(parents=True, exist_ok=True)

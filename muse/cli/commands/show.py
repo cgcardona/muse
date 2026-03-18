@@ -10,6 +10,7 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import get_commit_snapshot_manifest, read_commit, resolve_commit_ref
+from muse.domain import DomainOp
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,27 @@ def _read_branch(root: pathlib.Path) -> str:
 
 def _read_repo_id(root: pathlib.Path) -> str:
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
+
+
+def _format_op(op: DomainOp) -> list[str]:
+    """Return one or more display lines for a single domain op.
+
+    Each branch checks ``op["op"]`` directly so mypy can narrow the
+    TypedDict union to the specific subtype before accessing its fields.
+    """
+    if op["op"] == "insert":
+        return [f" A  {op['address']}"]
+    if op["op"] == "delete":
+        return [f" D  {op['address']}"]
+    if op["op"] == "replace":
+        return [f" M  {op['address']}"]
+    if op["op"] == "move":
+        return [f" R  {op['address']}  ({op['from_position']} → {op['to_position']})"]
+    # op["op"] == "patch" — the only remaining variant after the four branches above.
+    lines = [f" M  {op['address']}"]
+    if op["child_summary"]:
+        lines.append(f"    └─ {op['child_summary']}")
+    return lines
 
 
 @app.callback(invoke_without_command=True)
@@ -76,23 +98,42 @@ def show(
             typer.echo(f"        {k}: {v}")
     typer.echo(f"\n    {commit.message}\n")
 
-    if stat:
-        current = get_commit_snapshot_manifest(root, commit.commit_id) or {}
-        parent: dict[str, str] = {}
-        if commit.parent_commit_id:
-            parent = get_commit_snapshot_manifest(root, commit.parent_commit_id) or {}
+    if not stat:
+        return
 
-        added = sorted(set(current) - set(parent))
-        removed = sorted(set(parent) - set(current))
-        modified = sorted(p for p in set(current) & set(parent) if current[p] != parent[p])
+    # Prefer the structured delta stored on the commit (Phase 1+).
+    # It carries rich note-level detail and is faster (no blob reloading).
+    if commit.structured_delta is not None:
+        delta = commit.structured_delta
+        if not delta["ops"]:
+            typer.echo(" (no changes)")
+            return
+        lines: list[str] = []
+        for op in delta["ops"]:
+            lines.extend(_format_op(op))
+        for line in lines:
+            typer.echo(line)
+        typer.echo(f"\n {delta['summary']}")
+        return
 
-        for p in added:
-            typer.echo(f" + {p}")
-        for p in removed:
-            typer.echo(f" - {p}")
-        for p in modified:
-            typer.echo(f" M {p}")
+    # Fallback for initial commits or pre-Phase-1 commits: compute file-level
+    # diff from snapshot manifests directly.
+    current = get_commit_snapshot_manifest(root, commit.commit_id) or {}
+    parent: dict[str, str] = {}
+    if commit.parent_commit_id:
+        parent = get_commit_snapshot_manifest(root, commit.parent_commit_id) or {}
 
-        total = len(added) + len(removed) + len(modified)
-        if total:
-            typer.echo(f"\n {total} file(s) changed")
+    added = sorted(set(current) - set(parent))
+    removed = sorted(set(parent) - set(current))
+    modified = sorted(p for p in set(current) & set(parent) if current[p] != parent[p])
+
+    for p in added:
+        typer.echo(f" A  {p}")
+    for p in removed:
+        typer.echo(f" D  {p}")
+    for p in modified:
+        typer.echo(f" M  {p}")
+
+    total = len(added) + len(removed) + len(modified)
+    if total:
+        typer.echo(f"\n {total} file(s) changed")
