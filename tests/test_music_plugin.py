@@ -9,6 +9,10 @@ from muse.domain import DriftReport, MergeResult, MuseDomainPlugin, SnapshotMani
 from muse.plugins.music.plugin import MusicPlugin, content_hash, plugin
 
 
+def _snap(files: dict[str, str]) -> SnapshotManifest:
+    return SnapshotManifest(files=files, domain="music")
+
+
 class TestProtocolConformance:
     def test_plugin_satisfies_protocol(self) -> None:
         assert isinstance(plugin, MuseDomainPlugin)
@@ -39,40 +43,50 @@ class TestSnapshot:
 
 
 class TestDiff:
-    def test_no_change(self) -> None:
-        snap = SnapshotManifest(files={"a.mid": "h1"}, domain="music")
+    """diff() returns a StructuredDelta with typed ops — not the old DeltaManifest."""
+
+    def test_no_change_empty_ops(self) -> None:
+        snap = _snap({"a.mid": "h1"})
         delta = plugin.diff(snap, snap)
-        assert delta["added"] == []
-        assert delta["removed"] == []
-        assert delta["modified"] == []
+        assert delta["ops"] == []
 
-    def test_added_file(self) -> None:
-        base = SnapshotManifest(files={}, domain="music")
-        target = SnapshotManifest(files={"new.mid": "h1"}, domain="music")
-        delta = plugin.diff(base, target)
-        assert "new.mid" in delta["added"]
+    def test_no_change_summary(self) -> None:
+        snap = _snap({"a.mid": "h1"})
+        delta = plugin.diff(snap, snap)
+        assert delta["summary"] == "no changes"
 
-    def test_removed_file(self) -> None:
-        base = SnapshotManifest(files={"old.mid": "h1"}, domain="music")
-        target = SnapshotManifest(files={}, domain="music")
+    def test_added_file_produces_insert_op(self) -> None:
+        base = _snap({})
+        target = _snap({"new.mid": "h1"})
         delta = plugin.diff(base, target)
-        assert "old.mid" in delta["removed"]
+        insert_ops = [op for op in delta["ops"] if op["op"] == "insert"]
+        assert any(op["address"] == "new.mid" for op in insert_ops)
 
-    def test_modified_file(self) -> None:
-        base = SnapshotManifest(files={"f.mid": "old"}, domain="music")
-        target = SnapshotManifest(files={"f.mid": "new"}, domain="music")
+    def test_removed_file_produces_delete_op(self) -> None:
+        base = _snap({"old.mid": "h1"})
+        target = _snap({})
         delta = plugin.diff(base, target)
-        assert "f.mid" in delta["modified"]
+        delete_ops = [op for op in delta["ops"] if op["op"] == "delete"]
+        assert any(op["address"] == "old.mid" for op in delete_ops)
+
+    def test_modified_file_produces_replace_or_patch_op(self) -> None:
+        base = _snap({"f.mid": "old"})
+        target = _snap({"f.mid": "new"})
+        delta = plugin.diff(base, target)
+        changed_ops = [op for op in delta["ops"] if op["op"] in ("replace", "patch")]
+        assert any(op["address"] == "f.mid" for op in changed_ops)
+
+    def test_domain_is_music(self) -> None:
+        snap = _snap({"a.mid": "h"})
+        delta = plugin.diff(snap, snap)
+        assert delta["domain"] == "music"
 
 
 class TestMerge:
-    def _snap(self, files: dict[str, str]) -> SnapshotManifest:
-        return SnapshotManifest(files=files, domain="music")
-
     def test_clean_merge(self) -> None:
-        base = self._snap({"a.mid": "h0", "b.mid": "h0"})
-        left = self._snap({"a.mid": "h_left", "b.mid": "h0"})
-        right = self._snap({"a.mid": "h0", "b.mid": "h_right"})
+        base = _snap({"a.mid": "h0", "b.mid": "h0"})
+        left = _snap({"a.mid": "h_left", "b.mid": "h0"})
+        right = _snap({"a.mid": "h0", "b.mid": "h_right"})
         result = plugin.merge(base, left, right)
         assert isinstance(result, MergeResult)
         assert result.is_clean
@@ -80,38 +94,42 @@ class TestMerge:
         assert result.merged["files"]["b.mid"] == "h_right"
 
     def test_conflict_detected(self) -> None:
-        base = self._snap({"a.mid": "h0"})
-        left = self._snap({"a.mid": "h_left"})
-        right = self._snap({"a.mid": "h_right"})
+        base = _snap({"a.mid": "h0"})
+        left = _snap({"a.mid": "h_left"})
+        right = _snap({"a.mid": "h_right"})
         result = plugin.merge(base, left, right)
         assert not result.is_clean
         assert result.conflicts == ["a.mid"]
 
     def test_both_delete_same_file(self) -> None:
-        base = self._snap({"a.mid": "h0", "b.mid": "h0"})
-        left = self._snap({"b.mid": "h0"})
-        right = self._snap({"b.mid": "h0"})
+        base = _snap({"a.mid": "h0", "b.mid": "h0"})
+        left = _snap({"b.mid": "h0"})
+        right = _snap({"b.mid": "h0"})
         result = plugin.merge(base, left, right)
         assert result.is_clean
         assert "a.mid" not in result.merged["files"]
 
 
 class TestDrift:
-    def _snap(self, files: dict[str, str]) -> SnapshotManifest:
-        return SnapshotManifest(files=files, domain="music")
-
     def test_no_drift(self) -> None:
-        snap = self._snap({"a.mid": "h1"})
+        snap = _snap({"a.mid": "h1"})
         report = plugin.drift(snap, snap)
         assert isinstance(report, DriftReport)
         assert not report.has_drift
 
     def test_has_drift_on_addition(self) -> None:
-        committed = self._snap({"a.mid": "h1"})
-        live = self._snap({"a.mid": "h1", "b.mid": "h2"})
+        committed = _snap({"a.mid": "h1"})
+        live = _snap({"a.mid": "h1", "b.mid": "h2"})
         report = plugin.drift(committed, live)
         assert report.has_drift
         assert "added" in report.summary
+
+    def test_drift_delta_is_structured(self) -> None:
+        snap = _snap({"a.mid": "h1"})
+        report = plugin.drift(snap, snap)
+        assert "ops" in report.delta
+        assert "summary" in report.delta
+        assert "domain" in report.delta
 
 
 class TestContentHash:

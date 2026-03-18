@@ -85,9 +85,9 @@ def status(
     report = plugin.drift(committed_snap, workdir)
     delta = report.delta
 
-    added: set[str] = set(delta["added"])
-    modified: set[str] = set(delta["modified"])
-    deleted: set[str] = set(delta["removed"])
+    added: set[str] = {op["address"] for op in delta["ops"] if op["op"] == "insert"}
+    modified: set[str] = {op["address"] for op in delta["ops"] if op["op"] in ("replace", "patch")}
+    deleted: set[str] = {op["address"] for op in delta["ops"] if op["op"] == "delete"}
 
     if not any([added, modified, deleted]):
         if not short and not porcelain:

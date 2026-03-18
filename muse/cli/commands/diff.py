@@ -10,7 +10,7 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import get_commit_snapshot_manifest, get_head_snapshot_manifest, resolve_commit_ref
-from muse.domain import SnapshotManifest
+from muse.domain import DomainOp, SnapshotManifest
 from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
@@ -27,15 +27,28 @@ def _read_repo_id(root: pathlib.Path) -> str:
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
-def _print_delta(added: list[str], removed: list[str], modified: list[str]) -> int:
-    """Print a file-level delta. Returns number of changed files."""
-    for p in sorted(added):
-        typer.echo(f"A  {p}")
-    for p in sorted(removed):
-        typer.echo(f"D  {p}")
-    for p in sorted(modified):
-        typer.echo(f"M  {p}")
-    return len(added) + len(removed) + len(modified)
+def _print_structured_delta(ops: list[DomainOp]) -> int:
+    """Print a structured delta op-by-op. Returns the number of ops printed.
+
+    Each branch checks ``op["op"]`` directly so mypy can narrow the
+    TypedDict union to the specific subtype before accessing its fields.
+    """
+    for op in ops:
+        if op["op"] == "insert":
+            typer.echo(f"A  {op['address']}")
+        elif op["op"] == "delete":
+            typer.echo(f"D  {op['address']}")
+        elif op["op"] == "replace":
+            typer.echo(f"M  {op['address']}")
+        elif op["op"] == "move":
+            typer.echo(
+                f"R  {op['address']}  ({op['from_position']} → {op['to_position']})"
+            )
+        elif op["op"] == "patch":
+            typer.echo(f"M  {op['address']}")
+            if op["child_summary"]:
+                typer.echo(f"   └─ {op['child_summary']}")
+    return len(ops)
 
 
 @app.callback(invoke_without_command=True)
@@ -77,10 +90,15 @@ def diff(
             domain=domain,
         )
 
-    delta = plugin.diff(base_snap, target_snap)
-    changed = _print_delta(delta["added"], delta["removed"], delta["modified"])
+    delta = plugin.diff(base_snap, target_snap, repo_root=root)
+
+    if stat:
+        typer.echo(delta["summary"] if delta["ops"] else "No differences.")
+        return
+
+    changed = _print_structured_delta(delta["ops"])
 
     if changed == 0:
         typer.echo("No differences.")
-    elif stat:
-        typer.echo(f"\n{changed} file(s) changed")
+    else:
+        typer.echo(f"\n{delta['summary']}")

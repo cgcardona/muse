@@ -1,22 +1,52 @@
-"""MuseDomainPlugin — the five-interface protocol that defines a Muse domain.
+"""MuseDomainPlugin — the six-interface protocol that defines a Muse domain.
 
 Muse provides the DAG engine, content-addressed object store, branching,
 lineage walking, topological log graph, and merge base finder. A domain plugin
-implements these five interfaces and Muse does the rest.
+implements these six interfaces and Muse does the rest.
 
 The music plugin (``muse.plugins.music``) is the reference implementation.
 Every other domain — scientific simulation, genomics, 3D spatial design,
 spacetime — is a new plugin.
+
+Phase 1 — Typed Delta Algebra
+------------------------------
+``StateDelta`` is now a ``StructuredDelta`` carrying a typed operation list
+rather than the old opaque ``{added, removed, modified}`` path lists. Each
+operation knows its kind (insert / delete / move / replace / patch), the
+address it touched, and a content-addressed ID for the before/after content.
+
+This replaces ``DeltaManifest`` entirely. Plugins that previously returned
+``DeltaManifest`` must now return ``StructuredDelta``.
+
+Phase 2 — Domain Schema & Diff Algorithm Library
+-------------------------------------------------
+``schema()`` is now the sixth protocol method. Plugins return a
+``DomainSchema`` declaring their data structure. The core engine uses this
+declaration to drive diff algorithm selection via
+:func:`~muse.core.diff_algorithms.diff_by_schema`, and the merge engine
+(Phase 3) will use it for informed conflict detection.
+
+Phase 3 — Operation-Level Merge Engine
+---------------------------------------
+Plugins may optionally implement :class:`StructuredMergePlugin`, a sub-protocol
+that adds ``merge_ops()``. When both branches have produced ``StructuredDelta``
+from ``diff()``, the merge engine checks
+``isinstance(plugin, StructuredMergePlugin)`` and calls ``merge_ops()`` for
+fine-grained, operation-level conflict detection. Non-supporting plugins fall
+back to the existing file-level ``merge()`` path.
 """
 from __future__ import annotations
 
 import pathlib
 from dataclasses import dataclass, field
-from typing import Protocol, TypedDict, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, TypedDict, runtime_checkable
+
+if TYPE_CHECKING:
+    from muse.core.schema import DomainSchema
 
 
 # ---------------------------------------------------------------------------
-# Named snapshot and delta types
+# Snapshot types (unchanged from pre-Phase-1)
 # ---------------------------------------------------------------------------
 
 
@@ -31,17 +61,132 @@ class SnapshotManifest(TypedDict):
     domain: str
 
 
-class DeltaManifest(TypedDict):
-    """Minimal change description between two snapshots.
+# ---------------------------------------------------------------------------
+# Typed delta algebra — Phase 1
+# ---------------------------------------------------------------------------
 
-    Each list contains workspace-relative POSIX paths. ``domain`` identifies
-    the plugin that produced this delta.
+#: A domain-specific address identifying a location within the state graph.
+#: For file-level ops this is a workspace-relative POSIX path.
+#: For sub-file ops this is a domain-specific coordinate (e.g. "note:42").
+DomainAddress = str
+
+
+class InsertOp(TypedDict):
+    """An element was inserted into a collection.
+
+    For ordered sequences ``position`` is the integer index at which the
+    element was inserted. For unordered sets ``position`` is ``None``.
+    ``content_id`` is the SHA-256 of the inserted content — either a blob
+    already in the object store (for file-level ops) or a deterministic hash
+    of the element's canonical serialisation (for sub-file ops).
+    """
+
+    op: Literal["insert"]
+    address: DomainAddress
+    position: int | None
+    content_id: str
+    content_summary: str
+
+
+class DeleteOp(TypedDict):
+    """An element was removed from a collection.
+
+    ``position`` is the integer index that was removed for ordered sequences,
+    or ``None`` for unordered sets.  ``content_id`` is the SHA-256 of the
+    deleted content so that the operation can be applied idempotently (already-
+    absent elements can be skipped).  ``content_summary`` is the human-readable
+    description of what was removed, for ``muse show``.
+    """
+
+    op: Literal["delete"]
+    address: DomainAddress
+    position: int | None
+    content_id: str
+    content_summary: str
+
+
+class MoveOp(TypedDict):
+    """An element was repositioned within an ordered sequence.
+
+    ``from_position`` is the source index (in the pre-move sequence) and
+    ``to_position`` is the destination index (in the post-move sequence).
+    Both are mandatory — moves are only meaningful in ordered collections.
+    ``content_id`` identifies the element being moved so that the operation
+    can be validated during replay.
+    """
+
+    op: Literal["move"]
+    address: DomainAddress
+    from_position: int
+    to_position: int
+    content_id: str
+
+
+class ReplaceOp(TypedDict):
+    """An element's value changed (atomic, leaf-level replacement).
+
+    ``old_content_id`` and ``new_content_id`` are SHA-256 hashes of the
+    before- and after-content.  They enable three-way merge engines to detect
+    concurrent conflicting modifications (both changed from the same
+    ``old_content_id`` to different ``new_content_id`` values).
+    ``old_summary`` and ``new_summary`` are human-readable strings for display,
+    analogous to ``content_summary`` on :class:`InsertOp`.
+    ``position`` is the index within the container (``None`` for unordered).
+    """
+
+    op: Literal["replace"]
+    address: DomainAddress
+    position: int | None
+    old_content_id: str
+    new_content_id: str
+    old_summary: str
+    new_summary: str
+
+
+#: The four non-recursive (leaf) operation types.
+LeafDomainOp = InsertOp | DeleteOp | MoveOp | ReplaceOp
+
+
+class PatchOp(TypedDict):
+    """A container element was internally modified.
+
+    ``address`` names the container (e.g. a file path). ``child_ops`` lists
+    the sub-element changes inside that container. In Phase 1 these are always
+    leaf ops. Phase 3 will introduce true recursion via a nested
+    ``StructuredDelta`` when the operation-level merge engine requires it.
+
+    ``child_domain`` identifies the sub-element domain (e.g. ``"midi_notes"``
+    for note-level ops inside a ``.mid`` file). ``child_summary`` is a
+    human-readable description of the child changes for ``muse show``.
+    """
+
+    op: Literal["patch"]
+    address: DomainAddress
+    child_ops: list[DomainOp]
+    child_domain: str
+    child_summary: str
+
+
+#: Union of all operation types — the atoms of a ``StructuredDelta``.
+DomainOp = LeafDomainOp | PatchOp
+
+
+class StructuredDelta(TypedDict):
+    """Rich, composable delta between two domain snapshots.
+
+    ``ops`` is an ordered list of operations that transforms ``base`` into
+    ``target`` when applied in sequence. The core engine stores this alongside
+    commit records so that ``muse show`` and ``muse diff`` can display it
+    without reloading full blobs.
+
+    ``summary`` is a precomputed human-readable string — for example
+    ``"3 notes added, 1 note removed"``. Plugins compute it because only they
+    understand their domain semantics.
     """
 
     domain: str
-    added: list[str]
-    removed: list[str]
-    modified: list[str]
+    ops: list[DomainOp]
+    summary: str
 
 
 # ---------------------------------------------------------------------------
@@ -56,8 +201,8 @@ LiveState = SnapshotManifest | pathlib.Path
 #: A content-addressed, immutable snapshot of state at a point in time.
 StateSnapshot = SnapshotManifest
 
-#: The minimal change between two snapshots — additions, removals, mutations.
-StateDelta = DeltaManifest
+#: The minimal change between two snapshots — a list of typed domain operations.
+StateDelta = StructuredDelta
 
 
 # ---------------------------------------------------------------------------
@@ -76,25 +221,24 @@ class MergeResult:
 
     ``applied_strategies`` maps each path where a ``.museattributes`` rule
     overrode the default conflict behaviour to the strategy that was applied.
-    Paths absent from this dict were resolved by the standard three-way merge
-    logic.  Example::
-
-        {"tracks/drums.mid": "ours", "keys/piano.mid": "theirs"}
 
     ``dimension_reports`` maps conflicting paths to their per-dimension
-    resolution detail.  Each inner dict maps a dimension name to the strategy
-    or winner chosen for that dimension (e.g. ``{"melodic": "ours", "dynamic":
-    "theirs"}``).  Only populated for files where dimension-level merge was
-    attempted.
+    resolution detail.
+
+    ``op_log`` is the ordered list of ``DomainOp`` entries applied to produce
+    the merged snapshot. Empty for file-level merges; populated by plugins
+    that implement operation-level merge (Phase 3).
     """
 
     merged: StateSnapshot
     conflicts: list[str] = field(default_factory=list)
     applied_strategies: dict[str, str] = field(default_factory=dict)
     dimension_reports: dict[str, dict[str, str]] = field(default_factory=dict)
+    op_log: list[DomainOp] = field(default_factory=list)
 
     @property
     def is_clean(self) -> bool:
+        """``True`` when no unresolvable conflicts remain."""
         return len(self.conflicts) == 0
 
 
@@ -104,13 +248,13 @@ class DriftReport:
 
     ``has_drift`` is ``True`` when the live state differs from the committed
     snapshot. ``summary`` is a human-readable description of what changed.
-    ``delta`` is the machine-readable diff for programmatic consumers.
+    ``delta`` is the machine-readable structured delta for programmatic consumers.
     """
 
     has_drift: bool
     summary: str = ""
-    delta: StateDelta = field(default_factory=lambda: DeltaManifest(
-        domain="", added=[], removed=[], modified=[],
+    delta: StateDelta = field(default_factory=lambda: StructuredDelta(
+        domain="", ops=[], summary="working tree clean",
     ))
 
 
@@ -121,10 +265,10 @@ class DriftReport:
 
 @runtime_checkable
 class MuseDomainPlugin(Protocol):
-    """The five interfaces a domain plugin must implement.
+    """The six interfaces a domain plugin must implement.
 
     Muse provides everything else: the DAG, branching, checkout, lineage
-    walking, ASCII log graph, and merge base finder. Implement these five
+    walking, ASCII log graph, and merge base finder. Implement these six
     methods and your domain gets the full Muse VCS for free.
 
     Music is the reference implementation (``muse.plugins.music``).
@@ -142,18 +286,31 @@ class MuseDomainPlugin(Protocol):
         implementations **must** honour ``.museignore`` by calling
         :func:`muse.core.ignore.load_patterns` on the repository root and
         filtering out paths matched by :func:`muse.core.ignore.is_ignored`.
-        This ensures that OS artifacts, build outputs, and domain-specific
-        scratch files are never committed, regardless of which plugin is active.
-        See ``docs/reference/museignore.md`` for the full format reference.
         """
         ...
 
-    def diff(self, base: StateSnapshot, target: StateSnapshot) -> StateDelta:
-        """Compute the minimal delta between two snapshots.
+    def diff(
+        self,
+        base: StateSnapshot,
+        target: StateSnapshot,
+        *,
+        repo_root: pathlib.Path | None = None,
+    ) -> StateDelta:
+        """Compute the structured delta between two snapshots.
 
-        Returns a ``DeltaManifest`` listing which paths were added, removed,
-        or modified. Muse stores deltas alongside commits so that ``muse show``
-        can display a human-readable summary without reloading full blobs.
+        Returns a ``StructuredDelta`` where ``ops`` is a minimal list of
+        typed operations that transforms ``base`` into ``target``. Plugins
+        should:
+
+        1. Compute ops at the finest granularity they can interpret.
+        2. Assign meaningful ``content_summary`` strings to each op.
+        3. When ``repo_root`` is provided, load sub-file content from the
+           object store and produce ``PatchOp`` entries with note/element-level
+           ``child_ops`` instead of coarse ``ReplaceOp`` entries.
+        4. Compute a human-readable ``summary`` across all ops.
+
+        The core engine stores this delta alongside the commit record so that
+        ``muse show`` and ``muse diff`` can display it without reloading blobs.
         """
         ...
 
@@ -190,10 +347,6 @@ class MuseDomainPlugin(Protocol):
         4. For domain formats that support true multidimensional content (e.g.
            MIDI: melodic, rhythmic, harmonic, dynamic, structural), attempt
            sub-file dimension merge before falling back to a file-level conflict.
-
-        Record every override in :attr:`MergeResult.applied_strategies` and
-        per-dimension detail in :attr:`MergeResult.dimension_reports`.  See
-        ``docs/reference/muse-attributes.md`` for the full format reference.
         """
         ...
 
@@ -215,5 +368,101 @@ class MuseDomainPlugin(Protocol):
 
         Used by ``muse checkout`` to reconstruct a historical state. Applies
         ``delta`` on top of ``live_state`` and returns the resulting state.
+
+        For ``InsertOp`` and ``ReplaceOp``, the new content is identified by
+        ``content_id`` (a SHA-256 hash). When ``live_state`` is a
+        ``pathlib.Path``, the plugin reads the content from the object store.
+        When ``live_state`` is a ``SnapshotManifest``, only ``DeleteOp`` and
+        ``ReplaceOp`` at the file level can be applied in-memory.
+        """
+        ...
+
+    def schema(self) -> DomainSchema:
+        """Declare the structural schema of this domain's state.
+
+        The core engine calls this once at plugin registration time. Plugins
+        must return a stable, deterministic :class:`~muse.core.schema.DomainSchema`
+        describing:
+
+        - ``top_level`` — the primary collection structure (e.g. a set of
+          files, a map of chromosome names to sequences).
+        - ``dimensions`` — the semantic sub-dimensions of state (e.g. melodic,
+          harmonic, dynamic, structural for music).
+        - ``merge_mode`` — ``"three_way"`` (Phases 1–3) or ``"crdt"`` (Phase 4).
+
+        The schema drives :func:`~muse.core.diff_algorithms.diff_by_schema`
+        algorithm selection and the Phase 3 merge engine's conflict detection.
+
+        See :mod:`muse.core.schema` for all available element schema types.
+        """
+        ...
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 optional extension — structured (operation-level) merge
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class StructuredMergePlugin(MuseDomainPlugin, Protocol):
+    """Optional extension for plugins that support operation-level merging.
+
+    Plugins that implement this sub-protocol gain sub-file auto-merge: two
+    agents inserting notes at non-overlapping bars never produce a conflict,
+    because the merge engine reasons over ``DomainOp`` trees rather than file
+    paths.
+
+    The merge engine detects support at runtime via::
+
+        isinstance(plugin, StructuredMergePlugin)
+
+    Plugins that do not implement ``merge_ops`` fall back to the existing
+    file-level ``merge()`` path automatically — no changes required.
+
+    The :class:`~muse.plugins.music.plugin.MusicPlugin` is the reference
+    implementation for Phase 3.
+    """
+
+    def merge_ops(
+        self,
+        base: StateSnapshot,
+        ours_snap: StateSnapshot,
+        theirs_snap: StateSnapshot,
+        ours_ops: list[DomainOp],
+        theirs_ops: list[DomainOp],
+        *,
+        repo_root: pathlib.Path | None = None,
+    ) -> MergeResult:
+        """Merge two op lists against a common base using domain knowledge.
+
+        The core merge engine calls this when both branches have produced
+        ``StructuredDelta`` from ``diff()``. The plugin:
+
+        1. Calls :func:`muse.core.op_transform.merge_op_lists` to detect
+           conflicting ``DomainOp`` pairs.
+        2. For clean pairs, builds the merged ``SnapshotManifest`` by applying
+           the adjusted merged ops to *base*.  The plugin uses *ours_snap* and
+           *theirs_snap* to look up the final content IDs for files touched only
+           by one side (necessary for ``PatchOp`` entries, which do not carry a
+           ``new_content_id`` directly).
+        3. For conflicting pairs, consults ``.museattributes`` (when
+           *repo_root* is provided) and either auto-resolves via the declared
+           strategy or adds the address to ``MergeResult.conflicts``.
+
+        Implementations must be domain-aware: a ``.museattributes`` rule of
+        ``merge=ours`` should take this plugin's understanding of "ours" (the
+        left branch content), not a raw file-level copy.
+
+        Args:
+            base:       Common ancestor snapshot.
+            ours_snap:  Final snapshot of our branch.
+            theirs_snap: Final snapshot of their branch.
+            ours_ops:   Operations from our branch delta (base → ours).
+            theirs_ops: Operations from their branch delta (base → theirs).
+            repo_root:  Repository root for ``.museattributes`` lookup.
+
+        Returns:
+            A :class:`MergeResult` with the reconciled snapshot and any
+            remaining unresolvable conflicts.
         """
         ...

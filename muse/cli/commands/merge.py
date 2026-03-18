@@ -36,7 +36,7 @@ from muse.core.store import (
     write_commit,
     write_snapshot,
 )
-from muse.domain import SnapshotManifest
+from muse.domain import SnapshotManifest, StructuredMergePlugin
 from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
@@ -45,15 +45,28 @@ app = typer.Typer()
 
 
 def _read_branch(root: pathlib.Path) -> str:
+    """Return the current branch name by reading ``.muse/HEAD``."""
     head_ref = (root / ".muse" / "HEAD").read_text().strip()
     return head_ref.removeprefix("refs/heads/").strip()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
+    """Return the repository UUID from ``.muse/repo.json``."""
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
 def _restore_from_manifest(root: pathlib.Path, manifest: dict[str, str]) -> None:
+    """Rebuild ``muse-work/`` to exactly match *manifest*.
+
+    Wipes the existing ``muse-work/`` directory (destructive), recreates it,
+    and restores each object from the local content-addressed store.  All
+    parent directories for nested paths are created as needed.
+
+    Args:
+        root:     Repository root (parent of ``.muse/``).
+        manifest: Mapping of workspace-relative POSIX paths to SHA-256
+                  object IDs to restore.
+    """
     workdir = root / "muse-work"
     if workdir.exists():
         shutil.rmtree(workdir)
@@ -120,7 +133,27 @@ def merge(
     ours_snap_obj = SnapshotManifest(files=ours_manifest, domain=domain)
     theirs_snap_obj = SnapshotManifest(files=theirs_manifest, domain=domain)
 
-    result = plugin.merge(base_snap_obj, ours_snap_obj, theirs_snap_obj, repo_root=root)
+    # Phase 3: prefer operation-level merge when the plugin supports it.
+    # Produces finer-grained conflict detection (sub-file / note level).
+    # Falls back to file-level merge() for plugins without this capability.
+    if isinstance(plugin, StructuredMergePlugin):
+        ours_delta = plugin.diff(base_snap_obj, ours_snap_obj, repo_root=root)
+        theirs_delta = plugin.diff(base_snap_obj, theirs_snap_obj, repo_root=root)
+        result = plugin.merge_ops(
+            base_snap_obj,
+            ours_snap_obj,
+            theirs_snap_obj,
+            ours_delta["ops"],
+            theirs_delta["ops"],
+            repo_root=root,
+        )
+        logger.debug(
+            "merge: used operation-level merge (%s); %d conflict(s)",
+            type(plugin).__name__,
+            len(result.conflicts),
+        )
+    else:
+        result = plugin.merge(base_snap_obj, ours_snap_obj, theirs_snap_obj, repo_root=root)
 
     # Report any .museattributes auto-resolutions.
     if result.applied_strategies:
