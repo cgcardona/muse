@@ -40,6 +40,12 @@ Code-domain semantic commands — Phase 3 (gap-closers)::
 
     deps            import graph + Python call-graph with --reverse
     find-symbol     cross-commit, cross-branch content_id / name search
+
+Code-domain semantic commands — Phase 4 (call-graph tier)::
+
+    impact          transitive blast-radius — what breaks if this function changes?
+    dead            dead code detection — symbols with no callers and no importers
+    coverage        class interface call-coverage — which methods are actually used?
 """
 from __future__ import annotations
 
@@ -54,6 +60,8 @@ from muse.cli.commands import (
     commit,
     compare,
     coupling,
+    coverage,
+    dead,
     deps,
     detect_refactor,
     diff,
@@ -62,6 +70,7 @@ from muse.cli.commands import (
     grep,
     harmony,
     hotspots,
+    impact,
     init,
     languages,
     log,
@@ -137,6 +146,9 @@ cli.add_typer(patch.app,           name="patch",            help="[code] Surgica
 cli.add_typer(query.app,           name="query",            help="[code] Symbol graph predicate DSL — SQL for your codebase (--all-commits for temporal search).")
 cli.add_typer(deps.app,            name="deps",             help="[code] Import graph + Python call-graph; --reverse for callers/importers.")
 cli.add_typer(find_symbol.app,     name="find-symbol",      help="[code] Cross-commit, cross-branch symbol search by hash, name, or kind.")
+cli.add_typer(impact.app,          name="impact",           help="[code] Transitive blast-radius — every caller affected if this symbol changes.")
+cli.add_typer(dead.app,            name="dead",             help="[code] Dead code candidates — symbols with no callers and no importers.")
+cli.add_typer(coverage.app,        name="coverage",         help="[code] Class interface call-coverage — which methods are actually called?")
 
 
 if __name__ == "__main__":
