@@ -225,6 +225,17 @@ _HTML_TEMPLATE = """\
       letter-spacing: 0.8px;
     }
     .stat-sep { color: var(--border); font-size: 22px; align-self: center; }
+    .header-nav-link {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--accent2);
+      text-decoration: none;
+      border: 1px solid rgba(88,166,255,0.3);
+      border-radius: 4px;
+      padding: 4px 12px;
+      transition: background 0.15s;
+    }
+    .header-nav-link:hover { background: rgba(88,166,255,0.08); }
     .version-badge {
       margin-left: auto;
       padding: 4px 10px;
@@ -391,6 +402,42 @@ _HTML_TEMPLATE = """\
     }
     .event-output.conflict { color: var(--red); }
     .event-output.success { color: var(--green); }
+    .event-item.rich-act .event-output { max-height: 220px; }
+
+    /* ---- Act jump bar ---- */
+    .act-jump-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg2);
+      flex-shrink: 0;
+    }
+    .act-jump-bar span {
+      font-size: 10px;
+      color: var(--text-dim);
+      align-self: center;
+      margin-right: 4px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .act-jump-btn {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text-mute);
+      cursor: pointer;
+      font-family: var(--font-mono);
+      transition: background 0.15s, color 0.15s;
+    }
+    .act-jump-btn:hover { background: var(--bg); color: var(--accent); border-color: var(--accent); }
+    .act-jump-btn.reveal-all { border-color: var(--green); color: var(--green); }
+    .act-jump-btn.reveal-all:hover { background: rgba(63,185,80,0.08); }
+
     .event-meta {
       display: flex;
       gap: 8px;
@@ -410,6 +457,189 @@ _HTML_TEMPLATE = """\
     .commit-node.highlighted .commit-label,
     .commit-node.highlighted .commit-msg { fill: var(--text); }
     text { font-family: -apple-system, system-ui, sans-serif; }
+
+    /* ---- Domain Dashboard section ---- */
+    .domain-section {
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+      padding: 60px 40px;
+    }
+    .domain-inner { max-width: 1100px; margin: 0 auto; }
+    .domain-section h2, .crdt-section h2 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+    .domain-section .section-intro, .crdt-section .section-intro {
+      color: var(--text-mute);
+      max-width: 680px;
+      margin-bottom: 36px;
+      line-height: 1.7;
+    }
+    .domain-section .section-intro strong, .crdt-section .section-intro strong { color: var(--text); }
+    .domain-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 20px;
+    }
+    .domain-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg2);
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .domain-card:hover { border-color: var(--accent); }
+    .domain-card.active-domain { border-color: rgba(249,168,37,0.5); }
+    .domain-card.scaffold-domain { border-style: dashed; opacity: 0.85; }
+    .domain-card-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--bg3);
+    }
+    .domain-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(79,142,247,0.12);
+      border: 1px solid rgba(79,142,247,0.3);
+      color: var(--accent2);
+    }
+    .domain-badge.active { background: rgba(249,168,37,0.12); border-color: rgba(249,168,37,0.4); color: #f9a825; }
+    .domain-name {
+      font-weight: 700;
+      font-size: 15px;
+      font-family: var(--font-mono);
+      color: var(--text);
+    }
+    .domain-active-dot {
+      margin-left: auto;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+    .domain-card-body { padding: 14px 16px; }
+    .domain-desc {
+      font-size: 13px;
+      color: var(--text-mute);
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+    .domain-caps {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .cap-pill {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      color: var(--text-mute);
+      background: var(--bg3);
+    }
+    .cap-pill.cap-crdt { border-color: rgba(188,140,255,0.4); color: var(--purple); background: rgba(188,140,255,0.08); }
+    .cap-pill.cap-ot { border-color: rgba(88,166,255,0.4); color: var(--accent2); background: rgba(88,166,255,0.08); }
+    .cap-pill.cap-schema { border-color: rgba(63,185,80,0.4); color: var(--green); background: rgba(63,185,80,0.08); }
+    .cap-pill.cap-delta { border-color: rgba(249,168,37,0.4); color: #f9a825; background: rgba(249,168,37,0.08); }
+    .domain-dims {
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    .domain-dims strong { color: var(--text-mute); }
+    .domain-new-card {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 20px;
+      text-align: center;
+      gap: 12px;
+      transition: border-color 0.2s;
+      cursor: default;
+    }
+    .domain-new-card:hover { border-color: var(--accent); }
+    .domain-new-icon { font-size: 28px; color: var(--text-dim); }
+    .domain-new-title { font-size: 14px; font-weight: 600; color: var(--text-mute); }
+    .domain-new-cmd {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 6px 12px;
+      color: var(--accent2);
+    }
+    .domain-new-link {
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    .domain-new-link a { color: var(--accent); text-decoration: none; }
+    .domain-new-link a:hover { text-decoration: underline; }
+
+    /* ---- CRDT Primitives section ---- */
+    .crdt-section {
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      padding: 60px 40px;
+    }
+    .crdt-inner { max-width: 1100px; margin: 0 auto; }
+    .crdt-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    .crdt-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg);
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .crdt-card:hover { border-color: var(--purple); }
+    .crdt-card-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(188,140,255,0.06);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .crdt-type-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(188,140,255,0.12);
+      border: 1px solid rgba(188,140,255,0.3);
+      color: var(--purple);
+    }
+    .crdt-card-title { font-weight: 700; font-size: 14px; color: var(--text); }
+    .crdt-card-sub { font-size: 11px; color: var(--text-mute); }
+    .crdt-card-body { padding: 14px 16px; }
+    .crdt-output {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-mute);
+      white-space: pre-wrap;
+      line-height: 1.6;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 10px 12px;
+    }
+    .crdt-output .out-win { color: var(--green); }
+    .crdt-output .out-key { color: var(--accent2); }
 
     /* ---- Architecture section ---- */
     .arch-section {
@@ -623,8 +853,9 @@ _HTML_TEMPLATE = """\
 <header>
   <div class="header-top">
     <h1>muse</h1>
-    <span class="tagline">domain-agnostic version control for multidimensional state</span>
+    <span class="tagline">Tour de Force · domain-agnostic version control for multidimensional state</span>
     <span class="version-badge">v{{VERSION}} · {{DOMAIN}} domain · {{ELAPSED}}s</span>
+    <a class="header-nav-link" href="domain_registry.html">Domain Registry →</a>
   </div>
   <div class="stats-bar">
     <div class="stat"><span class="stat-num">{{COMMITS}}</span><span class="stat-label">Commits</span></div>
@@ -659,6 +890,7 @@ _HTML_TEMPLATE = """\
 
   <div class="log-panel">
     <div class="log-header"><h2>Operation Log</h2></div>
+    <div class="act-jump-bar" id="act-jump-bar"></div>
     <div class="log-scroll" id="log-scroll">
       <div id="event-list"></div>
     </div>
@@ -712,6 +944,31 @@ _HTML_TEMPLATE = """\
     <div class="arch-content">
       {{ARCH_HTML}}
     </div>
+  </div>
+</div>
+
+<div class="domain-section" id="domain-section">
+  <div class="domain-inner">
+    <h2>Domain Plugin Registry</h2>
+    <p class="section-intro">
+      Every domain registered with Muse appears here. Each plugin implements the
+      <strong>six-method MuseDomainPlugin protocol</strong> and gets the full VCS — branching,
+      merging, conflict resolution, time-travel, and diff — for free.
+      Scaffold a new domain with a single command.
+    </p>
+    <div class="domain-grid" id="domain-grid"></div>
+  </div>
+</div>
+
+<div class="crdt-section" id="crdt-section">
+  <div class="crdt-inner">
+    <h2>CRDT Primitives</h2>
+    <p class="section-intro">
+      Plugins that implement <strong>CRDTPlugin</strong> get four convergent data structures
+      that merge without coordination. Any two replicas always converge to the same state —
+      no central authority required.
+    </p>
+    <div class="crdt-grid" id="crdt-grid"></div>
   </div>
 </div>
 
@@ -1027,6 +1284,68 @@ function drawDAG() {
   });
 }
 
+/* ===== Act metadata ===== */
+const ACT_ICONS = {
+  1:'🎵', 2:'🌿', 3:'⚡', 4:'🔀', 5:'⏪',
+  6:'🔬', 7:'🗂️', 8:'⚙️', 9:'🔮'
+};
+const ACT_COLORS = {
+  1:'#4f8ef7', 2:'#3fb950', 3:'#f85149', 4:'#ab47bc', 5:'#f9a825',
+  6:'#26c6da', 7:'#58a6ff', 8:'#ef5350', 9:'#bc8cff'
+};
+const RICH_ACTS = new Set([6, 7, 8, 9]);
+const CRDT_ACT = 9;
+
+/* ===== Act jump navigation ===== */
+function buildActJumpBar() {
+  const bar = document.getElementById('act-jump-bar');
+  if (!bar) return;
+
+  const lbl = document.createElement('span');
+  lbl.textContent = 'Jump:';
+  bar.appendChild(lbl);
+
+  // Collect unique acts
+  const acts = [];
+  let last = -1;
+  DATA.events.forEach(ev => {
+    if (ev.act !== last) { acts.push({ num: ev.act, title: ev.act_title }); last = ev.act; }
+  });
+
+  acts.forEach(a => {
+    const btn = document.createElement('button');
+    btn.className = 'act-jump-btn';
+    btn.title = `Jump to Act ${a.num}: ${a.title}`;
+    const icon = ACT_ICONS[a.num] || '';
+    btn.innerHTML = `${icon} ${a.num}`;
+    if (a.num >= 6) btn.style.borderColor = ACT_COLORS[a.num] + '66';
+    btn.addEventListener('click', () => {
+      pauseTour();
+      // Find first event index for this act
+      const idx = DATA.events.findIndex(ev => ev.act === a.num);
+      if (idx >= 0) {
+        // Reveal up to this point
+        revealStep(idx);
+        // Scroll the act header into view
+        const hdr = document.getElementById(`act-hdr-${a.num}`);
+        if (hdr) hdr.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+    bar.appendChild(btn);
+  });
+
+  // Reveal All button
+  const allBtn = document.createElement('button');
+  allBtn.className = 'act-jump-btn reveal-all';
+  allBtn.textContent = '✦ Reveal All';
+  allBtn.title = 'Reveal all 69 events at once';
+  allBtn.addEventListener('click', () => {
+    pauseTour();
+    revealStep(DATA.events.length - 1);
+  });
+  bar.appendChild(allBtn);
+}
+
 /* ===== Event log ===== */
 function buildEventLog() {
   const list = document.getElementById('event-list');
@@ -1035,38 +1354,71 @@ function buildEventLog() {
   DATA.events.forEach((ev, idx) => {
     if (ev.act !== lastAct) {
       lastAct = ev.act;
+
+      // Act header — always visible (no opacity fade)
       const hdr = document.createElement('div');
       hdr.className = 'act-header';
-      hdr.textContent = `Act ${ev.act} — ${ev.act_title}`;
+      hdr.id = `act-hdr-${ev.act}`;
+      const icon = ACT_ICONS[ev.act] || '';
+      const col  = ACT_COLORS[ev.act] || 'var(--text-dim)';
+      hdr.innerHTML =
+        `<span style="color:${col};margin-right:6px">${icon}</span>` +
+        `Act ${ev.act} <span style="opacity:0.6">—</span> ${ev.act_title}`;
+      if (ev.act >= 6) {
+        hdr.style.color = col;
+        hdr.style.borderTop = `1px solid ${col}33`;
+      }
       list.appendChild(hdr);
     }
 
+    const isRich   = RICH_ACTS.has(ev.act);
+    const isCrdt   = ev.act === CRDT_ACT;
+    const isCliCmd = ev.cmd.startsWith('muse ') || ev.cmd.startsWith('git ');
+
     const item = document.createElement('div');
-    item.className = 'event-item';
+    item.className = 'event-item' + (isRich ? ' rich-act' : '');
     item.id = `ev-${idx}`;
+
     if (ev.exit_code !== 0 && ev.output.toLowerCase().includes('conflict')) {
       item.classList.add('failed');
     }
 
-    // Parse cmd into parts
-    const parts = ev.cmd.split(' ');
-    const cmdName = parts.slice(0,2).join(' ');
+    // Parse cmd
+    const parts   = ev.cmd.split(' ');
+    const cmdName = parts.slice(0, 2).join(' ');
     const cmdArgs = parts.slice(2).join(' ');
 
-    // Determine output class
+    // Output class
     let outClass = '';
     if (ev.output.toLowerCase().includes('conflict')) outClass = 'conflict';
-    else if (ev.exit_code === 0 && ev.commit_id) outClass = 'success';
+    else if (ev.exit_code === 0 && (ev.commit_id || isRich)) outClass = 'success';
 
-    // Trim long output
-    const outLines = ev.output.split('\\n').slice(0, 5).join('\\n');
+    // Line limit: rich acts get 15 lines
+    const lineLimit = isRich ? 15 : 6;
+    const outLines  = ev.output.split('\\n').slice(0, lineLimit).join('\\n');
+
+    // Build cmd line: CRDT/API events don't get the `$` shell prefix
+    let cmdLine;
+    if (isCrdt && !isCliCmd) {
+      const accentCol = ACT_COLORS[CRDT_ACT];
+      cmdLine =
+        `<div class="event-cmd">` +
+          `<span style="color:${accentCol};font-size:10px;margin-right:4px">API</span>` +
+          `<span class="cmd-name" style="color:${accentCol}">${escHtml(ev.cmd)}</span>` +
+        `</div>`;
+    } else {
+      cmdLine =
+        `<div class="event-cmd">` +
+          `<span class="cmd-prefix">$ </span>` +
+          `<span class="cmd-name">${escHtml(cmdName)}</span>` +
+          (cmdArgs
+            ? ` <span class="cmd-args">${escHtml(cmdArgs.slice(0, 80))}${cmdArgs.length > 80 ? '…' : ''}</span>`
+            : '') +
+        `</div>`;
+    }
 
     item.innerHTML =
-      `<div class="event-cmd">` +
-        `<span class="cmd-prefix">$ </span>` +
-        `<span class="cmd-name">${escHtml(cmdName)}</span>` +
-        (cmdArgs ? ` <span class="cmd-args">${escHtml(cmdArgs.slice(0, 60))}${cmdArgs.length>60?'…':''}</span>` : '') +
-      `</div>` +
+      cmdLine +
       (outLines
         ? `<div class="event-output ${outClass}">${escHtml(outLines)}</div>`
         : '') +
@@ -1089,6 +1441,103 @@ function buildEventLog() {
       `</div>`;
 
     list.appendChild(item);
+  });
+}
+
+/* ===== Domain Dashboard section ===== */
+function buildDomainSection() {
+  const grid = document.getElementById('domain-grid');
+  if (!grid) return;
+
+  // Extract domain data from the domains_json event (act 7, op domains_json)
+  const domEv = DATA.events.find(e => e.op === 'domains_json');
+  let domains = [];
+  if (domEv) {
+    try { domains = JSON.parse(domEv.output); } catch(_) {}
+  }
+
+  const capClass = cap => {
+    if (cap === 'CRDT')         return 'cap-pill cap-crdt';
+    if (cap === 'OT Merge')     return 'cap-pill cap-ot';
+    if (cap === 'Domain Schema')return 'cap-pill cap-schema';
+    if (cap === 'Typed Deltas') return 'cap-pill cap-delta';
+    return 'cap-pill';
+  };
+
+  domains.forEach(d => {
+    const isActive   = d.active === 'true';
+    const isScaffold = d.domain === 'scaffold';
+    const dims       = (d.schema && d.schema.dimensions) ? d.schema.dimensions : [];
+    const desc       = (d.schema && d.schema.description) ? d.schema.description : '';
+
+    const card = document.createElement('div');
+    card.className = 'domain-card' +
+      (isActive ? ' active-domain' : '') +
+      (isScaffold ? ' scaffold-domain' : '');
+
+    const caps = (d.capabilities || [])
+      .map(c => `<span class="${capClass(c)}">${escHtml(c)}</span>`).join('');
+
+    const dimList = dims.map(dim =>
+      `<span style="color:var(--text-mute)">${escHtml(dim.name)}</span>`
+    ).join(' · ') || '—';
+
+    card.innerHTML =
+      `<div class="domain-card-header">` +
+        `<span class="domain-badge${isActive ? ' active' : ''}">${isActive ? '● active' : '○ registered'}</span>` +
+        `<span class="domain-name">${escHtml(d.domain)}</span>` +
+        (isActive ? '<span class="domain-active-dot"></span>' : '') +
+      `</div>` +
+      `<div class="domain-card-body">` +
+        `<div class="domain-desc">${escHtml(desc.slice(0, 120))}${desc.length > 120 ? '…' : ''}</div>` +
+        `<div class="domain-caps">${caps}</div>` +
+        `<div class="domain-dims"><strong>Dimensions:</strong> ${dimList}</div>` +
+      `</div>`;
+
+    grid.appendChild(card);
+  });
+
+  // "Scaffold your own" card
+  const newCard = document.createElement('div');
+  newCard.className = 'domain-new-card';
+  newCard.innerHTML =
+    `<div class="domain-new-icon">＋</div>` +
+    `<div class="domain-new-title">Scaffold a new domain</div>` +
+    `<div class="domain-new-cmd">muse domains --new &lt;name&gt;</div>` +
+    `<div class="domain-new-link">` +
+      `then implement 6 methods · ` +
+      `<a href="docs/guide/plugin-authoring-guide.md">plugin authoring guide →</a>` +
+    `</div>`;
+  grid.appendChild(newCard);
+}
+
+/* ===== CRDT Primitives section ===== */
+function buildCRDTSection() {
+  const grid = document.getElementById('crdt-grid');
+  if (!grid) return;
+
+  const crdtEvents = DATA.events.filter(e => e.act === CRDT_ACT);
+
+  const meta = [
+    { type:'ORSet',       sub:'Observed-Remove Set',         color:'#bc8cff', icon:'∪' },
+    { type:'LWWRegister', sub:'Last-Write-Wins Register',    color:'#58a6ff', icon:'✎' },
+    { type:'GCounter',    sub:'Grow-Only Distributed Counter',color:'#3fb950', icon:'↑' },
+    { type:'VectorClock', sub:'Causal Ordering',             color:'#f9a825', icon:'⊕' },
+  ];
+
+  crdtEvents.forEach((ev, i) => {
+    const m = meta[i] || { type: ev.op, sub: '', color: '#bc8cff', icon: '◆' };
+    const card = document.createElement('div');
+    card.className = 'crdt-card';
+    card.innerHTML =
+      `<div class="crdt-card-header" style="background:${m.color}10;border-bottom-color:${m.color}30">` +
+        `<span class="crdt-type-badge" style="color:${m.color};background:${m.color}15;border-color:${m.color}40">${m.icon} ${m.type}</span>` +
+      `</div>` +
+      `<div class="crdt-card-body">` +
+        `<div style="font-size:12px;color:var(--text-mute);margin-bottom:10px;font-style:italic">${m.sub}</div>` +
+        `<div class="crdt-output">${escHtml(ev.output)}</div>` +
+      `</div>`;
+    grid.appendChild(card);
   });
 }
 
@@ -1266,7 +1715,10 @@ document.addEventListener('DOMContentLoaded', () => {
   _initDimMaps();
   drawDAG();
   buildEventLog();
+  buildActJumpBar();
   buildDimTimeline();
+  buildDomainSection();
+  buildCRDTSection();
 
   document.getElementById('btn-prev').disabled = true;  // nothing to go back to yet
 
