@@ -42,7 +42,7 @@ class MusicXMLMeta(TypedDict):
 
 
 #: Union of all supported format-specific metadata shapes.
-RawMeta = MidiMeta | MusicXMLMeta
+type RawMeta = MidiMeta | MusicXMLMeta
 
 
 @dataclasses.dataclass

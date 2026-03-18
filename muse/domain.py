@@ -175,7 +175,7 @@ class PatchOp(TypedDict):
 
 
 #: Union of all operation types — the atoms of a ``StructuredDelta``.
-DomainOp = LeafDomainOp | PatchOp
+type DomainOp = LeafDomainOp | PatchOp
 
 
 class StructuredDelta(TypedDict):
@@ -203,13 +203,13 @@ class StructuredDelta(TypedDict):
 #: Live state is either an already-snapshotted manifest dict or a workdir path.
 #: The music plugin accepts both: a Path (for CLI commit/status) and a
 #: SnapshotManifest dict (for in-memory merge and diff operations).
-LiveState = SnapshotManifest | pathlib.Path
+type LiveState = SnapshotManifest | pathlib.Path
 
 #: A content-addressed, immutable snapshot of state at a point in time.
-StateSnapshot = SnapshotManifest
+type StateSnapshot = SnapshotManifest
 
 #: The minimal change between two snapshots — a list of typed domain operations.
-StateDelta = StructuredDelta
+type StateDelta = StructuredDelta
 
 
 # ---------------------------------------------------------------------------
