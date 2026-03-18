@@ -1,10 +1,10 @@
 # Muse Plugin Authoring Guide
 
-> A complete walkthrough for building a domain plugin for Muse v1.0. By the end
+> A complete walkthrough for building a domain plugin for Muse v0.1.1. By the end
 > you will have a fully typed, schema-aware, OT-capable, CRDT-ready plugin that
 > works with every `muse` CLI command immediately — no core changes needed.
 >
-> **Difficulty progression:** Phase 1 (30 min) → Phase 2 (30 min) → Phase 3 (1 hr) → Phase 4 (1 hr)
+> **Difficulty progression:** Core Protocol (30 min) → Domain Schema (30 min) → OT Merge (1 hr) → CRDT Semantics (1 hr)
 
 ---
 
@@ -12,10 +12,10 @@
 
 1. [What a Plugin Is](#what-a-plugin-is)
 2. [Quick Start — Copy the Scaffold](#quick-start--copy-the-scaffold)
-3. [Phase 1 — Core Protocol (Required)](#phase-1--core-protocol-required)
-4. [Phase 2 — Domain Schema](#phase-2--domain-schema)
-5. [Phase 3 — Operation-Level Merge](#phase-3--operation-level-merge)
-6. [Phase 4 — CRDT Semantics](#phase-4--crdt-semantics)
+3. [Core Protocol (Required)](#phase-1--core-protocol-required)
+4. [Domain Schema](#phase-2--domain-schema)
+5. [Operation-Level Merge (OT)](#phase-3--operation-level-merge)
+6. [CRDT Semantics](#phase-4--crdt-semantics)
 7. [Registering Your Plugin](#registering-your-plugin)
 8. [Testing Your Plugin](#testing-your-plugin)
 9. [Checklist Before You Ship](#checklist-before-you-ship)
@@ -70,7 +70,7 @@ muse domains                  # inspect your plugin's capabilities
 
 ---
 
-## Phase 1 — Core Protocol (Required)
+## Core Protocol (Required)
 
 Every plugin must implement these five methods. All are synchronous. None may import from
 `muse.core.*` — the core engine calls you, not the other way around.
@@ -159,7 +159,7 @@ def diff(self, base: StateSnapshot, target: StateSnapshot) -> StateDelta:
 ### `merge(base, left, right, *, repo_root) -> MergeResult`
 
 Three-way merge. The engine calls this for `muse merge` when the plugin does not implement
-`StructuredMergePlugin`. Implement this even if you plan to implement Phase 3 — it is the
+`StructuredMergePlugin`. Implement this even if you plan to implement OT merge — it is the
 fallback for `muse cherry-pick`.
 
 **Contract:**
@@ -236,7 +236,7 @@ def apply(self, delta: StateDelta, live_state: LiveState) -> LiveState:
 
 ---
 
-## Phase 2 — Domain Schema
+## Domain Schema
 
 Implement `schema() -> DomainSchema` to declare the structural shape of your data.
 This enables `diff_by_schema()` to automatically select the best diff algorithm for
@@ -327,7 +327,7 @@ def schema(self) -> DomainSchema:
 
 ---
 
-## Phase 3 — Operation-Level Merge
+## Operation-Level Merge (OT)
 
 Implement `StructuredMergePlugin` to enable sub-file auto-merge using Operational
 Transformation. When both sides have a `structured_delta`, the engine calls `merge_ops()`
@@ -335,10 +335,10 @@ instead of `merge()`.
 
 ### What OT gives you
 
-Without Phase 3: two branches that both modified the same file conflict at file granularity —
+Without OT merge: two branches that both modified the same file conflict at file granularity —
 you get one conflict entry even if their changes are on completely different notes / rows / elements.
 
-With Phase 3: the engine computes which operations commute (can apply in either order with
+With OT merge: the engine computes which operations commute (can apply in either order with
 the same result) and which don't. Non-commuting ops become the real, minimal conflict set.
 
 ### Protocol
@@ -396,7 +396,7 @@ combinations. Key rules:
 
 ---
 
-## Phase 4 — CRDT Semantics
+## CRDT Semantics
 
 Implement `CRDTPlugin` to replace three-way merge with a mathematical join.
 CRDTs are ideal when many agents write concurrently and you want **zero conflicts by construction**.
@@ -405,7 +405,7 @@ CRDTs are ideal when many agents write concurrently and you want **zero conflict
 
 | Scenario | Right choice |
 |----------|-------------|
-| Human-paced commits (DAW, editor) | Phase 3 OT merge |
+| Human-paced commits (DAW, editor) | OT merge |
 | Many autonomous agents writing sub-second | CRDT join |
 | Collaborative annotation (many simultaneous adds) | CRDT `ORSet` |
 | Collaborative sequence editing (multi-cursor) | CRDT `RGA` |
@@ -590,7 +590,7 @@ def test_merge_conflict_same_path() -> None:
     assert "a.ext" in result["conflicts"]
 ```
 
-### 6. Schema (Phase 2)
+### 6. Schema
 
 ```python
 from muse.core.schema import DomainSchema
@@ -604,7 +604,7 @@ def test_schema_shape() -> None:
     assert s["merge_mode"] in ("three_way", "crdt")
 ```
 
-### 7. CRDT lattice laws (Phase 4)
+### 7. CRDT lattice laws
 
 ```python
 def test_join_commutative() -> None:
@@ -636,8 +636,8 @@ def test_join_idempotent() -> None:
 □ Registered in muse/plugins/registry.py
 □ muse init --domain <your_domain> works
 □ muse domains lists your domain with correct capabilities
-□ If Phase 3: StructuredMergePlugin isinstance check passes
-□ If Phase 4: join satisfies commutativity, associativity, idempotency
+□ If OT merge: StructuredMergePlugin isinstance check passes
+□ If CRDT: join satisfies commutativity, associativity, idempotency
 □ No Any, no object, no cast(), no type: ignore, no Optional[X], no print()
 □ Module docstring on plugin.py explains what the domain models
 ```

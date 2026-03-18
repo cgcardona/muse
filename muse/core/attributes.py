@@ -1,38 +1,66 @@
-"""Muse attributes — ``.museattributes`` parser and per-path strategy resolver.
+"""Muse attributes — ``.museattributes`` TOML parser and per-path strategy resolver.
 
 ``.museattributes`` lives in the repository root (next to ``.muse/`` and
 ``muse-work/``) and declares merge strategies for specific paths and
-dimensions.  It uses the same ``fnmatch`` glob syntax as ``.gitignore`` for
-path patterns, plus a dimension column for domain-specific orthogonal axes.
+dimensions.  It uses TOML syntax with an optional ``[meta]`` section for
+domain declaration and an ordered ``[[rules]]`` array.
 
 Format
 ------
 
-::
+.. code-block:: toml
 
-    <path-pattern>  <dimension>  <strategy>
+    # .museattributes
+    # Merge strategy overrides for this repository.
 
-- **path-pattern** — an ``fnmatch`` glob matched against workspace-relative
-  POSIX paths.
-- **dimension** — a domain-defined axis name (e.g. ``melodic``, ``harmonic``)
-  or ``*`` to match any dimension.
-- **strategy** — one of ``ours | theirs | union | auto | manual``.
+    [meta]
+    domain = "music"          # optional — validated against .muse/repo.json
 
-Lines beginning with ``#`` and blank lines are ignored.  **First matching rule
-wins.**
+    [[rules]]
+    path = "drums/*"          # fnmatch glob against workspace-relative POSIX paths
+    dimension = "*"           # domain axis name, or "*" to match any dimension
+    strategy = "ours"
+
+    [[rules]]
+    path = "keys/*"
+    dimension = "harmonic"
+    strategy = "theirs"
+
+    [[rules]]
+    path = "*"
+    dimension = "*"
+    strategy = "auto"
+
+**path** — ``fnmatch`` glob matched against workspace-relative POSIX paths.
+**dimension** — a domain-defined axis name (e.g. ``melodic``, ``harmonic``)
+or ``*`` to match any dimension.
+**strategy** — one of ``ours | theirs | union | auto | manual``.
+
+**First matching rule wins.**  ``[meta]`` is optional; its absence has no
+effect on merge correctness.  When both ``[meta] domain`` and a repo
+``domain`` are known, a mismatch logs a warning.
 
 Public API
 ----------
 
-- :class:`AttributeRule` — a single parsed rule.
+- :class:`AttributesMeta` — TypedDict for the ``[meta]`` section.
+- :class:`AttributesRuleDict` — TypedDict for a single ``[[rules]]`` entry.
+- :class:`MuseAttributesFile` — TypedDict for the full parsed file.
+- :class:`AttributeRule` — a single resolved rule (dataclass).
+- :func:`read_attributes_meta` — read only the ``[meta]`` section.
 - :func:`load_attributes` — read ``.museattributes`` from a repo root.
 - :func:`resolve_strategy` — first-match strategy lookup.
 """
 from __future__ import annotations
 
 import fnmatch
+import logging
 import pathlib
+import tomllib
 from dataclasses import dataclass
+from typing import TypedDict
+
+_logger = logging.getLogger(__name__)
 
 VALID_STRATEGIES: frozenset[str] = frozenset(
     {"ours", "theirs", "union", "auto", "manual"}
@@ -41,71 +69,192 @@ VALID_STRATEGIES: frozenset[str] = frozenset(
 _FILENAME = ".museattributes"
 
 
+class AttributesMeta(TypedDict, total=False):
+    """Typed representation of the ``[meta]`` section in ``.museattributes``."""
+
+    domain: str
+
+
+class AttributesRuleDict(TypedDict):
+    """Typed representation of a single ``[[rules]]`` entry."""
+
+    path: str
+    dimension: str
+    strategy: str
+
+
+class MuseAttributesFile(TypedDict, total=False):
+    """Typed representation of the complete ``.museattributes`` file."""
+
+    meta: AttributesMeta
+    rules: list[AttributesRuleDict]
+
+
 @dataclass(frozen=True)
 class AttributeRule:
-    """A single rule from ``.museattributes``.
+    """A single rule resolved from ``.museattributes``.
 
     Attributes:
         path_pattern: ``fnmatch`` glob matched against workspace-relative paths.
         dimension:    Domain axis name (e.g. ``"melodic"``) or ``"*"``.
         strategy:     Resolution strategy: ``ours | theirs | union | auto | manual``.
-        source_line:  1-based line number in the file (for diagnostics).
+        source_index: 0-based index of the rule in the ``[[rules]]`` array.
     """
 
     path_pattern: str
     dimension: str
     strategy: str
-    source_line: int = 0
+    source_index: int = 0
 
 
-def load_attributes(root: pathlib.Path) -> list[AttributeRule]:
+def _parse_raw(root: pathlib.Path) -> MuseAttributesFile:
+    """Read and TOML-parse ``.museattributes``, returning a typed file structure.
+
+    Builds ``MuseAttributesFile`` from the raw TOML dict using explicit
+    ``isinstance`` checks — no ``Any`` propagated into the return value.
+
+    Raises:
+        ValueError: On TOML syntax errors.
+    """
+    attr_file = root / _FILENAME
+    raw_bytes = attr_file.read_bytes()
+    try:
+        raw = tomllib.loads(raw_bytes.decode("utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f"{_FILENAME}: TOML parse error — {exc}") from exc
+
+    result: MuseAttributesFile = {}
+
+    # [meta] section
+    meta_raw = raw.get("meta")
+    if isinstance(meta_raw, dict):
+        meta: AttributesMeta = {}
+        domain_val = meta_raw.get("domain")
+        if isinstance(domain_val, str):
+            meta["domain"] = domain_val
+        result["meta"] = meta
+
+    # [[rules]] array
+    rules_raw = raw.get("rules")
+    if isinstance(rules_raw, list):
+        rules: list[AttributesRuleDict] = []
+        for idx, entry in enumerate(rules_raw):
+            if not isinstance(entry, dict):
+                continue
+            path_val = entry.get("path")
+            dim_val = entry.get("dimension")
+            strat_val = entry.get("strategy")
+            if (
+                isinstance(path_val, str)
+                and isinstance(dim_val, str)
+                and isinstance(strat_val, str)
+            ):
+                rules.append(
+                    AttributesRuleDict(
+                        path=path_val,
+                        dimension=dim_val,
+                        strategy=strat_val,
+                    )
+                )
+            else:
+                missing = [
+                    f for f, v in (("path", path_val), ("dimension", dim_val), ("strategy", strat_val))
+                    if not isinstance(v, str)
+                ]
+                raise ValueError(
+                    f"{_FILENAME}: rule[{idx}] is missing required field(s): "
+                    + ", ".join(missing)
+                )
+        result["rules"] = rules
+
+    return result
+
+
+def read_attributes_meta(root: pathlib.Path) -> AttributesMeta:
+    """Return the ``[meta]`` section of ``.museattributes``, or an empty dict.
+
+    Does not validate or resolve rules — use this to inspect metadata only.
+
+    Args:
+        root: Repository root directory.
+
+    Returns:
+        The ``[meta]`` TypedDict, which may be empty if the section is absent
+        or the file does not exist.
+    """
+    attr_file = root / _FILENAME
+    if not attr_file.exists():
+        return {}
+    try:
+        parsed = _parse_raw(root)
+    except ValueError:
+        return {}
+    meta = parsed.get("meta")
+    if meta is None:
+        return {}
+    return meta
+
+
+def load_attributes(
+    root: pathlib.Path,
+    *,
+    domain: str | None = None,
+) -> list[AttributeRule]:
     """Parse ``.museattributes`` from *root* and return the ordered rule list.
 
     Args:
-        root: Repository root directory (the directory that contains ``.muse/``
-              and ``muse-work/``).
+        root:   Repository root directory (the directory that contains ``.muse/``
+                and ``muse-work/``).
+        domain: Optional domain name from the active repository.  When provided
+                and the file contains ``[meta] domain``, a mismatch logs a
+                warning.  Pass ``None`` to skip domain validation.
 
     Returns:
         A list of :class:`AttributeRule` in file order.  Returns an empty list
         when ``.museattributes`` is absent or contains no valid rules.
 
     Raises:
-        ValueError: If a line has an invalid strategy or wrong number of fields.
+        ValueError: If a rule entry is missing required fields, or contains an
+                    invalid strategy.
     """
     attr_file = root / _FILENAME
     if not attr_file.exists():
         return []
 
+    data = _parse_raw(root)
+
+    # Domain validation
+    meta = data.get("meta", {})
+    file_domain = meta.get("domain") if meta else None
+    if file_domain and domain and file_domain != domain:
+        _logger.warning(
+            "⚠️  %s: [meta] domain %r does not match active repo domain %r — "
+            "rules may target a different domain",
+            _FILENAME,
+            file_domain,
+            domain,
+        )
+
+    raw_rules = data.get("rules", [])
+
     rules: list[AttributeRule] = []
-    for lineno, raw_line in enumerate(
-        attr_file.read_text(encoding="utf-8").splitlines(), start=1
-    ):
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-
-        parts = line.split()
-        if len(parts) != 3:
-            raise ValueError(
-                f"{_FILENAME}:{lineno}: expected 3 fields "
-                f"(path-pattern dimension strategy), got {len(parts)}: {line!r}"
-            )
-
-        path_pattern, dimension, strategy = parts
+    for idx, entry in enumerate(raw_rules):
+        strategy = entry["strategy"]
         if strategy not in VALID_STRATEGIES:
             raise ValueError(
-                f"{_FILENAME}:{lineno}: unknown strategy {strategy!r}. "
+                f"{_FILENAME}: rule[{idx}]: unknown strategy {strategy!r}. "
                 f"Valid strategies: {sorted(VALID_STRATEGIES)}"
             )
 
         rules.append(
             AttributeRule(
-                path_pattern=path_pattern,
-                dimension=dimension,
+                path_pattern=entry["path"],
+                dimension=entry["dimension"],
                 strategy=strategy,
-                source_line=lineno,
+                source_index=idx,
             )
         )
+
     return rules
 
 

@@ -1,4 +1,4 @@
-"""Domain schema declaration types — Phases 2 and 4.
+"""Domain schema declaration types.
 
 A plugin implements :meth:`~muse.domain.MuseDomainPlugin.schema` returning a
 :class:`DomainSchema` to declare the structural shape of its data. The core
@@ -6,14 +6,14 @@ engine uses this declaration to:
 
 1. Select the correct diff algorithm for each dimension via
    :func:`~muse.core.diff_algorithms.diff_by_schema`.
-2. Provide informed conflict messages (citing dimension names) in Phase 3.
-3. Route to CRDT merge when ``merge_mode`` is ``"crdt"`` in Phase 4.
+2. Provide informed conflict messages (citing dimension names) during OT merge.
+3. Route to CRDT convergent join when ``merge_mode`` is ``"crdt"``.
 
 Every schema type is a ``TypedDict`` — JSON-serialisable, zero-``Any``, and
 verifiable by mypy in strict mode.
 
-Phase 4 additions
------------------
+CRDT dimension spec
+-------------------
 :class:`CRDTDimensionSpec` declares which CRDT primitive a dimension uses when
 ``DomainSchema.merge_mode`` is ``"crdt"``.  Plugins that mix three-way and
 CRDT semantics per-dimension use :class:`CRDTDimensionSpec` for their CRDT
@@ -144,7 +144,7 @@ class DimensionSpec(TypedDict):
     lighting, and animation dimensions.
 
     Each dimension can use a different element schema and diff algorithm.
-    The merge engine (Phase 3) merges independent dimensions in parallel
+    The OT merge engine merges independent dimensions in parallel
     without blocking on each other.
 
     ``independent_merge`` — when ``True``, a conflict in this dimension does
@@ -159,7 +159,7 @@ class DimensionSpec(TypedDict):
 
 
 # ---------------------------------------------------------------------------
-# CRDT per-dimension schema (Phase 4)
+# CRDT per-dimension schema
 # ---------------------------------------------------------------------------
 
 #: The CRDT primitive types available for a dimension.
@@ -167,7 +167,7 @@ CRDTPrimitive = Literal["lww_register", "or_set", "rga", "aw_map", "g_counter"]
 
 
 class CRDTDimensionSpec(TypedDict):
-    """Schema for a single dimension that uses CRDT merge semantics (Phase 4).
+    """Schema for a single dimension that uses CRDT convergent merge semantics.
 
     Plugins declare a ``CRDTDimensionSpec`` for each dimension they want the
     core engine to merge via :meth:`~muse.domain.CRDTPlugin.join` rather than
@@ -206,14 +206,14 @@ class DomainSchema(TypedDict):
     files for music, a map of chromosome sequences for genomics).
 
     ``dimensions`` declares the semantic sub-dimensions. The merge engine
-    (Phase 3) uses these to determine which changes can be merged independently.
+    The OT merge engine uses these to determine which changes can be merged independently.
 
     ``merge_mode`` controls the merge strategy:
     - ``"three_way"`` — standard three-way merge (Phases 1–3).
-    - ``"crdt"``      — convergent CRDT join (Phase 4).
+    - ``"crdt"``      — convergent CRDT join.
 
     ``schema_version`` tracks the schema format for future migrations.
-    It is always ``1`` for Phase 2.
+    It is always ``1``.
     """
 
     domain: str

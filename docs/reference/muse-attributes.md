@@ -1,264 +1,195 @@
 # `.museattributes` Reference
 
-`.museattributes` is a per-repository configuration file that declares merge
-strategies for specific paths and dimensions.  It lives in the repository root,
-alongside `muse-work/`.
+> **Format:** TOML · **Location:** repository root (next to `.muse/`)
+> **Loaded by:** `muse merge`, `muse cherry-pick`, `muse attributes`
+
+`.museattributes` declares per-path, per-dimension merge strategy overrides for
+a Muse repository. It uses TOML syntax for consistency with `.muse/config.toml`
+and to allow richer structure (comments, typed values, named sections).
 
 ---
 
-## Why Muse is different
+## File Structure
 
-Git treats every file as an opaque byte sequence.  If two branches both touch
-the same file, that is a conflict — full stop.  Git cannot know that one
-collaborator edited the drumbeat rhythm while another adjusted the key-change
-harmonic, because it has no concept of *dimensions* within a file.
+```toml
+# .museattributes
+# Merge strategy overrides for this repository.
+# Documentation: docs/reference/muse-attributes.md
 
-Muse does.  A MIDI file has five orthogonal axes of change:
+[meta]
+domain = "music"    # must match .muse/repo.json "domain" field (optional but recommended)
 
-| Dimension | What it covers |
-|---|---|
-| `melodic` | `note_on` / `note_off` events — the notes played |
-| `rhythmic` | Same events as `melodic` — timing is inseparable from pitch in the MIDI model; provided as a distinct user-facing label |
-| `harmonic` | `pitchwheel` events |
-| `dynamic` | `control_change` events |
-| `structural` | Tempo, time-signature, key-signature, program changes, markers |
+[[rules]]
+path = "drums/*"
+dimension = "*"
+strategy = "ours"
 
-When two branches both modify the same `.mid` file, Muse asks:
-*did they change the same dimension?*  If not, the merge is clean — no human
-intervention required.  `.museattributes` is where you encode domain knowledge
-to guide this process.
+[[rules]]
+path = "keys/*"
+dimension = "harmonic"
+strategy = "theirs"
 
----
-
-## File location
-
-```
-my-project/
-├── .muse/               ← VCS metadata
-├── muse-work/           ← tracked workspace
-├── .museignore          ← snapshot exclusion rules
-└── .museattributes      ← merge strategies (this file)
+[[rules]]
+path = "*"
+dimension = "*"
+strategy = "auto"
 ```
 
 ---
 
-## File format
+## Sections
 
-```
-<path-pattern>  <dimension>  <strategy>
-```
+### `[meta]` (optional)
 
-- **path-pattern** — an `fnmatch` glob matched against workspace-relative POSIX
-  paths (e.g. `drums/*`, `src/models/**`, `*`).
-- **dimension** — a domain-defined dimension name or `*` to match all dimensions.
-- **strategy** — `ours | theirs | union | auto | manual`
+| Key | Type | Description |
+|-----|------|-------------|
+| `domain` | string | The domain this file targets. When present, must match `.muse/repo.json "domain"`. If they differ, `muse merge` logs a warning but proceeds. |
 
-Lines beginning with `#` and blank lines are ignored.  **First matching rule
-wins.**
+`[meta]` has no effect on merge resolution. It provides a machine-readable
+declaration of the intended domain and enables validation tooling to warn when
+rules may be targeting the wrong plugin.
+
+---
+
+### `[[rules]]` (array)
+
+Each `[[rules]]` entry is a single merge strategy rule. Rules are evaluated
+**top-to-bottom**; the **first matching rule wins**.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `path` | string | yes | An `fnmatch` glob matched against workspace-relative POSIX paths (e.g. `"drums/*"`, `"src/**/*.mid"`). |
+| `dimension` | string | yes | A domain axis name (e.g. `"harmonic"`, `"rhythmic"`) or `"*"` to match any dimension. |
+| `strategy` | string | yes | One of the five strategies below. |
 
 ---
 
 ## Strategies
 
 | Strategy | Behaviour |
-|---|---|
-| `ours` | Take the current branch's version.  Skip conflict detection for this path/dimension. |
-| `theirs` | Take the incoming branch's version.  Skip conflict detection for this path/dimension. |
-| `union` | Include both sides' changes.  Falls through to auto-merge logic (equivalent to `auto` at file level; reserved for future sub-event union). |
-| `auto` | Let the merge engine decide.  Default when no rule matches. |
-| `manual` | Flag this path/dimension for mandatory human resolution, even if the engine would auto-resolve it. |
+|----------|-----------|
+| `auto` | Use the merge engine's automatic algorithm. This is the default when no rule matches. |
+| `ours` | Always take the current branch's version. The incoming branch's changes to this path are discarded. |
+| `theirs` | Always take the incoming branch's version. The current branch's changes to this path are discarded. |
+| `union` | Combine both versions (union semantics). Applicable to set-like dimensions. |
+| `manual` | Report this path as a conflict regardless of whether the engine could auto-resolve it. Forces human review. |
 
 ---
 
-## Merge algorithm
+## Matching Rules
 
-`muse merge` applies `.museattributes` in three sequential passes:
-
-### Pass 1 — File-level strategy
-
-For each path that both branches changed, `resolve_strategy(rules, path, "*")`
-is called.
-
-- `ours` → take the left branch's version; path is removed from the conflict
-  list.
-- `theirs` → take the right branch's version; path is removed from the conflict
-  list.
-- `manual` → keep in conflict list even if the engine would auto-merge.
-- `auto` / `union` → proceed to Pass 2.
-
-### Pass 2 — Dimension-level merge (MIDI files)
-
-For `.mid` files that survive Pass 1 (no file-level rule resolved them), Muse:
-
-1. Reads the base, left, and right MIDI content from the object store.
-2. Parses each file and buckets events into four internal dimensions:
-   `notes`, `harmonic`, `dynamic`, `structural`.
-3. For each dimension, determines which sides changed it:
-   - **Unchanged** → keep base.
-   - **One side only** → take that side automatically.
-   - **Both sides** → call `resolve_strategy(rules, path, dim)` for each
-     user-facing alias of that dimension.
-     - `ours` or `theirs` → apply and continue.
-     - Anything else → dimension conflict; fall back to Pass 3.
-4. If all dimensions are resolved, reconstructs a merged MIDI file (type 0,
-   preserving `ticks_per_beat` from the base) and stores it as a new object.
-
-The merged file contains the winning dimension events interleaved by absolute
-tick time.
-
-### Pass 3 — True conflict
-
-Paths and dimensions that no rule resolves are reported as conflicts.
-`MERGE_STATE.json` is written and `muse merge` exits non-zero.
-
-### Manual forcing
-
-For paths that auto-merged cleanly on both sides, a `manual` rule in
-`.museattributes` forces them into the conflict list anyway.  This is useful for
-contractually sensitive files that always require human sign-off.
+- **Path matching** uses Python's `fnmatch.fnmatch()`. Patterns are matched
+  against workspace-relative POSIX path strings (forward slashes, no leading `/`).
+- **Dimension matching**: `"*"` in the `dimension` field matches any dimension.
+  A named dimension (e.g. `"harmonic"`) matches only that dimension.
+- **First match wins.** Order your rules from most-specific to least-specific.
 
 ---
 
-## Music domain examples
+## Multi-Domain Repositories
 
-```
-# Drums are always authoritative — take our version on every dimension:
-drums/*     *          ours
+If a repository has multiple domain plugins active (multi-domain mode), the
+`[meta] domain` field scopes the rules to a specific plugin. Each domain's
+`.museattributes` rules should live in a separate file or be clearly delimited.
 
-# Accept a collaborator's harmonic changes on key instruments:
-keys/*      harmonic   theirs
-bass/*      harmonic   theirs
-
-# Require manual review for all structural changes project-wide:
-*           structural manual
-
-# Default for everything else:
-*           *          auto
-```
-
-### What this achieves
-
-If both branches modify `keys/piano.mid`:
-
-- The `harmonic` dimension → `theirs` (collaborator's pitch-bends win).
-- The `notes` dimension → no matching rule → dimension-level auto-merge.
-  - If only one side changed notes → clean.
-  - If both sides changed notes → conflict (no rule resolved it).
-- The `structural` dimension → `manual` → always flagged for review.
+For single-domain repositories (the common case), `[meta] domain` ensures the
+rules are validated against the active plugin — a useful guard when copying
+`.museattributes` between repositories.
 
 ---
 
-## Generic domain examples
+## Examples
 
-The `.museattributes` format is not music-specific.  Domain plugins define their
-own dimension names.  Path patterns and strategy syntax are identical.
+### Music repository — drums always ours, keys harmonic auto
 
-### Genomics
+```toml
+[meta]
+domain = "music"
 
+[[rules]]
+path = "drums/*"
+dimension = "*"
+strategy = "ours"
+
+[[rules]]
+path = "keys/*"
+dimension = "harmonic"
+strategy = "auto"
+
+[[rules]]
+path = "*"
+dimension = "*"
+strategy = "auto"
 ```
-# Reference sequence is always canonical:
-reference/*   *           ours
 
-# Accept collaborator's annotations:
-annotations/* semantic     theirs
+### Force manual review for all structural changes
 
-# All structural edits require manual review:
-*             structural   manual
+```toml
+[meta]
+domain = "music"
 
-# Default:
-*             *            auto
+[[rules]]
+path = "*"
+dimension = "structural"
+strategy = "manual"
+
+[[rules]]
+path = "*"
+dimension = "*"
+strategy = "auto"
 ```
 
-### Scientific simulation
+### Genomics repository — reference sequence is always ours
 
-```
-# Boundary conditions are owned by the lead author:
-boundary/*    *            ours
+```toml
+[meta]
+domain = "genomics"
 
-# Accept collaborator's solver parameters:
-params/*      numeric      theirs
+[[rules]]
+path = "reference/*"
+dimension = "*"
+strategy = "ours"
 
-# Require sign-off on mesh topology changes:
-mesh/*        topology     manual
+[[rules]]
+path = "edits/*"
+dimension = "*"
+strategy = "auto"
 ```
 
 ---
 
-## CLI
+## Generated Template
 
-```bash
-muse attributes            # tabular display of rules
-muse attributes --json     # JSON array for scripting
-```
+`muse init --domain <name>` writes the following template to the repository root:
 
-Example output:
+```toml
+# .museattributes — merge strategy overrides for this repository.
+# Documentation: docs/reference/muse-attributes.md
+#
+# Format: TOML. [[rules]] entries are matched top-to-bottom; first match wins.
+# Strategies: ours | theirs | union | auto | manual
 
-```
-Path pattern  Dimension   Strategy
-------------  ----------  --------
-drums/*       *           ours
-keys/*        harmonic    theirs
-*             structural  manual
-*             *           auto
-```
+[meta]
+domain = "<name>"    # must match .muse/repo.json "domain" field
 
----
-
-## `muse merge` output with attributes
-
-When `.museattributes` auto-resolves a conflict, `muse merge` reports it:
-
-```
-  ✔ [ours] drums/kick.mid
-  ✔ dimension-merge: keys/piano.mid (harmonic=right, notes=left, dynamic=base, structural=base)
-Merged 'feature/harmonics' into 'main' (a1b2c3d4)
+# Add [[rules]] entries below. Examples:
+#
+# [[rules]]
+# path = "tracks/*"
+# dimension = "*"
+# strategy = "auto"
+#
+# [[rules]]
+# path = "*"
+# dimension = "*"
+# strategy = "auto"
 ```
 
 ---
 
-## Notes
+## Related
 
-- `ours` and `theirs` are positional: `ours` = the branch merging INTO (current
-  HEAD), `theirs` = the branch merging FROM (incoming).
-- Path patterns follow POSIX conventions (forward slashes).
-- The file is optional.  Its absence has no effect on merge correctness — all
-  paths use `auto`.
-- `union` at the file level is equivalent to `auto` in the current
-  implementation.  True event-level union (include both sides' note events)
-  is reserved for a future release.
-- MIDI dimension merge reconstructs a type-0 (single-track) file.  The
-  original multi-track structure is preserved when all events fit into one
-  track; multi-track reconstruction is a planned enhancement.
-
----
-
-## Resolution precedence
-
-Rules are evaluated top-to-bottom.  The first rule where **both** `path-pattern`
-and `dimension` match (via `fnmatch`) wins.
-
-If no rule matches, `auto` is returned.
-
----
-
-## Implementation
-
-Parsing and strategy resolution live in `muse/core/attributes.py`:
-
-```python
-from muse.core.attributes import load_attributes, resolve_strategy
-
-rules = load_attributes(repo_root)                    # reads .museattributes
-strategy = resolve_strategy(rules, "keys/piano.mid", "harmonic")  # → "theirs"
-```
-
-MIDI dimension merge lives in `muse/plugins/music/midi_merge.py`:
-
-```python
-from muse.plugins.music.midi_merge import extract_dimensions, merge_midi_dimensions
-
-dims = extract_dimensions(midi_bytes)           # → MidiDimensions
-result = merge_midi_dimensions(               # → (merged_bytes, report) | None
-    base_bytes, left_bytes, right_bytes, rules, "keys/piano.mid"
-)
-```
+- `.muse/config.toml` — per-repository user, auth, remote, and domain configuration
+- `.museignore` — snapshot exclusion list (paths excluded from `muse commit`)
+- `muse attributes` — CLI command to display current rules and `[meta]` domain
+- `docs/reference/type-contracts.md` — `MuseAttributesFile` TypedDict definition
