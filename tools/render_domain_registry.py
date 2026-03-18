@@ -430,6 +430,11 @@ def render(output_path: pathlib.Path) -> None:
     size_kb = output_path.stat().st_size // 1024
     print(f"  HTML written ({size_kb}KB) → {output_path}")
 
+    # Also write as index.html so the domain registry IS the landing page.
+    index_path = output_path.parent / "index.html"
+    index_path.write_text(html, encoding="utf-8")
+    print(f"  Landing page mirrored → {index_path}")
+
 
 # ---------------------------------------------------------------------------
 # Large HTML template
@@ -441,7 +446,7 @@ _HTML_TEMPLATE = """\
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Muse — Version Anything · Domain Plugin Registry</title>
+  <title>Muse — Version Anything</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -499,28 +504,25 @@ _HTML_TEMPLATE = """\
         radial-gradient(ellipse 50% 40% at 80% 50%, rgba(188,140,255,0.06) 0%, transparent 70%);
       pointer-events: none;
     }
-    .hero-eyebrow {
+    .hero-wordmark {
       font-family: var(--mono);
-      font-size: 12px;
-      color: var(--accent2);
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      margin-bottom: 20px;
-      opacity: 0.8;
-    }
-    .hero h1 {
-      font-size: clamp(42px, 6vw, 72px);
+      font-size: clamp(56px, 9vw, 108px);
       font-weight: 800;
-      letter-spacing: -2px;
-      color: var(--text);
-      line-height: 1.05;
-      margin-bottom: 16px;
-    }
-    .hero h1 span {
-      background: linear-gradient(135deg, #4f8ef7, #bc8cff);
+      letter-spacing: -4px;
+      line-height: 1;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #4f8ef7 0%, #bc8cff 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
+    }
+    .hero-version-any {
+      font-size: clamp(20px, 3vw, 30px);
+      font-weight: 300;
+      color: var(--mute);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 28px;
     }
     .hero-sub {
       font-size: 18px;
@@ -1050,7 +1052,7 @@ _HTML_TEMPLATE = """\
 <nav>
   <a class="nav-logo" href="#">muse</a>
   <a class="nav-link" href="tour_de_force.html">Tour de Force</a>
-  <a class="nav-link current" href="#">Domain Registry</a>
+  <a class="nav-link current" href="index.html">Domain Registry</a>
   <a class="nav-link" href="../docs/guide/plugin-authoring-guide.md">Plugin Guide</a>
   <div class="nav-spacer"></div>
   <span class="nav-badge">v0.1.1</span>
@@ -1058,8 +1060,8 @@ _HTML_TEMPLATE = """\
 
 <!-- =================== HERO =================== -->
 <div class="hero">
-  <div class="hero-eyebrow">Muse · Domain Plugin Registry</div>
-  <h1>Version <span>Anything</span></h1>
+  <h1 class="hero-wordmark">muse</h1>
+  <div class="hero-version-any">Version Anything</div>
   <p class="hero-sub">
     One protocol. Any domain. <strong>Six methods</strong> between you and a
     complete version control system — branching, merging, conflict resolution,

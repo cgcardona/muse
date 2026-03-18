@@ -33,11 +33,8 @@ jobs:
       - name: Generate Tour de Force
         run: python tools/tour_de_force.py
 
-      - name: Generate Domain Registry
+      - name: Generate Domain Registry (also writes index.html)
         run: python tools/render_domain_registry.py
-
-      - name: Generate landing page
-        run: python tools/render_index.py
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
