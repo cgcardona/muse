@@ -20,10 +20,12 @@ import pathlib
 from muse.core.errors import MuseCLIError
 from muse.core.schema import DomainSchema
 from muse.domain import MuseDomainPlugin
+from muse.plugins.code.plugin import CodePlugin
 from muse.plugins.music.plugin import MusicPlugin
 from muse.plugins.scaffold.plugin import ScaffoldPlugin
 
 _REGISTRY: dict[str, MuseDomainPlugin] = {
+    "code":     CodePlugin(),
     "music":    MusicPlugin(),
     "scaffold": ScaffoldPlugin(),
 }
