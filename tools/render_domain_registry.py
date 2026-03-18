@@ -82,10 +82,10 @@ def _compute_crdt_demos() -> list[dict]:
         ])
 
         return [
-            {"type": "ORSet",       "sub": "Observed-Remove Set",          "color": "#bc8cff", "icon": "∪", "output": orset_out},
-            {"type": "LWWRegister", "sub": "Last-Write-Wins Register",     "color": "#58a6ff", "icon": "✎", "output": lww_out},
-            {"type": "GCounter",    "sub": "Grow-Only Distributed Counter", "color": "#3fb950", "icon": "↑", "output": gc_out},
-            {"type": "VectorClock", "sub": "Causal Ordering",              "color": "#f9a825", "icon": "⊕", "output": vc_out},
+            {"type": "ORSet",       "sub": "Observed-Remove Set",          "color": "#bc8cff", "icon": _ICONS["union"],      "output": orset_out},
+            {"type": "LWWRegister", "sub": "Last-Write-Wins Register",     "color": "#58a6ff", "icon": _ICONS["edit"],       "output": lww_out},
+            {"type": "GCounter",    "sub": "Grow-Only Distributed Counter", "color": "#3fb950", "icon": _ICONS["arrow-up"],  "output": gc_out},
+            {"type": "VectorClock", "sub": "Causal Ordering",              "color": "#f9a825", "icon": _ICONS["git-branch"], "output": vc_out},
         ]
     except Exception as exc:
         print(f"  ⚠ CRDT demo failed ({exc}); using static fallback")
@@ -220,13 +220,58 @@ class GenomicsPlugin(MuseDomainPlugin):
 """
 
 # ---------------------------------------------------------------------------
+# SVG icon library — Lucide/Feather style, stroke="currentColor", no fixed size
+# ---------------------------------------------------------------------------
+
+def _icon(paths: str) -> str:
+    """Wrap SVG paths in a standard icon shell."""
+    return (
+        '<svg class="icon" viewBox="0 0 24 24" fill="none" '
+        'stroke="currentColor" stroke-width="1.75" '
+        'stroke-linecap="round" stroke-linejoin="round">'
+        + paths
+        + "</svg>"
+    )
+
+
+_ICONS: dict[str, str] = {
+    # Domains
+    "music":     _icon('<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'),
+    "genomics":  _icon('<path d="M2 15c6.667-6 13.333 0 20-6"/><path d="M2 9c6.667 6 13.333 0 20 6"/><line x1="5.5" y1="11" x2="5.5" y2="13"/><line x1="18.5" y1="11" x2="18.5" y2="13"/>'),
+    "cube":      _icon('<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>'),
+    "trending":  _icon('<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>'),
+    "atom":      _icon('<circle cx="12" cy="12" r="1"/><path d="M20.2 20.2c2.04-2.03.02-7.36-4.5-11.9-4.54-4.52-9.87-6.54-11.9-4.5-2.04 2.03-.02 7.36 4.5 11.9 4.54 4.52 9.87 6.54 11.9 4.5z"/><path d="M15.7 15.7c4.52-4.54 6.54-9.87 4.5-11.9-2.03-2.04-7.36-.02-11.9 4.5-4.52 4.54-6.54 9.87-4.5 11.9 2.03 2.04 7.36.02 11.9-4.5z"/>'),
+    "plus":      _icon('<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>'),
+    "activity":  _icon('<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'),
+    "pen-tool":  _icon('<path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/>'),
+    # Distribution
+    "terminal":  _icon('<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>'),
+    "package":   _icon('<line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>'),
+    "globe":     _icon('<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'),
+    # Engine capabilities
+    "code":      _icon('<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>'),
+    "layers":    _icon('<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>'),
+    "git-merge": _icon('<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>'),
+    "zap":       _icon('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'),
+    # MuseHub features
+    "search":    _icon('<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>'),
+    "lock":      _icon('<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'),
+    # CRDT primitives
+    "union":     _icon('<path d="M5 5v8a7 7 0 0 0 14 0V5"/><line x1="3" y1="19" x2="21" y2="19"/>'),
+    "edit":      _icon('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'),
+    "arrow-up":  _icon('<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>'),
+    "git-branch":_icon('<line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>'),
+}
+
+
+# ---------------------------------------------------------------------------
 # Planned / aspirational domains
 # ---------------------------------------------------------------------------
 
 _PLANNED_DOMAINS = [
     {
         "name": "Genomics",
-        "icon": "🧬",
+        "icon": _ICONS["genomics"],
         "status": "planned",
         "tagline": "Version sequences, variants, and annotations",
         "dimensions": ["sequence", "variants", "annotations", "metadata"],
@@ -234,7 +279,7 @@ _PLANNED_DOMAINS = [
     },
     {
         "name": "3D / Spatial",
-        "icon": "🌐",
+        "icon": _ICONS["cube"],
         "status": "planned",
         "tagline": "Merge spatial fields, meshes, and simulation frames",
         "dimensions": ["geometry", "materials", "physics", "temporal"],
@@ -242,7 +287,7 @@ _PLANNED_DOMAINS = [
     },
     {
         "name": "Financial",
-        "icon": "📈",
+        "icon": _ICONS["trending"],
         "status": "planned",
         "tagline": "Track model versions, alpha signals, and risk state",
         "dimensions": ["signals", "positions", "risk", "parameters"],
@@ -250,7 +295,7 @@ _PLANNED_DOMAINS = [
     },
     {
         "name": "Scientific Simulation",
-        "icon": "⚛️",
+        "icon": _ICONS["atom"],
         "status": "planned",
         "tagline": "Snapshot simulation state across timesteps and parameter spaces",
         "dimensions": ["state", "parameters", "observables", "checkpoints"],
@@ -258,7 +303,7 @@ _PLANNED_DOMAINS = [
     },
     {
         "name": "Your Domain",
-        "icon": "✦",
+        "icon": _ICONS["plus"],
         "status": "yours",
         "tagline": "Six methods. Any multidimensional state. Full VCS for free.",
         "dimensions": ["your_dim_1", "your_dim_2", "..."],
@@ -273,7 +318,7 @@ _PLANNED_DOMAINS = [
 _DISTRIBUTION_LEVELS = [
     {
         "tier": "Local",
-        "icon": "💻",
+        "icon": _ICONS["terminal"],
         "title": "Local plugin (right now)",
         "color": "#3fb950",
         "steps": [
@@ -287,7 +332,7 @@ _DISTRIBUTION_LEVELS = [
     },
     {
         "tier": "Shareable",
-        "icon": "📦",
+        "icon": _ICONS["package"],
         "title": "pip-installable package (right now)",
         "color": "#58a6ff",
         "steps": [
@@ -301,7 +346,7 @@ _DISTRIBUTION_LEVELS = [
     },
     {
         "tier": "MuseHub",
-        "icon": "🌐",
+        "icon": _ICONS["globe"],
         "title": "Centralized registry (coming — MuseHub)",
         "color": "#bc8cff",
         "steps": [
@@ -425,6 +470,28 @@ def render(output_path: pathlib.Path) -> None:
     html = html.replace("{{TYPED_DELTA_EXAMPLE}}", _TYPED_DELTA_EXAMPLE)
     html = html.replace("{{OT_MERGE_EXAMPLE}}", _OT_MERGE_EXAMPLE)
     html = html.replace("{{CRDT_CARDS}}", crdt_cards_html)
+
+    # Inject SVG icons into template placeholders
+    _ICON_SLOTS: dict[str, str] = {
+        "MUSIC":     _ICONS["music"],
+        "GENOMICS":  _ICONS["genomics"],
+        "CUBE":      _ICONS["cube"],
+        "TRENDING":  _ICONS["trending"],
+        "ATOM":      _ICONS["atom"],
+        "PLUS":      _ICONS["plus"],
+        "ACTIVITY":  _ICONS["activity"],
+        "PEN_TOOL":  _ICONS["pen-tool"],
+        "CODE":      _ICONS["code"],
+        "LAYERS":    _ICONS["layers"],
+        "GIT_MERGE": _ICONS["git-merge"],
+        "ZAP":       _ICONS["zap"],
+        "GLOBE":     _ICONS["globe"],
+        "SEARCH":    _ICONS["search"],
+        "PACKAGE":   _ICONS["package"],
+        "LOCK":      _ICONS["lock"],
+    }
+    for slot, svg in _ICON_SLOTS.items():
+        html = html.replace(f"{{{{ICON_{slot}}}}}", svg)
 
     output_path.write_text(html, encoding="utf-8")
     size_kb = output_path.stat().st_size // 1024
@@ -631,6 +698,15 @@ _HTML_TEMPLATE = """\
       line-height: 1.7;
     }
     .section-lead strong { color: var(--text); }
+
+    /* ---- Base icon ---- */
+    .icon {
+      display: inline-block;
+      vertical-align: -0.15em;
+      flex-shrink: 0;
+    }
+    .ticker-item .icon   { width: 13px; height: 13px; vertical-align: -0.1em; }
+    .cap-showcase-badge .icon { width: 13px; height: 13px; vertical-align: -0.1em; }
 
     /* ---- Protocol two-col layout ---- */
     .proto-layout {
@@ -897,7 +973,8 @@ _HTML_TEMPLATE = """\
     }
     .planned-card:hover { border-color: var(--card-accent,var(--accent)); transform: translateY(-2px); }
     .planned-card.yours { border: 2px dashed var(--accent); background: rgba(79,142,247,0.04); }
-    .planned-icon  { font-size: 28px; }
+    .planned-icon  { line-height: 0; }
+    .planned-icon .icon { width: 28px; height: 28px; }
     .planned-name  { font-size: 15px; font-weight: 700; color: var(--text); }
     .planned-tag   { font-size: 12px; color: var(--mute); line-height: 1.5; }
     .planned-dims  { font-size: 10px; color: var(--dim); }
@@ -932,7 +1009,8 @@ _HTML_TEMPLATE = """\
     }
     .dist-card:hover { transform: translateY(-2px); }
     .dist-header { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 14px; }
-    .dist-icon   { font-size: 26px; line-height: 1; }
+    .dist-icon   { line-height: 0; flex-shrink: 0; }
+    .dist-icon .icon { width: 26px; height: 26px; }
     .dist-tier   { font-family: var(--mono); font-size: 11px; color: var(--dist-color,var(--accent)); letter-spacing: 1px; text-transform: uppercase; font-weight: 700; }
     .dist-title  { font-size: 14px; font-weight: 600; color: var(--text); margin-top: 2px; }
     .dist-desc   { font-size: 13px; color: var(--mute); margin-bottom: 16px; line-height: 1.6; }
@@ -949,9 +1027,10 @@ _HTML_TEMPLATE = """\
       border-top: 1px solid var(--border);
     }
     .musehub-logo {
-      font-size: 48px;
       margin-bottom: 20px;
+      line-height: 0;
     }
+    .musehub-logo .icon { width: 48px; height: 48px; stroke: #bc8cff; }
     .musehub-section h2 {
       font-size: 36px;
       font-weight: 800;
@@ -986,7 +1065,8 @@ _HTML_TEMPLATE = """\
       text-align: left;
       min-width: 180px;
     }
-    .mh-feature-icon { font-size: 20px; margin-bottom: 8px; }
+    .mh-feature-icon { margin-bottom: 10px; line-height: 0; }
+    .mh-feature-icon .icon { width: 22px; height: 22px; stroke: #bc8cff; }
     .mh-feature-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
     .mh-feature-desc  { font-size: 12px; color: var(--mute); }
     .musehub-status {
@@ -1088,25 +1168,25 @@ _HTML_TEMPLATE = """\
   </div>
   <div class="domain-ticker">
     <div class="ticker-track">
-      <span class="ticker-item active">🎵 music</span>
-      <span class="ticker-item">🧬 genomics</span>
-      <span class="ticker-item">🌐 3d-spatial</span>
-      <span class="ticker-item">📈 financial</span>
-      <span class="ticker-item">⚛️ simulation</span>
-      <span class="ticker-item">🔬 proteomics</span>
-      <span class="ticker-item">🏗️ cad</span>
-      <span class="ticker-item">🎮 game-state</span>
-      <span class="ticker-item">✦ your-domain</span>
+      <span class="ticker-item active">{{ICON_MUSIC}} music</span>
+      <span class="ticker-item">{{ICON_GENOMICS}} genomics</span>
+      <span class="ticker-item">{{ICON_CUBE}} 3d-spatial</span>
+      <span class="ticker-item">{{ICON_TRENDING}} financial</span>
+      <span class="ticker-item">{{ICON_ATOM}} simulation</span>
+      <span class="ticker-item">{{ICON_ACTIVITY}} proteomics</span>
+      <span class="ticker-item">{{ICON_PEN_TOOL}} cad</span>
+      <span class="ticker-item">{{ICON_ZAP}} game-state</span>
+      <span class="ticker-item">{{ICON_PLUS}} your-domain</span>
       <!-- duplicate for seamless loop -->
-      <span class="ticker-item active">🎵 music</span>
-      <span class="ticker-item">🧬 genomics</span>
-      <span class="ticker-item">🌐 3d-spatial</span>
-      <span class="ticker-item">📈 financial</span>
-      <span class="ticker-item">⚛️ simulation</span>
-      <span class="ticker-item">🔬 proteomics</span>
-      <span class="ticker-item">🏗️ cad</span>
-      <span class="ticker-item">🎮 game-state</span>
-      <span class="ticker-item">✦ your-domain</span>
+      <span class="ticker-item active">{{ICON_MUSIC}} music</span>
+      <span class="ticker-item">{{ICON_GENOMICS}} genomics</span>
+      <span class="ticker-item">{{ICON_CUBE}} 3d-spatial</span>
+      <span class="ticker-item">{{ICON_TRENDING}} financial</span>
+      <span class="ticker-item">{{ICON_ATOM}} simulation</span>
+      <span class="ticker-item">{{ICON_ACTIVITY}} proteomics</span>
+      <span class="ticker-item">{{ICON_PEN_TOOL}} cad</span>
+      <span class="ticker-item">{{ICON_ZAP}} game-state</span>
+      <span class="ticker-item">{{ICON_PLUS}} your-domain</span>
     </div>
   </div>
 </div>
@@ -1186,7 +1266,7 @@ _HTML_TEMPLATE = """\
       <div class="cap-showcase-card" style="--cap-color:#f9a825">
         <div class="cap-showcase-header">
           <span class="cap-showcase-badge" style="color:#f9a825;background:#f9a82515;border-color:#f9a82540">
-            🔬 Typed Delta Algebra
+            {{ICON_CODE}} Typed Delta Algebra
           </span>
           <span class="cap-showcase-sub">StructuredDelta — every change is a typed operation</span>
         </div>
@@ -1204,7 +1284,7 @@ _HTML_TEMPLATE = """\
       <div class="cap-showcase-card" style="--cap-color:#58a6ff">
         <div class="cap-showcase-header">
           <span class="cap-showcase-badge" style="color:#58a6ff;background:#58a6ff15;border-color:#58a6ff40">
-            🗂️ Domain Schema
+            {{ICON_LAYERS}} Domain Schema
           </span>
           <span class="cap-showcase-sub">Per-domain dimensions drive diff algorithm selection</span>
         </div>
@@ -1223,7 +1303,7 @@ _HTML_TEMPLATE = """\
       <div class="cap-showcase-card" style="--cap-color:#ef5350">
         <div class="cap-showcase-header">
           <span class="cap-showcase-badge" style="color:#ef5350;background:#ef535015;border-color:#ef535040">
-            ⚙️ OT Merge
+            {{ICON_GIT_MERGE}} OT Merge
           </span>
           <span class="cap-showcase-sub">Operational transformation — independent ops commute automatically</span>
         </div>
@@ -1240,7 +1320,7 @@ _HTML_TEMPLATE = """\
       <div class="cap-showcase-card" style="--cap-color:#bc8cff">
         <div class="cap-showcase-header">
           <span class="cap-showcase-badge" style="color:#bc8cff;background:#bc8cff15;border-color:#bc8cff40">
-            🔮 CRDT Primitives
+            {{ICON_ZAP}} CRDT Primitives
           </span>
           <span class="cap-showcase-sub">Convergent merge — any two replicas always reach the same state</span>
         </div>
@@ -1376,7 +1456,7 @@ _HTML_TEMPLATE = """\
 
 <!-- =================== MUSEHUB TEASER =================== -->
 <div class="musehub-section">
-  <div class="musehub-logo">🌐</div>
+  <div class="musehub-logo">{{ICON_GLOBE}}</div>
   <h2><span>MuseHub</span> is coming</h2>
   <p class="musehub-desc">
     A <strong>centralized, searchable registry</strong> for Muse domain plugins —
@@ -1385,22 +1465,22 @@ _HTML_TEMPLATE = """\
   </p>
   <div class="musehub-features">
     <div class="mh-feature">
-      <div class="mh-feature-icon">🔍</div>
+      <div class="mh-feature-icon">{{ICON_SEARCH}}</div>
       <div class="mh-feature-title">Searchable</div>
       <div class="mh-feature-desc">Find plugins by domain, capability, or keyword</div>
     </div>
     <div class="mh-feature">
-      <div class="mh-feature-icon">📦</div>
+      <div class="mh-feature-icon">{{ICON_PACKAGE}}</div>
       <div class="mh-feature-title">Versioned</div>
       <div class="mh-feature-desc">Semantic versioning, pinned installs, changelogs</div>
     </div>
     <div class="mh-feature">
-      <div class="mh-feature-icon">🔒</div>
+      <div class="mh-feature-icon">{{ICON_LOCK}}</div>
       <div class="mh-feature-title">Private registries</div>
       <div class="mh-feature-desc">Self-host for enterprise or research teams</div>
     </div>
     <div class="mh-feature">
-      <div class="mh-feature-icon">⚡</div>
+      <div class="mh-feature-icon">{{ICON_ZAP}}</div>
       <div class="mh-feature-title">One command</div>
       <div class="mh-feature-desc"><code>muse init --domain @musehub/genomics</code></div>
     </div>
@@ -1456,10 +1536,10 @@ _HTML_TEMPLATE = """\
         continue;
       }
       // Number (including negative)
-      if (/[\d]/.test(raw[i]) || (raw[i] === '-' && /\d/.test(raw[i + 1] || ''))) {
+      if (/[0-9]/.test(raw[i]) || (raw[i] === '-' && /[0-9]/.test(raw[i + 1] || ''))) {
         let j = i;
         if (raw[j] === '-') j++;
-        while (j < raw.length && /[\d.eE+\-]/.test(raw[j])) j++;
+        while (j < raw.length && /[0-9.eE+\-]/.test(raw[j])) j++;
         html += '<span style="color:#d19a66">' + esc(raw.slice(i, j)) + '</span>';
         i = j;
         continue;
