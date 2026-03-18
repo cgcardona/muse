@@ -1,6 +1,6 @@
 # Muse VCS — Architecture Reference
 
-> **Version:** v1.0 (Phases 1–4 complete)
+> **Version:** v0.1.1
 > **See also:** [Plugin Authoring Guide](../guide/plugin-authoring-guide.md) · [CRDT Reference](../guide/crdt-reference.md) · [E2E Walkthrough](muse-e2e-demo.md) · [Plugin Protocol](../protocol/muse-protocol.md) · [Domain Concepts](../protocol/muse-domain-concepts.md) · [Type Contracts](../reference/type-contracts.md)
 
 ---

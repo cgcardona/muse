@@ -1,14 +1,15 @@
 # MuseDomainPlugin Protocol — Language-Agnostic Specification
 
-> **Status:** Canonical · **Version:** v1.0
+> **Status:** Canonical · **Version:** v0.1.1
 > **Audience:** Anyone implementing a Muse domain plugin in any language.
 
 ---
 
 ## 0. Purpose
 
-This document specifies the five-method contract a domain plugin must satisfy to
-integrate with the Muse VCS engine. It is intentionally language-agnostic.
+This document specifies the six-method contract a domain plugin must satisfy to
+integrate with the Muse VCS engine, plus the two optional protocol extensions for
+richer merge semantics. It is intentionally language-agnostic.
 
 Muse provides the DAG, object store, branching, lineage, merge state machine, log,
 and CLI. A plugin provides domain knowledge. This document defines the boundary
@@ -41,24 +42,20 @@ should map to equivalent constructs.
 
 ```python
 # A workspace-relative path mapped to its SHA-256 content digest.
-# Plugins are free to add top-level keys alongside "files" and "domain".
-StateSnapshot = dict  # must contain "files": dict[str, str] and "domain": str
+# Must contain "files": dict[str, str] and "domain": str.
+StateSnapshot = TypedDict("StateSnapshot", files=dict[str, str], domain=str)
 
 # The "live" input to snapshot() and drift().
 # Either a filesystem path to the working directory,
 # or an existing StateSnapshot (used for in-memory operations).
 LiveState = Path | StateSnapshot
 
-# Output of diff(): three sorted lists of workspace-relative paths.
-StateDelta = dict  # must contain "added", "removed", "modified": list[str] and "domain": str
+# Output of diff(): a typed list of domain operations.
+# StructuredDelta carries insert / delete / move / replace / patch ops,
+# each with a content-addressed before/after reference.
+StateDelta = StructuredDelta  # see type-contracts.md for the full shape
 
 # Output of merge(): the reconciled snapshot + conflict + strategy metadata.
-# "conflicts"          — workspace-relative paths that could not be auto-resolved.
-#                        Empty list means the merge was clean.
-# "applied_strategies" — path → strategy string applied by .museattributes
-#                        (e.g. {"drums/kick.mid": "ours"}).  Empty if no rules fired.
-# "dimension_reports"  — path → {dimension: winner} for files that went through
-#                        dimension-level merge (e.g. {"keys.mid": {"notes": "left"}}).
 MergeResult = dataclass(
     merged: StateSnapshot,
     conflicts: list[str],
@@ -68,11 +65,15 @@ MergeResult = dataclass(
 
 # Output of drift(): summary of how live state diverges from committed state.
 DriftReport = dataclass(has_drift: bool, summary: str, delta: StateDelta)
+
+# Output of schema(): structural declaration of the domain's data shape.
+DomainSchema = TypedDict with keys: domain, schema_version, description,
+               merge_mode, elements, dimensions  # see type-contracts.md
 ```
 
 ---
 
-## 3. The Five Methods
+## 3. The Six Required Methods
 
 ### 3.1 `snapshot(live_state: LiveState) → StateSnapshot`
 
@@ -90,19 +91,20 @@ Capture the current live state as a serializable, content-addressable snapshot.
 
 ---
 
-### 3.2 `diff(base: StateSnapshot, target: StateSnapshot) → StateDelta`
+### 3.2 `diff(base: StateSnapshot, target: StateSnapshot, *, repo_root: Path | None = None) → StateDelta`
 
-Compute the minimal delta between two snapshots.
+Compute the typed delta between two snapshots.
 
 **Contract:**
-- Return MUST contain `"added"`: sorted list of paths present in `target` but not `base`.
-- Return MUST contain `"removed"`: sorted list of paths present in `base` but not `target`.
-- Return MUST contain `"modified"`: sorted list of paths present in both with different digests.
+- Return MUST be a `StructuredDelta` containing a typed `ops` list.
+- Each operation MUST have an `op` kind: `"insert"`, `"delete"`, `"move"`,
+  `"replace"`, or `"patch"`.
+- Each operation MUST have an `"address"` field identifying the element within
+  the domain's namespace.
 - Return MUST contain `"domain"` matching the plugin's domain name.
-- All three lists MUST be sorted.
-- A path that appears in `added` MUST NOT appear in `removed` or `modified`.
+- `diff(s, s)` MUST return an empty `ops` list for identical snapshots.
 
-**Called by:** `muse diff`, `muse checkout`
+**Called by:** `muse diff`, `muse checkout`, `muse show`
 
 ---
 
@@ -169,7 +171,95 @@ post-checkout hook.
 
 ---
 
-## 4. Snapshot Format (Normative)
+### 3.6 `schema() → DomainSchema`
+
+Declare the structural shape of the domain's data.
+
+**Contract:**
+- Return MUST be a `DomainSchema` TypedDict.
+- `schema["domain"]` MUST match the plugin's domain name.
+- `schema["merge_mode"]` MUST be one of `"three_way"` or `"crdt"`.
+- `schema["elements"]` MUST be a non-empty list of `ElementSchema` entries,
+  each with a `"name"` and `"kind"` field.
+- `schema["dimensions"]` MUST be a list of `DimensionSpec` entries,
+  each with `"name"`, `"description"`, and `"diff_algorithm"` fields.
+- This method MUST be idempotent (calling it multiple times returns structurally
+  identical values).
+
+**Called by:** `muse domains`, diff algorithm selection, merge engine conflict reporting.
+
+---
+
+## 4. Optional Protocol Extensions
+
+### 4.1 `StructuredMergePlugin` — Operational Transformation Merge
+
+Plugins may optionally implement `StructuredMergePlugin` by adding a `merge_ops()` method.
+
+```python
+class StructuredMergePlugin(MuseDomainPlugin, Protocol):
+    def merge_ops(
+        self,
+        base: StateSnapshot,
+        ours_snap: StateSnapshot,
+        theirs_snap: StateSnapshot,
+        ours_ops: list[DomainOp],
+        theirs_ops: list[DomainOp],
+        *,
+        repo_root: pathlib.Path | None = None,
+    ) -> MergeResult: ...
+```
+
+When both branches produce a `StructuredDelta` from `diff()`, the merge engine
+detects `isinstance(plugin, StructuredMergePlugin)` and calls `merge_ops()` for
+operation-level conflict detection. Non-commuting operations become the minimal,
+real conflict set. Non-supporting plugins fall back to the file-level `merge()` path.
+
+**Contract for `merge_ops()`:**
+- `ours_ops` and `theirs_ops` are the typed operation lists from each branch's
+  `StructuredDelta`.
+- The engine applies OT commutativity rules to determine which ops are
+  auto-mergeable.
+- `result.conflicts` contains only addresses where the operations genuinely
+  conflict (non-commuting writes to the same address).
+
+---
+
+### 4.2 `CRDTPlugin` — Convergent Multi-Agent Merge
+
+Plugins may optionally implement `CRDTPlugin` by adding four methods.
+
+```python
+class CRDTPlugin(MuseDomainPlugin, Protocol):
+    def join(
+        self,
+        a: CRDTSnapshotManifest,
+        b: CRDTSnapshotManifest,
+    ) -> CRDTSnapshotManifest: ...
+
+    def crdt_schema(self) -> list[CRDTDimensionSpec]: ...
+
+    def to_crdt_state(self, snapshot: StateSnapshot) -> CRDTSnapshotManifest: ...
+
+    def from_crdt_state(self, crdt: CRDTSnapshotManifest) -> StateSnapshot: ...
+```
+
+`join` always succeeds — no conflict state ever exists. Given any two
+`CRDTSnapshotManifest` values, `join` produces a deterministic merged result
+regardless of message delivery order. The engine detects `CRDTPlugin` via
+`isinstance` at merge time. `DomainSchema.merge_mode == "crdt"` signals that
+the CRDT path should be taken.
+
+**Lattice laws `join` must satisfy:**
+- **Commutativity:** `join(a, b) == join(b, a)`
+- **Associativity:** `join(join(a, b), c) == join(a, join(b, c))`
+- **Idempotency:** `join(a, a) == a`
+
+Violation of any lattice law breaks convergence.
+
+---
+
+## 5. Snapshot Format (Normative)
 
 The minimum required shape for a `StateSnapshot`:
 
@@ -199,7 +289,7 @@ are available to domain-specific CLI commands via `plugin.snapshot()`.
 
 ---
 
-## 5. Naming Conventions
+## 6. Naming Conventions
 
 | Scope | Convention |
 |---|---|
@@ -210,15 +300,17 @@ are available to domain-specific CLI commands via `plugin.snapshot()`.
 
 ---
 
-## 6. Implementing a Plugin
+## 7. Implementing a Plugin
 
-Minimum viable implementation in Python:
+Minimum viable implementation in Python (required methods only):
 
 ```python
+import pathlib
 from muse.domain import (
-    DeltaManifest, DriftReport, LiveState, MergeResult,
-    MuseDomainPlugin, SnapshotManifest, StateDelta, StateSnapshot,
+    DriftReport, LiveState, MergeResult,
+    MuseDomainPlugin, SnapshotManifest, StructuredDelta, StateSnapshot,
 )
+from muse.core.schema import DomainSchema
 
 class MyDomainPlugin:
     def snapshot(self, live_state: LiveState) -> StateSnapshot:
@@ -231,14 +323,16 @@ class MyDomainPlugin:
             return SnapshotManifest(files=files, domain="my_domain")
         return live_state  # already a snapshot dict
 
-    def diff(self, base: StateSnapshot, target: StateSnapshot) -> StateDelta:
-        b, t = base["files"], target["files"]
-        return DeltaManifest(
-            domain="my_domain",
-            added=sorted(set(t) - set(b)),
-            removed=sorted(set(b) - set(t)),
-            modified=sorted(p for p in set(b) & set(t) if b[p] != t[p]),
-        )
+    def diff(
+        self,
+        base: StateSnapshot,
+        target: StateSnapshot,
+        *,
+        repo_root: pathlib.Path | None = None,
+    ) -> StructuredDelta:
+        # Compute typed operations between base and target.
+        # Return StructuredDelta(domain="my_domain", ops=[...], summary="...")
+        ...
 
     def merge(
         self,
@@ -248,37 +342,50 @@ class MyDomainPlugin:
         *,
         repo_root: pathlib.Path | None = None,
     ) -> MergeResult:
-        # ... domain-specific reconciliation ...
+        # Domain-specific reconciliation.
         # Load .museattributes if repo_root is provided and apply strategies.
+        ...
 
-    def drift(self, committed, live) -> DriftReport:
+    def drift(self, committed: StateSnapshot, live: LiveState) -> DriftReport:
         live_snap = self.snapshot(live)
         delta = self.diff(committed, live_snap)
-        has_drift = any([delta["added"], delta["removed"], delta["modified"]])
+        has_drift = bool(delta["ops"])
         return DriftReport(has_drift=has_drift, summary="...", delta=delta)
 
-    def apply(self, delta, live_state) -> LiveState:
+    def apply(self, delta: StructuredDelta, live_state: LiveState) -> LiveState:
         if isinstance(live_state, pathlib.Path):
             return self.snapshot(live_state)
-        files = dict(live_state["files"])
-        for p in delta["removed"]:
-            files.pop(p, None)
-        return SnapshotManifest(files=files, domain="my_domain")
+        # Apply deletions to in-memory snapshot dict.
+        ...
+
+    def schema(self) -> DomainSchema:
+        return DomainSchema(
+            domain="my_domain",
+            schema_version=1,
+            description="...",
+            merge_mode="three_way",
+            elements=[...],
+            dimensions=[...],
+        )
 ```
+
+See `muse/plugins/scaffold/plugin.py` for the copy-paste template implementing all
+methods including the `StructuredMergePlugin` and `CRDTPlugin` extensions.
 
 See `muse/plugins/music/plugin.py` for the complete reference implementation.
 
 ---
 
-## 7. Invariants the Core Engine Relies On
+## 8. Invariants the Core Engine Relies On
 
 The core engine assumes:
 
 1. `snapshot(snapshot_dict)` returns the dict unchanged.
-2. `diff(s, s)` returns empty `added`, `removed`, `modified` for identical snapshots.
+2. `diff(s, s)` returns an empty `ops` list for identical snapshots.
 3. `merge(base, s, s)` returns `s` with an empty `conflicts` list.
 4. `drift(s, path_to_workdir_matching_s)` returns `has_drift=False`.
 5. Object IDs in `StateSnapshot["files"]` are valid SHA-256 hex strings (64 chars).
+6. `schema()` always returns structurally identical values (idempotent).
 
 Violating these invariants will cause incorrect behavior in `checkout`, `status`,
 and merge state detection.

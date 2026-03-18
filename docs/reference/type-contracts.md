@@ -1,6 +1,6 @@
 # Muse VCS — Type Contracts Reference
 
-> Updated: 2026-03-17 | Reflects every named entity in the Muse VCS surface:
+> Updated: 2026-03-17 (v0.1.1) | Reflects every named entity in the Muse VCS surface:
 > domain protocol types, store wire-format TypedDicts, in-memory dataclasses,
 > merge/config/stash types, MIDI import types, error hierarchy, and CLI enums.
 > `Any` and `object` do not exist in any production file. Every type boundary
@@ -18,21 +18,26 @@ optionality, and intended use.
 1. [Design Philosophy](#design-philosophy)
 2. [Domain Protocol Types (`muse/domain.py`)](#domain-protocol-types)
    - [Snapshot and Delta TypedDicts](#snapshot-and-delta-typeddicts)
+   - [Typed Delta Algebra — StructuredDelta and DomainOp variants](#typed-delta-algebra)
    - [Type Aliases](#type-aliases)
    - [MergeResult and DriftReport Dataclasses](#mergeresult-and-driftreport-dataclasses)
    - [MuseDomainPlugin Protocol](#musedomainplugin-protocol)
-3. [Store Types (`muse/core/store.py`)](#store-types)
+   - [StructuredMergePlugin and CRDTPlugin Extensions](#optional-protocol-extensions)
+   - [CRDT Types](#crdt-types)
+3. [Domain Schema Types (`muse/core/schema.py`)](#domain-schema-types)
+4. [OT Merge Types (`muse/core/op_transform.py`)](#ot-merge-types)
+5. [Store Types (`muse/core/store.py`)](#store-types)
    - [Wire-Format TypedDicts](#wire-format-typeddicts)
    - [In-Memory Dataclasses](#in-memory-dataclasses)
-4. [Merge Engine Types (`muse/core/merge_engine.py`)](#merge-engine-types)
-5. [Attributes Types (`muse/core/attributes.py`)](#attributes-types)
-6. [MIDI Dimension Merge Types (`muse/plugins/music/midi_merge.py`)](#midi-dimension-merge-types)
-7. [Configuration Types (`muse/cli/config.py`)](#configuration-types)
-8. [MIDI / MusicXML Import Types (`muse/cli/midi_parser.py`)](#midi--musicxml-import-types)
-9. [Stash Types (`muse/cli/commands/stash.py`)](#stash-types)
-10. [Error Hierarchy (`muse/core/errors.py`)](#error-hierarchy)
-11. [Entity Hierarchy](#entity-hierarchy)
-12. [Entity Graphs (Mermaid)](#entity-graphs-mermaid)
+6. [Merge Engine Types (`muse/core/merge_engine.py`)](#merge-engine-types)
+7. [Attributes Types (`muse/core/attributes.py`)](#attributes-types)
+8. [MIDI Dimension Merge Types (`muse/plugins/music/midi_merge.py`)](#midi-dimension-merge-types)
+9. [Configuration Types (`muse/cli/config.py`)](#configuration-types)
+10. [MIDI / MusicXML Import Types (`muse/cli/midi_parser.py`)](#midi--musicxml-import-types)
+11. [Stash Types (`muse/cli/commands/stash.py`)](#stash-types)
+12. [Error Hierarchy (`muse/core/errors.py`)](#error-hierarchy)
+13. [Entity Hierarchy](#entity-hierarchy)
+14. [Entity Graphs (Mermaid)](#entity-graphs-mermaid)
 
 ---
 
@@ -85,9 +90,11 @@ Every entity in this codebase follows five rules:
 
 **Path:** `muse/domain.py`
 
-The five-interface contract that every domain plugin must satisfy. The core
+The six-interface contract that every domain plugin must satisfy. The core
 engine implements the DAG, branching, merge-base finding, and lineage walking.
-A domain plugin provides the five methods and gets the full VCS for free.
+A domain plugin provides the six methods and gets the full VCS for free.
+Two optional protocol extensions (`StructuredMergePlugin`, `CRDTPlugin`) unlock
+richer merge semantics.
 
 ### Snapshot and Delta TypedDicts
 
@@ -113,17 +120,37 @@ content-addressable via SHA-256.
 }
 ```
 
-#### `DeltaManifest`
+### Typed Delta Algebra
 
-`TypedDict` — Minimal change description between two snapshots. Each list
-contains workspace-relative POSIX paths. Produced by `MuseDomainPlugin.diff()`.
+#### `StructuredDelta`
+
+`TypedDict` — The typed delta produced by `MuseDomainPlugin.diff()`. Replaces the
+old `DeltaManifest` path-list format with a semantically rich operation list.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `domain` | `str` | Plugin identifier that produced this delta |
-| `added` | `list[str]` | Paths present in target but absent from base |
-| `removed` | `list[str]` | Paths present in base but absent from target |
-| `modified` | `list[str]` | Paths present in both with differing digests |
+| `ops` | `list[DomainOp]` | Ordered list of typed domain operations |
+| `summary` | `str` | Human-readable summary (e.g. `"3 inserts, 1 delete"`) |
+
+#### `DomainOp` — Five Variants
+
+`DomainOp = InsertOp | DeleteOp | MoveOp | ReplaceOp | PatchOp`
+
+Each variant is a `TypedDict` with an `"op"` discriminator and an `"address"`
+identifying the element within the domain's namespace (e.g. `"note:4:60"` in
+the music domain).
+
+| Variant | `op` | Additional fields | Description |
+|---------|------|------------------|-------------|
+| `InsertOp` | `"insert"` | `after_id: str \| None`, `content_id: str` | Insert an element after `after_id` (or at head if `None`) |
+| `DeleteOp` | `"delete"` | `content_id: str` | Delete the element at `address` |
+| `MoveOp` | `"move"` | `from_id: str`, `after_id: str \| None` | Move an element to a new position |
+| `ReplaceOp` | `"replace"` | `old_content_id: str`, `new_content_id: str` | Atomic replace (old → new) |
+| `PatchOp` | `"patch"` | `patch: dict[str, str]` | Partial field update; keys are field names, values are new content IDs |
+
+`content_id` values are SHA-256 hex digests of the element's serialised
+content, stored in the object store.
 
 ### Type Aliases
 
@@ -131,7 +158,7 @@ contains workspace-relative POSIX paths. Produced by `MuseDomainPlugin.diff()`.
 |-------|-----------|-------------|
 | `LiveState` | `SnapshotManifest \| pathlib.Path` | Current domain state — either an in-memory snapshot dict or a `muse-work/` directory path |
 | `StateSnapshot` | `SnapshotManifest` | A content-addressed, immutable capture of state at a point in time |
-| `StateDelta` | `DeltaManifest` | The minimal change between two snapshots |
+| `StateDelta` | `StructuredDelta` | The typed delta between two snapshots |
 
 `LiveState` carries two forms intentionally: the CLI path is used when commands
 interact with the filesystem (`muse commit`, `muse status`); the snapshot form
@@ -170,21 +197,147 @@ An empty `conflicts` list means the merge was clean.
 
 ### MuseDomainPlugin Protocol
 
-`@runtime_checkable Protocol` — The five interfaces a domain plugin must
+`@runtime_checkable Protocol` — The six interfaces a domain plugin must
 implement. Runtime-checkable so that `assert isinstance(plugin, MuseDomainPlugin)`
 works as a module-load sanity check.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `snapshot` | `(live_state: LiveState) -> StateSnapshot` | Capture current state as a content-addressed dict; must honour `.museignore` |
-| `diff` | `(base: StateSnapshot, target: StateSnapshot) -> StateDelta` | Compute the minimal delta between two snapshots |
+| `diff` | `(base: StateSnapshot, target: StateSnapshot, *, repo_root: pathlib.Path \| None = None) -> StateDelta` | Compute the typed delta between two snapshots |
 | `merge` | `(base, left, right: StateSnapshot, *, repo_root: pathlib.Path \| None = None) -> MergeResult` | Three-way merge; when `repo_root` is provided, load `.museattributes` and perform dimension-level merge for supported formats |
 | `drift` | `(committed: StateSnapshot, live: LiveState) -> DriftReport` | Compare committed state vs current live state |
 | `apply` | `(delta: StateDelta, live_state: LiveState) -> LiveState` | Apply a delta to produce a new live state |
+| `schema` | `() -> DomainSchema` | Declare the structural shape of the domain's data (drives diff algorithm selection) |
 
 The music plugin (`muse.plugins.music.plugin`) is the reference implementation.
 Every other domain — scientific simulation, genomics, 3D spatial design,
-spacetime — implements these five methods and registers itself as a plugin.
+spacetime — implements these six methods and registers itself as a plugin.
+
+### Optional Protocol Extensions
+
+#### `StructuredMergePlugin`
+
+`@runtime_checkable Protocol` — Extends `MuseDomainPlugin` with operation-level
+OT merge. When both branches produce `StructuredDelta`s, the merge engine detects
+`isinstance(plugin, StructuredMergePlugin)` and calls `merge_ops()` instead of
+`merge()`.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `merge_ops` | `(base, ours_snap, theirs_snap, ours_ops, theirs_ops, *, repo_root) -> MergeResult` | Operation-level three-way merge using OT commutativity rules |
+
+#### `CRDTPlugin`
+
+`@runtime_checkable Protocol` — Extends `MuseDomainPlugin` with convergent merge.
+`join` always succeeds — no conflict state ever exists.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `join` | `(a: CRDTSnapshotManifest, b: CRDTSnapshotManifest) -> CRDTSnapshotManifest` | Convergent join satisfying commutativity, associativity, idempotency |
+| `crdt_schema` | `() -> list[CRDTDimensionSpec]` | Per-dimension CRDT primitive specification |
+| `to_crdt_state` | `(snapshot: StateSnapshot) -> CRDTSnapshotManifest` | Convert a snapshot into CRDT state |
+| `from_crdt_state` | `(crdt: CRDTSnapshotManifest) -> StateSnapshot` | Convert CRDT state back to a plain snapshot |
+
+### CRDT Types
+
+#### `CRDTSnapshotManifest`
+
+`TypedDict` — Extended snapshot format for CRDT-mode plugins. Wraps the plain
+snapshot manifest with a vector clock and serialised CRDT state.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `schema_version` | `int` | Always `1` |
+| `domain` | `str` | Plugin domain name |
+| `files` | `dict[str, str]` | POSIX path → SHA-256 object digest (same as `SnapshotManifest`) |
+| `vclock` | `dict[str, int]` | Vector clock: agent ID → logical clock value |
+| `crdt_state` | `dict[str, str]` | Dimension name → serialised CRDT primitive state (JSON-encoded) |
+
+#### `CRDTDimensionSpec`
+
+`TypedDict` — Declares which CRDT primitive a dimension uses.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | `str` | Dimension name (must match a `DimensionSpec.name` in the plugin's `DomainSchema`) |
+| `crdt_type` | `str` | One of: `"lww_register"`, `"or_set"`, `"rga"`, `"aw_map"`, `"g_counter"`, `"vector_clock"` |
+
+---
+
+## Domain Schema Types
+
+**Path:** `muse/core/schema.py`
+
+The `DomainSchema` family of TypedDicts allow a plugin to declare its data
+structure. The core engine uses this to select diff algorithms per-dimension
+and to drive informed conflict reporting during OT merge.
+
+#### `ElementSchema`
+
+`TypedDict` — The schema for a single element kind (a top-level data entity).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | `str` | Element kind name (e.g. `"note"`, `"track"`, `"gene_edit"`) |
+| `kind` | `str` | Container kind: `"sequence"`, `"set"`, `"map"`, or `"scalar"` |
+
+#### `DimensionSpec`
+
+`TypedDict` — Schema for a single orthogonal dimension within the domain.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | `str` | Dimension name (e.g. `"melodic"`, `"harmonic"`) |
+| `description` | `str` | Human-readable description for this dimension |
+| `diff_algorithm` | `str` | Algorithm to use: `"myers_lcs"`, `"tree_edit"`, `"numerical"`, or `"set_ops"` |
+
+#### `CRDTDimensionSpec`
+
+`TypedDict` — Schema for a dimension using CRDT convergent merge semantics.
+See [CRDT Types](#crdt-types) above for the `crdt_type` values.
+
+#### `MapSchema`
+
+`TypedDict` — Schema for a map-kind element's value type.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `value_schema` | `ElementSchema` | Schema of the map's values |
+
+#### `DomainSchema`
+
+`TypedDict` — The top-level schema declaration returned by `MuseDomainPlugin.schema()`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `domain` | `str` | Plugin domain name |
+| `schema_version` | `int` | Always `1` |
+| `description` | `str` | Human-readable domain description |
+| `merge_mode` | `str` | `"three_way"` (OT merge) or `"crdt"` (convergent join) |
+| `elements` | `list[ElementSchema]` | Top-level element kind declarations |
+| `dimensions` | `list[DimensionSpec \| CRDTDimensionSpec]` | Orthogonal dimension declarations |
+
+---
+
+## OT Merge Types
+
+**Path:** `muse/core/op_transform.py`
+
+Operational Transformation types for the `StructuredMergePlugin` extension.
+
+#### `MergeOpsResult`
+
+`@dataclass` — Result of `merge_op_lists()`. Carries auto-merged ops and any
+unresolvable conflicts as pairs.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `merged_ops` | `list[DomainOp]` | Operations that were auto-merged (commuting ops from both branches) |
+| `conflict_ops` | `list[tuple[DomainOp, DomainOp]]` | Pairs of non-commuting operations: `(our_op, their_op)` |
+
+**Lattice contract:** `merged_ops` contains every auto-merged op exactly once;
+`conflict_ops` contains every unresolvable pair exactly once.
 
 ---
 
@@ -362,31 +515,60 @@ mutation.
 
 **Path:** `muse/core/attributes.py`
 
-Parse and resolve `.museattributes` merge-strategy rules.  The parser produces
-a typed `AttributeRule` list; `resolve_strategy` does first-match lookup with
-`fnmatch` path patterns and dimension name matching.
+Parse and resolve `.museattributes` TOML merge-strategy rules. The parser
+produces a typed `AttributeRule` list; `resolve_strategy` does first-match
+lookup with `fnmatch` path patterns and dimension name matching.
 
 #### `VALID_STRATEGIES`
 
 `frozenset[str]` — The set of legal strategy strings:
 `{"ours", "theirs", "union", "auto", "manual"}`.
 
+#### `AttributesMeta`
+
+`TypedDict (total=False)` — The `[meta]` section of `.museattributes`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `domain` | `str` | Domain name this file targets (optional — validated against `.muse/repo.json` when present) |
+
+#### `AttributesRuleDict`
+
+`TypedDict` — A single `[[rules]]` entry as parsed from TOML.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `path` | `str` | `fnmatch` glob matched against workspace-relative POSIX paths |
+| `dimension` | `str` | Domain axis name (e.g. `"melodic"`) or `"*"` to match all |
+| `strategy` | `str` | One of the `VALID_STRATEGIES` strings |
+
+#### `MuseAttributesFile`
+
+`TypedDict (total=False)` — The complete `MuseAttributesFile` structure after TOML parsing.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `meta` | `AttributesMeta` | Optional `[meta]` section |
+| `rules` | `list[AttributesRuleDict]` | Ordered `[[rules]]` array |
+
 #### `AttributeRule`
 
-`@dataclass (frozen=True)` — A single parsed rule from `.museattributes`.
+`@dataclass (frozen=True)` — A single resolved rule from `.museattributes`.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `path_pattern` | `str` | `fnmatch` glob matched against workspace-relative POSIX paths |
 | `dimension` | `str` | Domain axis name (e.g. `"melodic"`, `"harmonic"`) or `"*"` to match all |
 | `strategy` | `str` | One of the `VALID_STRATEGIES` strings |
-| `source_line` | `int` | 1-based line number in the file (for diagnostics); defaults to `0` |
+| `source_index` | `int` | 0-based index of the rule in the `[[rules]]` array; defaults to `0` |
 
-**Contracts:**
+**Public functions:**
 
-- `load_attributes(root: pathlib.Path) -> list[AttributeRule]` — reads
-  `.museattributes`, returns rules in file order; raises `ValueError` for bad
-  strategy or wrong field count.
+- `load_attributes(root: pathlib.Path, *, domain: str | None = None) -> list[AttributeRule]` —
+  reads `.museattributes` TOML, validates domain if provided, returns rules in
+  file order; raises `ValueError` for parse errors, missing fields, or invalid strategy.
+- `read_attributes_meta(root: pathlib.Path) -> AttributesMeta` —
+  returns the `[meta]` section only; returns `{}` if file is absent or unparseable.
 - `resolve_strategy(rules: list[AttributeRule], path: str, dimension: str = "*") -> str` —
   first-match lookup; returns `"auto"` when no rule matches.
 
@@ -487,6 +669,7 @@ file. All sections are optional; an empty dict is a valid `MuseConfig`.
 |-------|------|-------------|
 | `auth` | `AuthEntry` | Authentication credentials section |
 | `remotes` | `dict[str, RemoteEntry]` | Named remote sections |
+| `domain` | `dict[str, str]` | Domain-specific key/value pairs; keys are domain-defined (e.g. `ticks_per_beat` for music, `reference_assembly` for genomics). The core engine ignores this section; only the active plugin reads it. |
 
 #### `RemoteConfig`
 
@@ -654,7 +837,10 @@ Muse VCS
 │
 ├── Attributes (muse/core/attributes.py)
 │   ├── VALID_STRATEGIES           — frozenset[str]: {ours, theirs, union, auto, manual}
-│   └── AttributeRule              — dataclass (frozen): path_pattern + dimension + strategy + source_line
+│   ├── AttributesMeta             — TypedDict (total=False): [meta] section (domain: str)
+│   ├── AttributesRuleDict         — TypedDict: [[rules]] entry (path, dimension, strategy)
+│   ├── MuseAttributesFile         — TypedDict (total=False): full parsed file structure
+│   └── AttributeRule              — dataclass (frozen): path_pattern + dimension + strategy + source_index
 │
 ├── MIDI Dimension Merge (muse/plugins/music/midi_merge.py)
 │   ├── INTERNAL_DIMS              — list[str]: [notes, harmonic, dynamic, structural]
@@ -666,7 +852,7 @@ Muse VCS
 ├── Configuration (muse/cli/config.py)
 │   ├── AuthEntry                  — TypedDict (total=False): [auth] section
 │   ├── RemoteEntry                — TypedDict (total=False): [remotes.<name>] section
-│   ├── MuseConfig                 — TypedDict (total=False): full config.toml shape
+│   ├── MuseConfig                 — TypedDict (total=False): full config.toml shape (auth + remotes + domain)
 │   └── RemoteConfig               — TypedDict: public remote descriptor
 │
 ├── MIDI / MusicXML Import (muse/cli/midi_parser.py)
@@ -1202,7 +1388,7 @@ classDiagram
         +path_pattern : str
         +dimension : str
         +strategy : str
-        +source_line : int
+        +source_index : int
     }
     class DimensionSlice {
         <<dataclass>>

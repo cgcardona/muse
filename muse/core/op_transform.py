@@ -1,4 +1,4 @@
-"""Operational transformation for Muse domain operations — Phase 3.
+"""Operational transformation for Muse domain operations.
 
 This module implements the commutativity rules and position-adjustment
 transforms that allow the merge engine to reason over ``DomainOp`` trees
@@ -159,7 +159,7 @@ def ops_commute(a: DomainOp, b: DomainOp) -> bool:
 
     Two operations commute when applying them in either order produces the
     same final state. This function implements the commutativity rules table
-    from the Phase 3 spec for all 25 op-kind pairs.
+    for all 25 op-kind pairs.
 
     For ``PatchOp`` at the same address, commmutativity is determined
     recursively by checking all child-op pairs.
