@@ -719,7 +719,7 @@ merge conflicts on the whole file. The dimension is the thing.
 
 **"What does 'domain-agnostic' actually mean?"**
 The core engine — DAG, branches, object store, merge state machine — has
-zero knowledge of music. It calls five methods on a plugin object. Swap the
+zero knowledge of music. It calls six methods on a plugin object. Swap the
 plugin, get a different domain. The same commit graph, the same `muse merge`,
 different semantics.
 
