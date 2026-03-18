@@ -517,10 +517,10 @@ _HTML_TEMPLATE = """\
       background-clip: text;
     }
     .hero-version-any {
-      font-size: clamp(13px, 2vw, 17px);
-      font-weight: 500;
-      color: var(--mute);
-      letter-spacing: 4px;
+      font-size: clamp(18px, 2.8vw, 26px);
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: 6px;
       text-transform: uppercase;
       margin-bottom: 32px;
     }
