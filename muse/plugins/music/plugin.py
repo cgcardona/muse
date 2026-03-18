@@ -36,7 +36,7 @@ A music snapshot is a JSON-serialisable dict:
 The ``files`` key maps POSIX paths (relative to ``muse-work/``) to their
 SHA-256 content digests.
 
-Delta Format (Phase 1)
+Delta Format
 ----------------------
 ``diff()`` returns a ``StructuredDelta`` with typed ``DomainOp`` entries:
 
@@ -92,7 +92,7 @@ class MusicPlugin:
     """Music domain plugin for the Muse VCS.
 
     Implements :class:`~muse.domain.MuseDomainPlugin` (six core interfaces)
-    and :class:`~muse.domain.StructuredMergePlugin` (Phase 3 operation-level
+    and :class:`~muse.domain.StructuredMergePlugin` (operation-level
     merge) for MIDI state stored as files in ``muse-work/``.
 
     This is the reference implementation. Every other domain plugin implements
@@ -281,7 +281,7 @@ class MusicPlugin:
         left_files = left["files"]
         right_files = right["files"]
 
-        attrs = load_attributes(repo_root) if repo_root is not None else []
+        attrs = load_attributes(repo_root, domain=_DOMAIN_TAG) if repo_root is not None else []
 
         left_changed: set[str] = _changed_paths(base_files, left_files)
         right_changed: set[str] = _changed_paths(base_files, right_files)
@@ -474,8 +474,8 @@ class MusicPlugin:
         """Return the full structural schema for the music domain.
 
         Declares four semantic dimensions — melodic, harmonic, dynamic, and
-        structural — that the core diff algorithm library (Phase 2) and merge
-        engine (Phase 3) use to drive per-dimension operations.
+        structural — that the core diff algorithm library and OT merge
+        engine use to drive per-dimension operations.
 
         Top level is a ``SetSchema``: the music workspace is an unordered
         collection of audio/MIDI files, each identified by its SHA-256 content
@@ -556,7 +556,7 @@ class MusicPlugin:
         )
 
     # ------------------------------------------------------------------
-    # 7. merge_ops — Phase 3 operation-level merge (StructuredMergePlugin)
+    # 7. merge_ops — operation-level OT merge (StructuredMergePlugin)
     # ------------------------------------------------------------------
 
     def merge_ops(
@@ -569,7 +569,7 @@ class MusicPlugin:
         *,
         repo_root: pathlib.Path | None = None,
     ) -> MergeResult:
-        """Operation-level three-way merge using the Phase 3 OT engine.
+        """Operation-level three-way merge using the OT engine.
 
         Extends the file-level ``merge()`` method with sub-file granularity: two
         changes to non-overlapping notes in the same MIDI file no longer produce
@@ -607,7 +607,7 @@ class MusicPlugin:
         from muse.core.attributes import load_attributes, resolve_strategy
         from muse.core.op_transform import merge_op_lists
 
-        attrs = load_attributes(repo_root) if repo_root is not None else []
+        attrs = load_attributes(repo_root, domain=_DOMAIN_TAG) if repo_root is not None else []
 
         # OT classification: find commuting and conflicting op pairs.
         ot_result = merge_op_lists([], ours_ops, theirs_ops)

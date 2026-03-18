@@ -5,14 +5,15 @@ Creates the ``.muse/`` directory tree in the current working directory.
 Layout::
 
     .muse/
-        repo.json          — repo_id, schema_version, created_at
-        HEAD               — symbolic ref → refs/heads/main
-        refs/heads/main    — empty (no commits yet)
-        config.toml        — [user], [auth], [remotes] stubs
-        objects/           — content-addressed blobs (created on first commit)
-        commits/           — commit records (JSON, one file per commit)
-        snapshots/         — snapshot manifests (JSON, one file per snapshot)
-    muse-work/             — working tree (absent for --bare repos)
+        repo.json           — repo_id, schema_version, domain, created_at
+        HEAD                — symbolic ref → refs/heads/main
+        refs/heads/main     — empty (no commits yet)
+        config.toml         — [user], [auth], [remotes], [domain] stubs
+        objects/            — content-addressed blobs (created on first commit)
+        commits/            — commit records (JSON, one file per commit)
+        snapshots/          — snapshot manifests (JSON, one file per snapshot)
+    .museattributes         — TOML merge strategy overrides (created in repo root)
+    muse-work/              — working tree (absent for --bare repos)
 """
 from __future__ import annotations
 
@@ -43,6 +44,13 @@ email = ""
 token = ""
 
 [remotes]
+
+[domain]
+# Domain-specific configuration. Keys depend on the active domain.
+# Music examples:
+#   ticks_per_beat = 480
+# Genomics examples:
+#   reference_assembly = "GRCh38"
 """
 
 _BARE_CONFIG = """\
@@ -57,6 +65,39 @@ email = ""
 token = ""
 
 [remotes]
+
+[domain]
+# Domain-specific configuration. Keys depend on the active domain.
+# Music examples:
+#   ticks_per_beat = 480
+# Genomics examples:
+#   reference_assembly = "GRCh38"
+"""
+
+
+def _museattributes_template(domain: str) -> str:
+    """Return a TOML `.museattributes` template pre-filled with *domain*."""
+    return f"""\
+# .museattributes — merge strategy overrides for this repository.
+# Documentation: docs/reference/muse-attributes.md
+#
+# Format: TOML. [[rules]] entries are matched top-to-bottom; first match wins.
+# Strategies: ours | theirs | union | auto | manual
+
+[meta]
+domain = "{domain}"    # must match .muse/repo.json "domain" field
+
+# Add [[rules]] entries below. Examples:
+#
+# [[rules]]
+# path = "tracks/*"
+# dimension = "*"
+# strategy = "auto"
+#
+# [[rules]]
+# path = "*"
+# dimension = "*"
+# strategy = "auto"
 """
 
 
@@ -119,6 +160,10 @@ def init(
         config_path = muse_dir / "config.toml"
         if not config_path.exists():
             config_path.write_text(_BARE_CONFIG if bare else _DEFAULT_CONFIG)
+
+        attrs_path = cwd / ".museattributes"
+        if not attrs_path.exists():
+            attrs_path.write_text(_museattributes_template(domain))
 
         if not bare:
             work_dir = cwd / "muse-work"

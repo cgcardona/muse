@@ -8,26 +8,21 @@ The music plugin (``muse.plugins.music``) is the reference implementation.
 Every other domain — scientific simulation, genomics, 3D spatial design,
 spacetime — is a new plugin.
 
-Phase 1 — Typed Delta Algebra
-------------------------------
-``StateDelta`` is now a ``StructuredDelta`` carrying a typed operation list
-rather than the old opaque ``{added, removed, modified}`` path lists. Each
-operation knows its kind (insert / delete / move / replace / patch), the
-address it touched, and a content-addressed ID for the before/after content.
+Typed Delta Algebra
+-------------------
+``StateDelta`` is a ``StructuredDelta`` carrying a typed operation list rather
+than an opaque path list. Each operation knows its kind (insert / delete /
+move / replace / patch), the address it touched, and a content-addressed ID
+for the before/after content.
 
-This replaces ``DeltaManifest`` entirely. Plugins that previously returned
-``DeltaManifest`` must now return ``StructuredDelta``.
+Domain Schema
+-------------
+``schema()`` is the sixth protocol method. Plugins return a ``DomainSchema``
+declaring their data structure. The core engine uses this declaration to drive
+diff algorithm selection via :func:`~muse.core.diff_algorithms.diff_by_schema`.
 
-Phase 2 — Domain Schema & Diff Algorithm Library
--------------------------------------------------
-``schema()`` is now the sixth protocol method. Plugins return a
-``DomainSchema`` declaring their data structure. The core engine uses this
-declaration to drive diff algorithm selection via
-:func:`~muse.core.diff_algorithms.diff_by_schema`, and the merge engine
-(Phase 3) will use it for informed conflict detection.
-
-Phase 3 — Operation-Level Merge Engine
----------------------------------------
+Operational Transformation Merge
+---------------------------------
 Plugins may optionally implement :class:`StructuredMergePlugin`, a sub-protocol
 that adds ``merge_ops()``. When both branches have produced ``StructuredDelta``
 from ``diff()``, the merge engine checks
@@ -35,13 +30,13 @@ from ``diff()``, the merge engine checks
 fine-grained, operation-level conflict detection. Non-supporting plugins fall
 back to the existing file-level ``merge()`` path.
 
-Phase 4 — CRDT Semantics for Convergent Multi-Agent Writes
-------------------------------------------------------------
+CRDT Convergent Merge
+---------------------
 Plugins may optionally implement :class:`CRDTPlugin`, a sub-protocol that
 replaces ``merge()`` with ``join()``.  ``join`` always succeeds — no conflict
-state ever exists.  This is the endgame for high-throughput multi-agent
-scenarios: given any two :class:`CRDTSnapshotManifest` values, ``join``
-produces a deterministic merged result regardless of message delivery order.
+state ever exists.  Given any two :class:`CRDTSnapshotManifest` values,
+``join`` produces a deterministic merged result regardless of message delivery
+order.
 
 The core engine detects ``CRDTPlugin`` via ``isinstance`` at merge time.
 ``DomainSchema.merge_mode == "crdt"`` signals that the CRDT path should be
@@ -74,7 +69,7 @@ class SnapshotManifest(TypedDict):
 
 
 # ---------------------------------------------------------------------------
-# Typed delta algebra — Phase 1
+# Typed delta algebra
 # ---------------------------------------------------------------------------
 
 #: A domain-specific address identifying a location within the state graph.
@@ -163,9 +158,9 @@ class PatchOp(TypedDict):
     """A container element was internally modified.
 
     ``address`` names the container (e.g. a file path). ``child_ops`` lists
-    the sub-element changes inside that container. In Phase 1 these are always
-    leaf ops. Phase 3 will introduce true recursion via a nested
-    ``StructuredDelta`` when the operation-level merge engine requires it.
+    the sub-element changes inside that container. These are always
+    leaf ops in the current implementation; true recursion via a nested
+    ``StructuredDelta`` is reserved for a future release.
 
     ``child_domain`` identifies the sub-element domain (e.g. ``"midi_notes"``
     for note-level ops inside a ``.mid`` file). ``child_summary`` is a
@@ -239,7 +234,7 @@ class MergeResult:
 
     ``op_log`` is the ordered list of ``DomainOp`` entries applied to produce
     the merged snapshot. Empty for file-level merges; populated by plugins
-    that implement operation-level merge (Phase 3).
+    that implement operation-level OT merge.
     """
 
     merged: StateSnapshot
@@ -400,10 +395,10 @@ class MuseDomainPlugin(Protocol):
           files, a map of chromosome names to sequences).
         - ``dimensions`` — the semantic sub-dimensions of state (e.g. melodic,
           harmonic, dynamic, structural for music).
-        - ``merge_mode`` — ``"three_way"`` (Phases 1–3) or ``"crdt"`` (Phase 4).
+        - ``merge_mode`` — ``"three_way"`` (OT merge) or ``"crdt"`` (CRDT convergent join).
 
         The schema drives :func:`~muse.core.diff_algorithms.diff_by_schema`
-        algorithm selection and the Phase 3 merge engine's conflict detection.
+        algorithm selection and the OT merge engine's conflict detection.
 
         See :mod:`muse.core.schema` for all available element schema types.
         """
@@ -411,7 +406,7 @@ class MuseDomainPlugin(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# Phase 3 optional extension — structured (operation-level) merge
+# Operational Transformation optional extension — structured (operation-level) merge
 # ---------------------------------------------------------------------------
 
 
@@ -432,7 +427,7 @@ class StructuredMergePlugin(MuseDomainPlugin, Protocol):
     file-level ``merge()`` path automatically — no changes required.
 
     The :class:`~muse.plugins.music.plugin.MusicPlugin` is the reference
-    implementation for Phase 3.
+    implementation for OT-based merge.
     """
 
     def merge_ops(
@@ -481,7 +476,7 @@ class StructuredMergePlugin(MuseDomainPlugin, Protocol):
 
 
 # ---------------------------------------------------------------------------
-# Phase 4 — CRDT snapshot manifest and CRDTPlugin protocol
+# CRDT convergent merge — snapshot manifest and CRDTPlugin protocol
 # ---------------------------------------------------------------------------
 
 
@@ -502,7 +497,7 @@ class CRDTSnapshotManifest(TypedDict):
     tokens) lives here, separate from content hashes, so the content-addressed
     store remains valid.
 
-    ``schema_version`` is always ``1`` for Phase 4.
+    ``schema_version`` is always ``1``.
     """
 
     files: dict[str, str]

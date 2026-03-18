@@ -1,4 +1,4 @@
-# Muse Tour de Force — Video Narration Script (v1.0)
+# Muse Tour de Force — Video Narration Script (v0.1.1)
 
 > **Format:** YouTube walkthrough of the Tour de Force interactive demo.
 > Open `artifacts/tour_de_force.html` before recording. Click **Play Tour**
@@ -8,11 +8,10 @@
 > **Tone:** conversational, curious, a little excited — like showing a friend
 > something you built that you genuinely believe in.
 >
-> **What's new in v1.0:** After the original 5 acts, we now have **4 additional
-> acts** covering Typed Delta Algebra (Phase 1), Domain Schema & Diff Algorithms
-> (Phase 2), Operation-Level OT Merge (Phase 3), CRDT Convergent Writes (Phase 4),
-> and the live Domain Dashboard. The original 41 steps are unchanged — new acts
-> continue from step 42.
+> **What's new in v0.1.1:** After the original 5 acts, we now have **4 additional
+> acts** covering Typed Delta Algebra, Domain Schema & Diff Algorithms,
+> Operation-Level OT Merge, CRDT Convergent Writes, and the live Domain Dashboard.
+> The original 41 steps are unchanged — new acts continue from step 42.
 
 ---
 
@@ -675,7 +674,7 @@ when you have more concurrent writes than humans can handle.
 
 *(Back to camera or full screen)*
 
-So that's Muse v1.0.
+So that's Muse v0.1.1.
 
 We started with the foundation — a domain-agnostic VCS where conflicts are
 defined by dimension, not by file. That's still the core. But we've now built
@@ -731,7 +730,7 @@ always clean. OT is right for human-paced editing; CRDT is right for
 machine-speed concurrent writes.
 
 **"Is this production-ready?"**
-v1.0 is solid: strict typing, 691 passing tests, CI, four semantic layers
+v0.1.1 is solid: strict typing, 691 passing tests, CI, four semantic layers
 fully implemented. Not production for a studio yet — but the architecture is
 sound and the hard parts (content-addressed storage, OT, CRDT) are working.
 

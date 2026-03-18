@@ -7,16 +7,16 @@ Pure functions (no I/O):
 - :func:`diff_snapshots` — paths that changed between two snapshot manifests.
 - :func:`detect_conflicts` — paths changed on *both* branches since the base.
 - :func:`apply_merge` — build merged manifest for a conflict-free 3-way merge.
-- :func:`crdt_join_snapshots` — convergent CRDT merge (Phase 4); always succeeds.
+- :func:`crdt_join_snapshots` — convergent CRDT join; always succeeds.
 
-Structured (operation-level) merge — Phase 3:
+Operational Transformation (operation-level) merge:
 
 - :mod:`muse.core.op_transform` — ``ops_commute``, ``transform``, ``merge_op_lists``,
   ``merge_structured``, and :class:`~muse.core.op_transform.MergeOpsResult`.
   Plugins that implement :class:`~muse.domain.StructuredMergePlugin` use these
   functions to auto-merge non-conflicting ``DomainOp`` lists.
 
-CRDT merge — Phase 4:
+CRDT convergent merge:
 
 - :func:`crdt_join_snapshots` — detects :class:`~muse.domain.CRDTPlugin` at
   runtime and delegates to ``plugin.join(a, b)``.  Returns a
@@ -298,7 +298,7 @@ def apply_merge(
 
 
 # ---------------------------------------------------------------------------
-# Phase 4 — CRDT convergent join
+# CRDT convergent join
 # ---------------------------------------------------------------------------
 
 
@@ -318,7 +318,7 @@ def crdt_join_snapshots(
     delegates to ``plugin.join(a, b)``.  The returned :class:`~muse.domain.MergeResult`
     always has an empty ``conflicts`` list — the defining property of CRDT joins.
 
-    This function is the Phase 4 entry point for the ``muse merge`` command.
+    This function is the CRDT entry point for the ``muse merge`` command.
     It is only called when ``DomainSchema.merge_mode == "crdt"`` AND the plugin
     passes the ``isinstance(plugin, CRDTPlugin)`` check.
 

@@ -71,9 +71,9 @@ _TAGS_DIR = "tags"
 class CommitDict(TypedDict):
     """JSON-serialisable representation of a CommitRecord.
 
-    ``structured_delta`` is the Phase-1 typed delta produced by the domain
-    plugin's ``diff()`` at commit time. ``None`` for commits created before
-    Phase 1 or on the initial commit (no parent to diff against).
+    ``structured_delta`` is the typed delta produced by the domain plugin's
+    ``diff()`` at commit time. ``None`` on the initial commit (no parent to
+    diff against).
     """
 
     commit_id: str

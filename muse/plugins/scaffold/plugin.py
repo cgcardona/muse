@@ -19,14 +19,13 @@ How to use this file
 6.  All 14 ``muse`` CLI commands work immediately — no core changes needed.
 
 See ``docs/guide/plugin-authoring-guide.md`` for the full walkthrough including
-Phase 2 (schema), Phase 3 (OT merge), and Phase 4 (CRDT) extensions.
+Domain Schema, OT merge, and CRDT convergent merge extensions.
 
 Protocol capabilities implemented here
 ---------------------------------------
-- Phase 1: ``MuseDomainPlugin`` (required)
-- Phase 2: ``schema()`` (required)
-- Phase 3: ``StructuredMergePlugin`` (optional — remove if not needed)
-- Phase 4: ``CRDTPlugin`` (optional — remove if not needed)
+- Core: ``MuseDomainPlugin`` (required — 6 methods including ``schema()``)
+- OT merge: ``StructuredMergePlugin`` (optional — remove if not needed)
+- CRDT: ``CRDTPlugin`` (optional — remove if not needed)
 """
 from __future__ import annotations
 
@@ -79,7 +78,7 @@ class ScaffoldPlugin:
     """
 
     # ------------------------------------------------------------------
-    # Phase 1 — MuseDomainPlugin (required)
+    # MuseDomainPlugin — required core protocol
     # ------------------------------------------------------------------
 
     def snapshot(self, live_state: LiveState) -> StateSnapshot:
@@ -198,7 +197,7 @@ class ScaffoldPlugin:
         - only one side changed → take that side
         - both sides changed differently → conflict
 
-        If you implement Phase 3 (``merge_ops``), this method is only called
+        If you implement OT merge (``merge_ops``), this method is only called
         for ``muse cherry-pick`` and other non-OT operations.
 
         Args:
@@ -297,7 +296,7 @@ class ScaffoldPlugin:
         return live_state
 
     # ------------------------------------------------------------------
-    # Phase 2 — Domain schema (required since Phase 2)
+    # Domain schema — required
     # ------------------------------------------------------------------
 
     def schema(self) -> DomainSchema:
@@ -352,12 +351,12 @@ class ScaffoldPlugin:
                     independent_merge=True,
                 ),
             ],
-            merge_mode="three_way",  # TODO: change to "crdt" if implementing Phase 4
+            merge_mode="three_way",  # TODO: change to "crdt" if implementing CRDT convergent merge
             schema_version=1,
         )
 
     # ------------------------------------------------------------------
-    # Phase 3 — StructuredMergePlugin (optional)
+    # StructuredMergePlugin — optional OT merge extension
     # Remove this method and StructuredMergePlugin from the base classes if
     # your domain does not need sub-file OT merge.
     # ------------------------------------------------------------------
@@ -415,7 +414,7 @@ class ScaffoldPlugin:
         )
 
     # ------------------------------------------------------------------
-    # Phase 4 — CRDTPlugin (optional)
+    # CRDTPlugin — optional convergent merge extension
     # Remove these methods and CRDTPlugin from the base classes if your
     # domain does not need convergent multi-agent join semantics.
     # ------------------------------------------------------------------

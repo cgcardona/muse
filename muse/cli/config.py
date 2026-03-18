@@ -6,6 +6,7 @@ The config file supports:
 - ``[auth] token`` — bearer token for Muse Hub authentication (NEVER logged).
 - ``[remotes.<name>] url`` — remote Hub URL for push/pull sync.
 - ``[remotes.<name>] branch`` — upstream branch tracking for a remote.
+- ``[domain]`` — domain-specific key/value pairs; the active plugin reads these.
 
 Token lifecycle (MVP):
   1. User obtains a token via ``POST /auth/token``.
@@ -52,6 +53,7 @@ class MuseConfig(TypedDict, total=False):
 
     auth: AuthEntry
     remotes: dict[str, RemoteEntry]
+    domain: dict[str, str]
 
 
 class RemoteConfig(TypedDict):
@@ -108,6 +110,14 @@ def _load_config(config_path: pathlib.Path) -> MuseConfig:
                     entry["branch"] = branch_val
                 remotes[name] = entry
         config["remotes"] = remotes
+
+    domain_raw = raw.get("domain")
+    if isinstance(domain_raw, dict):
+        domain: dict[str, str] = {}
+        for key, val in domain_raw.items():
+            if isinstance(val, str):
+                domain[key] = val
+        config["domain"] = domain
 
     return config
 
