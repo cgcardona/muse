@@ -473,97 +473,224 @@ class MusicPlugin:
     def schema(self) -> DomainSchema:
         """Return the full structural schema for the music domain.
 
-        Declares five semantic dimensions — melodic, rhythmic, harmonic,
-        dynamic, and structural — that the core diff algorithm library and OT
-        merge engine use to drive per-dimension operations.
+        Declares 21 semantic dimensions — one per independent MIDI event class
+        — that the core diff algorithm library and OT merge engine use to drive
+        per-dimension operations.  This is a significant expansion from the
+        original 5 dimensions; the finer granularity means two agents can edit
+        completely different aspects of the same MIDI file (e.g. sustain pedal
+        and channel volume) without ever creating a merge conflict.
 
         Top level is a ``SetSchema``: the music workspace is an unordered
         collection of audio/MIDI files, each identified by its SHA-256 content
         hash.
 
-        Dimensions:
+        Independent dimensions (conflicts do not block merging others):
+        - **notes** (melodic/rhythmic) — note_on / note_off events
+        - **pitch_bend** — pitchwheel controller
+        - **channel_pressure** — monophonic aftertouch
+        - **poly_pressure** — per-note polyphonic aftertouch
+        - **cc_modulation** — CC 1 modulation wheel
+        - **cc_volume** — CC 7 channel volume
+        - **cc_pan** — CC 10 stereo pan
+        - **cc_expression** — CC 11 expression controller
+        - **cc_sustain** — CC 64 damper / sustain pedal
+        - **cc_portamento** — CC 65 portamento on/off
+        - **cc_sostenuto** — CC 66 sostenuto pedal
+        - **cc_soft_pedal** — CC 67 soft pedal (una corda)
+        - **cc_reverb** — CC 91 reverb send level
+        - **cc_chorus** — CC 93 chorus send level
+        - **cc_other** — all other numbered CC controllers
+        - **program_change** — instrument / patch selection
+        - **key_signatures** — key signature meta events
+        - **markers** — section markers, cue points, text annotations
 
-        - **melodic** — the sequence of note events over time. LCS-diffed so
-          that insertions and deletions of individual notes are surfaced.
-        - **rhythmic** — timing, groove, and quantisation. Shares the internal
-          ``notes`` bucket with melodic (MIDI interleaves pitch and timing in
-          the same event stream), so melodic and rhythmic changes are resolved
-          together during merge.
-        - **harmonic** — the sequence of chord events and key-signature changes.
-          LCS-diffed independently of the melodic dimension.
-        - **dynamic** — velocity and expression curves as a 1-D float tensor.
-          Epsilon of 1.0 ignores sub-1-velocity noise; sparse mode emits one
-          ``ReplaceOp`` per changed event.
-        - **structural** — track layout, time signatures, and tempo map as a
-          labeled ordered tree. Structural changes are non-independent: they
-          block merging all other dimensions until resolved, because a tempo
-          change shifts the meaning of every subsequent note position.
+        Non-independent dimensions (conflicts block all others):
+        - **tempo_map** — set_tempo meta events; tempo changes shift the
+          musical meaning of every subsequent tick position, so a bilateral
+          tempo conflict requires human resolution before other dimensions
+          can be finalised.
+        - **time_signatures** — time_signature meta events; bar structure
+          changes have the same semantic blocking effect as tempo changes.
+        - **track_structure** — track name, instrument name, sysex, and
+          unknown meta events affecting routing and session layout.
         """
+        seq_schema = SequenceSchema(
+            kind="sequence",
+            element_type="note_event",
+            identity="by_position",
+            diff_algorithm="lcs",
+            alphabet=None,
+        )
+        cc_schema = TensorSchema(
+            kind="tensor",
+            dtype="float32",
+            rank=1,
+            epsilon=0.5,
+            diff_mode="sparse",
+        )
+        tree_schema = TreeSchema(
+            kind="tree",
+            node_type="track_node",
+            diff_algorithm="zhang_shasha",
+        )
+        meta_schema = SequenceSchema(
+            kind="sequence",
+            element_type="meta_event",
+            identity="by_position",
+            diff_algorithm="lcs",
+            alphabet=None,
+        )
         return DomainSchema(
             domain=_DOMAIN_TAG,
-            description="MIDI and audio file versioning with note-level diff",
+            description=(
+                "MIDI and audio file versioning with note-level diff and "
+                "21-dimension independent merge"
+            ),
             top_level=SetSchema(
                 kind="set",
                 element_type="audio_file",
                 identity="by_content",
             ),
             dimensions=[
+                # --- Expressive note content ---
                 DimensionSpec(
-                    name="melodic",
-                    description="Note pitches and durations over time",
-                    schema=SequenceSchema(
-                        kind="sequence",
-                        element_type="note_event",
-                        identity="by_position",
-                        diff_algorithm="lcs",
-                        alphabet=None,
-                    ),
+                    name="notes",
+                    description="Note pitches, durations, and timing (melodic + rhythmic)",
+                    schema=seq_schema,
                     independent_merge=True,
                 ),
                 DimensionSpec(
-                    name="rhythmic",
-                    description="Timing, groove, and quantisation (shares notes bucket with melodic)",
-                    schema=SequenceSchema(
-                        kind="sequence",
-                        element_type="note_event",
-                        identity="by_position",
-                        diff_algorithm="lcs",
-                        alphabet=None,
-                    ),
+                    name="pitch_bend",
+                    description="Pitchwheel controller — expressive pitch deviation",
+                    schema=cc_schema,
                     independent_merge=True,
                 ),
                 DimensionSpec(
-                    name="harmonic",
-                    description="Chord progressions and key signatures",
-                    schema=SequenceSchema(
-                        kind="sequence",
-                        element_type="chord_event",
-                        identity="by_position",
-                        diff_algorithm="lcs",
-                        alphabet=None,
-                    ),
+                    name="channel_pressure",
+                    description="Monophonic aftertouch — channel-wide pressure",
+                    schema=cc_schema,
                     independent_merge=True,
                 ),
                 DimensionSpec(
-                    name="dynamic",
-                    description="Velocity and expression curves",
-                    schema=TensorSchema(
-                        kind="tensor",
-                        dtype="float32",
-                        rank=1,
-                        epsilon=1.0,
-                        diff_mode="sparse",
-                    ),
+                    name="poly_pressure",
+                    description="Polyphonic aftertouch — per-note pressure",
+                    schema=cc_schema,
+                    independent_merge=True,
+                ),
+                # --- Named CC controllers ---
+                DimensionSpec(
+                    name="cc_modulation",
+                    description="CC 1 — modulation wheel",
+                    schema=cc_schema,
                     independent_merge=True,
                 ),
                 DimensionSpec(
-                    name="structural",
-                    description="Track layout, time signatures, tempo map",
-                    schema=TreeSchema(
-                        kind="tree",
-                        node_type="track_node",
-                        diff_algorithm="zhang_shasha",
+                    name="cc_volume",
+                    description="CC 7 — channel volume",
+                    schema=cc_schema,
+                    independent_merge=True,
+                ),
+                DimensionSpec(
+                    name="cc_pan",
+                    description="CC 10 — stereo pan position",
+                    schema=cc_schema,
+                    independent_merge=True,
+                ),
+                DimensionSpec(
+                    name="cc_expression",
+                    description="CC 11 — expression controller",
+                    schema=cc_schema,
+                    independent_merge=True,
+                ),
+                DimensionSpec(
+                    name="cc_sustain",
+                    description="CC 64 — damper / sustain pedal",
+                    schema=cc_schema,
+                    independent_merge=True,
+                ),
+                DimensionSpec(
+                    name="cc_portamento",
+                    description="CC 65 — portamento on/off",
+                    schema=cc_schema,
+                    independent_merge=True,
+                ),
+                DimensionSpec(
+                    name="cc_sostenuto",
+                    description="CC 66 — sostenuto pedal",
+                    schema=cc_schema,
+                    independent_merge=True,
+                ),
+                DimensionSpec(
+                    name="cc_soft_pedal",
+                    description="CC 67 — soft pedal (una corda)",
+                    schema=cc_schema,
+                    independent_merge=True,
+                ),
+                DimensionSpec(
+                    name="cc_reverb",
+                    description="CC 91 — reverb send level",
+                    schema=cc_schema,
+                    independent_merge=True,
+                ),
+                DimensionSpec(
+                    name="cc_chorus",
+                    description="CC 93 — chorus send level",
+                    schema=cc_schema,
+                    independent_merge=True,
+                ),
+                DimensionSpec(
+                    name="cc_other",
+                    description="All other numbered CC controllers",
+                    schema=cc_schema,
+                    independent_merge=True,
+                ),
+                # --- Patch / program selection ---
+                DimensionSpec(
+                    name="program_change",
+                    description="Instrument / patch selection events",
+                    schema=meta_schema,
+                    independent_merge=True,
+                ),
+                # --- Non-independent timeline metadata ---
+                DimensionSpec(
+                    name="tempo_map",
+                    description=(
+                        "Tempo (BPM) changes — non-independent: a conflict "
+                        "blocks merging all other dimensions"
                     ),
+                    schema=meta_schema,
+                    independent_merge=False,
+                ),
+                DimensionSpec(
+                    name="time_signatures",
+                    description=(
+                        "Time signature changes — non-independent: affects "
+                        "bar structure for all other dimensions"
+                    ),
+                    schema=meta_schema,
+                    independent_merge=False,
+                ),
+                # --- Tonal and annotation metadata ---
+                DimensionSpec(
+                    name="key_signatures",
+                    description="Key signature events",
+                    schema=meta_schema,
+                    independent_merge=True,
+                ),
+                DimensionSpec(
+                    name="markers",
+                    description="Section markers, cue points, text, lyrics, copyright",
+                    schema=meta_schema,
+                    independent_merge=True,
+                ),
+                # --- Track structure (non-independent) ---
+                DimensionSpec(
+                    name="track_structure",
+                    description=(
+                        "Track name, instrument name, sysex, unknown meta — "
+                        "non-independent: routing changes affect all tracks"
+                    ),
+                    schema=tree_schema,
                     independent_merge=False,
                 ),
             ],

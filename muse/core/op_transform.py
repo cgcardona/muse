@@ -143,6 +143,8 @@ def _op_key(op: DomainOp) -> tuple[str, ...]:
             op["old_content_id"],
             op["new_content_id"],
         )
+    if op["op"] == "mutate":
+        return ("mutate", op["address"], op["entity_id"], op["old_content_id"], op["new_content_id"])
     # PatchOp — key on address and child_domain; child_ops are not hashed for
     # performance reasons.  Two patch ops on the same container are treated as
     # the same "slot" for conflict detection purposes.
@@ -253,7 +255,16 @@ def ops_commute(a: DomainOp, b: DomainOp) -> bool:
         return a["address"] != b["address"]
 
     # ------------------------------------------------------------------
-    # PatchOp + *  (a["op"] == "patch" after the four checks above)
+    # MutateOp + *  (a["op"] == "mutate" commutes with everything at a
+    # different address; same-entity concurrent mutations conflict)
+    # ------------------------------------------------------------------
+    if a["op"] == "mutate":
+        if b["op"] == "mutate":
+            return a["entity_id"] != b["entity_id"]
+        return a["address"] != b["address"]
+
+    # ------------------------------------------------------------------
+    # PatchOp + *  (a["op"] == "patch" after all checks above)
     # ------------------------------------------------------------------
     if b["op"] == "insert":
         return a["address"] != b["address"]
@@ -262,6 +273,8 @@ def ops_commute(a: DomainOp, b: DomainOp) -> bool:
     if b["op"] == "move":
         return a["address"] != b["address"]
     if b["op"] == "replace":
+        return a["address"] != b["address"]
+    if b["op"] == "mutate":
         return a["address"] != b["address"]
     # b is PatchOp
     if a["address"] != b["address"]:

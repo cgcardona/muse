@@ -8,15 +8,17 @@ Core VCS commands::
 
 Music-domain semantic commands (impossible in Git)::
 
-    notes           list every note in a MIDI track as musical notation
-    note-log        note-level commit history for a track
-    note-blame      per-bar attribution — which commit wrote these notes?
-    harmony         chord analysis and key detection
-    piano-roll      ASCII piano roll visualization
-    note-hotspots   bar-level churn leaderboard
+    notes            list every note in a MIDI track as musical notation
+    note-log         note-level commit history for a track
+    note-blame       per-bar attribution — which commit wrote these notes?
+    harmony          chord analysis and key detection
+    piano-roll       ASCII piano roll visualization
+    note-hotspots    bar-level churn leaderboard
     velocity-profile dynamic range and velocity histogram
-    transpose       transpose all notes by N semitones (agent command)
-    mix             combine two MIDI tracks into one (agent command)
+    transpose        transpose all notes by N semitones (agent command)
+    mix              combine two MIDI tracks into one (agent command)
+    music-query      music DSL predicate search over commit history
+    music-check      enforce musical invariant rules (polyphony, range, key, fifths)
 
 Code-domain semantic commands — symbol graph::
 
@@ -101,6 +103,8 @@ from muse.cli.commands import (
     log,
     merge,
     mix,
+    music_check,
+    music_query,
     note_blame,
     note_hotspots,
     note_log,
@@ -163,6 +167,8 @@ cli.add_typer(note_hotspots.app,    name="note-hotspots",    help="[music] Bar-l
 cli.add_typer(velocity_profile.app, name="velocity-profile", help="[music] Dynamic range and velocity histogram for a MIDI track.")
 cli.add_typer(transpose.app,        name="transpose",        help="[music] Transpose all notes in a MIDI track by N semitones.")
 cli.add_typer(mix.app,              name="mix",              help="[music] Combine notes from two MIDI tracks into a single output track.")
+cli.add_typer(music_query.app,     name="music-query",      help="[music] Music DSL predicate query over commit history — bars, chords, agents, pitches.")
+cli.add_typer(music_check.app,     name="music-check",      help="[music] Enforce musical invariant rules (polyphony, pitch range, key consistency, parallel fifths).")
 
 # Code-domain commands
 cli.add_typer(symbols.app,         name="symbols",          help="[code] List every semantic symbol (function, class, method…) in a snapshot.")

@@ -9,26 +9,77 @@ different axes of the same file without conflicting.
 Dimensions
 ----------
 
-+---------------+----------------------------------------------------+
-| Dimension     | MIDI event types                                   |
-+===============+====================================================+
-| ``melodic``   | ``note_on`` / ``note_off`` (pitch + timing)        |
-+---------------+----------------------------------------------------+
-| ``rhythmic``  | Alias for ``melodic`` — timing is inseparable from |
-|               | pitch in the MIDI event model; provided as a       |
-|               | user-facing label in ``.museattributes`` rules.    |
-+---------------+----------------------------------------------------+
-| ``harmonic``  | ``pitchwheel`` events                              |
-+---------------+----------------------------------------------------+
-| ``dynamic``   | ``control_change`` events                          |
-+---------------+----------------------------------------------------+
-| ``structural``| ``set_tempo``, ``time_signature``, ``key_signature``,|
-|               | ``program_change``, text/sysex meta events         |
-+---------------+----------------------------------------------------+
+MIDI carries far more independent axes than a naive "notes vs. everything else"
+split.  The full dimension taxonomy maps every MIDI event type to exactly one
+internal bucket:
+
++----------------------+--------------------------------------------------+
+| Internal dimension   | MIDI event types / CC numbers                    |
++======================+==================================================+
+| ``notes``            | ``note_on`` / ``note_off``                       |
++----------------------+--------------------------------------------------+
+| ``pitch_bend``       | ``pitchwheel``                                   |
++----------------------+--------------------------------------------------+
+| ``channel_pressure`` | ``aftertouch`` (mono channel pressure)           |
++----------------------+--------------------------------------------------+
+| ``poly_pressure``    | ``polytouch`` (per-note polyphonic aftertouch)   |
++----------------------+--------------------------------------------------+
+| ``cc_modulation``    | CC 1 — modulation wheel                         |
++----------------------+--------------------------------------------------+
+| ``cc_volume``        | CC 7 — channel volume                           |
++----------------------+--------------------------------------------------+
+| ``cc_pan``           | CC 10 — stereo pan                              |
++----------------------+--------------------------------------------------+
+| ``cc_expression``    | CC 11 — expression controller                   |
++----------------------+--------------------------------------------------+
+| ``cc_sustain``       | CC 64 — damper / sustain pedal                  |
++----------------------+--------------------------------------------------+
+| ``cc_sostenuto``     | CC 66 — sostenuto pedal                         |
++----------------------+--------------------------------------------------+
+| ``cc_soft_pedal``    | CC 67 — soft pedal (una corda)                  |
++----------------------+--------------------------------------------------+
+| ``cc_portamento``    | CC 65 — portamento on/off                       |
++----------------------+--------------------------------------------------+
+| ``cc_reverb``        | CC 91 — reverb send level                       |
++----------------------+--------------------------------------------------+
+| ``cc_chorus``        | CC 93 — chorus send level                       |
++----------------------+--------------------------------------------------+
+| ``cc_other``         | All other CC events (numbered controllers)       |
++----------------------+--------------------------------------------------+
+| ``program_change``   | ``program_change`` (patch / instrument select)   |
++----------------------+--------------------------------------------------+
+| ``tempo_map``        | ``set_tempo`` meta events                        |
++----------------------+--------------------------------------------------+
+| ``time_signatures``  | ``time_signature`` meta events                   |
++----------------------+--------------------------------------------------+
+| ``key_signatures``   | ``key_signature`` meta events                    |
++----------------------+--------------------------------------------------+
+| ``markers``          | ``marker``, ``cue_marker``, ``text``,            |
+|                      | ``lyrics``, ``copyright`` meta events            |
++----------------------+--------------------------------------------------+
+| ``track_structure``  | ``track_name``, ``instrument_name``, ``sysex``,  |
+|                      | ``sequencer_specific`` and unknown meta events   |
++----------------------+--------------------------------------------------+
+
+Why fine-grained dimensions matter
+-----------------------------------
+With the old 4-bucket model, changing sustain pedal (CC64) and changing channel
+volume (CC7) were the same dimension: they always conflicted.  With 21 internal
+dimensions they are independent — two agents can edit different aspects of the
+same MIDI file without ever conflicting.
+
+Independence rules
+------------------
+- **Independent** (``independent_merge=True``): notes, pitch_bend, all CC
+  dimensions, channel_pressure, poly_pressure, program_change, key_signatures,
+  markers.  Conflicts in these dimensions never block merging others.
+- **Non-independent** (``independent_merge=False``): tempo_map, time_signatures,
+  track_structure.  A conflict here blocks merging other dimensions until
+  resolved, because a tempo change shifts the musical meaning of every subsequent
+  tick position, and track structure changes affect routing.
 
 Merge algorithm
 ---------------
-
 1. Parse ``base``, ``left``, and ``right`` MIDI bytes into event streams.
 2. Convert to absolute-tick representation and bucket by dimension.
 3. Hash each bucket; compare ``base ↔ left`` and ``base ↔ right`` to detect
@@ -40,10 +91,12 @@ Merge algorithm
 
 Public API
 ----------
-
-- :func:`extract_dimensions` — parse MIDI bytes → ``dict[dim, DimensionSlice]``
+- :func:`extract_dimensions` — parse MIDI bytes → ``MidiDimensions``
 - :func:`merge_midi_dimensions` — three-way dimension merge → bytes or ``None``
 - :func:`dimension_conflict_detail` — per-dimension change report for logging
+- :data:`INTERNAL_DIMS` — ordered list of all internal dimension names
+- :data:`DIM_ALIAS` — user-facing ``.museattributes`` name → internal bucket
+- :data:`NON_INDEPENDENT_DIMS` — dimensions that block others on conflict
 """
 from __future__ import annotations
 
@@ -57,25 +110,97 @@ import mido
 from muse.core.attributes import AttributeRule, resolve_strategy
 
 # ---------------------------------------------------------------------------
-# Dimension constants
+# Dimension constants — the complete MIDI dimension taxonomy
 # ---------------------------------------------------------------------------
 
-#: Internal dimension names used as dict keys throughout this module.
-INTERNAL_DIMS: list[str] = ["notes", "harmonic", "dynamic", "structural"]
+#: Internal dimension names, ordered canonically.
+#: Each MIDI event type maps to exactly one of these buckets.
+INTERNAL_DIMS: list[str] = [
+    # --- Expressive note content ---
+    "notes",            # note_on / note_off
+    "pitch_bend",       # pitchwheel
+    "channel_pressure", # aftertouch (mono)
+    "poly_pressure",    # polytouch (per-note)
+    # --- Named CC controllers (individually mergeable) ---
+    "cc_modulation",    # CC 1
+    "cc_volume",        # CC 7
+    "cc_pan",           # CC 10
+    "cc_expression",    # CC 11
+    "cc_sustain",       # CC 64
+    "cc_portamento",    # CC 65
+    "cc_sostenuto",     # CC 66
+    "cc_soft_pedal",    # CC 67
+    "cc_reverb",        # CC 91
+    "cc_chorus",        # CC 93
+    "cc_other",         # all remaining CC numbers
+    # --- Patch / program selection ---
+    "program_change",
+    # --- Timeline / notation metadata (non-independent) ---
+    "tempo_map",        # set_tempo — non-independent: affects all tick positions
+    "time_signatures",  # time_signature — non-independent: affects bar structure
+    # --- Tonal context and notation ---
+    "key_signatures",   # key_signature
+    "markers",          # marker, cue_marker, text, lyrics, copyright
+    # --- Track structure (non-independent) ---
+    "track_structure",  # track_name, instrument_name, sysex, unknown meta
+]
+
+#: Dimensions whose conflicts block merging all other dimensions until resolved.
+#: All other dimensions are merged in parallel regardless of conflicts here.
+NON_INDEPENDENT_DIMS: frozenset[str] = frozenset({
+    "tempo_map",
+    "time_signatures",
+    "track_structure",
+})
 
 #: User-facing dimension names from .museattributes mapped to internal buckets.
-#: Both "melodic" and "rhythmic" map to the same "notes" bucket because MIDI
-#: event timing and pitch are carried in the same event structure.
+#: Agents and humans use these names in merge strategy declarations.
 DIM_ALIAS: dict[str, str] = {
-    "melodic": "notes",
-    "rhythmic": "notes",
-    "harmonic": "harmonic",
-    "dynamic": "dynamic",
-    "structural": "structural",
+    # Classic 5-dimension names (backward compatible)
+    "melodic":      "notes",
+    "rhythmic":     "notes",
+    "harmonic":     "pitch_bend",
+    "dynamic":      "cc_volume",
+    "structural":   "track_structure",
+    # Fine-grained expressive names
+    "pitch_bend":       "pitch_bend",
+    "aftertouch":       "channel_pressure",
+    "poly_aftertouch":  "poly_pressure",
+    "modulation":       "cc_modulation",
+    "volume":           "cc_volume",
+    "pan":              "cc_pan",
+    "expression":       "cc_expression",
+    "sustain":          "cc_sustain",
+    "portamento":       "cc_portamento",
+    "sostenuto":        "cc_sostenuto",
+    "soft_pedal":       "cc_soft_pedal",
+    "reverb":           "cc_reverb",
+    "chorus":           "cc_chorus",
+    "automation":       "cc_other",
+    "program":          "program_change",
+    "tempo":            "tempo_map",
+    "time_sig":         "time_signatures",
+    "key_sig":          "key_signatures",
+    "markers":          "markers",
+    "track_structure":  "track_structure",
 }
 
-#: Canonical alias → internal dim name, with internal names as pass-throughs.
-_CANONICAL: dict[str, str] = {**DIM_ALIAS, "notes": "notes"}
+#: All valid names (aliases + internal) → internal bucket.
+_CANONICAL: dict[str, str] = {**DIM_ALIAS, **{d: d for d in INTERNAL_DIMS}}
+
+#: CC number → internal dimension name for named controllers.
+_CC_DIM: dict[int, str] = {
+    1:  "cc_modulation",
+    7:  "cc_volume",
+    10: "cc_pan",
+    11: "cc_expression",
+    64: "cc_sustain",
+    65: "cc_portamento",
+    66: "cc_sostenuto",
+    67: "cc_soft_pedal",
+    91: "cc_reverb",
+    93: "cc_chorus",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -104,15 +229,20 @@ class DimensionSlice:
 
 @dataclass
 class MidiDimensions:
-    """All dimension slices extracted from one MIDI file."""
+    """All dimension slices extracted from one MIDI file.
+
+    ``slices`` maps internal dimension name → :class:`DimensionSlice`.
+    Every internal dimension in :data:`INTERNAL_DIMS` has an entry, even if
+    the corresponding event list is empty (hash of empty list is stable).
+    """
 
     ticks_per_beat: int
     file_type: int
-    slices: dict[str, DimensionSlice]  # internal dim name → slice
+    slices: dict[str, DimensionSlice]
 
-    def get(self, user_dim: str) -> DimensionSlice:
+    def get(self, dim: str) -> DimensionSlice:
         """Return the slice for a user-facing or internal dimension name."""
-        internal = _CANONICAL.get(user_dim, user_dim)
+        internal = _CANONICAL.get(dim, dim)
         return self.slices[internal]
 
 
@@ -122,34 +252,59 @@ class MidiDimensions:
 
 
 def _classify_event(msg: mido.Message) -> str | None:
-    """Map a mido Message to an internal dimension bucket, or ``None`` to skip."""
+    """Map a mido Message to an internal dimension bucket.
+
+    Returns ``None`` for events that should be excluded from all buckets
+    (e.g. ``end_of_track`` is handled during reconstruction, not stored here).
+    Unknown messages that are meta events fall back to ``"track_structure"``.
+    True unknowns (no ``is_meta`` attribute) are discarded.
+    """
     t = msg.type
+
+    # --- Note events ---
     if t in ("note_on", "note_off"):
         return "notes"
+
+    # --- Pitch / pressure ---
     if t == "pitchwheel":
-        return "harmonic"
+        return "pitch_bend"
+    if t == "aftertouch":
+        return "channel_pressure"
+    if t == "polytouch":
+        return "poly_pressure"
+
+    # --- CC — split by controller number ---
     if t == "control_change":
-        return "dynamic"
-    if t in (
-        "set_tempo",
-        "time_signature",
-        "key_signature",
-        "program_change",
-        "sysex",
-        "text",
-        "copyright",
-        "track_name",
-        "instrument_name",
-        "lyrics",
-        "marker",
-        "cue_marker",
-        "sequencer_specific",
-        "end_of_track",
-    ):
-        return "structural"
-    # Unrecognised meta events → structural bucket as a safe default.
+        return _CC_DIM.get(msg.control, "cc_other")
+
+    # --- Program change ---
+    if t == "program_change":
+        return "program_change"
+
+    # --- Timeline metadata ---
+    if t == "set_tempo":
+        return "tempo_map"
+    if t == "time_signature":
+        return "time_signatures"
+    if t == "key_signature":
+        return "key_signatures"
+
+    # --- Section markers and text annotations ---
+    if t in ("marker", "cue_marker", "text", "lyrics", "copyright"):
+        return "markers"
+
+    # --- Track structure and routing ---
+    if t in ("track_name", "instrument_name", "sysex", "sequencer_specific"):
+        return "track_structure"
+
+    # --- End-of-track is reconstructed, not stored ---
+    if t == "end_of_track":
+        return None
+
+    # --- Unknown meta events → track structure (safe default) ---
     if getattr(msg, "is_meta", False):
-        return "structural"
+        return "track_structure"
+
     return None
 
 
@@ -159,10 +314,12 @@ type _MsgVal = int | str | list[int]
 def _msg_to_dict(msg: mido.Message) -> dict[str, _MsgVal]:
     """Serialise a mido Message to a JSON-compatible dict."""
     d: dict[str, _MsgVal] = {"type": msg.type}
-    for attr in ("channel", "note", "velocity", "control", "value",
-                 "pitch", "program", "numerator", "denominator",
-                 "clocks_per_click", "notated_32nd_notes_per_beat",
-                 "tempo", "key", "scale", "text", "data"):
+    for attr in (
+        "channel", "note", "velocity", "control", "value",
+        "pitch", "program", "numerator", "denominator",
+        "clocks_per_click", "notated_32nd_notes_per_beat",
+        "tempo", "key", "scale", "text", "data",
+    ):
         if hasattr(msg, attr):
             raw = getattr(msg, attr)
             if isinstance(raw, (bytes, bytearray)):
@@ -171,7 +328,6 @@ def _msg_to_dict(msg: mido.Message) -> dict[str, _MsgVal]:
                 d[attr] = raw
             elif isinstance(raw, int):
                 d[attr] = raw
-            # Other types (float, etc.) are skipped — not present in standard MIDI
     return d
 
 
@@ -203,12 +359,18 @@ def _to_absolute(track: mido.MidiTrack) -> list[tuple[int, mido.Message]]:
 def extract_dimensions(midi_bytes: bytes) -> MidiDimensions:
     """Parse *midi_bytes* and bucket events by dimension.
 
+    Every event type in the MIDI spec maps to exactly one of the
+    :data:`INTERNAL_DIMS` buckets.  Empty buckets are present with an empty
+    event list so that callers can always index by dimension name.
+
     Args:
         midi_bytes: Raw bytes of a ``.mid`` file.
 
     Returns:
         A :class:`MidiDimensions` with one :class:`DimensionSlice` per
-        internal dimension.  Events are sorted by ascending absolute tick.
+        internal dimension.  Events within each slice are sorted by ascending
+        absolute tick, then by event type for determinism when multiple events
+        share the same tick.
 
     Raises:
         ValueError: If *midi_bytes* cannot be parsed as a MIDI file.
@@ -228,13 +390,13 @@ def extract_dimensions(midi_bytes: bytes) -> MidiDimensions:
             if bucket is not None:
                 buckets[bucket].append((abs_tick, msg))
 
-    # Sort each bucket by ascending absolute tick, then by event type for
-    # determinism when multiple events share the same tick.
     for dim in INTERNAL_DIMS:
         buckets[dim].sort(key=lambda x: (x[0], x[1].type))
 
-    slices = {dim: DimensionSlice(name=dim, events=events)
-               for dim, events in buckets.items()}
+    slices = {
+        dim: DimensionSlice(name=dim, events=events)
+        for dim, events in buckets.items()
+    }
     return MidiDimensions(
         ticks_per_beat=mid.ticks_per_beat,
         file_type=mid.type,
@@ -261,8 +423,8 @@ def dimension_conflict_detail(
     - ``"right_only"`` — only the right (theirs) side changed.
     - ``"both"`` — both sides changed; a dimension-level conflict.
 
-    This is used by :func:`merge_midi_dimensions` and can also be surfaced
-    in ``muse merge`` output for human-readable conflict diagnostics.
+    This is used by :func:`merge_midi_dimensions` and surfaced in
+    ``muse merge`` output for human-readable conflict diagnostics.
     """
     report: dict[str, str] = {}
     for dim in INTERNAL_DIMS:
@@ -295,11 +457,9 @@ def _events_to_track(
     prev_tick = 0
     for abs_tick, msg in sorted(events, key=lambda x: (x[0], x[1].type)):
         delta = abs_tick - prev_tick
-        # mido Message objects are immutable; copy() gives us a mutable clone.
         new_msg = msg.copy(time=delta)
         track.append(new_msg)
         prev_tick = abs_tick
-    # Ensure every track ends with end_of_track.
     if not track or track[-1].type != "end_of_track":
         track.append(mido.MetaMessage("end_of_track", time=0))
     return track
@@ -312,13 +472,13 @@ def _reconstruct(
     """Build a type-0 MIDI file from winning dimension event lists.
 
     All dimension events are merged into a single track (type-0) for
-    maximum compatibility.  The absolute-tick ordering is preserved.
+    maximum compatibility.  The absolute-tick ordering is preserved and
+    duplicate end_of_track messages are removed.
     """
     all_events: list[tuple[int, mido.Message]] = []
     for events in winning_slices.values():
         all_events.extend(events)
 
-    # Remove duplicate end_of_track messages; add exactly one at the end.
     all_events = [
         (tick, msg) for tick, msg in all_events
         if msg.type != "end_of_track"
@@ -348,7 +508,7 @@ def merge_midi_dimensions(
 ) -> tuple[bytes, dict[str, str]] | None:
     """Attempt a dimension-level three-way merge of a MIDI file.
 
-    For each internal dimension:
+    For each internal dimension (all 21 of them):
 
     - If neither side changed → keep base.
     - If only one side changed → take that side (clean auto-merge).
@@ -356,6 +516,11 @@ def merge_midi_dimensions(
 
       * ``ours`` / ``theirs`` → take the specified side; record in report.
       * ``manual`` / ``auto`` / ``union`` → unresolvable; return ``None``.
+
+    Non-independent dimensions (``tempo_map``, ``time_signatures``,
+    ``track_structure``) that have bilateral conflicts cause an immediate
+    ``None`` return — their conflicts cannot be auto-resolved because they
+    affect the semantic meaning of all other dimensions.
 
     Args:
         base_bytes:  MIDI bytes for the common ancestor.
@@ -371,6 +536,7 @@ def merge_midi_dimensions(
 
         *dimension_report* maps each internal dimension name to the side
         chosen: ``"base"``, ``"left"``, ``"right"``, or the strategy string.
+        Only dimensions with non-empty event lists or conflicts are included.
 
     Raises:
         ValueError: If any of the byte strings cannot be parsed as MIDI.
@@ -389,7 +555,8 @@ def merge_midi_dimensions(
 
         if change == "unchanged":
             winning_slices[dim] = base_dims.slices[dim].events
-            dimension_report[dim] = "base"
+            if base_dims.slices[dim].events:
+                dimension_report[dim] = "base"
 
         elif change == "left_only":
             winning_slices[dim] = left_dims.slices[dim].events
@@ -400,16 +567,17 @@ def merge_midi_dimensions(
             dimension_report[dim] = "right"
 
         else:
-            # Both sides changed — consult .museattributes for this dimension.
-            # Try user-facing aliases first, then internal name.
-            user_dim_names = [k for k, v in DIM_ALIAS.items() if v == dim] + [dim]
+            # Both sides changed — resolve via .museattributes strategy.
+            # Look up by user-facing aliases first, then internal name.
+            user_dim_names = [k for k, v in DIM_ALIAS.items() if v == dim]
+            user_dim_names.append(dim)  # internal name is also a valid alias
+
             strategy = "auto"
             for user_dim in user_dim_names:
                 s = resolve_strategy(attrs_rules, path, user_dim)
                 if s != "auto":
                     strategy = s
                     break
-            # Also try dimension wildcard ("*")
             if strategy == "auto":
                 strategy = resolve_strategy(attrs_rules, path, "*")
 
@@ -420,7 +588,7 @@ def merge_midi_dimensions(
                 winning_slices[dim] = right_dims.slices[dim].events
                 dimension_report[dim] = f"theirs ({dim})"
             else:
-                # "auto", "union", "manual" — cannot resolve this dimension.
+                # Unresolvable conflict.  Non-independent dims fail fast.
                 return None
 
     merged_bytes = _reconstruct(base_dims.ticks_per_beat, winning_slices)

@@ -40,7 +40,12 @@ def _format_op(op: DomainOp) -> list[str]:
         return [f" M  {op['address']}"]
     if op["op"] == "move":
         return [f" R  {op['address']}  ({op['from_position']} → {op['to_position']})"]
-    # op["op"] == "patch" — the only remaining variant after the four branches above.
+    if op["op"] == "mutate":
+        fields = ", ".join(
+            f"{k}: {v['old']}→{v['new']}" for k, v in op.get("fields", {}).items()
+        )
+        return [f" ~ {op['address']}  ({fields or op.get('old_summary', '')}→{op.get('new_summary', '')})"]
+    # op["op"] == "patch" — the only remaining variant.
     lines = [f" M  {op['address']}"]
     if op["child_summary"]:
         lines.append(f"    └─ {op['child_summary']}")
