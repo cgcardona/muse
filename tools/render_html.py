@@ -895,7 +895,6 @@ _HTML_TEMPLATE = """\
     <h1>muse</h1>
     <span class="tagline">Demo · domain-agnostic version control for multidimensional state</span>
     <span class="version-badge">v{{VERSION}} · {{DOMAIN}} domain · {{ELAPSED}}s</span>
-    <a class="header-nav-link" href="domain_registry.html">Domain Registry →</a>
   </div>
   <div class="stats-bar">
     <div class="stat"><span class="stat-num">{{COMMITS}}</span><span class="stat-label">Commits</span></div>
