@@ -1,4 +1,4 @@
-"""Muse VCS merge engine — fast-forward and 3-way path-level merge.
+"""Muse VCS merge engine — fast-forward, 3-way path-level, and structured op-level merge.
 
 Public API
 ----------
@@ -7,6 +7,13 @@ Pure functions (no I/O):
 - :func:`diff_snapshots` — paths that changed between two snapshot manifests.
 - :func:`detect_conflicts` — paths changed on *both* branches since the base.
 - :func:`apply_merge` — build merged manifest for a conflict-free 3-way merge.
+
+Structured (operation-level) merge — Phase 3:
+
+- :mod:`muse.core.op_transform` — ``ops_commute``, ``transform``, ``merge_op_lists``,
+  ``merge_structured``, and :class:`~muse.core.op_transform.MergeOpsResult`.
+  Plugins that implement :class:`~muse.domain.StructuredMergePlugin` use these
+  functions to auto-merge non-conflicting ``DomainOp`` lists.
 
 File-based helpers:
 

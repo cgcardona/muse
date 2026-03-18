@@ -17,10 +17,19 @@ Algorithm
    ID and a human-readable summary string.
 6. Wrap the ops in a ``StructuredDelta``.
 
+Phase 3 additions
+-----------------
+:func:`reconstruct_midi` — the inverse of :func:`extract_notes`. Given a list
+of :class:`NoteKey` objects and a ticks_per_beat value, produces raw MIDI bytes
+for a Type 0 single-track file. Used by ``MusicPlugin.merge_ops()`` to
+materialise a merged MIDI file after the Phase 3 OT engine has determined that
+two branches' note-level operations commute.
+
 Public API
 ----------
 - :class:`NoteKey` — typed MIDI note identity.
 - :func:`extract_notes` — MIDI bytes → sorted ``list[NoteKey]``.
+- :func:`reconstruct_midi` — ``list[NoteKey]`` → MIDI bytes (Phase 3).
 - :func:`diff_midi_notes` — top-level: MIDI bytes × 2 → ``StructuredDelta``.
 """
 from __future__ import annotations
@@ -329,5 +338,78 @@ def diff_midi_notes(
         ops=child_ops,
         summary=child_summary,
     )
+
+
+# ---------------------------------------------------------------------------
+# MIDI reconstruction (Phase 3) — inverse of extract_notes
+# ---------------------------------------------------------------------------
+
+
+def reconstruct_midi(
+    notes: list[NoteKey],
+    *,
+    ticks_per_beat: int = 480,
+) -> bytes:
+    """Produce raw MIDI bytes from a list of :class:`NoteKey` objects.
+
+    Creates a Type 0 (single-track) MIDI file.  One ``note_on`` and one
+    ``note_off`` event are emitted per note.  Events are sorted by absolute
+    tick time so the output is a valid MIDI stream regardless of the input
+    order.
+
+    This is the inverse of :func:`extract_notes`.  Used by
+    :func:`~muse.plugins.music.plugin._merge_patch_ops` after the Phase 3 OT
+    engine has confirmed that two branches' note sequences commute, allowing
+    the merged note list to be materialised as actual MIDI bytes.
+
+    Args:
+        notes:          Note events to write.  May be in any order; the
+                        function sorts by ``start_tick`` before writing.
+        ticks_per_beat: Timing resolution.  Preserve the base file's value so
+                        that beat positions remain meaningful.
+
+    Returns:
+        Raw MIDI bytes ready to be written to the object store.
+    """
+    mid = mido.MidiFile(ticks_per_beat=ticks_per_beat, type=0)
+    track = mido.MidiTrack()
+    mid.tracks.append(track)
+
+    # Build flat (abs_tick, note_on, channel, pitch, velocity) event tuples.
+    raw_events: list[tuple[int, bool, int, int, int]] = []
+    for note in notes:
+        raw_events.append(
+            (note["start_tick"], True, note["channel"], note["pitch"], note["velocity"])
+        )
+        raw_events.append(
+            (
+                note["start_tick"] + note["duration_ticks"],
+                False,
+                note["channel"],
+                note["pitch"],
+                0,
+            )
+        )
+
+    # Sort: by tick, with note_off (False) before note_on (True) at the same
+    # tick so that retriggered notes are handled correctly.
+    raw_events.sort(key=lambda e: (e[0], e[1]))
+
+    prev_tick = 0
+    for abs_tick, is_on, channel, pitch, velocity in raw_events:
+        delta = abs_tick - prev_tick
+        if is_on:
+            track.append(
+                mido.Message("note_on", channel=channel, note=pitch, velocity=velocity, time=delta)
+            )
+        else:
+            track.append(
+                mido.Message("note_off", channel=channel, note=pitch, velocity=0, time=delta)
+            )
+        prev_tick = abs_tick
+
+    buf = io.BytesIO()
+    mid.save(file=buf)
+    return buf.getvalue()
 
 

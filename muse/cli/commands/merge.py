@@ -36,7 +36,7 @@ from muse.core.store import (
     write_commit,
     write_snapshot,
 )
-from muse.domain import SnapshotManifest
+from muse.domain import SnapshotManifest, StructuredMergePlugin
 from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
@@ -120,7 +120,27 @@ def merge(
     ours_snap_obj = SnapshotManifest(files=ours_manifest, domain=domain)
     theirs_snap_obj = SnapshotManifest(files=theirs_manifest, domain=domain)
 
-    result = plugin.merge(base_snap_obj, ours_snap_obj, theirs_snap_obj, repo_root=root)
+    # Phase 3: prefer operation-level merge when the plugin supports it.
+    # Produces finer-grained conflict detection (sub-file / note level).
+    # Falls back to file-level merge() for plugins without this capability.
+    if isinstance(plugin, StructuredMergePlugin):
+        ours_delta = plugin.diff(base_snap_obj, ours_snap_obj, repo_root=root)
+        theirs_delta = plugin.diff(base_snap_obj, theirs_snap_obj, repo_root=root)
+        result = plugin.merge_ops(
+            base_snap_obj,
+            ours_snap_obj,
+            theirs_snap_obj,
+            ours_delta["ops"],
+            theirs_delta["ops"],
+            repo_root=root,
+        )
+        logger.debug(
+            "merge: used operation-level merge (%s); %d conflict(s)",
+            type(plugin).__name__,
+            len(result.conflicts),
+        )
+    else:
+        result = plugin.merge(base_snap_obj, ours_snap_obj, theirs_snap_obj, repo_root=root)
 
     # Report any .museattributes auto-resolutions.
     if result.applied_strategies:
