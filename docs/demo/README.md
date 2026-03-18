@@ -1,117 +1,85 @@
-# Muse Demo Hub
+# Muse — Demo Hub
 
-Two domains. One abstraction. Everything Git can't do.
+> Domain-agnostic version control for multidimensional state.
+> Music is the first domain. Code is the second. Genomics, 3D design, and
+> spacetime simulation are next.
 
-Muse is a domain-agnostic version control system built on a six-method plugin
-interface. The same DAG, the same object store, the same branch and merge
-engine — different semantic understanding of your data depending on which plugin
-you use.
-
-The two demos below show the full depth of what that means.
+Choose a domain to see Muse's full power:
 
 ---
 
-## Choose Your Domain
+## [Code Tour de Force →](tour-de-force-code.md)
 
-### [Music Demo](tour-de-force-script.md) — MIDI files, note-level diffs
+**12 commands that are strictly impossible in Git.**
 
-The original Muse demo. A MIDI repository with five orthogonal dimensions:
-melodic, rhythmic, harmonic, dynamic, structural.
+Muse treats code as a typed, content-addressed graph of named symbols — not
+a bag of text lines.  Every commit stores a symbol-level structured delta.
+Every function has a stable identity hash that survives renames and moves.
 
-**What it demonstrates:**
+| Command | One-line description |
+|---------|---------------------|
+| `muse symbols` | Every function, class, and method in the snapshot — extracted from real ASTs |
+| `muse grep` | Search the symbol graph by name, kind, or language — no false positives |
+| `muse query` | Predicate DSL: `kind=function language=Go name~=handle` |
+| `muse languages` | Language + symbol-type breakdown across the whole repo |
+| `muse blame` | Which commit last touched this exact function? One answer. |
+| `muse symbol-log` | Full history of one symbol — renames and moves included |
+| `muse detect-refactor` | Classify semantic operations: rename / move / signature / impl |
+| `muse hotspots` | Symbol churn leaderboard — which functions change most? |
+| `muse stable` | Symbol stability leaderboard — your bedrock, safe to build on |
+| `muse coupling` | File co-change analysis — semantic hidden dependencies |
+| `muse compare` | Deep semantic diff between any two historical snapshots |
+| `muse patch` | Surgical per-symbol modification — the agent interface |
 
-- A drummer and a pianist editing the same MIDI file simultaneously — no
-  conflict, because they touched different dimensions
-- A single structural conflict resolved while four dimensions auto-merge
-- Note-level diffs: not "file changed" but "insert note C4 at tick 480,
-  velocity 80, duration 240"
-- Cherry-pick, stash, revert — the full VCS surface area
-- OT Merge: two note insertions at different tick positions commute → auto-merge
-- CRDT Semantics: `join()` always succeeds, never conflicts
-
-**The key insight:** Git can't diff a MIDI file at all. Muse understands every
-note, every chord voicing, every tempo change — and uses that understanding to
-resolve conflicts that Git would mark as binary file conflicts.
-
-**Runtime:** ~150ms · 14 commits · 6 branches · 1 conflict resolved
-
----
-
-### [Code Demo](tour-de-force-code.md) — Source code, symbol-level diffs
-
-The code plugin demo. A software repository in Python, TypeScript, Go, and Rust
-— eleven languages total.
-
-**What it demonstrates:**
-
-- `muse symbols` — list every function, class, and method in a snapshot
-  (impossible in Git — Git doesn't know what a function is)
-- Rename detection via `body_hash`: same implementation, new name → `ReplaceOp`
-  annotated "renamed to X", not a delete + add
-- Cross-file move detection via `content_id`: function moved to a new module →
-  connection preserved in the DAG forever
-- Two engineers modify the same file, different functions → **auto-merge**
-  (commuting ops)
-- `muse symbol-log` — track one function's complete history, through renames,
-  across the full commit graph (impossible in Git)
-- `muse detect-refactor` — machine-generated semantic refactoring report:
-  renames, moves, signature changes, implementation changes (impossible in Git)
-
-**The key insight:** Git treats code as text files and lines. Muse treats code
-as a structured graph of named, typed symbols with content-addressed identities
-that persist across renames, moves, and refactors. Two engineers touching the
-same file but different functions never conflict.
-
-**Languages:** Python · TypeScript · JavaScript · Go · Rust · Java · C · C++ · C# · Ruby · Kotlin
+**Supported languages:** Python, TypeScript, JavaScript, Go, Rust, Java, C, C++, C#, Ruby, Kotlin
 
 ---
 
-## The Shared Architecture
+## [Music Tour de Force →](tour-de-force-script.md)
 
-Both demos run on the same engine. The only difference is the plugin.
+**The reference domain — version control for audio compositions.**
+
+Muse treats MIDI and MusicXML as structured state.  Every note is a semantic
+element.  Every commit records which bars changed, which instruments were added,
+which tempo markers shifted.  Three-way merges happen at the note level —
+two musicians can independently arrange the same song and merge without conflicts.
+
+---
+
+## Shared Architecture
+
+Both domains build on the same engine:
 
 ```
-muse init --domain music    # → MusicPlugin
-muse init --domain code     # → CodePlugin
+Content-addressed object store  ← immutable, SHA-256
+Snapshot manifest               ← file path → object hash
+Structured delta                ← typed DomainOp tree (insert / delete / replace / move / patch)
+Commit graph                    ← parent chain with structured deltas on every node
 ```
 
-The DAG, object store, branch model, and merge state machine are identical.
-Each plugin implements six methods that tell the engine how to interpret its data:
+The code plugin adds:
 
-| Method | What it does |
-|--------|-------------|
-| `snapshot()` | Walk the working tree; return a content-addressed manifest |
-| `diff(old, new)` | Produce a `StructuredDelta` of typed ops (Insert/Delete/Replace/Move/Patch) |
-| `drift(live, snapshot)` | Detect uncommitted working-tree changes |
-| `apply(delta, state)` | Apply a delta to a state (used by checkout/revert/cherry-pick) |
-| `merge(base, left, right)` | Three-way merge with domain-specific conflict detection |
-| `schema()` | Declare the domain schema; engine auto-selects diff algorithms |
+```
+AST symbol trees      ← SymbolRecord (kind, name, body_hash, signature_id, content_id)
+Symbol-level diffs    ← PatchOp with child InsertOp/DeleteOp/ReplaceOp per symbol
+Rename detection      ← body_hash match across addresses
+Move detection        ← content_id match across files
+```
 
-Adding a new domain: `muse domains --new <name>`. Thirty seconds to scaffold.
+Every code-domain command is a consumer of this data.  No new storage format.
+No new protocol.  Just queries over the structured commit history.
 
 ---
 
-## The Four Semantic Layers
+## Four Semantic Layers
 
-Both plugins implement all four capability levels:
-
-| Phase | Capability | What you gain |
-|-------|-----------|---------------|
-| 1 | **Typed Delta Algebra** | Typed op lists instead of opaque diffs |
-| 2 | **Domain Schema** | Engine auto-selects the right diff algorithm per dimension |
-| 3 | **OT Merge Engine** | Sub-symbol auto-merge via Operational Transformation |
-| 4 | **CRDT Semantics** | `join()` always converges — no conflict state ever possible |
+| Layer | What it stores | Used by |
+|-------|---------------|---------|
+| **Object store** | Raw file bytes, content-addressed | All domains |
+| **Snapshot manifest** | `file_path → sha256` | `symbols`, `languages`, `compare` |
+| **Structured delta** | Typed op tree per commit | `blame`, `hotspots`, `stable`, `coupling`, `detect-refactor`, `symbol-log` |
+| **Symbol graph** | AST-parsed `SymbolRecord` per file | `grep`, `query`, `patch` |
 
 ---
 
-## What's Next
-
-- **Genomics plugin** — annotate genomes with CRDT `ORSet` semantics; concurrent
-  researcher annotations never conflict
-- **3D spatial design** — version CAD models at the geometry level, not as binary
-  blobs
-- **Scientific simulation** — checkpoint simulation state at the tensor level;
-  diff parameter sweeps by dimension
-- **Neural network checkpoints** — version model weights by layer, not by file
-
-`muse domains --new <your_domain>`. The plugin interface handles the rest.
+*Muse v2 · Python 3.11 · zero runtime dependencies except `tree-sitter`*
