@@ -455,6 +455,7 @@ def render(output_path: pathlib.Path) -> None:
     html = html.replace("{{SCAFFOLD_SNIPPET}}", _SCAFFOLD_SNIPPET)
     html = html.replace("{{TYPED_DELTA_EXAMPLE}}", _TYPED_DELTA_EXAMPLE)
     html = html.replace("{{CRDT_CARDS}}", crdt_cards_html)
+    html = html.replace("{{DIFF_ALGEBRA}}", _DIFF_ALGEBRA_HTML)
 
     # Inject SVG icons into template placeholders
     _ICON_SLOTS: dict[str, str] = {
@@ -489,6 +490,270 @@ def render(output_path: pathlib.Path) -> None:
     index_path.write_text(html, encoding="utf-8")
     print(f"  Landing page mirrored → {index_path}")
 
+
+# ---------------------------------------------------------------------------
+# Diff Algebra section — five algorithm visualizations + StructuredDelta flow
+# ---------------------------------------------------------------------------
+
+_DIFF_ALGEBRA_HTML = """
+<section id="diff-algebra" style="background:var(--bg)">
+  <div class="inner">
+    <div class="section-eyebrow">Diff Algebra</div>
+    <h2>Five Algebras. One Typed Result.</h2>
+    <p class="section-lead">
+      The engine selects the algorithm per dimension from your plugin&rsquo;s
+      <code>schema()</code>. You declare the shape &mdash; the engine handles identity,
+      diffing, and merge selection automatically.
+    </p>
+
+    <div class="da-grid">
+
+      <!-- 1. SEQUENCE — spans full width -->
+      <div class="da-card da-seq-card">
+        <div class="da-card-hdr">
+          <span class="da-chip da-chip-seq">Sequence</span>
+          <span class="da-algo-name">Myers / LCS on SHA-256 IDs</span>
+        </div>
+        <div class="da-domains-row">notes &middot; nucleotides &middot; animation frames &middot; git objects</div>
+        <div class="da-visual" style="flex-direction:column;align-items:flex-start;gap:8px">
+          <div class="seq-vis">
+            <div class="seq-row-lbl">before</div>
+            <div class="seq-row">
+              <div class="seq-blk seq-match"><div class="seq-hash">a1b2</div><div class="seq-name">C4</div></div>
+              <div class="seq-blk seq-del"><div class="seq-hash">c3d4</div><div class="seq-name">E4</div></div>
+              <div class="seq-blk seq-match"><div class="seq-hash">e5f6</div><div class="seq-name">G4</div></div>
+              <div class="seq-blk seq-moved-from"><div class="seq-hash">g7h8</div><div class="seq-name">B&flat;4</div></div>
+            </div>
+            <div class="seq-ops-row">
+              <div class="seq-op-cell"><span class="da-op da-op-match">= match</span></div>
+              <div class="seq-op-cell"><span class="da-op da-op-delete">&times; DeleteOp</span></div>
+              <div class="seq-op-cell"><span class="da-op da-op-match">= match</span></div>
+              <div class="seq-op-cell"><span class="da-op da-op-move">&darr; MoveOp</span></div>
+            </div>
+            <div class="seq-row">
+              <div class="seq-blk seq-match"><div class="seq-hash">a1b2</div><div class="seq-name">C4</div></div>
+              <div class="seq-blk seq-ins"><div class="seq-hash">k1l2</div><div class="seq-name">F4</div></div>
+              <div class="seq-blk seq-match"><div class="seq-hash">e5f6</div><div class="seq-name">G4</div></div>
+              <div class="seq-blk seq-ins"><div class="seq-hash">n5o6</div><div class="seq-name">A4</div></div>
+              <div class="seq-blk seq-moved-to"><div class="seq-hash">g7h8</div><div class="seq-name">B&flat;4</div></div>
+            </div>
+            <div class="seq-ops-row">
+              <div class="seq-op-cell"></div>
+              <div class="seq-op-cell"><span class="da-op da-op-insert">+ InsertOp</span></div>
+              <div class="seq-op-cell"></div>
+              <div class="seq-op-cell"><span class="da-op da-op-insert">+ InsertOp</span></div>
+              <div class="seq-op-cell"><span class="da-op da-op-move">&uarr; arrived</span></div>
+            </div>
+            <div class="seq-row-lbl">after</div>
+          </div>
+        </div>
+        <div class="da-note">Identity is hash-based: two elements are equal iff their SHA-256 hashes match &mdash; content is never inspected by the core. Delete&thinsp;+&thinsp;insert pairs sharing the same hash are collapsed into MoveOps in a post-pass.</div>
+      </div>
+
+      <!-- 2. TREE -->
+      <div class="da-card">
+        <div class="da-card-hdr">
+          <span class="da-chip da-chip-tree">Tree</span>
+          <span class="da-algo-name">Zhang-Shasha / GumTree</span>
+        </div>
+        <div class="da-domains-row">scene graphs &middot; ASTs &middot; track hierarchies</div>
+        <div class="da-visual" style="padding:10px 8px">
+          <svg class="tree-vis" viewBox="0 0 290 128" xmlns="http://www.w3.org/2000/svg">
+            <!-- BEFORE -->
+            <text x="52" y="9" text-anchor="middle" font-size="7" fill="#484f58" font-family="monospace" font-weight="700">BEFORE</text>
+            <line x1="52" y1="27" x2="24" y2="57" stroke="#30363d" stroke-width="1.5"/>
+            <line x1="52" y1="27" x2="80" y2="57" stroke="#30363d" stroke-width="1.5"/>
+            <line x1="24" y1="73" x2="11" y2="100" stroke="#30363d" stroke-width="1.5"/>
+            <line x1="24" y1="73" x2="37" y2="100" stroke="#30363d" stroke-width="1.5"/>
+            <line x1="80" y1="73" x2="80" y2="100" stroke="#bc8cff" stroke-width="1.5" stroke-dasharray="3,2"/>
+            <rect x="31" y="14" width="42" height="16" rx="4" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+            <text x="52" y="25" text-anchor="middle" font-size="8" fill="#58a6ff" font-family="monospace">session</text>
+            <rect x="7" y="59" width="34" height="16" rx="3" fill="#161b22" stroke="#484f58"/>
+            <text x="24" y="70" text-anchor="middle" font-size="8" fill="#8b949e" font-family="monospace">intro</text>
+            <rect x="63" y="59" width="34" height="16" rx="3" fill="#161b22" stroke="#484f58"/>
+            <text x="80" y="70" text-anchor="middle" font-size="8" fill="#8b949e" font-family="monospace">verse</text>
+            <rect x="4" y="98" width="15" height="13" rx="3" fill="#161b22" stroke="#484f58"/>
+            <text x="11" y="108" text-anchor="middle" font-size="7.5" fill="#8b949e" font-family="monospace">C4</text>
+            <rect x="28" y="98" width="15" height="13" rx="3" fill="#161b22" stroke="#484f58"/>
+            <text x="35" y="108" text-anchor="middle" font-size="7.5" fill="#8b949e" font-family="monospace">E4</text>
+            <rect x="72" y="98" width="15" height="13" rx="3" fill="rgba(188,140,255,0.1)" stroke="#bc8cff" stroke-width="1.5"/>
+            <text x="79" y="108" text-anchor="middle" font-size="7.5" fill="#bc8cff" font-family="monospace">G4</text>
+            <!-- divider -->
+            <line x1="143" y1="8" x2="143" y2="118" stroke="#30363d" stroke-width="1" stroke-dasharray="3,3"/>
+            <text x="143" y="126" text-anchor="middle" font-size="6.5" fill="#484f58" font-family="monospace">MoveOp + InsertOp</text>
+            <!-- AFTER -->
+            <text x="216" y="9" text-anchor="middle" font-size="7" fill="#484f58" font-family="monospace" font-weight="700">AFTER</text>
+            <line x1="216" y1="27" x2="183" y2="57" stroke="#30363d" stroke-width="1.5"/>
+            <line x1="216" y1="27" x2="249" y2="57" stroke="#30363d" stroke-width="1.5"/>
+            <line x1="183" y1="73" x2="162" y2="100" stroke="#30363d" stroke-width="1.5"/>
+            <line x1="183" y1="73" x2="178" y2="100" stroke="#30363d" stroke-width="1.5"/>
+            <line x1="183" y1="73" x2="195" y2="100" stroke="#bc8cff" stroke-width="1.5" stroke-dasharray="3,2"/>
+            <line x1="249" y1="73" x2="249" y2="100" stroke="#3fb950" stroke-width="1.5"/>
+            <rect x="195" y="14" width="42" height="16" rx="4" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+            <text x="216" y="25" text-anchor="middle" font-size="8" fill="#58a6ff" font-family="monospace">session</text>
+            <rect x="166" y="59" width="34" height="16" rx="3" fill="#161b22" stroke="#484f58"/>
+            <text x="183" y="70" text-anchor="middle" font-size="8" fill="#8b949e" font-family="monospace">intro</text>
+            <rect x="232" y="59" width="34" height="16" rx="3" fill="#161b22" stroke="#484f58"/>
+            <text x="249" y="70" text-anchor="middle" font-size="8" fill="#8b949e" font-family="monospace">verse</text>
+            <rect x="155" y="98" width="15" height="13" rx="3" fill="#161b22" stroke="#484f58"/>
+            <text x="162" y="108" text-anchor="middle" font-size="7.5" fill="#8b949e" font-family="monospace">C4</text>
+            <rect x="171" y="98" width="15" height="13" rx="3" fill="#161b22" stroke="#484f58"/>
+            <text x="178" y="108" text-anchor="middle" font-size="7.5" fill="#8b949e" font-family="monospace">E4</text>
+            <rect x="188" y="98" width="15" height="13" rx="3" fill="rgba(188,140,255,0.12)" stroke="#bc8cff" stroke-width="1.5"/>
+            <text x="195" y="108" text-anchor="middle" font-size="7.5" fill="#bc8cff" font-family="monospace">G4</text>
+            <rect x="241" y="98" width="15" height="13" rx="3" fill="rgba(63,185,80,0.12)" stroke="#3fb950" stroke-width="1.5"/>
+            <text x="249" y="108" text-anchor="middle" font-size="7.5" fill="#3fb950" font-family="monospace">A4</text>
+            <rect x="156" y="116" width="8" height="8" rx="1" fill="rgba(188,140,255,0.1)" stroke="#bc8cff"/>
+            <text x="166" y="122" font-size="6" fill="#bc8cff" font-family="monospace">moved</text>
+            <rect x="204" y="116" width="8" height="8" rx="1" fill="rgba(63,185,80,0.1)" stroke="#3fb950"/>
+            <text x="214" y="122" font-size="6" fill="#3fb950" font-family="monospace">inserted</text>
+          </svg>
+        </div>
+        <div class="da-note">Edit distance over node hierarchy &mdash; moves preserve subtree identity across parent changes.</div>
+      </div>
+
+      <!-- 3. TENSOR -->
+      <div class="da-card">
+        <div class="da-card-hdr">
+          <span class="da-chip da-chip-tensor">Tensor</span>
+          <span class="da-algo-name">Sparse / block numerical diff</span>
+        </div>
+        <div class="da-domains-row">sim state &middot; voxel grids &middot; weight matrices</div>
+        <div class="da-visual" style="flex-direction:column;gap:12px">
+          <div class="tensor-wrap">
+            <div class="tensor-panel">
+              <div class="tensor-label">t&thinsp;=&thinsp;0</div>
+              <div class="tensor-grid">
+                <div class="tc tc-2"></div><div class="tc tc-0"></div><div class="tc tc-1"></div><div class="tc tc-0"></div>
+                <div class="tc tc-0"></div><div class="tc tc-3"></div><div class="tc tc-0"></div><div class="tc tc-1"></div>
+                <div class="tc tc-1"></div><div class="tc tc-0"></div><div class="tc tc-2"></div><div class="tc tc-0"></div>
+                <div class="tc tc-0"></div><div class="tc tc-1"></div><div class="tc tc-0"></div><div class="tc tc-3"></div>
+              </div>
+            </div>
+            <div class="tensor-arrow">&rarr;</div>
+            <div class="tensor-panel">
+              <div class="tensor-label">t&thinsp;=&thinsp;1&thinsp;(&Delta;)</div>
+              <div class="tensor-grid">
+                <div class="tc tc-2"></div><div class="tc tc-0"></div><div class="tc tc-1"></div><div class="tc tc-0"></div>
+                <div class="tc tc-0"></div><div class="tc tc-hot3"></div><div class="tc tc-0"></div><div class="tc tc-warm1"></div>
+                <div class="tc tc-1"></div><div class="tc tc-0"></div><div class="tc tc-hot2"></div><div class="tc tc-0"></div>
+                <div class="tc tc-0"></div><div class="tc tc-1"></div><div class="tc tc-0"></div><div class="tc tc-3"></div>
+              </div>
+            </div>
+          </div>
+          <div class="tensor-legend">
+            <span class="tl-item"><span class="tl-swatch tl-unchanged"></span>|&Delta;| = 0</span>
+            <span class="tl-item"><span class="tl-swatch tl-warm"></span>|&Delta;| &le; &epsilon; (within threshold)</span>
+            <span class="tl-item"><span class="tl-swatch tl-hot"></span>|&Delta;| &gt; &epsilon; &rarr; PatchOp</span>
+          </div>
+        </div>
+        <div class="da-note">Configurable &epsilon; threshold. Sparse mode records only changed blocks &mdash; efficient for large tensors.</div>
+      </div>
+
+      <!-- 4. SET -->
+      <div class="da-card">
+        <div class="da-card-hdr">
+          <span class="da-chip da-chip-set">Set</span>
+          <span class="da-algo-name">Set algebra &middot; add / remove</span>
+        </div>
+        <div class="da-domains-row">annotations &middot; tags &middot; gene ontology terms</div>
+        <div class="da-visual">
+          <div class="set-vis">
+            <div class="set-col">
+              <div class="set-header">before</div>
+              <div class="set-members">
+                <span class="set-member set-kept">GO:0001234</span>
+                <span class="set-member set-kept">GO:0005634</span>
+                <span class="set-member set-removed">GO:0006915</span>
+                <span class="set-member set-kept">GO:0016020</span>
+              </div>
+            </div>
+            <div class="set-ops-col">
+              <div class="set-op-line set-op-keep">&mdash;</div>
+              <div class="set-op-line set-op-keep">&mdash;</div>
+              <div class="set-op-line set-op-rm">&times; del</div>
+              <div class="set-op-line set-op-keep">&mdash;</div>
+              <div class="set-op-line set-op-add">+ ins</div>
+            </div>
+            <div class="set-col">
+              <div class="set-header">after</div>
+              <div class="set-members">
+                <span class="set-member set-kept">GO:0001234</span>
+                <span class="set-member set-kept">GO:0005634</span>
+                <span class="set-member set-kept">GO:0016020</span>
+                <span class="set-member set-added">GO:0042592</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="da-note">Unordered &mdash; no position tracking. Pure membership delta: {removed} and {added}.</div>
+      </div>
+
+      <!-- 5. MAP -->
+      <div class="da-card">
+        <div class="da-card-hdr">
+          <span class="da-chip da-chip-map">Map</span>
+          <span class="da-algo-name">Recursive key-by-key delegation</span>
+        </div>
+        <div class="da-domains-row">metadata &middot; configs &middot; nested structures</div>
+        <div class="da-visual" style="align-items:flex-start">
+          <div class="map-vis">
+            <div class="map-entry map-entry-changed">
+              <span class="map-key">tempo</span>
+              <span class="map-val-before">120</span><span class="map-delta">&nbsp;&rarr;&nbsp;</span><span class="map-val-after">140</span>
+              <span class="map-sub-algo da-chip-tensor">scalar &rarr; PatchOp</span>
+            </div>
+            <div class="map-entry map-entry-changed">
+              <span class="map-key">notes</span>
+              <span class="map-val-before">[&hellip;]</span><span class="map-delta">&nbsp;&rarr;&nbsp;</span><span class="map-val-after">[&hellip;&prime;]</span>
+              <span class="map-sub-algo da-chip-seq">sequence &rarr; LCS</span>
+            </div>
+            <div class="map-entry map-entry-changed">
+              <span class="map-key">tags</span>
+              <span class="map-val-before">{&hellip;}</span><span class="map-delta">&nbsp;&rarr;&nbsp;</span><span class="map-val-after">{&hellip;&prime;}</span>
+              <span class="map-sub-algo da-chip-set">set &rarr; algebra</span>
+            </div>
+            <div class="map-entry map-entry-unchanged">
+              <span class="map-key">author</span>
+              <span class="map-val-before">"Bach"</span><span class="map-delta">&nbsp;=&nbsp;</span><span class="map-val-after">"Bach"</span>
+              <span style="margin-left:auto;font-size:9px;color:var(--dim);font-family:var(--mono)">unchanged</span>
+            </div>
+          </div>
+        </div>
+        <div class="da-note">Each key is diffed by whichever algorithm matches its declared type &mdash; recursively, to arbitrary depth.</div>
+      </div>
+
+    </div><!-- .da-grid -->
+
+    <!-- StructuredDelta taxonomy -->
+    <div class="da-delta-flow">
+      <div class="da-delta-top">
+        <span class="da-delta-label">diff() &rarr; StructuredDelta</span>
+        <span class="da-delta-sub">all five algorithms produce the same typed operation list</span>
+      </div>
+      <div class="da-delta-ops">
+        <span class="da-dop da-dop-ins">InsertOp</span>
+        <span class="da-dop da-dop-del">DeleteOp</span>
+        <span class="da-dop da-dop-mov">MoveOp</span>
+        <span class="da-dop da-dop-rep">ReplaceOp</span>
+        <span class="da-dop da-dop-pat">PatchOp</span>
+      </div>
+      <div class="da-delta-merge">
+        <div class="da-merge-branch da-merge-ot">
+          <div class="da-merge-mode-label">merge_mode: &ldquo;three_way&rdquo;</div>
+          <div class="da-merge-desc">Operational Transformation &mdash; independent ops commute automatically; conflicting ops surface for human resolution</div>
+        </div>
+        <div class="da-merge-divider">or</div>
+        <div class="da-merge-branch da-merge-crdt">
+          <div class="da-merge-mode-label">merge_mode: &ldquo;crdt&rdquo;</div>
+          <div class="da-merge-desc">CRDT join() &mdash; convergent, no coordination required; any two replicas always reach the same state</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+"""
 
 # ---------------------------------------------------------------------------
 # Large HTML template
@@ -815,6 +1080,158 @@ _HTML_TEMPLATE = """\
       overflow-x: auto;
       line-height: 1.65;
     }
+    /* ---- Diff Algebra section ---- */
+    .da-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+      margin-bottom: 36px;
+    }
+    .da-seq-card { grid-column: span 2; }
+    @media (max-width: 720px) {
+      .da-grid { grid-template-columns: 1fr; }
+      .da-seq-card { grid-column: span 1; }
+    }
+    .da-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .da-card-hdr { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .da-chip {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 4px;
+      border: 1px solid;
+    }
+    .da-chip-seq    { color:#58a6ff; background:rgba(88,166,255,0.1);  border-color:rgba(88,166,255,0.3);  }
+    .da-chip-tree   { color:#f9a825; background:rgba(249,168,37,0.1);  border-color:rgba(249,168,37,0.3);  }
+    .da-chip-tensor { color:#ab47bc; background:rgba(171,71,188,0.1);  border-color:rgba(171,71,188,0.3);  }
+    .da-chip-set    { color:#3fb950; background:rgba(63,185,80,0.1);   border-color:rgba(63,185,80,0.3);   }
+    .da-chip-map    { color:#ef5350; background:rgba(239,83,80,0.1);   border-color:rgba(239,83,80,0.3);   }
+    .da-algo-name   { font-size:12px; color:var(--mute); font-family:var(--mono); }
+    .da-domains-row { font-size:11px; color:var(--dim); }
+    .da-visual {
+      background: #0a0e14;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 14px;
+      flex: 1;
+      min-height: 130px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .da-note { font-size:11.5px; color:var(--mute); line-height:1.5; }
+
+    /* Sequence LCS */
+    .seq-vis { display:flex; flex-direction:column; gap:6px; width:100%; }
+    .seq-row-lbl { font-family:var(--mono); font-size:9px; color:var(--dim); text-transform:uppercase; letter-spacing:.6px; }
+    .seq-row { display:flex; gap:6px; flex-wrap:wrap; }
+    .seq-blk {
+      display:flex; flex-direction:column; align-items:center;
+      padding:5px 9px; border-radius:5px; border:1.5px solid;
+      min-width:46px; gap:2px; transition:transform .15s;
+    }
+    .seq-blk:hover { transform:translateY(-2px); }
+    .seq-hash { font-family:var(--mono); font-size:7.5px; opacity:.55; }
+    .seq-name { font-family:var(--mono); font-size:14px; font-weight:700; }
+    .seq-match     { background:rgba(88,166,255,.07);  border-color:rgba(88,166,255,.25); color:#58a6ff; }
+    .seq-del       { background:rgba(239,83,80,.1);    border-color:rgba(239,83,80,.35);  color:#ef5350; text-decoration:line-through; }
+    .seq-ins       { background:rgba(63,185,80,.1);    border-color:rgba(63,185,80,.35);  color:#3fb950; }
+    .seq-moved-from{ background:rgba(188,140,255,.06); border-color:rgba(188,140,255,.25);color:#bc8cff; opacity:.55; }
+    .seq-moved-to  { background:rgba(188,140,255,.12); border-color:rgba(188,140,255,.5); color:#bc8cff; }
+    .seq-ops-row { display:flex; gap:6px; padding:2px 0; flex-wrap:wrap; }
+    .seq-op-cell { min-width:46px; display:flex; justify-content:center; }
+    .da-op { font-size:9px; font-weight:700; letter-spacing:.3px; padding:1px 5px; border-radius:3px; white-space:nowrap; }
+    .da-op-match  { color:var(--dim); }
+    .da-op-delete { color:#ef5350; background:rgba(239,83,80,.1); }
+    .da-op-insert { color:#3fb950; background:rgba(63,185,80,.1); }
+    .da-op-move   { color:#bc8cff; background:rgba(188,140,255,.1); }
+
+    /* Tree SVG */
+    .tree-vis { width:100%; height:130px; overflow:visible; }
+
+    /* Tensor */
+    .tensor-wrap { display:flex; align-items:center; gap:14px; }
+    .tensor-panel { display:flex; flex-direction:column; align-items:center; gap:5px; }
+    .tensor-label { font-family:var(--mono); font-size:9px; color:var(--dim); }
+    .tensor-grid { display:grid; grid-template-columns:repeat(4,26px); gap:3px; }
+    .tc { width:26px; height:26px; border-radius:3px; }
+    .tc-0     { background:#141c28; }
+    .tc-1     { background:#1a2538; }
+    .tc-2     { background:#1d2f50; }
+    .tc-3     { background:#1a3060; }
+    .tc-warm1 { background:rgba(249,168,37,.28); border:1px solid rgba(249,168,37,.4); }
+    .tc-hot2  { background:rgba(239,83,80,.45);  border:1px solid rgba(239,83,80,.65); }
+    .tc-hot3  { background:rgba(239,83,80,.65);  border:1px solid rgba(239,83,80,.9); }
+    .tensor-arrow { font-size:22px; color:var(--dim); }
+    .tensor-legend { display:flex; flex-direction:column; gap:5px; margin-top:4px; }
+    .tl-item { display:flex; align-items:center; gap:5px; font-size:9px; color:var(--mute); }
+    .tl-swatch { width:12px; height:12px; border-radius:2px; flex-shrink:0; }
+    .tl-unchanged { background:#141c28; }
+    .tl-warm { background:rgba(249,168,37,.28); border:1px solid rgba(249,168,37,.4); }
+    .tl-hot  { background:rgba(239,83,80,.65);  border:1px solid rgba(239,83,80,.9); }
+
+    /* Set algebra */
+    .set-vis { display:grid; grid-template-columns:1fr auto 1fr; gap:8px; align-items:start; width:100%; }
+    .set-col .set-header { font-family:var(--mono); font-size:9px; color:var(--dim); text-transform:uppercase; letter-spacing:.6px; margin-bottom:6px; }
+    .set-members { display:flex; flex-direction:column; gap:4px; }
+    .set-member { font-family:var(--mono); font-size:10px; padding:3px 8px; border-radius:3px; border:1px solid; }
+    .set-kept    { color:var(--mute); border-color:var(--border); background:var(--bg3); }
+    .set-removed { color:#ef5350; border-color:rgba(239,83,80,.35); background:rgba(239,83,80,.07); text-decoration:line-through; }
+    .set-added   { color:#3fb950; border-color:rgba(63,185,80,.35); background:rgba(63,185,80,.07); }
+    .set-ops-col { display:flex; flex-direction:column; gap:4px; padding-top:21px; }
+    .set-op-line { font-size:10px; font-weight:700; white-space:nowrap; height:26px; display:flex; align-items:center; }
+    .set-op-keep { color:var(--dim); }
+    .set-op-rm   { color:#ef5350; }
+    .set-op-add  { color:#3fb950; }
+
+    /* Map recursive */
+    .map-vis { display:flex; flex-direction:column; gap:5px; width:100%; font-family:var(--mono); }
+    .map-entry { display:flex; align-items:center; gap:6px; padding:5px 8px; border-radius:4px; font-size:11px; flex-wrap:wrap; }
+    .map-entry-changed   { background:rgba(88,166,255,.04); border:1px solid rgba(88,166,255,.15); }
+    .map-entry-unchanged { background:var(--bg3); border:1px solid var(--border); opacity:.65; }
+    .map-key   { color:#61afef; font-weight:700; min-width:52px; }
+    .map-delta { color:var(--dim); }
+    .map-val-before { color:var(--dim); font-size:10px; }
+    .map-val-after  { color:var(--text); font-size:10px; }
+    .map-sub-algo { margin-left:auto; font-size:9px; font-weight:700; padding:1px 6px; border-radius:3px; border:1px solid; }
+
+    /* StructuredDelta flow */
+    .da-delta-flow {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 24px;
+    }
+    .da-delta-top { margin-bottom:14px; display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+    .da-delta-label { font-family:var(--mono); font-size:15px; font-weight:700; color:var(--text); }
+    .da-delta-sub   { font-size:12px; color:var(--mute); }
+    .da-delta-ops   { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+    .da-dop { font-family:var(--mono); font-size:12px; font-weight:700; padding:5px 14px; border-radius:5px; border:1px solid; }
+    .da-dop-ins { color:#3fb950; background:rgba(63,185,80,.1);  border-color:rgba(63,185,80,.3);  }
+    .da-dop-del { color:#ef5350; background:rgba(239,83,80,.1);  border-color:rgba(239,83,80,.3);  }
+    .da-dop-mov { color:#bc8cff; background:rgba(188,140,255,.1);border-color:rgba(188,140,255,.3); }
+    .da-dop-rep { color:#f9a825; background:rgba(249,168,37,.1); border-color:rgba(249,168,37,.3); }
+    .da-dop-pat { color:#58a6ff; background:rgba(88,166,255,.1); border-color:rgba(88,166,255,.3); }
+    .da-delta-merge { display:grid; grid-template-columns:1fr auto 1fr; gap:14px; align-items:center; }
+    @media (max-width: 640px) { .da-delta-merge { grid-template-columns:1fr; } .da-merge-divider { text-align:center; } }
+    .da-merge-branch { padding:14px 16px; border-radius:6px; border:1px solid; }
+    .da-merge-ot   { border-color:rgba(239,83,80,.3);   background:rgba(239,83,80,.04); }
+    .da-merge-crdt { border-color:rgba(188,140,255,.3); background:rgba(188,140,255,.04); }
+    .da-merge-mode-label { font-family:var(--mono); font-size:11px; font-weight:700; margin-bottom:5px; }
+    .da-merge-ot   .da-merge-mode-label { color:#ef5350; }
+    .da-merge-crdt .da-merge-mode-label { color:#bc8cff; }
+    .da-merge-desc { font-size:11.5px; color:var(--mute); line-height:1.5; }
+    .da-merge-divider { color:var(--dim); font-size:13px; font-weight:700; }
+
     /* ---- OT Merge scenario cards ---- */
     .ot-scenarios { display: flex; flex-direction: column; gap: 10px; }
     .ot-scenario {
@@ -1310,6 +1727,8 @@ _HTML_TEMPLATE = """\
   </div>
 </section>
 
+{{DIFF_ALGEBRA}}
+
 <!-- =================== ENGINE CAPABILITIES =================== -->
 <section id="capabilities" style="background:var(--bg2)">
   <div class="inner">
@@ -1650,7 +2069,7 @@ _HTML_TEMPLATE = """\
       if (/[0-9]/.test(raw[i]) || (raw[i] === '-' && /[0-9]/.test(raw[i + 1] || ''))) {
         let j = i;
         if (raw[j] === '-') j++;
-        while (j < raw.length && /[0-9.eE+\-]/.test(raw[j])) j++;
+        while (j < raw.length && /[0-9.eE+-]/.test(raw[j])) j++;
         html += '<span style="color:#d19a66">' + esc(raw.slice(i, j)) + '</span>';
         i = j;
         continue;
