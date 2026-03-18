@@ -133,6 +133,8 @@ from muse.cli.commands import (
     symbol_log,
     symbols,
     tag,
+    breakage,
+    invariants,
     transpose,
     velocity_profile,
 )
@@ -198,6 +200,8 @@ cli.add_typer(clones.app,          name="clones",           help="[code] Find ex
 cli.add_typer(checkout_symbol.app, name="checkout-symbol",  help="[code] Restore a historical version of one symbol into the working tree.")
 cli.add_typer(semantic_cherry_pick.app, name="semantic-cherry-pick", help="[code] Cherry-pick named symbols from a historical commit into the working tree.")
 cli.add_typer(index_rebuild.app,   name="index",            help="[code] Manage local indexes: status, rebuild symbol_history / hash_occurrence.")
+cli.add_typer(breakage.app,        name="breakage",         help="[code] Detect symbol-level structural breakage in the working tree vs HEAD.")
+cli.add_typer(invariants.app,      name="invariants",       help="[code] Enforce architectural rules from .muse/invariants.toml.")
 
 # Multi-agent coordination commands
 cli.add_typer(reserve.app,         name="reserve",          help="[coord] Advisory symbol reservation — announce intent before editing.")

@@ -218,6 +218,35 @@ type StateDelta = StructuredDelta
 
 
 @dataclass
+class ConflictRecord:
+    """Structured conflict record in a merge result (v2 taxonomy).
+
+    ``path``           The workspace-relative file path in conflict.
+    ``conflict_type``  One of: ``symbol_edit_overlap``, ``rename_edit``,
+                       ``move_edit``, ``delete_use``, ``dependency_conflict``,
+                       ``file_level`` (legacy, no symbol info).
+    ``ours_summary``   Short description of ours-side change.
+    ``theirs_summary`` Short description of theirs-side change.
+    ``addresses``      Symbol addresses involved (empty for file-level).
+    """
+
+    path: str
+    conflict_type: str = "file_level"
+    ours_summary: str = ""
+    theirs_summary: str = ""
+    addresses: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, str | list[str]]:
+        return {
+            "path": self.path,
+            "conflict_type": self.conflict_type,
+            "ours_summary": self.ours_summary,
+            "theirs_summary": self.theirs_summary,
+            "addresses": self.addresses,
+        }
+
+
+@dataclass
 class MergeResult:
     """Outcome of a three-way merge between two divergent state lines.
 
@@ -235,6 +264,11 @@ class MergeResult:
     ``op_log`` is the ordered list of ``DomainOp`` entries applied to produce
     the merged snapshot. Empty for file-level merges; populated by plugins
     that implement operation-level OT merge.
+
+    ``conflict_records`` (v2) provides structured conflict metadata with a
+    semantic taxonomy per conflicting path.  Populated by plugins that
+    implement :class:`StructuredMergePlugin`.  May be empty even when
+    ``conflicts`` is non-empty (legacy file-level conflict).
     """
 
     merged: StateSnapshot
@@ -242,6 +276,7 @@ class MergeResult:
     applied_strategies: dict[str, str] = field(default_factory=dict)
     dimension_reports: dict[str, dict[str, str]] = field(default_factory=dict)
     op_log: list[DomainOp] = field(default_factory=list)
+    conflict_records: list[ConflictRecord] = field(default_factory=list)
 
     @property
     def is_clean(self) -> bool:
