@@ -81,11 +81,109 @@ def _compute_crdt_demos() -> list[dict]:
             f"  merge(A, B): {vm.to_dict()}  [component-wise max]",
         ])
 
+        elem  = "annotation-GO:0001234"
+        short = "GO:0001234"
+
+        orset_html = f"""<div class="crdt-vis">
+          <div class="crdt-concurrent">
+            <div class="crdt-rep">
+              <div class="crdt-rep-hdr">Replica A</div>
+              <div class="crdt-op crdt-op-add">+ add("{short}")</div>
+              <div class="crdt-rep-state">&rarr;&thinsp;{{{short}}}</div>
+            </div>
+            <div class="crdt-rep">
+              <div class="crdt-rep-hdr">Replica B</div>
+              <div class="crdt-op crdt-op-rm">&times; remove("{short}")</div>
+              <div class="crdt-rep-state">&rarr;&thinsp;{{}}</div>
+            </div>
+          </div>
+          <div class="crdt-join" style="--crdt-c:#bc8cff">
+            <span class="crdt-join-label">join(A, B)</span>
+            <span class="crdt-join-val" style="color:#bc8cff">{{{short}}}</span>
+            <span class="crdt-join-rule">add-wins &mdash; A&rsquo;s new token survives</span>
+          </div>
+        </div>"""
+
+        lww_html = f"""<div class="crdt-vis">
+          <div class="crdt-writes">
+            <div class="crdt-write">
+              <span class="crdt-time">t=1.0</span>
+              <span class="crdt-agent crdt-agent-a">A</span>
+              <span class="crdt-wval">"{ra.read()}"</span>
+            </div>
+            <div class="crdt-write crdt-write-winner">
+              <span class="crdt-time">t=2.0</span>
+              <span class="crdt-agent crdt-agent-b">B</span>
+              <span class="crdt-wval">"{rb.read()}"</span>
+              <span class="crdt-latest">latest &uarr;</span>
+            </div>
+          </div>
+          <div class="crdt-join">
+            <span class="crdt-join-label">join(A,B) = join(B,A)</span>
+            <span class="crdt-join-val" style="color:#58a6ff">"{rm.read()}"</span>
+            <span class="crdt-join-rule">commutative &mdash; higher timestamp always wins</span>
+          </div>
+        </div>"""
+
+        a_val = ca.value_for("agent-A")
+        b_val = cb.value_for("agent-B")
+        total = cm.value()
+        a_pct = int(a_val / total * 100)
+        b_pct = int(b_val / total * 100)
+        gc_html = f"""<div class="crdt-vis">
+          <div class="crdt-gcounter">
+            <div class="crdt-gc-row">
+              <span class="crdt-agent crdt-agent-a">A &times;{a_val}</span>
+              <div class="crdt-bar"><div class="crdt-bar-fill crdt-bar-a" style="width:{a_pct}%">{a_val}</div></div>
+            </div>
+            <div class="crdt-gc-row">
+              <span class="crdt-agent crdt-agent-b">B &times;{b_val}</span>
+              <div class="crdt-bar"><div class="crdt-bar-fill crdt-bar-b" style="width:{b_pct}%">{b_val}</div></div>
+            </div>
+          </div>
+          <div class="crdt-join">
+            <span class="crdt-join-label">join(A, B) global</span>
+            <span class="crdt-join-val" style="color:#3fb950">{total}</span>
+            <span class="crdt-join-rule">component-wise max &mdash; monotonically non-decreasing</span>
+          </div>
+        </div>"""
+
+        concurrent = va.concurrent_with(vb)
+        merged_d   = vm.to_dict()
+        vc_html = f"""<div class="crdt-vis">
+          <div class="crdt-vclocks">
+            <div class="crdt-vc">
+              <div class="crdt-vc-hdr">Agent A</div>
+              <div class="crdt-vc-cells">
+                <div class="crdt-vc-cell crdt-vc-self">A:1</div>
+                <div class="crdt-vc-cell crdt-vc-zero">B:0</div>
+              </div>
+            </div>
+            <div class="crdt-vc-sep">&oplus;</div>
+            <div class="crdt-vc">
+              <div class="crdt-vc-hdr">Agent B</div>
+              <div class="crdt-vc-cells">
+                <div class="crdt-vc-cell crdt-vc-zero">A:0</div>
+                <div class="crdt-vc-cell crdt-vc-self">B:1</div>
+              </div>
+            </div>
+            <div class="crdt-vc-sep">=</div>
+            <div class="crdt-vc">
+              <div class="crdt-vc-hdr">merge</div>
+              <div class="crdt-vc-cells">
+                {"".join(f'<div class="crdt-vc-cell crdt-vc-max">{k.split("-")[1].upper()}:{v}</div>' for k, v in sorted(merged_d.items()))}
+              </div>
+            </div>
+          </div>
+          <div class="crdt-concurrent-badge">concurrent_with(A, B) = {concurrent}</div>
+          <div class="crdt-join-rule" style="font-size:10.5px;color:var(--mute);font-style:italic">component-wise max &mdash; causal happens-before tracking</div>
+        </div>"""
+
         return [
-            {"type": "ORSet",       "sub": "Observed-Remove Set",          "color": "#bc8cff", "icon": _ICONS["union"],      "output": orset_out},
-            {"type": "LWWRegister", "sub": "Last-Write-Wins Register",     "color": "#58a6ff", "icon": _ICONS["edit"],       "output": lww_out},
-            {"type": "GCounter",    "sub": "Grow-Only Distributed Counter", "color": "#3fb950", "icon": _ICONS["arrow-up"],  "output": gc_out},
-            {"type": "VectorClock", "sub": "Causal Ordering",              "color": "#f9a825", "icon": _ICONS["git-branch"], "output": vc_out},
+            {"type": "ORSet",       "sub": "Observed-Remove Set",           "color": "#bc8cff", "icon": _ICONS["union"],      "output": orset_out, "html_output": orset_html},
+            {"type": "LWWRegister", "sub": "Last-Write-Wins Register",      "color": "#58a6ff", "icon": _ICONS["edit"],        "output": lww_out,   "html_output": lww_html},
+            {"type": "GCounter",    "sub": "Grow-Only Distributed Counter",  "color": "#3fb950", "icon": _ICONS["arrow-up"],   "output": gc_out,    "html_output": gc_html},
+            {"type": "VectorClock", "sub": "Causal Ordering",               "color": "#f9a825", "icon": _ICONS["git-branch"],  "output": vc_out,    "html_output": vc_html},
         ]
     except Exception as exc:
         print(f"  ⚠ CRDT demo failed ({exc}); using static fallback")
@@ -353,6 +451,11 @@ _DISTRIBUTION_LEVELS = [
 
 def _render_capability_card(cap: dict) -> str:
     color = cap["color"]
+    body = (
+        cap["html_output"]
+        if "html_output" in cap
+        else f'<pre class="cap-showcase-output">{cap["output"]}</pre>'
+    )
     return f"""
       <div class="cap-showcase-card" style="--cap-color:{color}">
         <div class="cap-showcase-header">
@@ -362,7 +465,7 @@ def _render_capability_card(cap: dict) -> str:
           <span class="cap-showcase-sub">{cap['sub']}</span>
         </div>
         <div class="cap-showcase-body">
-          <pre class="cap-showcase-output">{cap['output']}</pre>
+          {body}
         </div>
       </div>"""
 
@@ -1231,6 +1334,54 @@ _HTML_TEMPLATE = """\
     .da-merge-crdt .da-merge-mode-label { color:#bc8cff; }
     .da-merge-desc { font-size:11.5px; color:var(--mute); line-height:1.5; }
     .da-merge-divider { color:var(--dim); font-size:13px; font-weight:700; }
+
+    /* ---- CRDT visualizations ---- */
+    .crdt-vis { display:flex; flex-direction:column; gap:10px; width:100%; }
+    /* concurrent replicas row */
+    .crdt-concurrent { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .crdt-rep {
+      background:var(--bg3); border:1px solid var(--border);
+      border-radius:5px; padding:9px 10px;
+      display:flex; flex-direction:column; gap:4px;
+    }
+    .crdt-rep-hdr { font-family:var(--mono); font-size:9px; font-weight:700; color:var(--dim); text-transform:uppercase; letter-spacing:.6px; }
+    .crdt-op { font-family:var(--mono); font-size:10px; padding:2px 6px; border-radius:3px; }
+    .crdt-op-add { color:#3fb950; background:rgba(63,185,80,.1); }
+    .crdt-op-rm  { color:#ef5350; background:rgba(239,83,80,.1); }
+    .crdt-rep-state { font-family:var(--mono); font-size:11px; color:var(--mute); margin-top:2px; }
+    /* join result row */
+    .crdt-join { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 10px; background:var(--bg3); border-radius:5px; border:1px solid var(--border); }
+    .crdt-join-label { font-family:var(--mono); font-size:10px; color:var(--dim); white-space:nowrap; }
+    .crdt-join-val { font-family:var(--mono); font-size:13px; font-weight:700; }
+    .crdt-join-rule { font-size:10px; color:var(--mute); font-style:italic; margin-left:auto; }
+    /* LWW timeline */
+    .crdt-writes { display:flex; flex-direction:column; gap:5px; }
+    .crdt-write { display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:5px; border:1px solid var(--border); background:var(--bg3); font-family:var(--mono); font-size:11px; }
+    .crdt-write-winner { border-color:rgba(88,166,255,.4); background:rgba(88,166,255,.05); }
+    .crdt-time { font-size:9px; color:var(--dim); min-width:32px; }
+    .crdt-agent { font-size:9px; font-weight:700; padding:1px 6px; border-radius:3px; min-width:18px; text-align:center; }
+    .crdt-agent-a { background:rgba(249,168,37,.15); color:#f9a825; }
+    .crdt-agent-b { background:rgba(88,166,255,.15); color:#58a6ff; }
+    .crdt-wval { color:var(--text); flex:1; }
+    .crdt-latest { font-size:9px; font-weight:700; color:#58a6ff; background:rgba(88,166,255,.12); padding:1px 6px; border-radius:10px; white-space:nowrap; }
+    /* GCounter bars */
+    .crdt-gcounter { display:flex; flex-direction:column; gap:7px; }
+    .crdt-gc-row { display:flex; align-items:center; gap:8px; }
+    .crdt-bar { flex:1; height:22px; background:var(--bg3); border-radius:4px; overflow:hidden; }
+    .crdt-bar-fill { height:100%; display:flex; align-items:center; justify-content:flex-end; padding-right:7px; font-family:var(--mono); font-size:11px; font-weight:700; border-radius:4px; transition:width .4s; }
+    .crdt-bar-a { background:rgba(249,168,37,.35); color:#f9a825; }
+    .crdt-bar-b { background:rgba(88,166,255,.35);  color:#58a6ff; }
+    /* VectorClock grid */
+    .crdt-vclocks { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+    .crdt-vc { display:flex; flex-direction:column; gap:4px; }
+    .crdt-vc-hdr { font-family:var(--mono); font-size:9px; color:var(--dim); text-transform:uppercase; letter-spacing:.5px; }
+    .crdt-vc-cells { display:flex; gap:4px; }
+    .crdt-vc-cell { font-family:var(--mono); font-size:10.5px; font-weight:700; padding:4px 8px; border-radius:4px; border:1px solid; }
+    .crdt-vc-self { color:#f9a825; background:rgba(249,168,37,.1); border-color:rgba(249,168,37,.35); }
+    .crdt-vc-zero { color:var(--dim); background:var(--bg3); border-color:var(--border); }
+    .crdt-vc-max  { color:#3fb950; background:rgba(63,185,80,.1); border-color:rgba(63,185,80,.35); }
+    .crdt-vc-sep  { font-size:16px; color:var(--dim); padding:0 2px; align-self:center; margin-top:14px; }
+    .crdt-concurrent-badge { font-family:var(--mono); font-size:10px; color:#f9a825; background:rgba(249,168,37,.08); border:1px solid rgba(249,168,37,.25); border-radius:4px; padding:3px 10px; align-self:flex-start; }
 
     /* ---- OT Merge scenario cards ---- */
     .ot-scenarios { display: flex; flex-direction: column; gap: 10px; }
