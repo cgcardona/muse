@@ -145,7 +145,7 @@ _HTML_TEMPLATE = """\
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Muse — Tour de Force</title>
+  <title>Muse — Demo</title>
   <style>
     /* ---- Reset & base ---- */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -893,7 +893,7 @@ _HTML_TEMPLATE = """\
 <header>
   <div class="header-top">
     <h1>muse</h1>
-    <span class="tagline">Tour de Force · domain-agnostic version control for multidimensional state</span>
+    <span class="tagline">Demo · domain-agnostic version control for multidimensional state</span>
     <span class="version-badge">v{{VERSION}} · {{DOMAIN}} domain · {{ELAPSED}}s</span>
     <a class="header-nav-link" href="domain_registry.html">Domain Registry →</a>
   </div>

@@ -1051,7 +1051,7 @@ _HTML_TEMPLATE = """\
 
 <nav>
   <a class="nav-logo" href="#">muse</a>
-  <a class="nav-link" href="tour_de_force.html">Tour de Force</a>
+  <a class="nav-link" href="tour_de_force.html">Demo</a>
   <a class="nav-link current" href="index.html">Domain Registry</a>
   <a class="nav-link" href="../docs/guide/plugin-authoring-guide.md">Plugin Guide</a>
   <div class="nav-spacer"></div>
@@ -1398,7 +1398,7 @@ _HTML_TEMPLATE = """\
 <footer>
   <span>Muse v0.1.1 · domain-agnostic version control for multidimensional state</span>
   <span>
-    <a href="tour_de_force.html">Tour de Force</a> ·
+    <a href="tour_de_force.html">Demo</a> ·
     <a href="https://github.com/cgcardona/muse">GitHub</a> ·
     <a href="../docs/guide/plugin-authoring-guide.md">Plugin Guide</a>
   </span>
