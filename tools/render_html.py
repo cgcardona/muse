@@ -458,6 +458,46 @@ _HTML_TEMPLATE = """\
     .commit-node.highlighted .commit-msg { fill: var(--text); }
     text { font-family: -apple-system, system-ui, sans-serif; }
 
+    /* ---- Registry callout ---- */
+    .registry-callout {
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      padding: 40px;
+    }
+    .registry-callout-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      flex-wrap: wrap;
+    }
+    .registry-callout-text { flex: 1; min-width: 200px; }
+    .registry-callout-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .registry-callout-sub {
+      font-size: 13px;
+      color: var(--text-mute);
+      line-height: 1.6;
+    }
+    .registry-callout-btn {
+      flex-shrink: 0;
+      display: inline-block;
+      padding: 10px 22px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: var(--radius);
+      text-decoration: none;
+      transition: opacity 0.15s;
+    }
+    .registry-callout-btn:hover { opacity: 0.85; }
+
     /* ---- Domain Dashboard section ---- */
     .domain-section {
       background: var(--bg);
@@ -947,28 +987,19 @@ _HTML_TEMPLATE = """\
   </div>
 </div>
 
-<div class="domain-section" id="domain-section">
-  <div class="domain-inner">
-    <h2>Domain Plugin Registry</h2>
-    <p class="section-intro">
-      Every domain registered with Muse appears here. Each plugin implements the
-      <strong>six-method MuseDomainPlugin protocol</strong> and gets the full VCS — branching,
-      merging, conflict resolution, time-travel, and diff — for free.
-      Scaffold a new domain with a single command.
-    </p>
-    <div class="domain-grid" id="domain-grid"></div>
-  </div>
-</div>
-
-<div class="crdt-section" id="crdt-section">
-  <div class="crdt-inner">
-    <h2>CRDT Primitives</h2>
-    <p class="section-intro">
-      Plugins that implement <strong>CRDTPlugin</strong> get four convergent data structures
-      that merge without coordination. Any two replicas always converge to the same state —
-      no central authority required.
-    </p>
-    <div class="crdt-grid" id="crdt-grid"></div>
+<div class="registry-callout">
+  <div class="registry-callout-inner">
+    <div class="registry-callout-text">
+      <div class="registry-callout-title">Want to version something else?</div>
+      <div class="registry-callout-sub">
+        Music is the reference implementation. The same engine works for genomics,
+        3D spatial fields, financial models, and any multidimensional state —
+        six methods between you and a complete VCS.
+      </div>
+    </div>
+    <a class="registry-callout-btn" href="domain_registry.html">
+      Domain Registry &amp; Plugin Guide →
+    </a>
   </div>
 </div>
 
@@ -1287,14 +1318,10 @@ function drawDAG() {
 /* ===== Act metadata ===== */
 const ACT_ICONS = {
   1:'🎵', 2:'🌿', 3:'⚡', 4:'🔀', 5:'⏪',
-  6:'🔬', 7:'🗂️', 8:'⚙️', 9:'🔮'
 };
 const ACT_COLORS = {
   1:'#4f8ef7', 2:'#3fb950', 3:'#f85149', 4:'#ab47bc', 5:'#f9a825',
-  6:'#26c6da', 7:'#58a6ff', 8:'#ef5350', 9:'#bc8cff'
 };
-const RICH_ACTS = new Set([6, 7, 8, 9]);
-const CRDT_ACT = 9;
 
 /* ===== Act jump navigation ===== */
 function buildActJumpBar() {
@@ -1371,12 +1398,10 @@ function buildEventLog() {
       list.appendChild(hdr);
     }
 
-    const isRich   = RICH_ACTS.has(ev.act);
-    const isCrdt   = ev.act === CRDT_ACT;
     const isCliCmd = ev.cmd.startsWith('muse ') || ev.cmd.startsWith('git ');
 
     const item = document.createElement('div');
-    item.className = 'event-item' + (isRich ? ' rich-act' : '');
+    item.className = 'event-item';
     item.id = `ev-${idx}`;
 
     if (ev.exit_code !== 0 && ev.output.toLowerCase().includes('conflict')) {
@@ -1391,31 +1416,18 @@ function buildEventLog() {
     // Output class
     let outClass = '';
     if (ev.output.toLowerCase().includes('conflict')) outClass = 'conflict';
-    else if (ev.exit_code === 0 && (ev.commit_id || isRich)) outClass = 'success';
+    else if (ev.exit_code === 0 && ev.commit_id) outClass = 'success';
 
-    // Line limit: rich acts get 15 lines
-    const lineLimit = isRich ? 15 : 6;
-    const outLines  = ev.output.split('\\n').slice(0, lineLimit).join('\\n');
+    const outLines = ev.output.split('\\n').slice(0, 6).join('\\n');
 
-    // Build cmd line: CRDT/API events don't get the `$` shell prefix
-    let cmdLine;
-    if (isCrdt && !isCliCmd) {
-      const accentCol = ACT_COLORS[CRDT_ACT];
-      cmdLine =
-        `<div class="event-cmd">` +
-          `<span style="color:${accentCol};font-size:10px;margin-right:4px">API</span>` +
-          `<span class="cmd-name" style="color:${accentCol}">${escHtml(ev.cmd)}</span>` +
-        `</div>`;
-    } else {
-      cmdLine =
-        `<div class="event-cmd">` +
-          `<span class="cmd-prefix">$ </span>` +
-          `<span class="cmd-name">${escHtml(cmdName)}</span>` +
-          (cmdArgs
-            ? ` <span class="cmd-args">${escHtml(cmdArgs.slice(0, 80))}${cmdArgs.length > 80 ? '…' : ''}</span>`
-            : '') +
-        `</div>`;
-    }
+    const cmdLine =
+      `<div class="event-cmd">` +
+        `<span class="cmd-prefix">$ </span>` +
+        `<span class="cmd-name">${escHtml(cmdName)}</span>` +
+        (cmdArgs
+          ? ` <span class="cmd-args">${escHtml(cmdArgs.slice(0, 80))}${cmdArgs.length > 80 ? '…' : ''}</span>`
+          : '') +
+      `</div>`;
 
     item.innerHTML =
       cmdLine +
@@ -1444,102 +1456,6 @@ function buildEventLog() {
   });
 }
 
-/* ===== Domain Dashboard section ===== */
-function buildDomainSection() {
-  const grid = document.getElementById('domain-grid');
-  if (!grid) return;
-
-  // Extract domain data from the domains_json event (act 7, op domains_json)
-  const domEv = DATA.events.find(e => e.op === 'domains_json');
-  let domains = [];
-  if (domEv) {
-    try { domains = JSON.parse(domEv.output); } catch(_) {}
-  }
-
-  const capClass = cap => {
-    if (cap === 'CRDT')         return 'cap-pill cap-crdt';
-    if (cap === 'OT Merge')     return 'cap-pill cap-ot';
-    if (cap === 'Domain Schema')return 'cap-pill cap-schema';
-    if (cap === 'Typed Deltas') return 'cap-pill cap-delta';
-    return 'cap-pill';
-  };
-
-  domains.forEach(d => {
-    const isActive   = d.active === 'true';
-    const isScaffold = d.domain === 'scaffold';
-    const dims       = (d.schema && d.schema.dimensions) ? d.schema.dimensions : [];
-    const desc       = (d.schema && d.schema.description) ? d.schema.description : '';
-
-    const card = document.createElement('div');
-    card.className = 'domain-card' +
-      (isActive ? ' active-domain' : '') +
-      (isScaffold ? ' scaffold-domain' : '');
-
-    const caps = (d.capabilities || [])
-      .map(c => `<span class="${capClass(c)}">${escHtml(c)}</span>`).join('');
-
-    const dimList = dims.map(dim =>
-      `<span style="color:var(--text-mute)">${escHtml(dim.name)}</span>`
-    ).join(' · ') || '—';
-
-    card.innerHTML =
-      `<div class="domain-card-header">` +
-        `<span class="domain-badge${isActive ? ' active' : ''}">${isActive ? '● active' : '○ registered'}</span>` +
-        `<span class="domain-name">${escHtml(d.domain)}</span>` +
-        (isActive ? '<span class="domain-active-dot"></span>' : '') +
-      `</div>` +
-      `<div class="domain-card-body">` +
-        `<div class="domain-desc">${escHtml(desc.slice(0, 120))}${desc.length > 120 ? '…' : ''}</div>` +
-        `<div class="domain-caps">${caps}</div>` +
-        `<div class="domain-dims"><strong>Dimensions:</strong> ${dimList}</div>` +
-      `</div>`;
-
-    grid.appendChild(card);
-  });
-
-  // "Scaffold your own" card
-  const newCard = document.createElement('div');
-  newCard.className = 'domain-new-card';
-  newCard.innerHTML =
-    `<div class="domain-new-icon">＋</div>` +
-    `<div class="domain-new-title">Scaffold a new domain</div>` +
-    `<div class="domain-new-cmd">muse domains --new &lt;name&gt;</div>` +
-    `<div class="domain-new-link">` +
-      `then implement 6 methods · ` +
-      `<a href="docs/guide/plugin-authoring-guide.md">plugin authoring guide →</a>` +
-    `</div>`;
-  grid.appendChild(newCard);
-}
-
-/* ===== CRDT Primitives section ===== */
-function buildCRDTSection() {
-  const grid = document.getElementById('crdt-grid');
-  if (!grid) return;
-
-  const crdtEvents = DATA.events.filter(e => e.act === CRDT_ACT);
-
-  const meta = [
-    { type:'ORSet',       sub:'Observed-Remove Set',         color:'#bc8cff', icon:'∪' },
-    { type:'LWWRegister', sub:'Last-Write-Wins Register',    color:'#58a6ff', icon:'✎' },
-    { type:'GCounter',    sub:'Grow-Only Distributed Counter',color:'#3fb950', icon:'↑' },
-    { type:'VectorClock', sub:'Causal Ordering',             color:'#f9a825', icon:'⊕' },
-  ];
-
-  crdtEvents.forEach((ev, i) => {
-    const m = meta[i] || { type: ev.op, sub: '', color: '#bc8cff', icon: '◆' };
-    const card = document.createElement('div');
-    card.className = 'crdt-card';
-    card.innerHTML =
-      `<div class="crdt-card-header" style="background:${m.color}10;border-bottom-color:${m.color}30">` +
-        `<span class="crdt-type-badge" style="color:${m.color};background:${m.color}15;border-color:${m.color}40">${m.icon} ${m.type}</span>` +
-      `</div>` +
-      `<div class="crdt-card-body">` +
-        `<div style="font-size:12px;color:var(--text-mute);margin-bottom:10px;font-style:italic">${m.sub}</div>` +
-        `<div class="crdt-output">${escHtml(ev.output)}</div>` +
-      `</div>`;
-    grid.appendChild(card);
-  });
-}
 
 
 /* ===== Dimension Timeline ===== */
@@ -1717,8 +1633,6 @@ document.addEventListener('DOMContentLoaded', () => {
   buildEventLog();
   buildActJumpBar();
   buildDimTimeline();
-  buildDomainSection();
-  buildCRDTSection();
 
   document.getElementById('btn-prev').disabled = true;  // nothing to go back to yet
 

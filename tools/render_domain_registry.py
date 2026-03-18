@@ -25,6 +25,73 @@ _ROOT = pathlib.Path(__file__).resolve().parent.parent
 # ---------------------------------------------------------------------------
 
 
+def _compute_crdt_demos() -> list[dict]:
+    """Run the four CRDT primitives live and return formatted demo output."""
+    sys.path.insert(0, str(_ROOT))
+    try:
+        from muse.core.crdts import GCounter, LWWRegister, ORSet, VectorClock
+
+        # ORSet
+        base, _ = ORSet().add("annotation-GO:0001234")
+        a, _    = base.add("annotation-GO:0001234")
+        b       = base.remove("annotation-GO:0001234", base.tokens_for("annotation-GO:0001234"))
+        merged  = a.join(b)
+        orset_out = "\n".join([
+            "ORSet — add-wins concurrent merge:",
+            f"  base  elements: {sorted(base.elements())}",
+            f"  A re-adds  →  elements: {sorted(a.elements())}",
+            f"  B removes  →  elements: {sorted(b.elements())}",
+            f"  join(A, B) →  elements: {sorted(merged.elements())}",
+            "  [A's new token is not tombstoned — add always wins]",
+        ])
+
+        # LWWRegister
+        ra = LWWRegister.from_dict({"value": "80 BPM",  "timestamp": 1.0, "author": "agent-A"})
+        rb = LWWRegister.from_dict({"value": "120 BPM", "timestamp": 2.0, "author": "agent-B"})
+        rm = ra.join(rb)
+        lww_out = "\n".join([
+            "LWWRegister — last-write-wins scalar:",
+            f"  Agent A writes: '{ra.read()}' at t=1.0",
+            f"  Agent B writes: '{rb.read()}' at t=2.0  (later)",
+            f"  join(A, B) → '{rm.read()}'  [higher timestamp wins]",
+            "  join(B, A) → same result  [commutativity]",
+        ])
+
+        # GCounter
+        ca = GCounter().increment("agent-A").increment("agent-A")
+        cb = GCounter().increment("agent-B").increment("agent-B").increment("agent-B")
+        cm = ca.join(cb)
+        gc_out = "\n".join([
+            "GCounter — grow-only distributed counter:",
+            f"  Agent A x2  →  A slot: {ca.value_for('agent-A')}",
+            f"  Agent B x3  →  B slot: {cb.value_for('agent-B')}",
+            f"  join(A, B) global value: {cm.value()}",
+            "  [monotonically non-decreasing — joins never lose counts]",
+        ])
+
+        # VectorClock
+        va = VectorClock().increment("agent-A")
+        vb = VectorClock().increment("agent-B")
+        vm = va.merge(vb)
+        vc_out = "\n".join([
+            "VectorClock — causal ordering:",
+            f"  Agent A: {va.to_dict()}",
+            f"  Agent B: {vb.to_dict()}",
+            f"  concurrent_with(A, B): {va.concurrent_with(vb)}",
+            f"  merge(A, B): {vm.to_dict()}  [component-wise max]",
+        ])
+
+        return [
+            {"type": "ORSet",       "sub": "Observed-Remove Set",          "color": "#bc8cff", "icon": "∪", "output": orset_out},
+            {"type": "LWWRegister", "sub": "Last-Write-Wins Register",     "color": "#58a6ff", "icon": "✎", "output": lww_out},
+            {"type": "GCounter",    "sub": "Grow-Only Distributed Counter", "color": "#3fb950", "icon": "↑", "output": gc_out},
+            {"type": "VectorClock", "sub": "Causal Ordering",              "color": "#f9a825", "icon": "⊕", "output": vc_out},
+        ]
+    except Exception as exc:
+        print(f"  ⚠ CRDT demo failed ({exc}); using static fallback")
+        return []
+
+
 def _load_domains() -> list[dict]:
     """Run `muse domains --json` and return parsed output."""
     try:
@@ -66,6 +133,51 @@ def _load_domains() -> list[dict]:
 # ---------------------------------------------------------------------------
 # Scaffold template (shown in the "Build in 3 steps" section)
 # ---------------------------------------------------------------------------
+
+_TYPED_DELTA_EXAMPLE = """\
+# muse show --json  (any commit, any domain)
+{
+  "commit_id": "b26f3c99",
+  "message": "Resolve: integrate shared-state (A+B reconciled)",
+  "operations": [
+    {
+      "op_type": "ReplaceOp",
+      "address": "shared-state.mid",
+      "before_hash": "a1b2c3d4",
+      "after_hash":  "e5f6g7h8",
+      "dimensions":  ["structural"]
+    },
+    {
+      "op_type": "InsertOp",
+      "address": "beta-a.mid",
+      "after_hash": "09ab1234",
+      "dimensions":  ["rhythmic", "dynamic"]
+    }
+  ],
+  "summary": {
+    "inserted": 1,
+    "replaced": 1,
+    "deleted":  0
+  }
+}"""
+
+_OT_MERGE_EXAMPLE = """\
+# Scenario A — independent InsertOps at different addresses → commute → clean merge
+  left:  InsertOp("ot-notes-a.mid")   # tick=0,   C4 E4 G4
+  right: InsertOp("ot-notes-b.mid")   # tick=480, D4 F4 A4
+
+  transform(left, right) → no overlap → both applied
+  result: both files present, zero conflicts  ✓
+
+# Scenario B — same address, different content → genuine conflict
+  base:  shared-melody.mid  # C4 G4
+  left:  ReplaceOp("shared-melody.mid")  # C4 E4 G4  (major triad)
+  right: ReplaceOp("shared-melody.mid")  # C4 Eb4 G4 (minor triad)
+
+  transform(left, right) → same address, non-commuting content
+  result: ❌ Merge conflict in 1 file(s):
+    CONFLICT (both modified): shared-melody.mid
+  [musical intent differs — human must choose major or minor]"""
 
 _SCAFFOLD_SNIPPET = """\
 from __future__ import annotations
@@ -208,6 +320,22 @@ _DISTRIBUTION_LEVELS = [
 # HTML template
 # ---------------------------------------------------------------------------
 
+def _render_capability_card(cap: dict) -> str:
+    color = cap["color"]
+    return f"""
+      <div class="cap-showcase-card" style="--cap-color:{color}">
+        <div class="cap-showcase-header">
+          <span class="cap-showcase-badge" style="color:{color};background:{color}15;border-color:{color}40">
+            {cap['icon']} {cap['type']}
+          </span>
+          <span class="cap-showcase-sub">{cap['sub']}</span>
+        </div>
+        <div class="cap-showcase-body">
+          <pre class="cap-showcase-output">{cap['output']}</pre>
+        </div>
+      </div>"""
+
+
 def _render_domain_card(d: dict) -> str:
     domain  = d.get("domain", "unknown")
     active  = d.get("active") == "true"
@@ -282,14 +410,21 @@ def render(output_path: pathlib.Path) -> None:
     domains = _load_domains()
     print(f"  Found {len(domains)} registered domain(s)")
 
+    print("  Computing live CRDT demos...")
+    crdt_demos = _compute_crdt_demos()
+
     active_domains_html = "\n".join(_render_domain_card(d) for d in domains)
     planned_html        = "\n".join(_render_planned_card(p) for p in _PLANNED_DOMAINS)
     dist_html           = "\n".join(_render_dist_card(d) for d in _DISTRIBUTION_LEVELS)
+    crdt_cards_html     = "\n".join(_render_capability_card(c) for c in crdt_demos)
 
     html = _HTML_TEMPLATE.replace("{{ACTIVE_DOMAINS}}", active_domains_html)
     html = html.replace("{{PLANNED_DOMAINS}}", planned_html)
     html = html.replace("{{DIST_CARDS}}", dist_html)
     html = html.replace("{{SCAFFOLD_SNIPPET}}", _SCAFFOLD_SNIPPET)
+    html = html.replace("{{TYPED_DELTA_EXAMPLE}}", _TYPED_DELTA_EXAMPLE)
+    html = html.replace("{{OT_MERGE_EXAMPLE}}", _OT_MERGE_EXAMPLE)
+    html = html.replace("{{CRDT_CARDS}}", crdt_cards_html)
 
     output_path.write_text(html, encoding="utf-8")
     size_kb = output_path.stat().st_size // 1024
@@ -541,6 +676,76 @@ _HTML_TEMPLATE = """\
     .proto-row.hdr .proto-method,
     .proto-row.hdr .proto-sig,
     .proto-row.hdr .proto-desc { font-family: var(--ui); font-size: 11px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: 0.6px; }
+
+    /* ---- Engine capability showcase ---- */
+    .cap-showcase-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
+      gap: 24px;
+    }
+    @media (max-width: 600px) { .cap-showcase-grid { grid-template-columns: 1fr; } }
+    .cap-showcase-card {
+      border: 1px solid var(--border);
+      border-top: 3px solid var(--cap-color, var(--accent));
+      border-radius: var(--r);
+      background: var(--bg);
+      overflow: hidden;
+      transition: transform 0.15s;
+    }
+    .cap-showcase-card:hover { transform: translateY(-2px); }
+    .cap-showcase-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg2);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .cap-showcase-badge {
+      font-size: 12px;
+      font-family: var(--mono);
+      padding: 3px 10px;
+      border-radius: 4px;
+      border: 1px solid;
+      white-space: nowrap;
+    }
+    .cap-showcase-sub {
+      font-size: 12px;
+      color: var(--mute);
+      font-style: italic;
+    }
+    .cap-showcase-body { padding: 16px 18px; }
+    .cap-showcase-desc {
+      font-size: 13px;
+      color: var(--mute);
+      margin-bottom: 14px;
+      line-height: 1.6;
+    }
+    .cap-showcase-desc strong { color: var(--text); }
+    .cap-showcase-output {
+      background: #0a0e14;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 12px 14px;
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: #abb2bf;
+      white-space: pre;
+      overflow-x: auto;
+      line-height: 1.65;
+    }
+    .cap-showcase-domain-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .crdt-mini-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    @media (max-width: 700px) { .crdt-mini-grid { grid-template-columns: 1fr; } }
 
     /* ---- Three steps ---- */
     .steps-grid {
@@ -948,8 +1153,96 @@ _HTML_TEMPLATE = """\
   </div>
 </section>
 
+<!-- =================== ENGINE CAPABILITIES =================== -->
+<section id="capabilities" style="background:var(--bg2)">
+  <div class="inner">
+    <div class="section-eyebrow">Engine Capabilities</div>
+    <h2>What Every Plugin Gets for Free</h2>
+    <p class="section-lead">
+      The core engine provides four advanced capabilities that any domain plugin
+      can opt into. Implement the protocol — the engine does the rest.
+    </p>
+
+    <div class="cap-showcase-grid">
+
+      <div class="cap-showcase-card" style="--cap-color:#f9a825">
+        <div class="cap-showcase-header">
+          <span class="cap-showcase-badge" style="color:#f9a825;background:#f9a82515;border-color:#f9a82540">
+            🔬 Typed Delta Algebra
+          </span>
+          <span class="cap-showcase-sub">StructuredDelta — every change is a typed operation</span>
+        </div>
+        <div class="cap-showcase-body">
+          <p class="cap-showcase-desc">
+            Unlike Git's blob diffs, Muse deltas are <strong>typed objects</strong>:
+            <code>InsertOp</code>, <code>ReplaceOp</code>, <code>DeleteOp</code> — each
+            carrying the address, before/after hashes, and affected dimensions.
+            Machine-readable with <code>muse show --json</code>.
+          </p>
+          <pre class="cap-showcase-output">{{TYPED_DELTA_EXAMPLE}}</pre>
+        </div>
+      </div>
+
+      <div class="cap-showcase-card" style="--cap-color:#58a6ff">
+        <div class="cap-showcase-header">
+          <span class="cap-showcase-badge" style="color:#58a6ff;background:#58a6ff15;border-color:#58a6ff40">
+            🗂️ Domain Schema
+          </span>
+          <span class="cap-showcase-sub">Per-domain dimensions drive diff algorithm selection</span>
+        </div>
+        <div class="cap-showcase-body">
+          <p class="cap-showcase-desc">
+            Each plugin's <code>schema()</code> method declares its dimensions and merge mode.
+            The engine uses this to select the right diff algorithm per dimension and to
+            surface only the dimensions that actually conflict.
+          </p>
+          <div class="cap-showcase-domain-grid" id="schema-domain-grid">
+            {{ACTIVE_DOMAINS}}
+          </div>
+        </div>
+      </div>
+
+      <div class="cap-showcase-card" style="--cap-color:#ef5350">
+        <div class="cap-showcase-header">
+          <span class="cap-showcase-badge" style="color:#ef5350;background:#ef535015;border-color:#ef535040">
+            ⚙️ OT Merge
+          </span>
+          <span class="cap-showcase-sub">Operational transformation — independent ops commute automatically</span>
+        </div>
+        <div class="cap-showcase-body">
+          <p class="cap-showcase-desc">
+            Plugins implementing <strong>StructuredMergePlugin</strong> get operational
+            transformation. Operations at different addresses commute automatically —
+            only operations on the same address with incompatible intent surface a conflict.
+          </p>
+          <pre class="cap-showcase-output">{{OT_MERGE_EXAMPLE}}</pre>
+        </div>
+      </div>
+
+      <div class="cap-showcase-card" style="--cap-color:#bc8cff">
+        <div class="cap-showcase-header">
+          <span class="cap-showcase-badge" style="color:#bc8cff;background:#bc8cff15;border-color:#bc8cff40">
+            🔮 CRDT Primitives
+          </span>
+          <span class="cap-showcase-sub">Convergent merge — any two replicas always reach the same state</span>
+        </div>
+        <div class="cap-showcase-body">
+          <p class="cap-showcase-desc">
+            Plugins implementing <strong>CRDTPlugin</strong> get four battle-tested
+            convergent data structures. No coordination required between replicas.
+          </p>
+          <div class="crdt-mini-grid">
+            {{CRDT_CARDS}}
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
 <!-- =================== BUILD =================== -->
-<section id="build" style="background:var(--bg2)">
+<section id="build" style="background:var(--bg)">
   <div class="inner">
     <div class="section-eyebrow">Build</div>
     <h2>Build in Three Steps</h2>
