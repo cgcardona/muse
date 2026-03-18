@@ -1343,9 +1343,10 @@ _HTML_TEMPLATE = """\
       background:var(--bg3); border:1px solid var(--border);
       border-radius:5px; padding:9px 10px;
       display:flex; flex-direction:column; gap:4px;
+      min-width:0; overflow:hidden;
     }
     .crdt-rep-hdr { font-family:var(--mono); font-size:9px; font-weight:700; color:var(--dim); text-transform:uppercase; letter-spacing:.6px; }
-    .crdt-op { font-family:var(--mono); font-size:10px; padding:2px 6px; border-radius:3px; }
+    .crdt-op { font-family:var(--mono); font-size:10px; padding:2px 6px; border-radius:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
     .crdt-op-add { color:#3fb950; background:rgba(63,185,80,.1); }
     .crdt-op-rm  { color:#ef5350; background:rgba(239,83,80,.1); }
     .crdt-rep-state { font-family:var(--mono); font-size:11px; color:var(--mute); margin-top:2px; }
