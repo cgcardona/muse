@@ -1,4 +1,4 @@
-"""Comprehensive test suite for the CRDT primitive library (Phase 4).
+"""Comprehensive test suite for the CRDT primitive library.
 
 Tests cover all six CRDT types:
 - :class:`~muse.core.crdts.vclock.VectorClock`

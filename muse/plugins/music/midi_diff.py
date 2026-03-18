@@ -12,24 +12,24 @@ Algorithm
 3. Convert each ``NoteKey`` to its deterministic content ID (SHA-256 of the
    five fields).
 4. Delegate to :func:`~muse.core.diff_algorithms.lcs.myers_ses` — the shared
-   LCS implementation from the Phase 2 algorithm library — for the SES.
+   LCS implementation from the diff algorithm library — for the SES.
 5. Map edit steps to typed ``DomainOp`` instances using the note's content
    ID and a human-readable summary string.
 6. Wrap the ops in a ``StructuredDelta``.
 
-Phase 3 additions
+Additional features
 -----------------
 :func:`reconstruct_midi` — the inverse of :func:`extract_notes`. Given a list
 of :class:`NoteKey` objects and a ticks_per_beat value, produces raw MIDI bytes
 for a Type 0 single-track file. Used by ``MusicPlugin.merge_ops()`` to
-materialise a merged MIDI file after the Phase 3 OT engine has determined that
+materialise a merged MIDI file after the OT engine has determined that
 two branches' note-level operations commute.
 
 Public API
 ----------
 - :class:`NoteKey` — typed MIDI note identity.
 - :func:`extract_notes` — MIDI bytes → sorted ``list[NoteKey]``.
-- :func:`reconstruct_midi` — ``list[NoteKey]`` → MIDI bytes (Phase 3).
+- :func:`reconstruct_midi` — ``list[NoteKey]`` → MIDI bytes.
 - :func:`diff_midi_notes` — top-level: MIDI bytes × 2 → ``StructuredDelta``.
 """
 from __future__ import annotations
@@ -341,7 +341,7 @@ def diff_midi_notes(
 
 
 # ---------------------------------------------------------------------------
-# MIDI reconstruction (Phase 3) — inverse of extract_notes
+# MIDI reconstruction — inverse of extract_notes
 # ---------------------------------------------------------------------------
 
 
@@ -358,7 +358,7 @@ def reconstruct_midi(
     order.
 
     This is the inverse of :func:`extract_notes`.  Used by
-    :func:`~muse.plugins.music.plugin._merge_patch_ops` after the Phase 3 OT
+    :func:`~muse.plugins.music.plugin._merge_patch_ops` after the OT
     engine has confirmed that two branches' note sequences commute, allowing
     the merged note list to be materialised as actual MIDI bytes.
 

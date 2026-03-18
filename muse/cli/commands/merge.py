@@ -133,7 +133,7 @@ def merge(
     ours_snap_obj = SnapshotManifest(files=ours_manifest, domain=domain)
     theirs_snap_obj = SnapshotManifest(files=theirs_manifest, domain=domain)
 
-    # Phase 3: prefer operation-level merge when the plugin supports it.
+    # Prefer operation-level merge when the plugin supports it.
     # Produces finer-grained conflict detection (sub-file / note level).
     # Falls back to file-level merge() for plugins without this capability.
     if isinstance(plugin, StructuredMergePlugin):

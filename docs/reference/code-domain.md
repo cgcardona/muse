@@ -1,14 +1,13 @@
-# Code Domain V2 — Complete Reference
+# Code Domain — Complete Reference
 
-> **Version:** 2.0 (7-phase roadmap)
 > **Engine:** `muse/plugins/code/` · **No external deps for core analysis**
-> **Scope:** Every command, module, type, and protocol introduced in the Code Domain V2 roadmap
+> **Scope:** Every command, module, type, and protocol in the code domain plugin
 
 ---
 
 ## Overview
 
-Code Domain V2 treats a codebase as a **typed, content-addressed symbol graph** — not as a bag of text lines.  Every function, class, method, variable, and import becomes a `SymbolRecord` with a stable content-addressed identity (SHA-256).  This unlocks operations that are structurally impossible in Git:
+The code domain plugin treats a codebase as a **typed, content-addressed symbol graph** — not as a bag of text lines.  Every function, class, method, variable, and import becomes a `SymbolRecord` with a stable content-addressed identity (SHA-256).  This unlocks operations that are structurally impossible in Git:
 
 - Track a function through renames and cross-file moves with perfect identity.
 - Cherry-pick a single named function out of a historical commit.
@@ -23,13 +22,13 @@ Code Domain V2 treats a codebase as a **typed, content-addressed symbol graph** 
 ## Contents
 
 1. [Symbol Identity Model](#1-symbol-identity-model)
-2. [Phase 1 — Provenance & Topology Commands](#2-phase-1--provenance--topology-commands)
-3. [Phase 2 — Query v2 + Temporal Search](#3-phase-2--query-v2--temporal-search)
-4. [Phase 3 — Index Infrastructure](#4-phase-3--index-infrastructure)
-5. [Phase 4 — Symbol Identity V2](#5-phase-4--symbol-identity-v2)
-6. [Phase 5 — Multi-Agent Coordination Layer](#6-phase-5--multi-agent-coordination-layer)
-7. [Phase 6 — Merge Engine V2 & Architectural Enforcement](#7-phase-6--merge-engine-v2--architectural-enforcement)
-8. [Phase 7 — Semantic Versioning](#8-phase-7--semantic-versioning)
+2. [Provenance & Topology Commands](#2-provenance--topology-commands)
+3. [Query & Temporal Search](#3-query--temporal-search)
+4. [Index Infrastructure](#4-index-infrastructure)
+5. [Symbol Identity Detail](#5-symbol-identity-detail)
+6. [Multi-Agent Coordination Layer](#6-multi-agent-coordination-layer)
+7. [Merge Engine & Architectural Enforcement](#7-merge-engine--architectural-enforcement)
+8. [Semantic Versioning](#8-semantic-versioning)
 9. [Call-Graph Tier Commands](#9-call-graph-tier-commands)
 10. [Architecture Internals](#10-architecture-internals)
 11. [Type Reference](#11-type-reference)
@@ -66,7 +65,7 @@ Two symbols are classified by comparing their four hashes:
 
 ---
 
-## 2. Phase 1 — Provenance & Topology Commands
+## 2. Provenance & Topology Commands
 
 ### `muse lineage ADDRESS`
 
@@ -198,7 +197,7 @@ muse semantic-cherry-pick src/billing.py::compute_total --from v1.0 --dry-run --
 
 ---
 
-## 3. Phase 2 — Query v2 + Temporal Search
+## 3. Query & Temporal Search
 
 ### `muse query PREDICATE...`
 
@@ -296,7 +295,7 @@ muse query-history kind=class --json
 
 ---
 
-## 4. Phase 3 — Index Infrastructure
+## 4. Index Infrastructure
 
 ### `muse index status`
 
@@ -338,7 +337,7 @@ Maps `body_hash → list[symbol_address]`.  Enables O(1) clone detection and `mu
 
 ---
 
-## 5. Phase 4 — Symbol Identity V2
+## 5. Symbol Identity Detail
 
 ### New `SymbolRecord` fields
 
@@ -385,7 +384,7 @@ With `--json`, emits `schema_version: 2` with a richer classification:
 
 ---
 
-## 6. Phase 5 — Multi-Agent Coordination Layer
+## 6. Multi-Agent Coordination Layer
 
 The coordination layer enables thousands of agents to work on the same codebase simultaneously without stepping on each other.  It is **purely advisory** — the VCS engine never reads coordination data for correctness decisions.  Agents that ignore it still produce correct commits.
 
@@ -548,7 +547,7 @@ muse reconcile --json
 
 ---
 
-## 7. Phase 6 — Merge Engine V2 & Architectural Enforcement
+## 7. Merge Engine & Architectural Enforcement
 
 ### `ConflictRecord` — Structured Conflict Taxonomy
 
@@ -664,7 +663,7 @@ Every public function in `source_pattern` must have a corresponding test functio
 
 ---
 
-## 8. Phase 7 — Semantic Versioning
+## 8. Semantic Versioning
 
 Muse automatically assigns semantic version bumps at commit time based on the `StructuredDelta`.
 
@@ -889,8 +888,8 @@ class StructuredDelta(TypedDict):
     domain: str
     ops: list[DomainOp]
     summary: str
-    sem_ver_bump: SemVerBump          # v2 field (default "none")
-    breaking_changes: list[str]       # v2 field (default [])
+    sem_ver_bump: SemVerBump          # default "none"
+    breaking_changes: list[str]       # default []
 ```
 
 ### `DomainOp` union

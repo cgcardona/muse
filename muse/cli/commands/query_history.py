@@ -9,7 +9,7 @@ It answers questions that are impossible in Git:
 
 * "Find all public Python functions introduced after tag v1.0"
 * "Show me every class whose signature changed in the last 50 commits"
-* "Which functions were present in v1.0 but are gone in v2.0?"
+* "Which functions were present in tag v1.0 but are gone in tag v2.0?"
 * "Find methods renamed between two refs"
 
 Usage::
@@ -38,7 +38,7 @@ Flags:
     End of the commit range (inclusive; default: HEAD).
 
 ``--json``
-    Emit results as JSON with ``schema_version: 2``.
+    Emit results as JSON.
 """
 from __future__ import annotations
 
@@ -140,7 +140,7 @@ def query_history(
     Summarises: first appearance, last appearance, commit count, and number
     of distinct implementations (content_id changes).
 
-    The predicate grammar is the same as ``muse query`` v2 — supports OR, NOT,
+    The predicate grammar is the same as ``muse query`` — supports OR, NOT,
     and parentheses.
 
     Examples::

@@ -1,4 +1,4 @@
-"""Hash-set algebra diff for unordered collections — Phase 2.
+"""Hash-set algebra diff for unordered collections.
 
 Computes the symmetric difference between two ``frozenset[str]`` collections
 of content IDs. The result is a ``StructuredDelta`` containing:

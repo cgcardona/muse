@@ -1,4 +1,4 @@
-"""Tests for the Phase 1 structured delta type system.
+"""Tests for the structured delta type system.
 
 Covers:
 - All five DomainOp TypedDicts can be constructed and serialised to JSON.

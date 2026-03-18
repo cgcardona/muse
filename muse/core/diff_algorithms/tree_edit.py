@@ -1,4 +1,4 @@
-"""LCS-based tree edit algorithm for labeled ordered trees — Phase 2.
+"""LCS-based tree edit algorithm for labeled ordered trees.
 
 Implements a correct tree diff that produces ``InsertOp``, ``DeleteOp``,
 ``ReplaceOp``, and ``MoveOp`` entries for labeled ordered trees.
@@ -23,7 +23,7 @@ not find the globally minimal edit script (Zhang-Shasha is optimal), but it
 is correct: every change is accounted for, and applying the script to the base
 tree produces the target tree. For the bounded tree sizes typical of domain
 objects (scenes, tracks, ASTs ≲ 10k nodes), this is more than adequate for
-Phase 2. Zhang-Shasha optimisation is a drop-in replacement once needed.
+Zhang-Shasha optimisation is a drop-in replacement once needed.
 
 ``TreeNode`` is defined here and re-exported by the package ``__init__``.
 

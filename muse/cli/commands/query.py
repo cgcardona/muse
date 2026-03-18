@@ -227,7 +227,7 @@ def query(
         typer.echo("❌ --all-commits and --commit are mutually exclusive.", err=True)
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
-    # Parse predicates using the v2 grammar (OR / NOT / grouping supported).
+    # Parse predicates using the predicate grammar (OR / NOT / grouping supported).
     # Each CLI argument is joined with implicit AND; a single argument may
     # contain OR/NOT/parentheses.
     try:
