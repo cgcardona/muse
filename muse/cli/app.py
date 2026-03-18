@@ -51,17 +51,30 @@ Code-domain semantic commands — Phase 5 (query v2 + temporal)::
 
     query           predicate DSL v2 — OR, NOT, grouping, new fields, schema_version
     query-history   temporal symbol search across a commit range
+
+Code-domain semantic commands — Phase 6 (provenance + topology)::
+
+    lineage         full provenance chain of a symbol through commit history
+    api-surface     public API surface and how it changed between commits
+    codemap         semantic topology — cycles, centrality, boundary files
+    clones          find exact and near-duplicate symbols across the snapshot
+    checkout-symbol restore a historical version of a specific symbol
+    semantic-cherry-pick  cherry-pick named symbols from a historical commit
 """
 from __future__ import annotations
 
 import typer
 
 from muse.cli.commands import (
+    api_surface,
     attributes,
     blame,
     branch,
     cherry_pick,
     checkout,
+    checkout_symbol,
+    clones,
+    codemap,
     commit,
     compare,
     coupling,
@@ -78,6 +91,7 @@ from muse.cli.commands import (
     impact,
     init,
     languages,
+    lineage,
     log,
     merge,
     mix,
@@ -91,6 +105,7 @@ from muse.cli.commands import (
     query_history,
     reset,
     revert,
+    semantic_cherry_pick,
     show,
     stable,
     stash,
@@ -156,6 +171,12 @@ cli.add_typer(find_symbol.app,     name="find-symbol",      help="[code] Cross-c
 cli.add_typer(impact.app,          name="impact",           help="[code] Transitive blast-radius — every caller affected if this symbol changes.")
 cli.add_typer(dead.app,            name="dead",             help="[code] Dead code candidates — symbols with no callers and no importers.")
 cli.add_typer(coverage.app,        name="coverage",         help="[code] Class interface call-coverage — which methods are actually called?")
+cli.add_typer(lineage.app,         name="lineage",          help="[code] Full provenance chain of a symbol — created, renamed, moved, copied, deleted.")
+cli.add_typer(api_surface.app,     name="api-surface",      help="[code] Public API surface at a commit; --diff to show added/removed/changed symbols.")
+cli.add_typer(codemap.app,         name="codemap",          help="[code] Semantic topology — module sizes, import cycles, centrality, boundary files.")
+cli.add_typer(clones.app,          name="clones",           help="[code] Find exact and near-duplicate symbols (body_hash / signature_id clusters).")
+cli.add_typer(checkout_symbol.app, name="checkout-symbol",  help="[code] Restore a historical version of one symbol into the working tree.")
+cli.add_typer(semantic_cherry_pick.app, name="semantic-cherry-pick", help="[code] Cherry-pick named symbols from a historical commit into the working tree.")
 
 
 if __name__ == "__main__":
