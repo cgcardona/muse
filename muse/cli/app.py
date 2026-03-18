@@ -5,6 +5,12 @@ Core VCS commands::
     init        status      log         commit      diff
     show        branch      checkout    merge       reset
     revert      stash       cherry-pick tag         domains
+
+Code-domain semantic commands (impossible in Git)::
+
+    symbols         list every semantic symbol in a snapshot
+    symbol-log      track a single symbol through commit history
+    detect-refactor report semantic refactoring operations across commits
 """
 from __future__ import annotations
 
@@ -16,6 +22,7 @@ from muse.cli.commands import (
     cherry_pick,
     checkout,
     commit,
+    detect_refactor,
     diff,
     domains,
     init,
@@ -26,6 +33,8 @@ from muse.cli.commands import (
     show,
     stash,
     status,
+    symbol_log,
+    symbols,
     tag,
 )
 
@@ -49,8 +58,11 @@ cli.add_typer(reset.app,        name="reset",       help="Move HEAD to a prior c
 cli.add_typer(revert.app,       name="revert",      help="Create a new commit that undoes a prior commit.")
 cli.add_typer(cherry_pick.app,  name="cherry-pick", help="Apply a specific commit's changes on top of HEAD.")
 cli.add_typer(stash.app,        name="stash",       help="Shelve and restore uncommitted changes.")
-cli.add_typer(tag.app,          name="tag",         help="Attach and query semantic tags on commits.")
-cli.add_typer(domains.app,      name="domains",     help="Domain plugin dashboard — list capabilities and scaffold new domains.")
+cli.add_typer(tag.app,           name="tag",              help="Attach and query semantic tags on commits.")
+cli.add_typer(domains.app,       name="domains",          help="Domain plugin dashboard — list capabilities and scaffold new domains.")
+cli.add_typer(symbols.app,       name="symbols",          help="[code] List every semantic symbol (function, class, method…) in a snapshot.")
+cli.add_typer(symbol_log.app,    name="symbol-log",       help="[code] Track a single symbol through the full commit history.")
+cli.add_typer(detect_refactor.app, name="detect-refactor", help="[code] Detect semantic refactoring operations (renames, moves, extractions) across commits.")
 
 
 if __name__ == "__main__":
