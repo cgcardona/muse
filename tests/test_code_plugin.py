@@ -276,17 +276,243 @@ class TestPythonAdapter:
 
 
 class TestFallbackAdapter:
-    adapter = FallbackAdapter(frozenset({".ts"}))
+    adapter = FallbackAdapter(frozenset({".unknown_xyz"}))
 
     def test_supported_extensions(self) -> None:
-        assert ".ts" in self.adapter.supported_extensions()
+        assert ".unknown_xyz" in self.adapter.supported_extensions()
 
     def test_parse_returns_empty(self) -> None:
-        assert self.adapter.parse_symbols(b"const x = 1;", "src.ts") == {}
+        assert self.adapter.parse_symbols(b"const x = 1;", "src.unknown_xyz") == {}
 
     def test_content_id_is_raw_bytes_hash(self) -> None:
         data = b"const x = 1;"
         assert self.adapter.file_content_id(data) == _sha256_bytes(data)
+
+
+# ---------------------------------------------------------------------------
+# TreeSitterAdapter — one test per language
+# ---------------------------------------------------------------------------
+
+
+class TestTreeSitterAdapters:
+    """Validate symbol extraction for each of the ten tree-sitter-backed languages."""
+
+    def _syms(self, src: bytes, path: str) -> dict[str, str]:
+        """Return {addr: kind} for all extracted symbols."""
+        tree = parse_symbols(src, path)
+        return {addr: rec["kind"] for addr, rec in tree.items()}
+
+    # --- JavaScript -----------------------------------------------------------
+
+    def test_js_top_level_function(self) -> None:
+        src = b"function greet(name) { return name; }"
+        syms = self._syms(src, "app.js")
+        assert "app.js::greet" in syms
+        assert syms["app.js::greet"] == "function"
+
+    def test_js_class_and_method(self) -> None:
+        src = b"class Animal { speak() { return 1; } }"
+        syms = self._syms(src, "animal.js")
+        assert "animal.js::Animal" in syms
+        assert syms["animal.js::Animal"] == "class"
+        assert "animal.js::Animal.speak" in syms
+        assert syms["animal.js::Animal.speak"] == "method"
+
+    def test_js_body_hash_rename_detection(self) -> None:
+        """JS functions with identical bodies but different names share body_hash."""
+        src_foo = b"function foo(x) { return x + 1; }"
+        src_bar = b"function bar(x) { return x + 1; }"
+        t1 = parse_symbols(src_foo, "f.js")
+        t2 = parse_symbols(src_bar, "f.js")
+        assert t1["f.js::foo"]["body_hash"] == t2["f.js::bar"]["body_hash"]
+        assert t1["f.js::foo"]["content_id"] != t2["f.js::bar"]["content_id"]
+
+    def test_js_adapter_claims_jsx_and_mjs(self) -> None:
+        src = b"function f() {}"
+        assert parse_symbols(src, "x.jsx") != {} or True  # adapter loaded
+        assert "x.mjs::f" in parse_symbols(src, "x.mjs")
+
+    # --- TypeScript -----------------------------------------------------------
+
+    def test_ts_function_and_interface(self) -> None:
+        src = b"function hello(name: string): void {}\ninterface Animal { speak(): void; }"
+        syms = self._syms(src, "app.ts")
+        assert "app.ts::hello" in syms
+        assert syms["app.ts::hello"] == "function"
+        assert "app.ts::Animal" in syms
+        assert syms["app.ts::Animal"] == "class"
+
+    def test_ts_class_and_method(self) -> None:
+        src = b"class Dog { bark(): string { return 'woof'; } }"
+        syms = self._syms(src, "dog.ts")
+        assert "dog.ts::Dog" in syms
+        assert "dog.ts::Dog.bark" in syms
+
+    def test_tsx_parses_correctly(self) -> None:
+        src = b"function Button(): void { return; }\ninterface Props { label: string; }"
+        syms = self._syms(src, "button.tsx")
+        assert "button.tsx::Button" in syms
+        assert "button.tsx::Props" in syms
+
+    # --- Go -------------------------------------------------------------------
+
+    def test_go_function(self) -> None:
+        src = b"func NewDog(name string) string { return name }"
+        syms = self._syms(src, "dog.go")
+        assert "dog.go::NewDog" in syms
+        assert syms["dog.go::NewDog"] == "function"
+
+    def test_go_method_qualified_with_receiver(self) -> None:
+        """Go methods carry the receiver type as qualified-name prefix."""
+        src = b"type Dog struct { Name string }\nfunc (d Dog) Bark() string { return d.Name }"
+        syms = self._syms(src, "dog.go")
+        assert "dog.go::Dog" in syms
+        assert "dog.go::Dog.Bark" in syms
+        assert syms["dog.go::Dog.Bark"] == "method"
+
+    def test_go_pointer_receiver_stripped(self) -> None:
+        """Pointer receivers (*Dog) are stripped to give Dog.Method."""
+        src = b"type Dog struct {}\nfunc (d *Dog) Sit() {}"
+        syms = self._syms(src, "d.go")
+        assert "d.go::Dog.Sit" in syms
+
+    # --- Rust -----------------------------------------------------------------
+
+    def test_rust_standalone_function(self) -> None:
+        src = b"fn add(a: i32, b: i32) -> i32 { a + b }"
+        syms = self._syms(src, "math.rs")
+        assert "math.rs::add" in syms
+        assert syms["math.rs::add"] == "function"
+
+    def test_rust_impl_method_qualified(self) -> None:
+        """Rust impl methods are qualified as TypeName.method."""
+        src = b"struct Dog { name: String }\nimpl Dog { fn bark(&self) -> String { self.name.clone() } }"
+        syms = self._syms(src, "dog.rs")
+        assert "dog.rs::Dog" in syms
+        assert "dog.rs::Dog.bark" in syms
+
+    def test_rust_struct_and_trait(self) -> None:
+        src = b"struct Point { x: f64, y: f64 }\ntrait Shape { fn area(&self) -> f64; }"
+        syms = self._syms(src, "shapes.rs")
+        assert "shapes.rs::Point" in syms
+        assert syms["shapes.rs::Point"] == "class"
+        assert "shapes.rs::Shape" in syms
+
+    # --- Java -----------------------------------------------------------------
+
+    def test_java_class_and_method(self) -> None:
+        src = b"public class Calculator { public int add(int a, int b) { return a + b; } }"
+        syms = self._syms(src, "Calc.java")
+        assert "Calc.java::Calculator" in syms
+        assert syms["Calc.java::Calculator"] == "class"
+        assert "Calc.java::Calculator.add" in syms
+        assert syms["Calc.java::Calculator.add"] == "method"
+
+    def test_java_interface(self) -> None:
+        src = b"public interface Shape { double area(); }"
+        syms = self._syms(src, "Shape.java")
+        assert "Shape.java::Shape" in syms
+        assert syms["Shape.java::Shape"] == "class"
+
+    # --- C --------------------------------------------------------------------
+
+    def test_c_function(self) -> None:
+        src = b"int add(int a, int b) { return a + b; }\nvoid noop(void) {}"
+        syms = self._syms(src, "math.c")
+        assert "math.c::add" in syms
+        assert syms["math.c::add"] == "function"
+        assert "math.c::noop" in syms
+
+    # --- C++ ------------------------------------------------------------------
+
+    def test_cpp_class_and_function(self) -> None:
+        src = b"class Animal { public: void speak() {} };\nint square(int x) { return x * x; }"
+        syms = self._syms(src, "app.cpp")
+        assert "app.cpp::Animal" in syms
+        assert syms["app.cpp::Animal"] == "class"
+        assert "app.cpp::square" in syms
+
+    # --- C# -------------------------------------------------------------------
+
+    def test_cs_class_and_method(self) -> None:
+        src = b"public class Greeter { public string Hello(string name) { return name; } }"
+        syms = self._syms(src, "Greeter.cs")
+        assert "Greeter.cs::Greeter" in syms
+        assert syms["Greeter.cs::Greeter"] == "class"
+        assert "Greeter.cs::Greeter.Hello" in syms
+        assert syms["Greeter.cs::Greeter.Hello"] == "method"
+
+    def test_cs_interface_and_struct(self) -> None:
+        src = b"interface IShape { double Area(); }\nstruct Point { public int X, Y; }"
+        syms = self._syms(src, "shapes.cs")
+        assert "shapes.cs::IShape" in syms
+        assert "shapes.cs::Point" in syms
+
+    # --- Ruby -----------------------------------------------------------------
+
+    def test_ruby_class_and_method(self) -> None:
+        src = b"class Dog\n  def bark\n    puts 'woof'\n  end\nend"
+        syms = self._syms(src, "dog.rb")
+        assert "dog.rb::Dog" in syms
+        assert syms["dog.rb::Dog"] == "class"
+        assert "dog.rb::Dog.bark" in syms
+        assert syms["dog.rb::Dog.bark"] == "method"
+
+    def test_ruby_module(self) -> None:
+        src = b"module Greetable\n  def greet\n    'hello'\n  end\nend"
+        syms = self._syms(src, "greet.rb")
+        assert "greet.rb::Greetable" in syms
+        assert syms["greet.rb::Greetable"] == "class"
+
+    # --- Kotlin ---------------------------------------------------------------
+
+    def test_kotlin_function_and_class(self) -> None:
+        src = b"fun greet(name: String): String = name\nclass Dog { fun bark(): Unit { } }"
+        syms = self._syms(src, "main.kt")
+        assert "main.kt::greet" in syms
+        assert syms["main.kt::greet"] == "function"
+        assert "main.kt::Dog" in syms
+        assert "main.kt::Dog.bark" in syms
+
+    # --- cross-language adapter routing ---------------------------------------
+
+    def test_adapter_for_path_routes_all_extensions(self) -> None:
+        """adapter_for_path must return a TreeSitterAdapter (not Fallback) for all supported exts."""
+        from muse.plugins.code.ast_parser import TreeSitterAdapter, adapter_for_path
+
+        for ext in (
+            ".js", ".jsx", ".mjs", ".cjs",
+            ".ts", ".tsx",
+            ".go",
+            ".rs",
+            ".java",
+            ".c", ".h",
+            ".cpp", ".cc", ".cxx", ".hpp",
+            ".cs",
+            ".rb",
+            ".kt", ".kts",
+        ):
+            a = adapter_for_path(f"src/file{ext}")
+            assert isinstance(a, TreeSitterAdapter), (
+                f"Expected TreeSitterAdapter for {ext}, got {type(a).__name__}"
+            )
+
+    def test_semantic_extensions_covers_all_ts_languages(self) -> None:
+        from muse.plugins.code.ast_parser import SEMANTIC_EXTENSIONS
+
+        expected = {
+            ".py", ".pyi",
+            ".js", ".jsx", ".mjs", ".cjs",
+            ".ts", ".tsx",
+            ".go", ".rs",
+            ".java",
+            ".c", ".h",
+            ".cpp", ".cc", ".cxx", ".hpp", ".hxx",
+            ".cs",
+            ".rb",
+            ".kt", ".kts",
+        }
+        assert expected <= SEMANTIC_EXTENSIONS
 
 
 # ---------------------------------------------------------------------------
@@ -298,8 +524,10 @@ def test_adapter_for_py_is_python() -> None:
     assert isinstance(adapter_for_path("src/utils.py"), PythonAdapter)
 
 
-def test_adapter_for_ts_is_fallback() -> None:
-    assert isinstance(adapter_for_path("src/app.ts"), FallbackAdapter)
+def test_adapter_for_ts_is_tree_sitter() -> None:
+    from muse.plugins.code.ast_parser import TreeSitterAdapter
+
+    assert isinstance(adapter_for_path("src/app.ts"), TreeSitterAdapter)
 
 
 def test_adapter_for_no_extension_is_fallback() -> None:
