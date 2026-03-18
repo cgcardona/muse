@@ -95,6 +95,20 @@ class CommitDict(TypedDict, total=False):
                      :func:`muse.core.provenance.verify_commit_hmac`.
     ``signer_key_id`` Fingerprint of the signing key
                      (SHA-256[:16] of the raw key bytes).
+    ``format_version`` Schema evolution counter.  Each phase of the Muse
+                     supercharge plan that extends the commit record bumps
+                     this value.  Readers use it to know which optional fields
+                     are present:
+
+                     - ``1`` — base record (commit_id, snapshot_id, parent, message, author)
+                     - ``2`` — adds ``structured_delta`` (Phase 1: Typed Delta Algebra)
+                     - ``3`` — adds ``sem_ver_bump``, ``breaking_changes``
+                               (Phase 2: Domain Schema)
+                     - ``4`` — adds agent provenance: ``agent_id``, ``model_id``,
+                               ``toolchain_id``, ``prompt_hash``, ``signature``,
+                               ``signer_key_id`` (Phase 4: Agent Identity)
+
+                     Old records without this field default to ``1``.
     """
 
     commit_id: str
@@ -116,6 +130,7 @@ class CommitDict(TypedDict, total=False):
     prompt_hash: str
     signature: str
     signer_key_id: str
+    format_version: int
 
 
 class SnapshotDict(TypedDict):
@@ -193,6 +208,9 @@ class CommitRecord:
     prompt_hash: str = ""
     signature: str = ""
     signer_key_id: str = ""
+    #: Schema evolution counter — see :class:`CommitDict` for the version table.
+    #: All new commits are written at the current maximum version (4).
+    format_version: int = 4
 
     def to_dict(self) -> CommitDict:
         return CommitDict(
@@ -215,6 +233,7 @@ class CommitRecord:
             prompt_hash=self.prompt_hash,
             signature=self.signature,
             signer_key_id=self.signer_key_id,
+            format_version=self.format_version,
         )
 
     @classmethod
@@ -243,6 +262,7 @@ class CommitRecord:
             prompt_hash=d.get("prompt_hash", ""),
             signature=d.get("signature", ""),
             signer_key_id=d.get("signer_key_id", ""),
+            format_version=d.get("format_version", 1),
         )
 
 

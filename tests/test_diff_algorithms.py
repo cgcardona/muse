@@ -24,19 +24,22 @@ from muse.core.diff_algorithms import (
     TreeInput,
     TreeNode,
     diff_by_schema,
+    snapshot_diff,
 )
 from muse.core.diff_algorithms import lcs as lcs_mod
 from muse.core.diff_algorithms import numerical as numerical_mod
 from muse.core.diff_algorithms import set_ops as set_ops_mod
 from muse.core.diff_algorithms import tree_edit as tree_edit_mod
 from muse.core.schema import (
+    DomainSchema,
+    DimensionSpec,
     MapSchema,
     SequenceSchema,
     SetSchema,
     TensorSchema,
     TreeSchema,
 )
-from muse.domain import StructuredDelta
+from muse.domain import SnapshotManifest, StructuredDelta
 
 
 # ---------------------------------------------------------------------------
@@ -496,3 +499,104 @@ class TestDiffBySchema:
         target: DiffInput = MapInput(kind="map", entries=entries)
         delta = diff_by_schema(schema, base, target, domain="test")
         assert delta["ops"] == []
+
+
+# ---------------------------------------------------------------------------
+# snapshot_diff — schema-driven auto-diff for SnapshotManifests
+# ---------------------------------------------------------------------------
+
+
+def _minimal_schema(domain: str) -> DomainSchema:
+    """Minimal DomainSchema for snapshot_diff tests."""
+    return DomainSchema(
+        domain=domain,
+        description="Test domain",
+        dimensions=[],
+        top_level=SetSchema(kind="set", element_type="file", identity="by_content"),
+        merge_mode="three_way",
+        schema_version=1,
+    )
+
+
+class TestSnapshotDiff:
+    """snapshot_diff provides schema-driven file-level diffs for any plugin."""
+
+    def test_added_file_is_insert_op(self) -> None:
+        schema = _minimal_schema("mydomain")
+        base: SnapshotManifest = {"files": {}, "domain": "mydomain"}
+        target: SnapshotManifest = {"files": {"data.txt": _cid("hello")}, "domain": "mydomain"}
+        delta = snapshot_diff(schema, base, target)
+        assert len(delta["ops"]) == 1
+        assert delta["ops"][0]["op"] == "insert"
+        assert delta["ops"][0]["address"] == "data.txt"
+
+    def test_removed_file_is_delete_op(self) -> None:
+        schema = _minimal_schema("mydomain")
+        base: SnapshotManifest = {"files": {"data.txt": _cid("hello")}, "domain": "mydomain"}
+        target: SnapshotManifest = {"files": {}, "domain": "mydomain"}
+        delta = snapshot_diff(schema, base, target)
+        assert len(delta["ops"]) == 1
+        assert delta["ops"][0]["op"] == "delete"
+
+    def test_modified_file_is_replace_op(self) -> None:
+        schema = _minimal_schema("mydomain")
+        base: SnapshotManifest = {"files": {"data.txt": _cid("v1")}, "domain": "mydomain"}
+        target: SnapshotManifest = {"files": {"data.txt": _cid("v2")}, "domain": "mydomain"}
+        delta = snapshot_diff(schema, base, target)
+        assert len(delta["ops"]) == 1
+        assert delta["ops"][0]["op"] == "replace"
+
+    def test_identical_snapshots_have_no_ops(self) -> None:
+        schema = _minimal_schema("mydomain")
+        manifest: SnapshotManifest = {"files": {"a.txt": _cid("a"), "b.txt": _cid("b")}, "domain": "mydomain"}
+        delta = snapshot_diff(schema, manifest, manifest)
+        assert delta["ops"] == []
+        assert delta["summary"] == "no changes"
+
+    def test_domain_tag_taken_from_schema(self) -> None:
+        schema = _minimal_schema("myplugin")
+        base: SnapshotManifest = {"files": {}, "domain": "myplugin"}
+        target: SnapshotManifest = {"files": {"f.txt": _cid("x")}, "domain": "myplugin"}
+        delta = snapshot_diff(schema, base, target)
+        assert delta["domain"] == "myplugin"
+
+    def test_multiple_changes_produce_correct_op_mix(self) -> None:
+        schema = _minimal_schema("mydomain")
+        base: SnapshotManifest = {
+            "files": {
+                "keep.txt": _cid("same"),
+                "modify.txt": _cid("old"),
+                "delete.txt": _cid("gone"),
+            },
+            "domain": "mydomain",
+        }
+        target: SnapshotManifest = {
+            "files": {
+                "keep.txt": _cid("same"),
+                "modify.txt": _cid("new"),
+                "add.txt": _cid("fresh"),
+            },
+            "domain": "mydomain",
+        }
+        delta = snapshot_diff(schema, base, target)
+        ops_by_kind = {op["op"] for op in delta["ops"]}
+        assert "insert" in ops_by_kind   # add.txt
+        assert "delete" in ops_by_kind   # delete.txt
+        assert "replace" in ops_by_kind  # modify.txt
+        assert len(delta["ops"]) == 3
+
+    def test_scaffold_plugin_uses_snapshot_diff(self) -> None:
+        """ScaffoldPlugin.diff() delegates to snapshot_diff — no custom set-algebra needed."""
+        from muse.plugins.scaffold.plugin import ScaffoldPlugin
+
+        plugin = ScaffoldPlugin()
+        base: SnapshotManifest = {"files": {"a.scaffold": _cid("v1")}, "domain": "scaffold"}
+        target: SnapshotManifest = {
+            "files": {"a.scaffold": _cid("v2"), "b.scaffold": _cid("new")},
+            "domain": "scaffold",
+        }
+        delta = plugin.diff(base, target)
+        op_types = {op["op"] for op in delta["ops"]}
+        assert "replace" in op_types
+        assert "insert" in op_types
+        assert delta["domain"] == "scaffold"

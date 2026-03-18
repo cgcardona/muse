@@ -34,6 +34,7 @@ import json
 import pathlib
 
 from muse.core.crdts import ORSet, VectorClock
+from muse.core.diff_algorithms import snapshot_diff
 from muse.core.op_transform import merge_op_lists
 from muse.core.schema import (
     CRDTDimensionSpec,
@@ -44,13 +45,10 @@ from muse.core.schema import (
 )
 from muse.domain import (
     CRDTSnapshotManifest,
-    DeleteOp,
     DomainOp,
     DriftReport,
-    InsertOp,
     LiveState,
     MergeResult,
-    ReplaceOp,
     SnapshotManifest,
     StateDelta,
     StateSnapshot,
@@ -131,56 +129,10 @@ class ScaffoldPlugin:
         Returns:
             A ``StructuredDelta`` whose ``ops`` list describes every change.
         """
-        base_files = base["files"]
-        target_files = target["files"]
-
-        ops: list[DomainOp] = []
-        base_paths = set(base_files)
-        target_paths = set(target_files)
-
-        for path in sorted(target_paths - base_paths):
-            ops.append(InsertOp(
-                op="insert",
-                address=path,
-                position=None,
-                content_id=target_files[path],
-                content_summary=f"added {path}",
-            ))
-
-        for path in sorted(base_paths - target_paths):
-            ops.append(DeleteOp(
-                op="delete",
-                address=path,
-                position=None,
-                content_id=base_files[path],
-                content_summary=f"removed {path}",
-            ))
-
-        for path in sorted(base_paths & target_paths):
-            if base_files[path] != target_files[path]:
-                ops.append(ReplaceOp(
-                    op="replace",
-                    address=path,
-                    position=None,
-                    old_content_id=base_files[path],
-                    new_content_id=target_files[path],
-                    old_summary=f"{path} (before)",
-                    new_summary=f"{path} (after)",
-                ))
-
-        n_added = sum(1 for o in ops if o["op"] == "insert")
-        n_removed = sum(1 for o in ops if o["op"] == "delete")
-        n_modified = sum(1 for o in ops if o["op"] == "replace")
-        parts: list[str] = []
-        if n_added:
-            parts.append(f"{n_added} added")
-        if n_removed:
-            parts.append(f"{n_removed} removed")
-        if n_modified:
-            parts.append(f"{n_modified} modified")
-        summary = ", ".join(parts) if parts else "no changes"
-
-        return StructuredDelta(domain=_DOMAIN_NAME, ops=ops, summary=summary)
+        # snapshot_diff provides the "auto diff" promised by Phase 2: any plugin
+        # that declares a DomainSchema can call this instead of writing file-set
+        # algebra from scratch.  For sub-file granularity, build PatchOps on top.
+        return snapshot_diff(self.schema(), base, target)
 
     def merge(
         self,
