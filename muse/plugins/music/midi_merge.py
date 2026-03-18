@@ -153,7 +153,7 @@ def _classify_event(msg: mido.Message) -> str | None:
     return None
 
 
-_MsgVal = int | str | list[int]
+type _MsgVal = int | str | list[int]
 
 
 def _msg_to_dict(msg: mido.Message) -> dict[str, _MsgVal]:
