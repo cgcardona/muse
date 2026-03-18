@@ -167,6 +167,11 @@ def log(
             if c.author:
                 typer.echo(f"Author: {c.author}")
             typer.echo(f"Date:   {_format_date(c.committed_at)}")
+            if c.sem_ver_bump and c.sem_ver_bump != "none":
+                typer.echo(f"SemVer: {c.sem_ver_bump.upper()}")
+                if c.breaking_changes:
+                    typer.echo(f"Breaking: {', '.join(c.breaking_changes[:3])}"
+                               + (f" +{len(c.breaking_changes) - 3} more" if len(c.breaking_changes) > 3 else ""))
             if c.metadata:
                 meta_parts = [f"{k}: {v}" for k, v in sorted(c.metadata.items())]
                 typer.echo(f"Meta:   {', '.join(meta_parts)}")

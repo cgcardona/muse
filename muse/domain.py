@@ -178,7 +178,17 @@ class PatchOp(TypedDict):
 type DomainOp = LeafDomainOp | PatchOp
 
 
-class StructuredDelta(TypedDict):
+SemVerBump = Literal["major", "minor", "patch", "none"]
+"""Semantic version impact of a delta.
+
+``major``  Breaking change: public symbol deleted, renamed, or signature changed.
+``minor``  Additive: new public symbol inserted.
+``patch``  Implementation-only change: body changed, signature stable.
+``none``   No semantic change (formatting, whitespace, metadata only).
+"""
+
+
+class StructuredDelta(TypedDict, total=False):
     """Rich, composable delta between two domain snapshots.
 
     ``ops`` is an ordered list of operations that transforms ``base`` into
@@ -189,11 +199,106 @@ class StructuredDelta(TypedDict):
     ``summary`` is a precomputed human-readable string — for example
     ``"3 notes added, 1 note removed"``. Plugins compute it because only they
     understand their domain semantics.
+
+    ``sem_ver_bump`` (v2, optional) is the semantic version impact of this
+    delta, computed by :func:`infer_sem_ver_bump`.  Absent for legacy records
+    or non-code domains that do not compute it.
+
+    ``breaking_changes`` (v2, optional) lists the symbol addresses whose
+    public interface was removed or incompatibly changed.
     """
 
     domain: str
     ops: list[DomainOp]
     summary: str
+    sem_ver_bump: SemVerBump
+    breaking_changes: list[str]
+
+
+# ---------------------------------------------------------------------------
+# SemVer inference helper
+# ---------------------------------------------------------------------------
+
+
+def infer_sem_ver_bump(delta: "StructuredDelta") -> tuple[SemVerBump, list[str]]:
+    """Infer the semantic version bump and breaking-change list from a delta.
+
+    Reads the ``ops`` list and applies the following rules:
+
+    * Any public symbol (name not starting with ``_``) that is deleted or
+      renamed → **major** (breaking: callers will fail).
+    * Any public symbol whose ``signature_id`` changed (signature_only or
+      full_rewrite with new signature) → **major** (breaking: call-site
+      compatibility broken).
+    * Any public symbol inserted → **minor** (additive).
+    * Any symbol whose only change is the body (``impl_only``) → **patch**.
+    * No semantic ops → **none**.
+
+    Returns:
+        A ``(bump, breaking_changes)`` tuple where ``breaking_changes`` is a
+        sorted list of symbol addresses whose public contract changed.
+
+    This function is domain-agnostic; it relies on the op address format used
+    by code plugins (``<file>::<symbol>``) and the ``new_summary`` / ``old_summary``
+    conventions from :func:`~muse.plugins.code.symbol_diff.diff_symbol_trees`.
+    For non-code domains the heuristics may not apply — plugins should override
+    by setting ``sem_ver_bump`` directly when constructing the delta.
+    """
+    ops = delta.get("ops", [])
+    bump: SemVerBump = "none"
+    breaking: list[str] = []
+
+    def _is_public(address: str) -> bool:
+        """Return True if the innermost symbol name does not start with ``_``."""
+        parts = address.split("::")
+        name = parts[-1].split(".")[-1] if parts else ""
+        return not name.startswith("_")
+
+    def _promote(current: SemVerBump, candidate: SemVerBump) -> SemVerBump:
+        order: list[SemVerBump] = ["none", "patch", "minor", "major"]
+        return candidate if order.index(candidate) > order.index(current) else current
+
+    for op in ops:
+        op_type = op.get("op", "")
+        address = str(op.get("address", ""))
+
+        if op_type == "patch":
+            # Recurse into child_ops.  We know op is a PatchOp here.
+            if op["op"] == "patch":
+                child_ops_raw: list[DomainOp] = op["child_ops"]
+                sub_delta: StructuredDelta = {"domain": "", "ops": child_ops_raw, "summary": ""}
+                sub_bump, sub_breaking = infer_sem_ver_bump(sub_delta)
+                bump = _promote(bump, sub_bump)
+                breaking.extend(sub_breaking)
+            continue
+
+        if not _is_public(address):
+            continue
+
+        if op_type == "delete":
+            bump = _promote(bump, "major")
+            breaking.append(address)
+
+        elif op_type == "insert":
+            bump = _promote(bump, "minor")
+
+        elif op_type == "replace":
+            new_summary: str = str(op.get("new_summary", ""))
+            old_summary: str = str(op.get("old_summary", ""))
+            if (
+                new_summary.startswith("renamed to ")
+                or "signature" in new_summary
+                or "signature" in old_summary
+            ):
+                bump = _promote(bump, "major")
+                breaking.append(address)
+            elif "implementation" in new_summary or "implementation" in old_summary:
+                bump = _promote(bump, "patch")
+            else:
+                bump = _promote(bump, "major")
+                breaking.append(address)
+
+    return bump, sorted(set(breaking))
 
 
 # ---------------------------------------------------------------------------
