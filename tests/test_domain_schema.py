@@ -53,12 +53,12 @@ class TestMusicPluginSchema:
     def test_schema_version_is_1(self, music_schema: DomainSchema) -> None:
         assert music_schema["schema_version"] == 1
 
-    def test_schema_has_four_dimensions(self, music_schema: DomainSchema) -> None:
-        assert len(music_schema["dimensions"]) == 4
+    def test_schema_has_five_dimensions(self, music_schema: DomainSchema) -> None:
+        assert len(music_schema["dimensions"]) == 5
 
     def test_dimension_names(self, music_schema: DomainSchema) -> None:
         names = [d["name"] for d in music_schema["dimensions"]]
-        assert names == ["melodic", "harmonic", "dynamic", "structural"]
+        assert names == ["melodic", "rhythmic", "harmonic", "dynamic", "structural"]
 
     def test_top_level_is_set_schema(self, music_schema: DomainSchema) -> None:
         top = music_schema["top_level"]
