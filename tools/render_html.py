@@ -967,41 +967,6 @@ _HTML_TEMPLATE = """\
   </div>
 </div>
 
-<div class="arch-section">
-  <div class="arch-inner">
-    <h2>How Muse Works</h2>
-    <p class="section-intro">
-      Muse is a version control system for <strong>state</strong> — any multidimensional
-      state that can be snapshotted, diffed, and merged. The core engine provides
-      the DAG, content-addressed storage, branching, merging, time-travel, and
-      conflict resolution. A domain plugin implements <strong>6 methods</strong> and
-      gets everything else for free.
-      <br><br>
-      Music is the reference implementation. Genomics sequences, scientific simulation
-      frames, 3D spatial fields, and financial time-series are all the same pattern.
-    </p>
-    <div class="arch-content">
-      {{ARCH_HTML}}
-    </div>
-  </div>
-</div>
-
-<div class="registry-callout">
-  <div class="registry-callout-inner">
-    <div class="registry-callout-text">
-      <div class="registry-callout-title">Want to version something else?</div>
-      <div class="registry-callout-sub">
-        Music is the reference implementation. The same engine works for genomics,
-        3D spatial fields, financial models, and any multidimensional state —
-        six methods between you and a complete VCS.
-      </div>
-    </div>
-    <a class="registry-callout-btn" href="domain_registry.html">
-      Domain Registry &amp; Plugin Guide →
-    </a>
-  </div>
-</div>
-
 <footer>
   <span>Generated {{GENERATED_AT}} · {{ELAPSED}}s · {{OPS}} operations</span>
   <span><a href="https://github.com/cgcardona/muse">github.com/cgcardona/muse</a></span>
