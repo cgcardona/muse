@@ -1880,7 +1880,36 @@ _HTML_TEMPLATE = """\
   </div>
 </section>
 
-{{DIFF_ALGEBRA}}
+<!-- =================== ACTIVE DOMAINS =================== -->
+<section id="registry" style="background:var(--bg2)">
+  <div class="inner">
+    <div class="section-eyebrow">Registry</div>
+    <h2>Registered Domains</h2>
+    <p class="section-lead">
+      Domains currently registered in this Muse instance. The active domain
+      is the one used when you run <code>muse commit</code>, <code>muse diff</code>,
+      and all other commands.
+    </p>
+    <div class="domain-grid">
+      {{ACTIVE_DOMAINS}}
+    </div>
+  </div>
+</section>
+
+<!-- =================== PLANNED ECOSYSTEM =================== -->
+<section id="ecosystem">
+  <div class="inner">
+    <div class="section-eyebrow">Ecosystem</div>
+    <h2>The Plugin Ecosystem</h2>
+    <p class="section-lead">
+      Music is the reference implementation. These are the domains planned
+      next — and the slot waiting for yours.
+    </p>
+    <div class="planned-grid">
+      {{PLANNED_DOMAINS}}
+    </div>
+  </div>
+</section>
 
 <!-- =================== ENGINE CAPABILITIES =================== -->
 <section id="capabilities" style="background:var(--bg2)">
@@ -2022,6 +2051,8 @@ _HTML_TEMPLATE = """\
   </div>
 </section>
 
+{{DIFF_ALGEBRA}}
+
 <!-- =================== BUILD =================== -->
 <section id="build" style="background:var(--bg)">
   <div class="inner">
@@ -2088,37 +2119,6 @@ _HTML_TEMPLATE = """\
       · CRDT extension →
       <a href="../docs/guide/crdt-reference.md">docs/guide/crdt-reference.md</a>
     </p>
-  </div>
-</section>
-
-<!-- =================== ACTIVE DOMAINS =================== -->
-<section id="registry" style="background:var(--bg2)">
-  <div class="inner">
-    <div class="section-eyebrow">Registry</div>
-    <h2>Registered Domains</h2>
-    <p class="section-lead">
-      Domains currently registered in this Muse instance. The active domain
-      is the one used when you run <code>muse commit</code>, <code>muse diff</code>,
-      and all other commands.
-    </p>
-    <div class="domain-grid">
-      {{ACTIVE_DOMAINS}}
-    </div>
-  </div>
-</section>
-
-<!-- =================== PLANNED ECOSYSTEM =================== -->
-<section id="ecosystem">
-  <div class="inner">
-    <div class="section-eyebrow">Ecosystem</div>
-    <h2>The Plugin Ecosystem</h2>
-    <p class="section-lead">
-      Music is the reference implementation. These are the domains planned
-      next — and the slot waiting for yours.
-    </p>
-    <div class="planned-grid">
-      {{PLANNED_DOMAINS}}
-    </div>
   </div>
 </section>
 
