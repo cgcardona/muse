@@ -850,6 +850,16 @@ _HTML_TEMPLATE = """\
     }
     .dim-pill.conflict-pill { background:rgba(248,81,73,0.2); color:var(--red) !important; }
 
+    /* ---- inline SVG icons ---- */
+    .ico-inline {
+      width: 13px; height: 13px;
+      display: inline-block; vertical-align: -0.15em;
+      flex-shrink: 0;
+    }
+    .ico-conflict { color: #f85149; }
+    .ico-check    { color: #3fb950; }
+    .ico { width: 1em; height: 1em; display: inline-block; vertical-align: -0.15em; flex-shrink: 0; }
+
     /* ---- shared nav ---- */
     nav {
       background: var(--header-bg);
@@ -972,9 +982,9 @@ _HTML_TEMPLATE = """\
       <div class="dim-legend-item"><span style="display:inline-block;width:22px;height:14px;border-radius:3px;background:var(--bg3);border:1px solid var(--border);vertical-align:middle;margin-right:6px"></span> Unchanged</div>
     </div>
     <div class="dim-conflict-note">
-      <strong>⚡ Merge conflict (shared-state.mid)</strong> — shared-state.mid had both-sides changes in
+      <strong><svg class="ico-inline ico-conflict" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Merge conflict (shared-state.mid)</strong> — shared-state.mid had both-sides changes in
       <strong style="color:#ef5350">structural</strong> (manual resolution required).
-      <em>✓ melodic auto-merged from left</em> · <em>✓ harmonic auto-merged from right</em> —
+      <em><svg class="ico-inline ico-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> melodic auto-merged from left</em> · <em><svg class="ico-inline ico-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> harmonic auto-merged from right</em> —
       only 1 of 5 dimensions conflicted. Git would have flagged the entire file as a conflict.
     </div>
   </div>
@@ -1269,7 +1279,7 @@ function drawDAG() {
         tipDimEl.innerHTML = tipDims.length
           ? tipDims.map(d => {
               const c = tipConf.includes(d);
-              return `<span style="color:${DIM_COLORS[d]};margin-right:6px">● ${d}${c?' ⚡':''}</span>`;
+              return `<span style="color:${DIM_COLORS[d]};margin-right:6px">${SVG.dot} ${d}${c?' '+SVG.zap:''}</span>`;
             }).join('')
           : '';
       }
@@ -1292,9 +1302,23 @@ function drawDAG() {
   });
 }
 
+/* ===== SVG icon library ===== */
+const SVG = {
+  music:    `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+  branch:   `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>`,
+  merge:    `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>`,
+  conflict: `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  revert:   `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.53"/></svg>`,
+  check:    `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+  dot:      `<svg class="ico" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="5"/></svg>`,
+  zap:      `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+  pause:    `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`,
+  eye:      `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
+};
+
 /* ===== Act metadata ===== */
 const ACT_ICONS = {
-  1:'🎵', 2:'🌿', 3:'⚡', 4:'🔀', 5:'⏪',
+  1: SVG.music, 2: SVG.branch, 3: SVG.merge, 4: SVG.conflict, 5: SVG.revert,
 };
 const ACT_COLORS = {
   1:'#4f8ef7', 2:'#3fb950', 3:'#f85149', 4:'#ab47bc', 5:'#f9a825',
@@ -1341,7 +1365,7 @@ function buildActJumpBar() {
   // Reveal All button
   const allBtn = document.createElement('button');
   allBtn.className = 'act-jump-btn reveal-all';
-  allBtn.textContent = '✦ Reveal All';
+  allBtn.innerHTML = SVG.eye + ' Reveal All';
   allBtn.title = 'Reveal all 69 events at once';
   allBtn.addEventListener('click', () => {
     pauseTour();
@@ -1421,7 +1445,7 @@ function buildEventLog() {
           const col = DIM_COLORS[d];
           const cls = isc ? 'dim-pill conflict-pill' : 'dim-pill';
           const sty = isc ? '' : `color:${col};border-color:${col};background:${col}22`;
-          return `<span class="${cls}" style="${sty}">${isc ? '⚡ ' : ''}${d}</span>`;
+          return `<span class="${cls}" style="${sty}">${isc ? SVG.zap+' ' : ''}${d}</span>`;
         }).join('') + '</div>';
       })() +
       `<div class="event-meta">` +
@@ -1484,7 +1508,7 @@ function buildDimTimeline() {
       if (active) {
         inner.style.background = col + '33';
         inner.style.color = col;
-        inner.textContent = isConf ? '⚡' : '●';
+        inner.innerHTML = isConf ? SVG.zap : SVG.dot;
       }
       cell.appendChild(inner);
       row.appendChild(cell);
@@ -1562,14 +1586,14 @@ function revealStep(stepIdx) {
 function playTour() {
   if (isPlaying) return;
   isPlaying = true;
-  document.getElementById('btn-play').textContent = '⏸ Pause';
+  document.getElementById('btn-play').innerHTML = SVG.pause + ' Pause';
 
   function advance() {
     if (!isPlaying) return;
     const next = currentStep + 1;
     if (next >= DATA.events.length) {
       pauseTour();
-      document.getElementById('btn-play').textContent = '✓ Done';
+      document.getElementById('btn-play').innerHTML = SVG.check + ' Done';
       return;
     }
     revealStep(next);
