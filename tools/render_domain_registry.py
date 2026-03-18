@@ -161,23 +161,6 @@ _TYPED_DELTA_EXAMPLE = """\
   }
 }"""
 
-_OT_MERGE_EXAMPLE = """\
-# Scenario A — independent InsertOps at different addresses → commute → clean merge
-  left:  InsertOp("ot-notes-a.mid")   # tick=0,   C4 E4 G4
-  right: InsertOp("ot-notes-b.mid")   # tick=480, D4 F4 A4
-
-  transform(left, right) → no overlap → both applied
-  result: both files present, zero conflicts  ✓
-
-# Scenario B — same address, different content → genuine conflict
-  base:  shared-melody.mid  # C4 G4
-  left:  ReplaceOp("shared-melody.mid")  # C4 E4 G4  (major triad)
-  right: ReplaceOp("shared-melody.mid")  # C4 Eb4 G4 (minor triad)
-
-  transform(left, right) → same address, non-commuting content
-  result: ❌ Merge conflict in 1 file(s):
-    CONFLICT (both modified): shared-melody.mid
-  [musical intent differs — human must choose major or minor]"""
 
 _SCAFFOLD_SNIPPET = """\
 from __future__ import annotations
@@ -257,10 +240,13 @@ _ICONS: dict[str, str] = {
     "search":    _icon('<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>'),
     "lock":      _icon('<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'),
     # CRDT primitives
-    "union":     _icon('<path d="M5 5v8a7 7 0 0 0 14 0V5"/><line x1="3" y1="19" x2="21" y2="19"/>'),
-    "edit":      _icon('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'),
-    "arrow-up":  _icon('<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>'),
-    "git-branch":_icon('<line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>'),
+    "union":       _icon('<path d="M5 5v8a7 7 0 0 0 14 0V5"/><line x1="3" y1="19" x2="21" y2="19"/>'),
+    "edit":        _icon('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'),
+    "arrow-up":    _icon('<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>'),
+    "git-branch":  _icon('<line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>'),
+    # OT scenario outcome badges
+    "check-circle":_icon('<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>'),
+    "x-circle":    _icon('<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>'),
 }
 
 
@@ -468,7 +454,6 @@ def render(output_path: pathlib.Path) -> None:
     html = html.replace("{{DIST_CARDS}}", dist_html)
     html = html.replace("{{SCAFFOLD_SNIPPET}}", _SCAFFOLD_SNIPPET)
     html = html.replace("{{TYPED_DELTA_EXAMPLE}}", _TYPED_DELTA_EXAMPLE)
-    html = html.replace("{{OT_MERGE_EXAMPLE}}", _OT_MERGE_EXAMPLE)
     html = html.replace("{{CRDT_CARDS}}", crdt_cards_html)
 
     # Inject SVG icons into template placeholders
@@ -488,7 +473,9 @@ def render(output_path: pathlib.Path) -> None:
         "GLOBE":     _ICONS["globe"],
         "SEARCH":    _ICONS["search"],
         "PACKAGE":   _ICONS["package"],
-        "LOCK":      _ICONS["lock"],
+        "LOCK":         _ICONS["lock"],
+        "CHECK_CIRCLE": _ICONS["check-circle"],
+        "X_CIRCLE":     _ICONS["x-circle"],
     }
     for slot, svg in _ICON_SLOTS.items():
         html = html.replace(f"{{{{ICON_{slot}}}}}", svg)
@@ -828,6 +815,78 @@ _HTML_TEMPLATE = """\
       overflow-x: auto;
       line-height: 1.65;
     }
+    /* ---- OT Merge scenario cards ---- */
+    .ot-scenarios { display: flex; flex-direction: column; gap: 10px; }
+    .ot-scenario {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-left: 3px solid transparent;
+      border-radius: 6px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+    .ot-clean    { border-left-color: #3fb950; }
+    .ot-conflict { border-left-color: #ef5350; }
+    .ot-scenario-hdr { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .ot-scenario-label {
+      font-family: var(--mono);
+      font-size: 9.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--dim);
+    }
+    .ot-scenario-title { font-size: 11.5px; color: var(--mute); }
+    .ot-ops { display: flex; flex-direction: column; gap: 5px; }
+    .ot-op {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-family: var(--mono);
+      font-size: 11.5px;
+      flex-wrap: wrap;
+    }
+    .ot-op-side {
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--dim);
+      background: var(--bg3);
+      padding: 1px 6px;
+      border-radius: 3px;
+      min-width: 34px;
+      text-align: center;
+    }
+    .ot-op-type { font-weight: 700; padding: 1px 7px; border-radius: 3px; font-size: 10.5px; }
+    .ot-insert  { background: rgba(63,185,80,0.13); color: #3fb950; }
+    .ot-replace { background: rgba(249,168,37,0.13); color: #f9a825; }
+    .ot-op-addr { color: #98c379; }
+    .ot-op-meta { color: var(--dim); font-size: 10.5px; }
+    .ot-result {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding-top: 9px;
+      border-top: 1px solid var(--border);
+    }
+    .ot-reason { font-family: var(--mono); font-size: 11px; color: var(--mute); }
+    .ot-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 12px;
+      white-space: nowrap;
+    }
+    .ot-badge .icon { width: 11px; height: 11px; vertical-align: -0.05em; }
+    .ot-badge-clean    { background: rgba(63,185,80,0.1); color: #3fb950; border: 1px solid rgba(63,185,80,0.3); }
+    .ot-badge-conflict { background: rgba(239,83,80,0.1); color: #ef5350; border: 1px solid rgba(239,83,80,0.3); }
+
     .cap-showcase-domain-grid {
       display: flex;
       flex-direction: column;
@@ -1313,7 +1372,59 @@ _HTML_TEMPLATE = """\
             transformation. Operations at different addresses commute automatically —
             only operations on the same address with incompatible intent surface a conflict.
           </p>
-          <pre class="cap-showcase-output">{{OT_MERGE_EXAMPLE}}</pre>
+          <div class="ot-scenarios">
+
+            <div class="ot-scenario ot-clean">
+              <div class="ot-scenario-hdr">
+                <span class="ot-scenario-label">Scenario A</span>
+                <span class="ot-scenario-title">Independent ops at different addresses</span>
+              </div>
+              <div class="ot-ops">
+                <div class="ot-op">
+                  <span class="ot-op-side">left</span>
+                  <span class="ot-op-type ot-insert">InsertOp</span>
+                  <span class="ot-op-addr">"ot-notes-a.mid"</span>
+                  <span class="ot-op-meta">tick=0 · C4 E4 G4</span>
+                </div>
+                <div class="ot-op">
+                  <span class="ot-op-side">right</span>
+                  <span class="ot-op-type ot-insert">InsertOp</span>
+                  <span class="ot-op-addr">"ot-notes-b.mid"</span>
+                  <span class="ot-op-meta">tick=480 · D4 F4 A4</span>
+                </div>
+              </div>
+              <div class="ot-result">
+                <span class="ot-reason">transform → no overlap → ops commute</span>
+                <span class="ot-badge ot-badge-clean">{{ICON_CHECK_CIRCLE}} Clean merge · both files applied</span>
+              </div>
+            </div>
+
+            <div class="ot-scenario ot-conflict">
+              <div class="ot-scenario-hdr">
+                <span class="ot-scenario-label">Scenario B</span>
+                <span class="ot-scenario-title">Same address, conflicting musical intent</span>
+              </div>
+              <div class="ot-ops">
+                <div class="ot-op">
+                  <span class="ot-op-side">left</span>
+                  <span class="ot-op-type ot-replace">ReplaceOp</span>
+                  <span class="ot-op-addr">"shared-melody.mid"</span>
+                  <span class="ot-op-meta">C4 E4 G4 · major triad</span>
+                </div>
+                <div class="ot-op">
+                  <span class="ot-op-side">right</span>
+                  <span class="ot-op-type ot-replace">ReplaceOp</span>
+                  <span class="ot-op-addr">"shared-melody.mid"</span>
+                  <span class="ot-op-meta">C4 Eb4 G4 · minor triad</span>
+                </div>
+              </div>
+              <div class="ot-result">
+                <span class="ot-reason">transform → same address · non-commuting content</span>
+                <span class="ot-badge ot-badge-conflict">{{ICON_X_CIRCLE}} Conflict · human resolves</span>
+              </div>
+            </div>
+
+          </div>
         </div>
       </div>
 
