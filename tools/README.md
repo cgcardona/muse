@@ -17,13 +17,13 @@ Output lands in `artifacts/` (gitignored):
 | File | Description |
 |---|---|
 | `artifacts/tour_de_force.json` | Structured event log + full commit DAG |
-| `artifacts/tour_de_force.html` | Self-contained shareable visualization |
+| `artifacts/demo.html` | Self-contained shareable visualization |
 
 Open the HTML in any browser:
 
 ```bash
-open artifacts/tour_de_force.html        # macOS
-xdg-open artifacts/tour_de_force.html   # Linux
+open artifacts/demo.html        # macOS
+xdg-open artifacts/demo.html   # Linux
 ```
 
 ### Options

@@ -1,7 +1,7 @@
 # Muse Tour de Force — Video Narration Script (v0.1.1)
 
 > **Format:** YouTube walkthrough of the Tour de Force interactive demo.
-> Open `artifacts/tour_de_force.html` before recording. Click **Play Tour**
+> Open `artifacts/demo.html` before recording. Click **Play Tour**
 > and let the demo advance step by step while you narrate. Timestamps are
 > approximate at 1.2 s/step; adjust to your natural pace.
 >
