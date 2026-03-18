@@ -219,6 +219,7 @@ def _load_domains() -> list[dict]:
                 "description": "MIDI and audio file versioning with note-level diff and semantic merge",
                 "dimensions": [
                     {"name": "melodic",    "description": "Note pitches and durations over time"},
+                    {"name": "rhythmic",   "description": "Timing, groove, and quantisation (shares notes bucket with melodic)"},
                     {"name": "harmonic",   "description": "Chord progressions and key signatures"},
                     {"name": "dynamic",    "description": "Velocity and expression curves"},
                     {"name": "structural", "description": "Track layout, time signatures, tempo map"},

@@ -245,7 +245,7 @@ class MusicPlugin:
 
         2. **Dimension-level merge** — for ``.mid`` files that survive the
            file-level check, the MIDI event stream is split into orthogonal
-           dimension slices (notes/melodic, harmonic, dynamic, structural).
+           dimension slices (notes/melodic/rhythmic, harmonic, dynamic, structural).
            Each dimension is merged independently. Dimension-specific
            ``ours``/``theirs`` rules in ``.museattributes`` are honoured.
            Only dimensions where *both* sides changed AND no resolvable rule
@@ -473,9 +473,9 @@ class MusicPlugin:
     def schema(self) -> DomainSchema:
         """Return the full structural schema for the music domain.
 
-        Declares four semantic dimensions — melodic, harmonic, dynamic, and
-        structural — that the core diff algorithm library and OT merge
-        engine use to drive per-dimension operations.
+        Declares five semantic dimensions — melodic, rhythmic, harmonic,
+        dynamic, and structural — that the core diff algorithm library and OT
+        merge engine use to drive per-dimension operations.
 
         Top level is a ``SetSchema``: the music workspace is an unordered
         collection of audio/MIDI files, each identified by its SHA-256 content
@@ -485,6 +485,10 @@ class MusicPlugin:
 
         - **melodic** — the sequence of note events over time. LCS-diffed so
           that insertions and deletions of individual notes are surfaced.
+        - **rhythmic** — timing, groove, and quantisation. Shares the internal
+          ``notes`` bucket with melodic (MIDI interleaves pitch and timing in
+          the same event stream), so melodic and rhythmic changes are resolved
+          together during merge.
         - **harmonic** — the sequence of chord events and key-signature changes.
           LCS-diffed independently of the melodic dimension.
         - **dynamic** — velocity and expression curves as a 1-D float tensor.
@@ -507,6 +511,18 @@ class MusicPlugin:
                 DimensionSpec(
                     name="melodic",
                     description="Note pitches and durations over time",
+                    schema=SequenceSchema(
+                        kind="sequence",
+                        element_type="note_event",
+                        identity="by_position",
+                        diff_algorithm="lcs",
+                        alphabet=None,
+                    ),
+                    independent_merge=True,
+                ),
+                DimensionSpec(
+                    name="rhythmic",
+                    description="Timing, groove, and quantisation (shares notes bucket with melodic)",
                     schema=SequenceSchema(
                         kind="sequence",
                         element_type="note_event",
