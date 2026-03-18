@@ -45,15 +45,28 @@ app = typer.Typer()
 
 
 def _read_branch(root: pathlib.Path) -> str:
+    """Return the current branch name by reading ``.muse/HEAD``."""
     head_ref = (root / ".muse" / "HEAD").read_text().strip()
     return head_ref.removeprefix("refs/heads/").strip()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
+    """Return the repository UUID from ``.muse/repo.json``."""
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
 def _restore_from_manifest(root: pathlib.Path, manifest: dict[str, str]) -> None:
+    """Rebuild ``muse-work/`` to exactly match *manifest*.
+
+    Wipes the existing ``muse-work/`` directory (destructive), recreates it,
+    and restores each object from the local content-addressed store.  All
+    parent directories for nested paths are created as needed.
+
+    Args:
+        root:     Repository root (parent of ``.muse/``).
+        manifest: Mapping of workspace-relative POSIX paths to SHA-256
+                  object IDs to restore.
+    """
     workdir = root / "muse-work"
     if workdir.exists():
         shutil.rmtree(workdir)

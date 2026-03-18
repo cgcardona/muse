@@ -126,7 +126,23 @@ def write_merge_state(
     conflict_paths: list[str],
     other_branch: str | None = None,
 ) -> None:
-    """Write ``.muse/MERGE_STATE.json`` to signal an in-progress conflicted merge."""
+    """Write ``.muse/MERGE_STATE.json`` to signal an in-progress conflicted merge.
+
+    Called by the ``muse merge`` command when the merge produces at least one
+    conflict that cannot be auto-resolved.  The file is read back by
+    :func:`read_merge_state` on subsequent ``muse status`` and ``muse commit``
+    invocations to surface conflict state to the user.
+
+    Args:
+        root:           Repository root (parent of ``.muse/``).
+        base_commit:    Commit ID of the merge base (common ancestor).
+        ours_commit:    Commit ID of the current branch (HEAD) at merge time.
+        theirs_commit:  Commit ID of the branch being merged in.
+        conflict_paths: Sorted list of workspace-relative POSIX paths with
+                        unresolvable conflicts.
+        other_branch:   Name of the branch being merged in; stored for
+                        informational display but not required for resolution.
+    """
     merge_state_path = root / ".muse" / _MERGE_STATE_FILENAME
     payload: MergeStatePayload = {
         "base_commit": base_commit,
@@ -153,7 +169,20 @@ def apply_resolution(
     rel_path: str,
     object_id: str,
 ) -> None:
-    """Copy the object identified by *object_id* from the local store to ``muse-work/<rel_path>``."""
+    """Restore a specific object version to ``muse-work/<rel_path>``.
+
+    Used by the ``muse merge --resolve`` workflow: after a user has chosen
+    which version of a conflicting file to keep, this function writes that
+    version into the working directory so ``muse commit`` can snapshot it.
+
+    Args:
+        root:      Repository root (parent of ``.muse/``).
+        rel_path:  Workspace-relative POSIX path of the conflicting file.
+        object_id: SHA-256 of the chosen resolution content in the object store.
+
+    Raises:
+        FileNotFoundError: When *object_id* is not present in the local store.
+    """
     from muse.core.object_store import read_object
 
     content = read_object(root, object_id)
@@ -181,7 +210,19 @@ def diff_snapshots(
     base_manifest: dict[str, str],
     other_manifest: dict[str, str],
 ) -> set[str]:
-    """Return the set of paths that differ between *base_manifest* and *other_manifest*."""
+    """Return the set of paths that differ between *base_manifest* and *other_manifest*.
+
+    A path is "different" if it was added (in *other* but not *base*), deleted
+    (in *base* but not *other*), or modified (present in both with different
+    content hashes).
+
+    Args:
+        base_manifest:  Path → content-hash map for the ancestor snapshot.
+        other_manifest: Path → content-hash map for the other snapshot.
+
+    Returns:
+        Set of workspace-relative POSIX paths that differ.
+    """
     base_paths = set(base_manifest.keys())
     other_paths = set(other_manifest.keys())
     added = other_paths - base_paths
@@ -207,7 +248,30 @@ def apply_merge(
     theirs_changed: set[str],
     conflict_paths: set[str],
 ) -> dict[str, str]:
-    """Build the merged snapshot manifest for a conflict-free 3-way merge."""
+    """Build the merged snapshot manifest for a conflict-free 3-way merge.
+
+    Starts from *base_manifest* and applies non-conflicting changes from both
+    branches:
+
+    - Ours-only changes (in *ours_changed* but not *conflict_paths*) are taken
+      from *ours_manifest*.  Deletions are handled by the absence of the path
+      in *ours_manifest*.
+    - Theirs-only changes (in *theirs_changed* but not *conflict_paths*) are
+      taken from *theirs_manifest* by the same logic.
+    - Paths in *conflict_paths* are excluded — callers must resolve them
+      separately before producing a final merged snapshot.
+
+    Args:
+        base_manifest:  Path → content-hash for the common ancestor.
+        ours_manifest:  Path → content-hash for our branch.
+        theirs_manifest: Path → content-hash for their branch.
+        ours_changed:   Paths changed by our branch (from :func:`diff_snapshots`).
+        theirs_changed: Paths changed by their branch.
+        conflict_paths: Paths with concurrent changes — excluded from output.
+
+    Returns:
+        Merged path → content-hash mapping; conflict paths are absent.
+    """
     merged: dict[str, str] = dict(base_manifest)
     for path in ours_changed - conflict_paths:
         if path in ours_manifest:

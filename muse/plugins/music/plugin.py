@@ -254,6 +254,22 @@ class MusicPlugin:
         3. **Manual override** — ``manual`` strategy in ``.museattributes``
            forces a path into the conflict list even when the engine would
            normally auto-resolve it.
+
+        Args:
+            base:      Snapshot at the common ancestor commit.
+            left:      Snapshot for the *ours* (current) branch.  The distinction
+                       between ``left`` and ``right`` only affects the ``applied_strategies``
+                       key in the result; the merge is symmetric for clean paths.
+            right:     Snapshot for the *theirs* (incoming) branch.
+            repo_root: Path to the repository root so ``.museattributes`` and the
+                       object store can be located.  ``None`` disables attribute
+                       loading and MIDI reconstruction (all conflicts become hard).
+
+        Returns:
+            A :class:`~muse.domain.MergeResult` whose ``snapshot`` holds the
+            merged manifest (conflict paths absent), ``conflicts`` lists the
+            unresolvable paths, and ``applied_strategies`` records which
+            ``.museattributes`` rules were used.
         """
         import hashlib as _hashlib
 
@@ -858,9 +874,25 @@ def _diff_modified_file(
     new_hash: str,
     repo_root: pathlib.Path | None,
 ) -> DomainOp:
-    """Produce the best available op for a modified file.
+    """Produce the richest available operation for a modified file.
 
-    Tries deep MIDI diff when possible; falls back to ``ReplaceOp``.
+    For ``.mid`` files where both content revisions are readable from the
+    object store, performs a full note-level MIDI diff and returns a
+    ``PatchOp`` carrying the individual ``InsertOp``/``DeleteOp`` child
+    operations.  Falls back to a ``ReplaceOp`` (opaque before/after hash
+    pair) when the file is not a MIDI file, ``repo_root`` is ``None``, or
+    either content revision cannot be retrieved from the store.
+
+    Args:
+        path:      Workspace-relative POSIX path of the modified file.
+        old_hash:  SHA-256 of the base content in the object store.
+        new_hash:  SHA-256 of the current content in the object store.
+        repo_root: Repository root for object store access.  ``None`` forces
+                   immediate fallback to ``ReplaceOp``.
+
+    Returns:
+        A ``PatchOp`` with note-level child ops when deep diff succeeds,
+        otherwise a ``ReplaceOp`` with the opaque before/after content hashes.
     """
     if path.lower().endswith(".mid") and repo_root is not None:
         from muse.core.object_store import read_object

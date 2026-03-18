@@ -89,7 +89,14 @@ class InsertOp(TypedDict):
 
 
 class DeleteOp(TypedDict):
-    """An element was removed from a collection."""
+    """An element was removed from a collection.
+
+    ``position`` is the integer index that was removed for ordered sequences,
+    or ``None`` for unordered sets.  ``content_id`` is the SHA-256 of the
+    deleted content so that the operation can be applied idempotently (already-
+    absent elements can be skipped).  ``content_summary`` is the human-readable
+    description of what was removed, for ``muse show``.
+    """
 
     op: Literal["delete"]
     address: DomainAddress
@@ -99,7 +106,14 @@ class DeleteOp(TypedDict):
 
 
 class MoveOp(TypedDict):
-    """An element was repositioned within an ordered sequence."""
+    """An element was repositioned within an ordered sequence.
+
+    ``from_position`` is the source index (in the pre-move sequence) and
+    ``to_position`` is the destination index (in the post-move sequence).
+    Both are mandatory — moves are only meaningful in ordered collections.
+    ``content_id`` identifies the element being moved so that the operation
+    can be validated during replay.
+    """
 
     op: Literal["move"]
     address: DomainAddress
@@ -109,7 +123,16 @@ class MoveOp(TypedDict):
 
 
 class ReplaceOp(TypedDict):
-    """An element's value changed (atomic, leaf-level replacement)."""
+    """An element's value changed (atomic, leaf-level replacement).
+
+    ``old_content_id`` and ``new_content_id`` are SHA-256 hashes of the
+    before- and after-content.  They enable three-way merge engines to detect
+    concurrent conflicting modifications (both changed from the same
+    ``old_content_id`` to different ``new_content_id`` values).
+    ``old_summary`` and ``new_summary`` are human-readable strings for display,
+    analogous to ``content_summary`` on :class:`InsertOp`.
+    ``position`` is the index within the container (``None`` for unordered).
+    """
 
     op: Literal["replace"]
     address: DomainAddress
@@ -215,6 +238,7 @@ class MergeResult:
 
     @property
     def is_clean(self) -> bool:
+        """``True`` when no unresolvable conflicts remain."""
         return len(self.conflicts) == 0
 
 
