@@ -33,8 +33,13 @@ Code-domain semantic commands — Phase 2 (paradigm shift)::
     coupling        file co-change analysis — hidden dependencies
     compare         semantic comparison between any two historical snapshots
     languages       language and symbol-type breakdown
-    patch           surgical semantic patch — modify exactly one symbol
-    query           symbol graph predicate DSL — SQL for your codebase
+    patch           surgical semantic patch — modify exactly one symbol (all-language validation)
+    query           symbol graph predicate DSL — SQL for your codebase (--all-commits mode)
+
+Code-domain semantic commands — Phase 3 (gap-closers)::
+
+    deps            import graph + Python call-graph with --reverse
+    find-symbol     cross-commit, cross-branch content_id / name search
 """
 from __future__ import annotations
 
@@ -49,9 +54,11 @@ from muse.cli.commands import (
     commit,
     compare,
     coupling,
+    deps,
     detect_refactor,
     diff,
     domains,
+    find_symbol,
     grep,
     harmony,
     hotspots,
@@ -126,8 +133,10 @@ cli.add_typer(stable.app,          name="stable",           help="[code] Symbol 
 cli.add_typer(coupling.app,        name="coupling",         help="[code] File co-change analysis — discover hidden semantic dependencies.")
 cli.add_typer(compare.app,         name="compare",          help="[code] Deep semantic comparison between any two historical snapshots.")
 cli.add_typer(languages.app,       name="languages",        help="[code] Language and symbol-type breakdown of a snapshot.")
-cli.add_typer(patch.app,           name="patch",            help="[code] Surgical semantic patch — modify exactly one named symbol.")
-cli.add_typer(query.app,           name="query",            help="[code] Symbol graph predicate DSL — SQL for your codebase.")
+cli.add_typer(patch.app,           name="patch",            help="[code] Surgical semantic patch — modify exactly one named symbol (all-language syntax validation).")
+cli.add_typer(query.app,           name="query",            help="[code] Symbol graph predicate DSL — SQL for your codebase (--all-commits for temporal search).")
+cli.add_typer(deps.app,            name="deps",             help="[code] Import graph + Python call-graph; --reverse for callers/importers.")
+cli.add_typer(find_symbol.app,     name="find-symbol",      help="[code] Cross-commit, cross-branch symbol search by hash, name, or kind.")
 
 
 if __name__ == "__main__":

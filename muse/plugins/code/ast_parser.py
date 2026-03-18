@@ -550,6 +550,34 @@ class TreeSitterAdapter:
         """Whitespace-normalised SHA-256 of the source — insensitive to reformatting."""
         return _sha256_bytes(_norm_ws(source))
 
+    def validate_source(self, source: bytes) -> str | None:
+        """Return an error description if *source* has syntax errors, else None.
+
+        tree-sitter always produces a parse tree even for broken code.
+        Errors appear as nodes with ``type == "ERROR"`` or ``is_missing == True``.
+        ``root_node.has_error`` is the fast top-level check.
+        """
+        try:
+            tree = self._parser.parse(source)
+        except Exception as exc:  # noqa: BLE001
+            return f"parser error: {exc}"
+
+        if not tree.root_node.has_error:
+            return None
+
+        # Walk the tree to find the first concrete error site.
+        error_node = _first_error_node(tree.root_node)
+        if error_node is not None:
+            line = error_node.start_point[0] + 1
+            fragment = source[
+                error_node.start_byte : min(error_node.end_byte, error_node.start_byte + 60)
+            ].decode("utf-8", errors="replace").strip()
+            msg = f"syntax error on line {line}"
+            if fragment:
+                msg += f": {fragment!r}"
+            return msg
+        return "syntax error (unknown location)"
+
 
 def _make_ts_adapter(spec: LangSpec) -> LanguageAdapter:
     """Build a :class:`TreeSitterAdapter`; fall back to :class:`FallbackAdapter` on error.
@@ -932,3 +960,46 @@ def file_content_id(source: bytes, file_path: str) -> str:
         Hex-encoded SHA-256 digest — AST-based for Python, raw-bytes for others.
     """
     return adapter_for_path(file_path).file_content_id(source)
+
+
+def _first_error_node(node: Node) -> Node | None:
+    """Return the first ERROR or MISSING node in *node*'s subtree, depth-first."""
+    if node.type == "ERROR" or node.is_missing:
+        return node
+    for child in node.children:
+        found = _first_error_node(child)
+        if found is not None:
+            return found
+    return None
+
+
+def validate_syntax(source: bytes, file_path: str) -> str | None:
+    """Return a human-readable error description if *source* has syntax errors.
+
+    Covers Python (via :mod:`ast`) and all tree-sitter languages.  Returns
+    ``None`` for valid files and for file types without a parser.
+
+    This is used by ``muse patch`` to verify that a surgical replacement
+    does not introduce a syntax error before writing the result to disk.
+
+    Args:
+        source:    UTF-8 encoded source bytes to validate.
+        file_path: Workspace-relative path — used to select the parser.
+
+    Returns:
+        A human-readable error string, or ``None`` if the file is valid.
+    """
+    suffix = pathlib.PurePosixPath(file_path).suffix.lower()
+
+    if suffix in {".py", ".pyi"}:
+        try:
+            ast.parse(source)
+            return None
+        except SyntaxError as exc:
+            return f"syntax error on line {exc.lineno}: {exc.msg}"
+
+    adapter = adapter_for_path(file_path)
+    if isinstance(adapter, TreeSitterAdapter):
+        return adapter.validate_source(source)
+
+    return None
