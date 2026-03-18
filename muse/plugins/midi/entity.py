@@ -62,7 +62,7 @@ from muse.domain import (
     InsertOp,
     MutateOp,
 )
-from muse.plugins.music.midi_diff import NoteKey, _note_content_id, _note_summary  # noqa: PLC2701
+from muse.plugins.midi.midi_diff import NoteKey, _note_content_id, _note_summary  # noqa: PLC2701
 
 logger = logging.getLogger(__name__)
 
@@ -320,7 +320,7 @@ def diff_with_entity_ids(
 ) -> list[DomainOp]:
     """Produce an entity-aware diff between two note lists.
 
-    Compared to the content-hash-only diff in :mod:`~muse.plugins.music.midi_diff`,
+    Compared to the content-hash-only diff in :mod:`~muse.plugins.midi.midi_diff`,
     this function detects *mutations* — cases where the same entity_id appears
     in both lists with different field values — and emits ``MutateOp`` entries
     instead of ``DeleteOp + InsertOp`` pairs.

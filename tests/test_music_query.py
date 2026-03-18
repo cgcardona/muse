@@ -1,4 +1,4 @@
-"""Tests for muse.plugins.music._music_query — tokenizer, parser, evaluator."""
+"""Tests for muse.plugins.midi._music_query — tokenizer, parser, evaluator."""
 from __future__ import annotations
 
 import datetime
@@ -6,7 +6,7 @@ import datetime
 import pytest
 
 from muse.core.store import CommitRecord
-from muse.plugins.music._music_query import (
+from muse.plugins.midi._midi_query import (
     AndNode,
     EqNode,
     NotNode,
@@ -15,8 +15,8 @@ from muse.plugins.music._music_query import (
     evaluate_node,
     parse_query,
 )
-from muse.plugins.music._query import NoteInfo
-from muse.plugins.music.midi_diff import NoteKey
+from muse.plugins.midi._query import NoteInfo
+from muse.plugins.midi.midi_diff import NoteKey
 
 
 def _make_commit(

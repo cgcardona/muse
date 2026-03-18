@@ -1,11 +1,11 @@
-"""Tests for muse.plugins.music.entity — NoteEntity, EntityIndex, assign/diff."""
+"""Tests for muse.plugins.midi.entity — NoteEntity, EntityIndex, assign/diff."""
 from __future__ import annotations
 
 import pathlib
 
 import pytest
 
-from muse.plugins.music.entity import (
+from muse.plugins.midi.entity import (
     EntityIndex,
     EntityIndexEntry,
     NoteEntity,
@@ -15,7 +15,7 @@ from muse.plugins.music.entity import (
     read_entity_index,
     write_entity_index,
 )
-from muse.plugins.music.midi_diff import NoteKey, _note_content_id
+from muse.plugins.midi.midi_diff import NoteKey, _note_content_id
 
 
 def _key(pitch: int = 60, velocity: int = 80, start_tick: int = 0,

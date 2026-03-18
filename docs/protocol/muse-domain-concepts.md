@@ -35,11 +35,11 @@ domain-specific meaning.
 
 ## The Term "Variation"
 
-**"Variation" is currently a music-domain concept.** It is not part of the core
+**"Variation" is currently a midi-domain concept.** It is not part of the core
 Muse engine in v0.1.1. This section explains its current meaning and how it might
 generalize.
 
-### Current meaning (music domain)
+### Current meaning (MIDI domain)
 
 In the music plugin context — specifically the Stori DAW integration —
 a *Variation* is a **proposed change set awaiting human review** before being
@@ -89,7 +89,7 @@ domain's plugin and UX layer.
 
 ## Cross-Domain Term Mapping
 
-When building a new domain plugin, these music-domain terms have natural
+When building a new domain plugin, these midi-domain terms have natural
 analogues:
 
 | Music term | Generic concept | Example (Genomics) | Example (Climate) |
@@ -119,7 +119,7 @@ as `dict[str, str]` — no music-specific meaning is enforced.
 - The `muse groove-check`, `muse emotion-diff`, `muse harmony`, `muse dynamics`
   commands
 - `.museattributes` merge strategies keyed on track names and musical dimensions
-  (harmonic, rhythmic, melodic, structural, dynamic) — though the file format
+  (pitch_bend, notes, notes, track_structure, cc_volume) — though the file format
   itself could generalize to any domain
 
 ### Potentially cross-domain (implemented for music, could generalize)

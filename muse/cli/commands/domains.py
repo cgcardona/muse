@@ -9,11 +9,11 @@ Output (default — no flags)::
     Registered domains: 2
     ─────────────────────────────────────────────────────────────
 
-    music  ●  music/plugin.py
+    midi  ●  midi/plugin.py
       Capabilities:  Typed Deltas · Domain Schema · OT Merge
       Schema:        version 1.0 · merge_mode: three_way
       Elements:      note_event (sequence), dimension_axes (set)
-      Dimensions:    melodic, rhythmic, harmonic, dynamic, structural
+      Dimensions:    notes, pitch_bend, cc_volume, cc_sustain, tempo_map, track_structure (21 total)
 
     scaffold  ○  scaffold/plugin.py
       Capabilities:  Typed Deltas · Domain Schema · OT Merge · CRDT
@@ -110,7 +110,7 @@ def _active_domain(root: pathlib.Path | None) -> str | None:
     try:
         data = json.loads(repo_json.read_text())
         domain = data.get("domain")
-        return str(domain) if domain else "music"
+        return str(domain) if domain else "midi"
     except (OSError, json.JSONDecodeError):
         return None
 

@@ -44,7 +44,7 @@ Usage::
     log = OpLog(repo_root, session_id="session-abc")
     entry = make_op_entry(
         actor_id="counterpoint-bot",
-        domain="music",
+        domain="midi",
         domain_op=my_insert_op,
         lamport_ts=log.next_lamport_ts(),
     )
@@ -92,7 +92,7 @@ class OpEntry(TypedDict):
         Used by CRDT merge and causal replay.
     ``domain``
         Domain tag matching the :class:`~muse.domain.MuseDomainPlugin`
-        that produced this op (e.g. ``"music"``, ``"code"``).
+        that produced this op (e.g. ``"midi"``, ``"code"``).
     ``domain_op``
         The actual typed domain operation.  Stored verbatim.
     ``created_at``
@@ -163,7 +163,7 @@ def make_op_entry(
 
     Args:
         actor_id:        Agent or human identity string.
-        domain:          Domain tag (e.g. ``"music"``).
+        domain:          Domain tag (e.g. ``"midi"``).
         domain_op:       The typed domain operation to log.
         lamport_ts:      Logical Lamport timestamp for this entry.
         parent_op_ids:   Causal dependencies.  Defaults to empty list.
@@ -321,7 +321,7 @@ class OpLog:
         coordinated agents; each domain collapses its own slice).
 
         Args:
-            domain: Domain tag to filter by (e.g. ``"music"``).
+            domain: Domain tag to filter by (e.g. ``"midi"``).
 
         Returns:
             A :class:`~muse.domain.StructuredDelta` with the ordered op list

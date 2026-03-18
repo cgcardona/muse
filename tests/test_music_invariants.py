@@ -1,11 +1,11 @@
-"""Tests for muse.plugins.music._invariants — rule checks and runner."""
+"""Tests for muse.plugins.midi._invariants — rule checks and runner."""
 from __future__ import annotations
 
 import pathlib
 
 import pytest
 
-from muse.plugins.music._invariants import (
+from muse.plugins.midi._invariants import (
     InvariantRule,
     check_key_consistency,
     check_max_polyphony,
@@ -13,8 +13,8 @@ from muse.plugins.music._invariants import (
     check_pitch_range,
     load_invariant_rules,
 )
-from muse.plugins.music._query import NoteInfo
-from muse.plugins.music.midi_diff import NoteKey
+from muse.plugins.midi._query import NoteInfo
+from muse.plugins.midi.midi_diff import NoteKey
 
 
 def _note(pitch: int, start_tick: int = 0, duration_ticks: int = 480,

@@ -1,6 +1,6 @@
-"""``muse music-check`` — musical invariant enforcement.
+"""``muse midi-check`` — MIDI invariant enforcement.
 
-Evaluates the invariant rules declared in ``.muse/music_invariants.toml``
+Evaluates the invariant rules declared in ``.muse/midi_invariants.toml``
 against every MIDI track in the specified commit and reports violations with
 severity, location, and description.
 
@@ -35,11 +35,11 @@ Built-in rule types (declared in TOML)::
 
 Usage::
 
-    muse music-check                      # check HEAD
-    muse music-check abc1234              # check specific commit
-    muse music-check --track piano.mid    # check one track
-    muse music-check --strict             # exit 1 on any error-severity violation
-    muse music-check --json               # machine-readable output
+    muse midi-check                      # check HEAD
+    muse midi-check abc1234              # check specific commit
+    muse midi-check --track piano.mid    # check one track
+    muse midi-check --strict             # exit 1 on any error-severity violation
+    muse midi-check --json               # machine-readable output
 """
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ import typer
 
 from muse.core.repo import require_repo
 from muse.core.store import get_head_commit_id
-from muse.plugins.music._invariants import (
+from muse.plugins.midi._invariants import (
     InvariantReport,
     load_invariant_rules,
     run_invariants,
@@ -68,8 +68,8 @@ def _read_branch(root: pathlib.Path) -> str:
     return head_ref.removeprefix("refs/heads/").strip()
 
 
-@app.command(name="music-check")
-def music_check_cmd(
+@app.command(name="midi-check")
+def midi_check_cmd(
     commit: str | None = typer.Argument(
         None,
         metavar="COMMIT",
@@ -87,7 +87,7 @@ def music_check_cmd(
         "--rules",
         "-r",
         metavar="FILE",
-        help="Path to a TOML invariant rules file (default: .muse/music_invariants.toml).",
+        help="Path to a TOML invariant rules file (default: .muse/midi_invariants.toml).",
     ),
     strict: bool = typer.Option(
         False,
@@ -100,7 +100,7 @@ def music_check_cmd(
         help="Output machine-readable JSON instead of formatted text.",
     ),
 ) -> None:
-    """Enforce musical invariant rules against a commit's MIDI tracks."""
+    """Enforce MIDI invariant rules against a commit's MIDI tracks."""
     root = require_repo()
 
     commit_id = commit
@@ -116,7 +116,7 @@ def music_check_cmd(
     if rules_file:
         rules_path = pathlib.Path(rules_file)
     else:
-        default = root / ".muse" / "music_invariants.toml"
+        default = root / ".muse" / "midi_invariants.toml"
         if default.exists():
             rules_path = default
 

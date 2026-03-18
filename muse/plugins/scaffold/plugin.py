@@ -69,7 +69,7 @@ class ScaffoldPlugin:
 
     This class satisfies all three optional protocol levels (Phases 2–4) via
     structural duck-typing — no explicit inheritance from the Protocol classes
-    is needed or desired (see ``MusicPlugin`` for the reference example).
+    is needed or desired (see ``MidiPlugin`` for the reference example).
 
     If your domain only needs Phases 1–2, delete ``merge_ops`` and the four
     CRDT methods.

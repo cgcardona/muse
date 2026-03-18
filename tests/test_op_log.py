@@ -30,12 +30,12 @@ class TestMakeOpEntry:
         )
         entry = make_op_entry(
             actor_id="agent-x",
-            domain="music",
+            domain="midi",
             domain_op=op,
             lamport_ts=1,
         )
         assert entry["actor_id"] == "agent-x"
-        assert entry["domain"] == "music"
+        assert entry["domain"] == "midi"
         assert entry["lamport_ts"] == 1
         assert entry["parent_op_ids"] == []
         assert entry["intent_id"] == ""
@@ -45,7 +45,7 @@ class TestMakeOpEntry:
     def test_parent_op_ids_are_copied(self) -> None:
         op = InsertOp(op="insert", address="note:0", position=0, content_id="x", content_summary="")
         parent_ids = ["aaa", "bbb"]
-        entry = make_op_entry("a", "music", op, 1, parent_op_ids=parent_ids)
+        entry = make_op_entry("a", "midi", op, 1, parent_op_ids=parent_ids)
         assert entry["parent_op_ids"] == ["aaa", "bbb"]
         # Mutating the original should not affect the entry.
         parent_ids.append("ccc")
@@ -53,7 +53,7 @@ class TestMakeOpEntry:
 
     def test_op_ids_are_unique(self) -> None:
         op = InsertOp(op="insert", address="note:0", position=0, content_id="x", content_summary="")
-        ids = {make_op_entry("a", "music", op, i)["op_id"] for i in range(20)}
+        ids = {make_op_entry("a", "midi", op, i)["op_id"] for i in range(20)}
         assert len(ids) == 20
 
 
@@ -66,8 +66,8 @@ class TestOpLogAppendRead:
     def test_append_and_read_all_roundtrip(self, tmp_path: pathlib.Path) -> None:
         log = OpLog(tmp_path, "session-1")
         op = InsertOp(op="insert", address="note:0", position=0, content_id="c1", content_summary="C4")
-        e1 = make_op_entry("agent-a", "music", op, 1)
-        e2 = make_op_entry("agent-a", "music", op, 2)
+        e1 = make_op_entry("agent-a", "midi", op, 1)
+        e2 = make_op_entry("agent-a", "midi", op, 2)
         log.append(e1)
         log.append(e2)
         entries = log.read_all()
@@ -82,7 +82,7 @@ class TestOpLogAppendRead:
     def test_append_creates_directory(self, tmp_path: pathlib.Path) -> None:
         log = OpLog(tmp_path, "new-session")
         op = InsertOp(op="insert", address="note:0", position=0, content_id="c1", content_summary="")
-        log.append(make_op_entry("a", "music", op, 1))
+        log.append(make_op_entry("a", "midi", op, 1))
         assert (tmp_path / ".muse" / "op_log" / "new-session").is_dir()
 
 
@@ -103,7 +103,7 @@ class TestLamportTs:
         op = InsertOp(op="insert", address="note:0", position=0, content_id="c", content_summary="")
         for i in range(5):
             ts = log1.next_lamport_ts()
-            log1.append(make_op_entry("a", "music", op, ts))
+            log1.append(make_op_entry("a", "midi", op, ts))
 
         # Reopen the same session.
         log2 = OpLog(tmp_path, "reopen-session")
@@ -121,7 +121,7 @@ class TestCheckpoint:
         log = OpLog(tmp_path, "ckpt-session")
         op = InsertOp(op="insert", address="note:0", position=0, content_id="c", content_summary="")
         for i in range(3):
-            log.append(make_op_entry("a", "music", op, i + 1))
+            log.append(make_op_entry("a", "midi", op, i + 1))
 
         ckpt = log.checkpoint("snap-abc")
         assert ckpt["snapshot_id"] == "snap-abc"
@@ -141,12 +141,12 @@ class TestCheckpoint:
         op = InsertOp(op="insert", address="note:0", position=0, content_id="c", content_summary="")
 
         for i in range(3):
-            log.append(make_op_entry("a", "music", op, i + 1))
+            log.append(make_op_entry("a", "midi", op, i + 1))
         log.checkpoint("snap-1")
 
         # Add more entries after checkpoint.
         for i in range(3, 6):
-            log.append(make_op_entry("a", "music", op, i + 1))
+            log.append(make_op_entry("a", "midi", op, i + 1))
 
         entries = log.replay_since_checkpoint()
         assert len(entries) == 3
@@ -164,21 +164,21 @@ class TestToStructuredDelta:
         op = InsertOp(op="insert", address="note:0", position=0, content_id="c", content_summary="C4")
 
         for i in range(4):
-            log.append(make_op_entry("a", "music", op, i + 1))
+            log.append(make_op_entry("a", "midi", op, i + 1))
         # Add one code op that should be filtered out.
         code_op = InsertOp(op="insert", address="sym:0", position=0, content_id="d", content_summary="f()")
         log.append(make_op_entry("a", "code", code_op, 5))
 
-        delta = log.to_structured_delta("music")
-        assert delta["domain"] == "midi_notes_tracked" or delta["domain"] == "music"
+        delta = log.to_structured_delta("midi")
+        assert delta["domain"] == "midi_notes_tracked" or delta["domain"] == "midi"
         # Only the 4 music ops should be included.
         assert len(delta["ops"]) == 4
 
     def test_summary_mentions_insert(self, tmp_path: pathlib.Path) -> None:
         log = OpLog(tmp_path, "summary-session")
         op = InsertOp(op="insert", address="note:0", position=0, content_id="c", content_summary="C4")
-        log.append(make_op_entry("a", "music", op, 1))
-        delta = log.to_structured_delta("music")
+        log.append(make_op_entry("a", "midi", op, 1))
+        delta = log.to_structured_delta("midi")
         assert "insert" in delta["summary"]
 
 
@@ -192,7 +192,7 @@ class TestListSessions:
         op = InsertOp(op="insert", address="note:0", position=0, content_id="c", content_summary="")
         for sid in ["alpha", "beta", "gamma"]:
             log = OpLog(tmp_path, sid)
-            log.append(make_op_entry("a", "music", op, 1))
+            log.append(make_op_entry("a", "midi", op, 1))
 
         sessions = list_sessions(tmp_path)
         assert "alpha" in sessions

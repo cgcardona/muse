@@ -1,7 +1,7 @@
 # Muse Variation Spec — Music Domain Reference
 
 > **Scope:** This spec describes the *Variation* UX pattern as implemented
-> for the music domain. It is not part of the core Muse VCS engine.
+> for the MIDI domain. It is not part of the core Muse VCS engine.
 >
 > For the domain-agnostic VCS protocol, see [muse-protocol.md](muse-protocol.md).
 > For a discussion of how "Variation" might generalize across domains, see
@@ -211,5 +211,5 @@ a1b2c3d4 (HEAD -> main) Add countermelody to verse
 ```
 
 From Muse's perspective, a committed Variation is indistinguishable from any
-other commit. The Variation UX is a music-domain layer on top of the standard
+other commit. The Variation UX is a midi-domain layer on top of the standard
 VCS commit cycle.

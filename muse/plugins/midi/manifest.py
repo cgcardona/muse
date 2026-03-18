@@ -43,13 +43,13 @@ import logging
 import pathlib
 from typing import Literal, TypedDict
 
-from muse.plugins.music._query import (
+from muse.plugins.midi._query import (
     NoteInfo,
     detect_chord,
     key_signature_guess,
     notes_by_bar,
 )
-from muse.plugins.music.midi_diff import extract_notes
+from muse.plugins.midi.midi_diff import extract_notes
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +121,7 @@ class MusicManifest(TypedDict):
     ``tracks``          ``{path: TrackManifest}`` for each MIDI file.
     """
 
-    domain: Literal["music"]
+    domain: Literal["midi"]
     schema_version: Literal[2]
     snapshot_id: str
     files: dict[str, str]
@@ -255,7 +255,7 @@ def build_music_manifest(
         tracks[path] = build_track_manifest(notes, path, content_hash, tpb)
 
     return MusicManifest(
-        domain="music",
+        domain="midi",
         schema_version=2,
         snapshot_id=snapshot_id,
         files=dict(file_manifest),

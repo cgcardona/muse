@@ -41,7 +41,7 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import get_head_commit_id, resolve_commit_ref
-from muse.plugins.music._query import (
+from muse.plugins.midi._query import (
     NoteInfo,
     key_signature_guess,
     load_track,

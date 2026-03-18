@@ -222,9 +222,9 @@ class TestLCSDiff:
         assert delta["ops"] == []
 
     def test_produces_valid_structured_delta(self) -> None:
-        delta = lcs_mod.diff(_seq_schema("note"), ["x"], ["x", "y"], domain="music")
+        delta = lcs_mod.diff(_seq_schema("note"), ["x"], ["x", "y"], domain="midi")
         assert _is_valid_delta(delta)
-        assert delta["domain"] == "music"
+        assert delta["domain"] == "midi"
 
     def test_move_detected_from_delete_plus_insert(self) -> None:
         a, b, c = _cid("a"), _cid("b"), _cid("c")
@@ -289,9 +289,9 @@ class TestTreeEditDiff:
     def test_produces_valid_structured_delta(self) -> None:
         base = _node("root", _leaf("X"))
         target = _node("root", _leaf("Y"))
-        delta = tree_edit_mod.diff(_tree_schema(), base, target, domain="music")
+        delta = tree_edit_mod.diff(_tree_schema(), base, target, domain="midi")
         assert _is_valid_delta(delta)
-        assert delta["domain"] == "music"
+        assert delta["domain"] == "midi"
 
     def test_summary_is_human_readable(self) -> None:
         base = _node("root", _leaf("A"))
@@ -356,9 +356,9 @@ class TestNumericalDiff:
 
     def test_produces_valid_structured_delta(self) -> None:
         schema = _tensor_schema(epsilon=0.5)
-        delta = numerical_mod.diff(schema, [0.0, 1.0], [0.0, 2.0], domain="music")
+        delta = numerical_mod.diff(schema, [0.0, 1.0], [0.0, 2.0], domain="midi")
         assert _is_valid_delta(delta)
-        assert delta["domain"] == "music"
+        assert delta["domain"] == "midi"
 
 
 # ===========================================================================
@@ -402,9 +402,9 @@ class TestSetOpsDiff:
         schema = _set_schema("audio_file")
         base = frozenset({_cid("drums"), _cid("bass")})
         target = frozenset({_cid("drums"), _cid("guitar")})
-        delta = set_ops_mod.diff(schema, base, target, domain="music")
+        delta = set_ops_mod.diff(schema, base, target, domain="midi")
         assert _is_valid_delta(delta)
-        assert delta["domain"] == "music"
+        assert delta["domain"] == "midi"
         assert "audio_file" in delta["summary"]
 
 

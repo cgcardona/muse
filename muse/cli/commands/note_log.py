@@ -37,12 +37,12 @@ from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import resolve_commit_ref
 from muse.domain import DomainOp
-from muse.plugins.music._query import (
+from muse.plugins.midi._query import (
     NoteInfo,
     load_track,
     walk_commits_for_track,
 )
-from muse.plugins.music.midi_diff import NoteKey, _note_summary, extract_notes
+from muse.plugins.midi.midi_diff import NoteKey, _note_summary, extract_notes
 from muse.core.object_store import read_object
 
 logger = logging.getLogger(__name__)

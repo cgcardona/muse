@@ -67,7 +67,7 @@ import uuid as _uuid_mod
 from typing import NamedTuple, TypedDict
 
 from muse.domain import DeleteOp, DomainOp, InsertOp
-from muse.plugins.music.midi_diff import NoteKey, _note_content_id, _note_summary
+from muse.plugins.midi.midi_diff import NoteKey, _note_content_id, _note_summary
 
 logger = logging.getLogger(__name__)
 

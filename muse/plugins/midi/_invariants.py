@@ -7,7 +7,7 @@ and structured addresses for programmatic consumers.
 
 Rule file format (TOML)
 -----------------------
-Rules are declared in ``.muse/music_invariants.toml`` (default path).
+Rules are declared in ``.muse/midi_invariants.toml`` (default path).
 Example::
 
     [[rule]]
@@ -86,12 +86,12 @@ from typing import Literal, TypedDict
 
 from muse.core.object_store import read_object
 from muse.core.store import get_commit_snapshot_manifest
-from muse.plugins.music._query import NoteInfo, key_signature_guess, notes_by_bar
-from muse.plugins.music.midi_diff import extract_notes
+from muse.plugins.midi._query import NoteInfo, key_signature_guess, notes_by_bar
+from muse.plugins.midi.midi_diff import extract_notes
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_RULES_FILE = ".muse/music_invariants.toml"
+_DEFAULT_RULES_FILE = ".muse/midi_invariants.toml"
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +107,7 @@ class _InvariantRuleRequired(TypedDict):
 
 
 class InvariantRule(_InvariantRuleRequired, total=False):
-    """Declaration of one musical invariant rule.
+    """Declaration of one MIDI invariant rule.
 
     ``name``       Human-readable rule identifier (unique within a rule set).
     ``severity``   Violation severity: ``"info"``, ``"warning"``, or ``"error"``.

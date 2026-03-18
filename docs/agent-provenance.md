@@ -10,7 +10,7 @@ and can that attribution be verified cryptographically?**
 ## Commit-level fields
 
 `CommitRecord` in `muse/core/store.py` carries six new optional fields
-(all default to empty string for backward compatibility):
+(all optional — omit if not tracking agent identity):
 
 | Field | Description |
 |-------|-------------|
@@ -76,8 +76,8 @@ separately from the repository content.
 The music query DSL supports provenance fields directly:
 
 ```bash
-muse music-query "agent_id == 'counterpoint-bot' and note.pitch > 60"
-muse music-query "model_id == 'gpt-5'"
+muse midi-query "agent_id == 'counterpoint-bot' and note.pitch > 60"
+muse midi-query "model_id == 'gpt-5'"
 ```
 
 ## Related files

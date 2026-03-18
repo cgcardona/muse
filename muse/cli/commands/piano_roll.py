@@ -38,12 +38,12 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import resolve_commit_ref
-from muse.plugins.music._query import (
+from muse.plugins.midi._query import (
     NoteInfo,
     load_track,
     load_track_from_workdir,
 )
-from muse.plugins.music.midi_diff import _pitch_name
+from muse.plugins.midi.midi_diff import _pitch_name
 
 logger = logging.getLogger(__name__)
 

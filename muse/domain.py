@@ -4,7 +4,7 @@ Muse provides the DAG engine, content-addressed object store, branching,
 lineage walking, topological log graph, and merge base finder. A domain plugin
 implements these six interfaces and Muse does the rest.
 
-The music plugin (``muse.plugins.music``) is the reference implementation.
+The music plugin (``muse.plugins.midi``) is the reference implementation.
 Every other domain — scientific simulation, genomics, 3D spatial design,
 spacetime — is a new plugin.
 
@@ -528,7 +528,7 @@ class MuseDomainPlugin(Protocol):
     walking, ASCII log graph, and merge base finder. Implement these six
     methods and your domain gets the full Muse VCS for free.
 
-    Music is the reference implementation (``muse.plugins.music``).
+    Music is the reference implementation (``muse.plugins.midi``).
     """
 
     def snapshot(self, live_state: LiveState) -> StateSnapshot:
@@ -602,7 +602,7 @@ class MuseDomainPlugin(Protocol):
            - ``"auto"`` / ``"union"`` — defer to the engine's default logic.
 
         4. For domain formats that support true multidimensional content (e.g.
-           MIDI: melodic, rhythmic, harmonic, dynamic, structural), attempt
+           MIDI: notes, pitch_bend, cc_volume, track_structure), attempt
            sub-file dimension merge before falling back to a file-level conflict.
         """
         ...
@@ -643,8 +643,7 @@ class MuseDomainPlugin(Protocol):
 
         - ``top_level`` — the primary collection structure (e.g. a set of
           files, a map of chromosome names to sequences).
-        - ``dimensions`` — the semantic sub-dimensions of state (e.g. melodic,
-          harmonic, dynamic, structural for music).
+        - ``dimensions`` — the semantic sub-dimensions of state (e.g. notes, pitch_bend, cc_volume, track_structure for MIDI).
         - ``merge_mode`` — ``"three_way"`` (OT merge) or ``"crdt"`` (CRDT convergent join).
 
         The schema drives :func:`~muse.core.diff_algorithms.diff_by_schema`
@@ -676,7 +675,7 @@ class StructuredMergePlugin(MuseDomainPlugin, Protocol):
     Plugins that do not implement ``merge_ops`` fall back to the existing
     file-level ``merge()`` path automatically — no changes required.
 
-    The :class:`~muse.plugins.music.plugin.MusicPlugin` is the reference
+    The :class:`~muse.plugins.midi.plugin.MidiPlugin` is the reference
     implementation for OT-based merge.
     """
 

@@ -21,7 +21,7 @@ Additional features
 -----------------
 :func:`reconstruct_midi` — the inverse of :func:`extract_notes`. Given a list
 of :class:`NoteKey` objects and a ticks_per_beat value, produces raw MIDI bytes
-for a Type 0 single-track file. Used by ``MusicPlugin.merge_ops()`` to
+for a Type 0 single-track file. Used by ``MidiPlugin.merge_ops()`` to
 materialise a merged MIDI file after the OT engine has determined that
 two branches' note-level operations commute.
 
@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, TypedDict
 
 if TYPE_CHECKING:
-    from muse.plugins.music.entity import EntityIndex
+    from muse.plugins.midi.entity import EntityIndex
 
 import mido
 
@@ -393,7 +393,7 @@ def diff_midi_notes_with_entities(
     Raises:
         ValueError: When either byte string cannot be parsed as MIDI.
     """
-    from muse.plugins.music.entity import assign_entity_ids, diff_with_entity_ids
+    from muse.plugins.midi.entity import assign_entity_ids, diff_with_entity_ids
 
     base_notes, base_tpb = extract_notes(base_bytes)
     target_notes, _ = extract_notes(target_bytes)
@@ -465,7 +465,7 @@ def reconstruct_midi(
     order.
 
     This is the inverse of :func:`extract_notes`.  Used by
-    :func:`~muse.plugins.music.plugin._merge_patch_ops` after the OT
+    :func:`~muse.plugins.midi.plugin._merge_patch_ops` after the OT
     engine has confirmed that two branches' note sequences commute, allowing
     the merged note list to be materialised as actual MIDI bytes.
 

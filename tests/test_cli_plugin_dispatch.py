@@ -25,7 +25,7 @@ from muse.domain import (
     StateSnapshot,
     StructuredDelta,
 )
-from muse.plugins.music.plugin import MusicPlugin
+from muse.plugins.midi.plugin import MidiPlugin
 
 runner = CliRunner()
 
@@ -58,7 +58,7 @@ class TestCommitDispatch:
     def test_commit_calls_plugin_snapshot(self, repo: pathlib.Path) -> None:
         _write(repo, "beat.mid", "drums")
         with patch("muse.cli.commands.commit.resolve_plugin") as mock_resolve:
-            real_plugin = MusicPlugin()
+            real_plugin = MidiPlugin()
             mock_plugin = MagicMock(spec=MuseDomainPlugin)
             mock_plugin.snapshot.side_effect = real_plugin.snapshot
             mock_resolve.return_value = mock_plugin
@@ -72,7 +72,7 @@ class TestCommitDispatch:
         captured_args: list[LiveState] = []
 
         with patch("muse.cli.commands.commit.resolve_plugin") as mock_resolve:
-            real_plugin = MusicPlugin()
+            real_plugin = MidiPlugin()
             mock_plugin = MagicMock(spec=MuseDomainPlugin)
 
             def capture_snapshot(live_state: LiveState) -> SnapshotManifest:
@@ -106,7 +106,7 @@ class TestStatusDispatch:
         _write(repo, "new.mid", "extra")
 
         with patch("muse.cli.commands.status.resolve_plugin") as mock_resolve:
-            real_plugin = MusicPlugin()
+            real_plugin = MidiPlugin()
             mock_plugin = MagicMock(spec=MuseDomainPlugin)
             mock_plugin.drift.side_effect = real_plugin.drift
             mock_resolve.return_value = mock_plugin
@@ -144,7 +144,7 @@ class TestStatusDispatch:
         _commit()
 
         fake_delta = StructuredDelta(
-            domain="music",
+            domain="midi",
             ops=[InsertOp(op="insert", address="injected.mid", position=None,
                           content_id="abc123", content_summary="new file: injected.mid")],
             summary="1 file added",
@@ -172,7 +172,7 @@ class TestDiffDispatch:
         _write(repo, "lead.mid", "solo")
 
         with patch("muse.cli.commands.diff.resolve_plugin") as mock_resolve:
-            real_plugin = MusicPlugin()
+            real_plugin = MidiPlugin()
             mock_plugin = MagicMock(spec=MuseDomainPlugin)
             mock_plugin.snapshot.side_effect = real_plugin.snapshot
             mock_plugin.diff.side_effect = real_plugin.diff
@@ -190,7 +190,7 @@ class TestDiffDispatch:
 
         captured: list[LiveState] = []
         with patch("muse.cli.commands.diff.resolve_plugin") as mock_resolve:
-            real_plugin = MusicPlugin()
+            real_plugin = MidiPlugin()
             mock_plugin = MagicMock(spec=MuseDomainPlugin)
 
             def cap_snapshot(ls: LiveState) -> SnapshotManifest:
@@ -225,7 +225,7 @@ class TestDiffDispatch:
         _commit()
 
         fake_delta = StructuredDelta(
-            domain="music",
+            domain="midi",
             ops=[
                 InsertOp(op="insert", address="injected.mid", position=None,
                          content_id="abc123", content_summary="new file: injected.mid"),
@@ -235,7 +235,7 @@ class TestDiffDispatch:
             summary="1 file added, 1 file removed",
         )
         with patch("muse.cli.commands.diff.resolve_plugin") as mock_resolve:
-            real_plugin = MusicPlugin()
+            real_plugin = MidiPlugin()
             mock_plugin = MagicMock(spec=MuseDomainPlugin)
             mock_plugin.snapshot.side_effect = real_plugin.snapshot
             mock_plugin.diff.return_value = fake_delta
@@ -267,7 +267,7 @@ class TestMergeDispatch:
         _commit("add bass on main")
 
         with patch("muse.cli.commands.merge.resolve_plugin") as mock_resolve:
-            real_plugin = MusicPlugin()
+            real_plugin = MidiPlugin()
             mock_plugin = MagicMock(spec=MuseDomainPlugin)
             mock_plugin.merge.side_effect = real_plugin.merge
             mock_resolve.return_value = mock_plugin
@@ -290,7 +290,7 @@ class TestMergeDispatch:
         _commit("add bass on main")
 
         fake_result = MergeResult(
-            merged=SnapshotManifest(files={"injected.mid": "abc"}, domain="music"),
+            merged=SnapshotManifest(files={"injected.mid": "abc"}, domain="midi"),
             conflicts=[],
         )
         with patch("muse.cli.commands.merge.resolve_plugin") as mock_resolve:
@@ -331,7 +331,7 @@ class TestMergeDispatch:
         _commit("main")
 
         fake_result = MergeResult(
-            merged=SnapshotManifest(files={}, domain="music"),
+            merged=SnapshotManifest(files={}, domain="midi"),
             conflicts=["plugin-conflict.mid"],
         )
         with patch("muse.cli.commands.merge.resolve_plugin") as mock_resolve:
@@ -369,7 +369,7 @@ class TestCherryPickDispatch:
         runner.invoke(cli, ["checkout", "main"])
 
         with patch("muse.cli.commands.cherry_pick.resolve_plugin") as mock_resolve:
-            real_plugin = MusicPlugin()
+            real_plugin = MidiPlugin()
             mock_plugin = MagicMock(spec=MuseDomainPlugin)
             mock_plugin.merge.side_effect = real_plugin.merge
             mock_resolve.return_value = mock_plugin
@@ -399,7 +399,7 @@ class TestCherryPickDispatch:
 
         captured_args: list[tuple[StateSnapshot, StateSnapshot, StateSnapshot]] = []
         with patch("muse.cli.commands.cherry_pick.resolve_plugin") as mock_resolve:
-            real_plugin = MusicPlugin()
+            real_plugin = MidiPlugin()
             mock_plugin = MagicMock(spec=MuseDomainPlugin)
 
             def cap_merge(
@@ -431,7 +431,7 @@ class TestStashDispatch:
         _write(repo, "unsaved.mid", "wip")
 
         with patch("muse.cli.commands.stash.resolve_plugin") as mock_resolve:
-            real_plugin = MusicPlugin()
+            real_plugin = MidiPlugin()
             mock_plugin = MagicMock(spec=MuseDomainPlugin)
             mock_plugin.snapshot.side_effect = real_plugin.snapshot
             mock_resolve.return_value = mock_plugin
@@ -447,7 +447,7 @@ class TestStashDispatch:
 
         captured: list[LiveState] = []
         with patch("muse.cli.commands.stash.resolve_plugin") as mock_resolve:
-            real_plugin = MusicPlugin()
+            real_plugin = MidiPlugin()
             mock_plugin = MagicMock(spec=MuseDomainPlugin)
 
             def cap_snapshot(ls: LiveState) -> SnapshotManifest:

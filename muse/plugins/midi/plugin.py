@@ -1,4 +1,4 @@
-"""Music domain plugin — reference implementation of :class:`MuseDomainPlugin`.
+"""MIDI domain plugin — reference implementation of :class:`MuseDomainPlugin`.
 
 This plugin implements the six Muse domain interfaces for MIDI state:
 notes, velocities, controller events (CC), pitch bends, and aftertouch.
@@ -9,7 +9,7 @@ the same six interfaces.
 
 Live State
 ----------
-For the music domain, ``LiveState`` is either:
+For the MIDI domain, ``LiveState`` is either:
 
 1. A ``muse-work/`` directory path (``pathlib.Path``) — the CLI path where
    MIDI files live on disk and are managed by ``muse commit / checkout``.
@@ -30,7 +30,7 @@ A music snapshot is a JSON-serialisable dict:
             "tracks/drums.mid": "<sha256>",
             "tracks/bass.mid":  "<sha256>"
         },
-        "domain": "music"
+        "domain": "midi"
     }
 
 The ``files`` key maps POSIX paths (relative to ``muse-work/``) to their
@@ -81,15 +81,15 @@ from muse.domain import (
     StructuredDelta,
     StructuredMergePlugin,
 )
-from muse.plugins.music.midi_diff import NoteKey
+from muse.plugins.midi.midi_diff import NoteKey
 
 logger = logging.getLogger(__name__)
 
-_DOMAIN_TAG = "music"
+_DOMAIN_TAG = "midi"
 
 
-class MusicPlugin:
-    """Music domain plugin for the Muse VCS.
+class MidiPlugin:
+    """MIDI domain plugin for the Muse VCS.
 
     Implements :class:`~muse.domain.MuseDomainPlugin` (six core interfaces)
     and :class:`~muse.domain.StructuredMergePlugin` (operation-level
@@ -113,7 +113,7 @@ class MusicPlugin:
                         or an existing snapshot dict (returned as-is).
 
         Returns:
-            A JSON-serialisable ``{"files": {path: sha256}, "domain": "music"}``
+            A JSON-serialisable ``{"files": {path: sha256}, "domain": "midi"}``
             dict. The ``files`` mapping is the canonical snapshot manifest used
             by the core VCS engine for commit / checkout / diff.
 
@@ -275,7 +275,7 @@ class MusicPlugin:
 
         from muse.core.attributes import load_attributes, resolve_strategy
         from muse.core.object_store import read_object, write_object
-        from muse.plugins.music.midi_merge import merge_midi_dimensions
+        from muse.plugins.midi.midi_merge import merge_midi_dimensions
 
         base_files = base["files"]
         left_files = left["files"]
@@ -471,7 +471,7 @@ class MusicPlugin:
     # ------------------------------------------------------------------
 
     def schema(self) -> DomainSchema:
-        """Return the full structural schema for the music domain.
+        """Return the full structural schema for the MIDI domain.
 
         Declares 21 semantic dimensions — one per independent MIDI event class
         — that the core diff algorithm library and OT merge engine use to drive
@@ -885,7 +885,7 @@ def _merge_patch_ops(
        sequences (so that InsertOp content IDs can be resolved to real notes).
     4. Applying the merged note ops (deletions then insertions) to the base
        note sequence.
-    5. Calling :func:`~muse.plugins.music.midi_diff.reconstruct_midi` and
+    5. Calling :func:`~muse.plugins.midi.midi_diff.reconstruct_midi` and
        storing the resulting bytes.
 
     Returns the SHA-256 hash of the reconstructed MIDI (ready to store in the
@@ -913,7 +913,7 @@ def _merge_patch_ops(
 
     from muse.core.object_store import read_object, write_object
     from muse.core.op_transform import merge_op_lists
-    from muse.plugins.music.midi_diff import NoteKey, extract_notes, reconstruct_midi
+    from muse.plugins.midi.midi_diff import NoteKey, extract_notes, reconstruct_midi
 
     # Run OT on note-level ops to classify conflicts.
     note_result = merge_op_lists([], ours_patch["child_ops"], theirs_patch["child_ops"])
@@ -997,9 +997,9 @@ def _merge_patch_ops(
 
 
 def _note_content_id(note: NoteKey) -> str:
-    """Return the SHA-256 content ID for a :class:`~muse.plugins.music.midi_diff.NoteKey`.
+    """Return the SHA-256 content ID for a :class:`~muse.plugins.midi.midi_diff.NoteKey`.
 
-    Delegates to the same algorithm used in :mod:`muse.plugins.music.midi_diff`
+    Delegates to the same algorithm used in :mod:`muse.plugins.midi.midi_diff`
     so that content IDs computed here are identical to those stored in
     ``InsertOp`` / ``DeleteOp`` entries.
     """
@@ -1039,7 +1039,7 @@ def _diff_modified_file(
     """
     if path.lower().endswith(".mid") and repo_root is not None:
         from muse.core.object_store import read_object
-        from muse.plugins.music.midi_diff import diff_midi_notes
+        from muse.plugins.midi.midi_diff import diff_midi_notes
 
         base_bytes = read_object(repo_root, old_hash)
         target_bytes = read_object(repo_root, new_hash)
@@ -1130,11 +1130,11 @@ def content_hash(snapshot: StateSnapshot) -> str:
 
 
 #: Module-level singleton — import and use directly.
-plugin = MusicPlugin()
+plugin = MidiPlugin()
 
 assert isinstance(plugin, MuseDomainPlugin), (
-    "MusicPlugin does not satisfy the MuseDomainPlugin protocol"
+    "MidiPlugin does not satisfy the MuseDomainPlugin protocol"
 )
 assert isinstance(plugin, StructuredMergePlugin), (
-    "MusicPlugin does not satisfy the StructuredMergePlugin protocol"
+    "MidiPlugin does not satisfy the StructuredMergePlugin protocol"
 )

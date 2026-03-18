@@ -372,7 +372,7 @@ class MyDomainPlugin:
 See `muse/plugins/scaffold/plugin.py` for the copy-paste template implementing all
 methods including the `StructuredMergePlugin` and `CRDTPlugin` extensions.
 
-See `muse/plugins/music/plugin.py` for the complete reference implementation.
+See `muse/plugins/midi/plugin.py` for the complete reference implementation.
 
 ---
 

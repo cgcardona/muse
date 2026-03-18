@@ -1,4 +1,4 @@
-"""Tests for muse.plugins.music._crdt_notes — NotePosition, RGANoteEntry, MusicRGA.
+"""Tests for muse.plugins.midi._crdt_notes — NotePosition, RGANoteEntry, MusicRGA.
 
 Verifies all three CRDT laws:
   1. Commutativity: merge(a, b) == merge(b, a)
@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import pytest
 
-from muse.plugins.music._crdt_notes import (
+from muse.plugins.midi._crdt_notes import (
     MusicRGA,
     NotePosition,
     RGANoteEntry,
     _pitch_to_voice_lane,
 )
-from muse.plugins.music.midi_diff import NoteKey
+from muse.plugins.midi.midi_diff import NoteKey
 
 
 def _key(pitch: int = 60, velocity: int = 80, start_tick: int = 0,

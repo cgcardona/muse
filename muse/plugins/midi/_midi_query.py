@@ -67,13 +67,13 @@ from typing import Literal, TypedDict
 
 from muse.core.object_store import read_object
 from muse.core.store import CommitRecord, get_commit_snapshot_manifest, read_commit
-from muse.plugins.music._query import (
+from muse.plugins.midi._query import (
     NoteInfo,
     detect_chord,
     notes_by_bar,
     walk_commits_for_track,
 )
-from muse.plugins.music.midi_diff import extract_notes
+from muse.plugins.midi.midi_diff import extract_notes
 
 logger = logging.getLogger(__name__)
 

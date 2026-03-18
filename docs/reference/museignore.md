@@ -125,12 +125,12 @@ they override.
 ## Dotfiles are always excluded
 
 Regardless of `.museignore`, any file whose **name** begins with `.` is
-always excluded from snapshots by `MusicPlugin.snapshot()`. This prevents
+always excluded from snapshots by `MidiPlugin.snapshot()`. This prevents
 OS metadata files (`.DS_Store`, `._.DS_Store`) and editor state from
 accumulating in the object store.
 
 To include a dotfile, you would need a domain plugin that overrides this
-default. The reference `MusicPlugin` does not support it.
+default. The reference `MidiPlugin` does not support it.
 
 ---
 
@@ -160,7 +160,7 @@ def snapshot(self, live_state: LiveState) -> StateSnapshot:
     return live_state
 ```
 
-This is the exact pattern used by the reference `MusicPlugin`.
+This is the exact pattern used by the reference `MidiPlugin`.
 
 ---
 

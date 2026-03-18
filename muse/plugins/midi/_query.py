@@ -4,7 +4,7 @@ Provides the low-level primitives that music-domain commands share:
 note extraction from the object store, bar-level grouping, chord detection,
 and commit-graph walking specific to MIDI tracks.
 
-Nothing here belongs in the public ``MusicPlugin`` API.  These are CLI-layer
+Nothing here belongs in the public ``MidiPlugin`` API.  These are CLI-layer
 helpers — thin adapters over ``midi_diff.extract_notes`` and the core store.
 """
 from __future__ import annotations
@@ -15,7 +15,7 @@ from typing import NamedTuple
 
 from muse.core.object_store import read_object
 from muse.core.store import CommitRecord, read_commit, get_commit_snapshot_manifest
-from muse.plugins.music.midi_diff import NoteKey, _pitch_name, extract_notes  # noqa: PLC2701
+from muse.plugins.midi.midi_diff import NoteKey, _pitch_name, extract_notes  # noqa: PLC2701
 
 logger = logging.getLogger(__name__)
 
@@ -288,9 +288,9 @@ def notes_to_midi_bytes(notes: list[NoteInfo], ticks_per_beat: int) -> bytes:
 
     Produces a Type-0 single-track MIDI file with one note_on / note_off
     pair per note.  Delegates to
-    :func:`~muse.plugins.music.midi_diff.reconstruct_midi`.
+    :func:`~muse.plugins.midi.midi_diff.reconstruct_midi`.
     """
-    from muse.plugins.music.midi_diff import NoteKey, reconstruct_midi
+    from muse.plugins.midi.midi_diff import NoteKey, reconstruct_midi
 
     keys = [
         NoteKey(

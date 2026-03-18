@@ -330,7 +330,7 @@ def crdt_join_snapshots(
         b_vclock:     Vector clock ``{agent_id: count}`` for replica B.
         a_crdt_state: CRDT metadata hashes (path → blob hash) for replica A.
         b_crdt_state: CRDT metadata hashes (path → blob hash) for replica B.
-        domain:       Domain name string (e.g. ``"music"``).
+        domain:       Domain name string (e.g. ``"midi"``).
 
     Returns:
         A :class:`~muse.domain.MergeResult` with the joined snapshot and an

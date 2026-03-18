@@ -51,7 +51,7 @@ docs/
 │   ├── muse-domain-concepts.md   — universal vocabulary: what "state", "delta",
 │   │                               "dimension", "drift", and "merge" mean across
 │   │                               music, genomics, simulation, and beyond
-│   └── muse-variation-spec.md    — variation semantics for the music domain
+│   └── muse-variation-spec.md    — variation semantics for the MIDI domain
 │
 ├── reference/
 │   ├── type-contracts.md         — single source of truth for every named type:

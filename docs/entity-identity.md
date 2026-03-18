@@ -14,7 +14,7 @@ lineage, provenance, and causal history is lost.
 
 ## The solution: stable entity IDs
 
-A `NoteEntity` in `muse/plugins/music/entity.py` extends the five `NoteKey`
+A `NoteEntity` in `muse/plugins/midi/entity.py` extends the five `NoteKey`
 fields with an optional `entity_id` — a UUID4 that is assigned at first
 insertion and **never changes**, regardless of how the note's fields are
 mutated later.
@@ -79,6 +79,6 @@ plugin can use the same types to track mutations in a nucleotide sequence.
 | File | Role |
 |------|------|
 | `muse/domain.py` | `MutateOp`, `FieldMutation`, `EntityProvenance` |
-| `muse/plugins/music/entity.py` | `NoteEntity`, `EntityIndex`, `assign_entity_ids`, `diff_with_entity_ids` |
-| `muse/plugins/music/midi_diff.py` | `diff_midi_notes_with_entities()` |
+| `muse/plugins/midi/entity.py` | `NoteEntity`, `EntityIndex`, `assign_entity_ids`, `diff_with_entity_ids` |
+| `muse/plugins/midi/midi_diff.py` | `diff_midi_notes_with_entities()` |
 | `tests/test_entity.py` | Unit tests |

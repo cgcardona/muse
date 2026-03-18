@@ -79,16 +79,16 @@ class CRDTPlugin(MuseDomainPlugin, Protocol):
     def from_crdt_state(self, crdt: CRDTSnapshotManifest) -> StateSnapshot: ...
 ```
 
-The music plugin — the reference implementation — implements all six interfaces and both optional extensions for MIDI state. Every other domain is a new plugin.
+The MIDI plugin — the reference implementation — implements all six interfaces and both optional extensions for MIDI state. Every other domain is a new plugin.
 
 ---
 
-## Music — The Reference Implementation
+## MIDI — The Reference Implementation
 
-Music is the domain that proved the abstraction. State is a snapshot of MIDI files on disk. Diff is file-level set difference plus note-level Myers LCS diff inside each MIDI file. Merge is three-way reconciliation across five musical dimensions (melodic, rhythmic, harmonic, dynamic, structural), each diffed with the algorithm best suited to its structure. Drift compares the committed snapshot against the live working tree. Checkout incrementally applies the delta between snapshots using the plugin.
+MIDI is the domain that proved the abstraction. State is a snapshot of MIDI files on disk. Diff is file-level set difference plus note-level Myers LCS diff inside each MIDI file. Merge is three-way reconciliation across **21 independent MIDI dimensions** — notes, pitch bend, channel pressure, polyphonic aftertouch, 11 named CC controllers (modulation, volume, pan, expression, sustain, portamento, sostenuto, soft pedal, reverb, chorus, other), program changes, tempo map, time signatures, key signatures, markers, and track structure — each independently mergeable so two agents editing different aspects of the same file never conflict. Drift compares the committed snapshot against the live working tree. Checkout incrementally applies the delta between snapshots using the plugin.
 
 ```bash
-# Initialize a Muse repository (default domain: music)
+# Initialize a Muse repository (default domain: midi)
 muse init
 
 # Commit the current working tree
@@ -128,8 +128,8 @@ Run `muse --help` for the full command list.
 
 ## Domain Instantiations
 
-### Music *(reference implementation)*
-MIDI state across notes, velocities, controller events, pitch bends, and aftertouch. Typed delta algebra surfaces note-level inserts, deletes, and replaces in `muse show`. Three-way merge reconciles divergent takes across five musical dimensions. **Ships with full DAG, branching, OT merge, CRDT semantics, and E2E tests.**
+### MIDI *(reference implementation)*
+MIDI state across all 21 fine-grained dimensions: notes, pitch bend, per-note polyphonic aftertouch, 11 named CC controllers, program changes, tempo map, time signatures, key signatures, section markers, and track structure. Typed delta algebra surfaces note-level inserts, deletes, and replaces in `muse show`. Three-way merge operates per-dimension — two agents editing sustain pedal and pitch bend simultaneously never produce a conflict. Stable entity identity tracks notes across edits. **Ships with full DAG, branching, OT merge, CRDT semantics, voice-aware RGA, music query DSL, invariant enforcement, and E2E tests.**
 
 ### Scientific Simulation *(planned)*
 A climate model is a multidimensional state space: temperature, pressure, humidity, ocean current, ice coverage at every grid point. Commit a named checkpoint. Branch to explore a parameter variation. Merge two teams' adjustments against a common baseline run. Drift detection flags when a running simulation has diverged from its last committed checkpoint.
@@ -197,9 +197,15 @@ muse/
     crdts/               — VectorClock, LWWRegister, ORSet, RGA, AWMap, GCounter
   plugins/
     registry.py          — maps domain names → MuseDomainPlugin instances
-    music/               — music domain plugin (reference implementation)
+    midi/                — MIDI domain plugin (reference implementation)
       plugin.py          — implements all six MuseDomainPlugin interfaces
       midi_diff.py       — note-level MIDI diff and reconstruction
+      midi_merge.py      — 21-dimension MIDI merge engine
+      entity.py          — stable note entity identity across edits
+      manifest.py        — hierarchical bar-chunk manifests
+      _crdt_notes.py     — voice-aware RGA CRDT for note sequences
+      _invariants.py     — MIDI invariant enforcement (polyphony, range, key, fifths)
+      _midi_query.py     — MIDI query DSL for commit history exploration
     scaffold/            — copy-paste template for new domain plugins
       plugin.py          — fully typed starter with TODO markers
   cli/

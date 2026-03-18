@@ -156,13 +156,6 @@ NON_INDEPENDENT_DIMS: frozenset[str] = frozenset({
 #: User-facing dimension names from .museattributes mapped to internal buckets.
 #: Agents and humans use these names in merge strategy declarations.
 DIM_ALIAS: dict[str, str] = {
-    # Classic 5-dimension names (backward compatible)
-    "melodic":      "notes",
-    "rhythmic":     "notes",
-    "harmonic":     "pitch_bend",
-    "dynamic":      "cc_volume",
-    "structural":   "track_structure",
-    # Fine-grained expressive names
     "pitch_bend":       "pitch_bend",
     "aftertouch":       "channel_pressure",
     "poly_aftertouch":  "poly_pressure",

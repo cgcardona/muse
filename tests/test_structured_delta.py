@@ -3,7 +3,7 @@
 Covers:
 - All five DomainOp TypedDicts can be constructed and serialised to JSON.
 - StructuredDelta satisfies the StateDelta type alias.
-- MusicPlugin.diff() returns a StructuredDelta with correctly typed ops.
+- MidiPlugin.diff() returns a StructuredDelta with correctly typed ops.
 - PatchOp wraps note-level child_ops for modified .mid files.
 - DriftReport.delta is a StructuredDelta.
 - muse show and muse diff display structured output.
@@ -27,7 +27,7 @@ from muse.domain import (
     StateDelta,
     StructuredDelta,
 )
-from muse.plugins.music.plugin import MusicPlugin, plugin
+from muse.plugins.midi.plugin import MidiPlugin, plugin
 
 
 # ---------------------------------------------------------------------------
@@ -35,7 +35,7 @@ from muse.plugins.music.plugin import MusicPlugin, plugin
 # ---------------------------------------------------------------------------
 
 def _snap(files: dict[str, str]) -> SnapshotManifest:
-    return SnapshotManifest(files=files, domain="music")
+    return SnapshotManifest(files=files, domain="midi")
 
 
 def _make_insert(address: str = "a.mid", content_id: str = "abc123") -> InsertOp:
@@ -92,7 +92,7 @@ def _make_patch(child_ops: list[DomainOp] | None = None) -> PatchOp:
 
 def _make_delta(ops: list[DomainOp] | None = None) -> StructuredDelta:
     return StructuredDelta(
-        domain="music",
+        domain="midi",
         ops=ops or [],
         summary="no changes",
     )
@@ -168,13 +168,13 @@ class TestDeltaOpTypes:
         delta = _make_delta(ops=[_make_insert(), _make_delete("b.mid", "xyz")])
         serialised = json.dumps(delta)
         restored = json.loads(serialised)
-        assert restored["domain"] == "music"
+        assert restored["domain"] == "midi"
         assert len(restored["ops"]) == 2
         assert restored["summary"] == "no changes"
 
     def test_structured_delta_is_state_delta_type(self) -> None:
         delta: StateDelta = _make_delta()
-        assert delta["domain"] == "music"
+        assert delta["domain"] == "midi"
 
     def test_structured_delta_has_required_keys(self) -> None:
         delta = _make_delta()
@@ -184,10 +184,10 @@ class TestDeltaOpTypes:
 
 
 # ---------------------------------------------------------------------------
-# MusicPlugin.diff() returns StructuredDelta
+# MidiPlugin.diff() returns StructuredDelta
 # ---------------------------------------------------------------------------
 
-class TestMusicPluginStructuredDiff:
+class TestMidiPluginStructuredDiff:
     def test_no_change_returns_empty_ops(self) -> None:
         snap = _snap({"a.mid": "h1"})
         delta = plugin.diff(snap, snap)
@@ -278,7 +278,7 @@ class TestMusicPluginStructuredDiff:
     def test_domain_is_music(self) -> None:
         snap = _snap({"a.mid": "h"})
         delta = plugin.diff(snap, snap)
-        assert delta["domain"] == "music"
+        assert delta["domain"] == "midi"
 
     def test_insert_op_position_is_none_for_file_level(self) -> None:
         base = _snap({})
@@ -328,14 +328,14 @@ class TestDriftReportDelta:
 
 
 # ---------------------------------------------------------------------------
-# MusicPlugin.apply() handles StructuredDelta
+# MidiPlugin.apply() handles StructuredDelta
 # ---------------------------------------------------------------------------
 
-class TestMusicPluginApply:
+class TestMidiPluginApply:
     def test_apply_delete_op_removes_file(self) -> None:
         snap = _snap({"a.mid": "h1", "b.mid": "h2"})
         delta: StructuredDelta = StructuredDelta(
-            domain="music",
+            domain="midi",
             ops=[DeleteOp(
                 op="delete", address="a.mid", position=None,
                 content_id="h1", content_summary="deleted: a.mid",
@@ -349,7 +349,7 @@ class TestMusicPluginApply:
     def test_apply_replace_op_updates_hash(self) -> None:
         snap = _snap({"a.mid": "old"})
         delta: StructuredDelta = StructuredDelta(
-            domain="music",
+            domain="midi",
             ops=[ReplaceOp(
                 op="replace", address="a.mid", position=None,
                 old_content_id="old", new_content_id="new",
@@ -363,7 +363,7 @@ class TestMusicPluginApply:
     def test_apply_insert_op_adds_file(self) -> None:
         snap = _snap({})
         delta: StructuredDelta = StructuredDelta(
-            domain="music",
+            domain="midi",
             ops=[InsertOp(
                 op="insert", address="new.mid", position=None,
                 content_id="newhash", content_summary="new file: new.mid",
@@ -378,7 +378,7 @@ class TestMusicPluginApply:
         workdir.mkdir()
         (workdir / "beat.mid").write_bytes(b"drums")
         delta: StructuredDelta = StructuredDelta(
-            domain="music", ops=[], summary="no changes",
+            domain="midi", ops=[], summary="no changes",
         )
         result = plugin.apply(delta, workdir)
         assert "beat.mid" in result["files"]
@@ -396,7 +396,7 @@ class TestShowStructuredOutput:
         from muse.cli.app import cli
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["init", "--domain", "music"], obj={})
+        result = runner.invoke(cli, ["init", "--domain", "midi"], obj={})
         # Just check the command is importable and types are correct —
         # full CLI integration is covered in test_cli_workflow.py.
         assert result is not None

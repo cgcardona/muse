@@ -1,4 +1,4 @@
-"""``muse music-query`` — music DSL query over commit history.
+"""``muse midi-query`` — MIDI DSL query over commit history.
 
 Evaluates a predicate expression against the note content of all MIDI tracks
 across the commit history and returns matching bars with chord annotations,
@@ -6,10 +6,10 @@ agent provenance, and note tables.
 
 Usage::
 
-    muse music-query "note.pitch_class == 'Eb' and bar == 12"
-    muse music-query "note.velocity > 100" --track piano.mid
-    muse music-query "agent_id == 'counterpoint-bot'" --from HEAD~10
-    muse music-query "harmony.quality == 'dim'" --json
+    muse midi-query "note.pitch_class == 'Eb' and bar == 12"
+    muse midi-query "note.velocity > 100" --track piano.mid
+    muse midi-query "agent_id == 'counterpoint-bot'" --from HEAD~10
+    muse midi-query "harmony.quality == 'dim'" --json
 
 Grammar::
 
@@ -24,7 +24,7 @@ Grammar::
                 author | agent_id | model_id | toolchain_id
     OP        = == | != | > | < | >= | <=
 
-See ``muse/plugins/music/_music_query.py`` for the full grammar reference.
+See ``muse/plugins/midi/_midi_query.py`` for the full grammar reference.
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ import typer
 
 from muse.core.repo import require_repo
 from muse.core.store import get_head_commit_id, read_commit
-from muse.plugins.music._music_query import run_query
+from muse.plugins.midi._midi_query import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -79,8 +79,8 @@ def _resolve_head(root: pathlib.Path, alias: str | None = None) -> str | None:
     return current or alias
 
 
-@app.command(name="music-query")
-def music_query_cmd(
+@app.command(name="midi-query")
+def midi_query_cmd(
     query_expr: str = typer.Argument(
         ...,
         metavar="QUERY",
@@ -124,7 +124,7 @@ def music_query_cmd(
         help="Output machine-readable JSON instead of formatted text.",
     ),
 ) -> None:
-    """Query the MIDI note history using a music DSL predicate."""
+    """Query the MIDI note history using a MIDI DSL predicate."""
     root = require_repo()
 
     start_id = _resolve_head(root, start)

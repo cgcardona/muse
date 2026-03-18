@@ -3,7 +3,7 @@
 ## Status
 
 **Experimental** — not wired into the production merge path.  This module
-(`muse/plugins/music/_crdt_notes.py`) exists to:
+(`muse/plugins/midi/_crdt_notes.py`) exists to:
 
 1. Demonstrate commutative concurrent note editing.
 2. Benchmark voice-aware RGA vs. LSEQ and standard three-way merge.
@@ -77,6 +77,6 @@ record.  The CRDT state itself is ephemeral — not stored in the object store.
 
 | File | Role |
 |------|------|
-| `muse/plugins/music/_crdt_notes.py` | `NotePosition`, `RGANoteEntry`, `MusicRGA` |
+| `muse/plugins/midi/_crdt_notes.py` | `NotePosition`, `RGANoteEntry`, `MusicRGA` |
 | `tests/test_crdt.py` | CRDT law verification + unit tests |
 | `tools/benchmark.py` | RGA throughput benchmark |

@@ -14,7 +14,7 @@ Format
     # Merge strategy overrides for this repository.
 
     [meta]
-    domain = "music"          # optional — validated against .muse/repo.json
+    domain = "midi"          # optional — validated against .muse/repo.json
 
     [[rules]]
     path = "drums/*"          # fnmatch glob against workspace-relative POSIX paths
@@ -23,7 +23,7 @@ Format
 
     [[rules]]
     path = "keys/*"
-    dimension = "harmonic"
+    dimension = "pitch_bend"
     strategy = "theirs"
 
     [[rules]]
@@ -32,7 +32,7 @@ Format
     strategy = "auto"
 
 **path** — ``fnmatch`` glob matched against workspace-relative POSIX paths.
-**dimension** — a domain-defined axis name (e.g. ``melodic``, ``harmonic``)
+**dimension** — a domain-defined axis name (e.g. ``notes``, ``pitch_bend``)
 or ``*`` to match any dimension.
 **strategy** — one of ``ours | theirs | union | auto | manual``.
 
@@ -96,7 +96,7 @@ class AttributeRule:
 
     Attributes:
         path_pattern: ``fnmatch`` glob matched against workspace-relative paths.
-        dimension:    Domain axis name (e.g. ``"melodic"``) or ``"*"``.
+        dimension:    Domain axis name (e.g. ``"notes"``) or ``"*"``.
         strategy:     Resolution strategy: ``ours | theirs | union | auto | manual``.
         source_index: 0-based index of the rule in the ``[[rules]]`` array.
     """
