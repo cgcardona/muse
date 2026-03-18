@@ -4,7 +4,7 @@ Core VCS commands::
 
     init        status      log         commit      diff
     show        branch      checkout    merge       reset
-    revert      stash       cherry-pick tag
+    revert      stash       cherry-pick tag         domains
 """
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from muse.cli.commands import (
     checkout,
     commit,
     diff,
+    domains,
     init,
     log,
     merge,
@@ -49,6 +50,7 @@ cli.add_typer(revert.app,       name="revert",      help="Create a new commit th
 cli.add_typer(cherry_pick.app,  name="cherry-pick", help="Apply a specific commit's changes on top of HEAD.")
 cli.add_typer(stash.app,        name="stash",       help="Shelve and restore uncommitted changes.")
 cli.add_typer(tag.app,          name="tag",         help="Attach and query semantic tags on commits.")
+cli.add_typer(domains.app,      name="domains",     help="Domain plugin dashboard — list capabilities and scaffold new domains.")
 
 
 if __name__ == "__main__":
