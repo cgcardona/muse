@@ -912,7 +912,6 @@ _HTML_TEMPLATE = """\
 <nav>
   <a class="nav-logo" href="index.html">muse</a>
   <a class="nav-link current" href="demo.html">Demo</a>
-  <a class="nav-link" href="index.html">Domain Registry</a>
   <a class="nav-link" href="https://github.com/cgcardona/muse/blob/main/docs/guide/plugin-authoring-guide.md">Plugin Guide</a>
   <div class="nav-spacer"></div>
   <span class="nav-badge">v{{VERSION}}</span>
