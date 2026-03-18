@@ -505,24 +505,24 @@ _HTML_TEMPLATE = """\
       pointer-events: none;
     }
     .hero-wordmark {
-      font-family: var(--mono);
-      font-size: clamp(56px, 9vw, 108px);
+      font-family: var(--ui);
+      font-size: clamp(72px, 11vw, 130px);
       font-weight: 800;
-      letter-spacing: -4px;
+      letter-spacing: -5px;
       line-height: 1;
       margin-bottom: 12px;
-      background: linear-gradient(135deg, #4f8ef7 0%, #bc8cff 100%);
+      background: linear-gradient(90deg, #6ea8fe 0%, #a78bfa 50%, #c084fc 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
     .hero-version-any {
-      font-size: clamp(20px, 3vw, 30px);
-      font-weight: 300;
+      font-size: clamp(13px, 2vw, 17px);
+      font-weight: 500;
       color: var(--mute);
-      letter-spacing: 2px;
+      letter-spacing: 4px;
       text-transform: uppercase;
-      margin-bottom: 28px;
+      margin-bottom: 32px;
     }
     .hero-sub {
       font-size: 18px;
