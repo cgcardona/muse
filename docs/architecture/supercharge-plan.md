@@ -7,7 +7,7 @@
 > |-------|--------|-------------|
 > | Phase 1 — Typed Delta Algebra | ✅ **Complete** — merged to `dev` ([PR #13](https://github.com/cgcardona/muse/pull/13)) | `feat/phase-1-typed-delta-algebra` |
 > | Phase 2 — Domain Schema & Diff Algorithm Library | ✅ **Complete** — merged to `dev` ([PR #15](https://github.com/cgcardona/muse/pull/15)) | `feat/phase-2-domain-schema-diff-library` |
-> | Phase 3 — Operation-Level Merge Engine | 🔄 **In progress** | `feat/phase-3-op-level-merge-engine` |
+> | Phase 3 — Operation-Level Merge Engine | ✅ **Complete** — merged to `dev` | `feat/phase-3-op-level-merge-engine` |
 > | Phase 4 — CRDT Semantics | ⏳ Pending Phase 3 | — |
 
 ---
@@ -1012,11 +1012,26 @@ test_full_merge_same_note_insert_produces_conflict
 | File | Change |
 |---|---|
 | `muse/core/op_transform.py` | **New.** `ops_commute`, `transform`, `merge_op_lists`. |
-| `muse/core/merge_engine.py` | Add `merge_structured()`. Fallback logic preserved. |
-| `muse/domain.py` | Add optional `merge_ops()` to `MuseDomainPlugin` protocol. |
-| `muse/plugins/music/plugin.py` | Implement `merge_ops()` using `op_transform`. |
-| `tests/test_op_transform.py` | **New.** |
-| `tests/test_core_merge_engine.py` | Add structured-delta merge tests. |
+| `muse/core/op_transform.py` | **New.** `MergeOpsResult`, `ops_commute`, `transform`, `_adjust_insert_positions`, `merge_op_lists`, `merge_structured`. |
+| `muse/core/merge_engine.py` | Updated docstring to reference `muse.core.op_transform` as the structured merge module. |
+| `muse/domain.py` | `StructuredMergePlugin` sub-protocol (optional); `merge_ops()` with full `ours_snap`/`theirs_snap` parameters. |
+| `muse/plugins/music/plugin.py` | `MusicPlugin.merge_ops()` — full OT-based merge with note-level MIDI reconstruction; `_merge_patch_ops()`, `_note_content_id()` helpers. |
+| `muse/plugins/music/midi_diff.py` | `reconstruct_midi()` — inverse of `extract_notes()`; produces Type 0 MIDI from a `list[NoteKey]`. |
+| `muse/cli/commands/merge.py` | Phase 3 dispatch: `isinstance(plugin, StructuredMergePlugin)` guard; calls `merge_ops` when available, falls back to `merge`. |
+| `tests/test_op_transform.py` | **New.** 82 tests: commmutativity oracle, OT transform, counting formula, three-way merge, `merge_structured`, `MergeOpsResult`. |
+| `tests/test_core_merge_engine.py` | Extended with `TestMergeStructuredIntegration` and `TestStructuredMergePluginProtocol` classes (20 new tests). |
+
+### 5.9 Phase 3 Completion Checklist
+
+- [x] `muse/core/op_transform.py` — complete OT engine: commmutativity oracle, position-adjust transform, three-way merge
+- [x] `StructuredMergePlugin` optional sub-protocol in `domain.py` — clean runtime detection via `isinstance`
+- [x] `MusicPlugin.merge_ops()` — full reference implementation with MIDI note-level reconstruction via object store
+- [x] `reconstruct_midi()` in `midi_diff.py` — correct Type 0 MIDI writer, inverse of `extract_notes()`
+- [x] CLI `merge` command dispatches to `merge_ops` when plugin supports it; falls back to file-level `merge()` automatically
+- [x] `isinstance(plugin, StructuredMergePlugin)` protocol assertion added to `muse/plugins/music/plugin.py`
+- [x] `mypy muse/` — zero errors
+- [x] `python tools/typing_audit.py --dirs muse/ tests/ --max-any 0` — zero violations
+- [x] `pytest tests/ -v` — 612 tests green (82 new Phase 3 tests across 2 files)
 
 ---
 

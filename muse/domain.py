@@ -25,6 +25,15 @@ Phase 2 — Domain Schema & Diff Algorithm Library
 declaration to drive diff algorithm selection via
 :func:`~muse.core.diff_algorithms.diff_by_schema`, and the merge engine
 (Phase 3) will use it for informed conflict detection.
+
+Phase 3 — Operation-Level Merge Engine
+---------------------------------------
+Plugins may optionally implement :class:`StructuredMergePlugin`, a sub-protocol
+that adds ``merge_ops()``. When both branches have produced ``StructuredDelta``
+from ``diff()``, the merge engine checks
+``isinstance(plugin, StructuredMergePlugin)`` and calls ``merge_ops()`` for
+fine-grained, operation-level conflict detection. Non-supporting plugins fall
+back to the existing file-level ``merge()`` path.
 """
 from __future__ import annotations
 
@@ -361,5 +370,75 @@ class MuseDomainPlugin(Protocol):
         algorithm selection and the Phase 3 merge engine's conflict detection.
 
         See :mod:`muse.core.schema` for all available element schema types.
+        """
+        ...
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 optional extension — structured (operation-level) merge
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class StructuredMergePlugin(MuseDomainPlugin, Protocol):
+    """Optional extension for plugins that support operation-level merging.
+
+    Plugins that implement this sub-protocol gain sub-file auto-merge: two
+    agents inserting notes at non-overlapping bars never produce a conflict,
+    because the merge engine reasons over ``DomainOp`` trees rather than file
+    paths.
+
+    The merge engine detects support at runtime via::
+
+        isinstance(plugin, StructuredMergePlugin)
+
+    Plugins that do not implement ``merge_ops`` fall back to the existing
+    file-level ``merge()`` path automatically — no changes required.
+
+    The :class:`~muse.plugins.music.plugin.MusicPlugin` is the reference
+    implementation for Phase 3.
+    """
+
+    def merge_ops(
+        self,
+        base: StateSnapshot,
+        ours_snap: StateSnapshot,
+        theirs_snap: StateSnapshot,
+        ours_ops: list[DomainOp],
+        theirs_ops: list[DomainOp],
+        *,
+        repo_root: pathlib.Path | None = None,
+    ) -> MergeResult:
+        """Merge two op lists against a common base using domain knowledge.
+
+        The core merge engine calls this when both branches have produced
+        ``StructuredDelta`` from ``diff()``. The plugin:
+
+        1. Calls :func:`muse.core.op_transform.merge_op_lists` to detect
+           conflicting ``DomainOp`` pairs.
+        2. For clean pairs, builds the merged ``SnapshotManifest`` by applying
+           the adjusted merged ops to *base*.  The plugin uses *ours_snap* and
+           *theirs_snap* to look up the final content IDs for files touched only
+           by one side (necessary for ``PatchOp`` entries, which do not carry a
+           ``new_content_id`` directly).
+        3. For conflicting pairs, consults ``.museattributes`` (when
+           *repo_root* is provided) and either auto-resolves via the declared
+           strategy or adds the address to ``MergeResult.conflicts``.
+
+        Implementations must be domain-aware: a ``.museattributes`` rule of
+        ``merge=ours`` should take this plugin's understanding of "ours" (the
+        left branch content), not a raw file-level copy.
+
+        Args:
+            base:       Common ancestor snapshot.
+            ours_snap:  Final snapshot of our branch.
+            theirs_snap: Final snapshot of their branch.
+            ours_ops:   Operations from our branch delta (base → ours).
+            theirs_ops: Operations from their branch delta (base → theirs).
+            repo_root:  Repository root for ``.museattributes`` lookup.
+
+        Returns:
+            A :class:`MergeResult` with the reconciled snapshot and any
+            remaining unresolvable conflicts.
         """
         ...

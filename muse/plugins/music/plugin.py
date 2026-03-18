@@ -79,7 +79,9 @@ from muse.domain import (
     StateDelta,
     StateSnapshot,
     StructuredDelta,
+    StructuredMergePlugin,
 )
+from muse.plugins.music.midi_diff import NoteKey
 
 logger = logging.getLogger(__name__)
 
@@ -89,12 +91,14 @@ _DOMAIN_TAG = "music"
 class MusicPlugin:
     """Music domain plugin for the Muse VCS.
 
-    Implements :class:`~muse.domain.MuseDomainPlugin` for MIDI state stored
-    as files in ``muse-work/``. Use this plugin when running ``muse`` against
-    a directory of MIDI, audio, or other music production files.
+    Implements :class:`~muse.domain.MuseDomainPlugin` (six core interfaces)
+    and :class:`~muse.domain.StructuredMergePlugin` (Phase 3 operation-level
+    merge) for MIDI state stored as files in ``muse-work/``.
 
-    This is the reference implementation. It demonstrates the five-interface
-    contract that every other domain plugin must satisfy.
+    This is the reference implementation. Every other domain plugin implements
+    the same six core interfaces; the :class:`~muse.domain.StructuredMergePlugin`
+    extension is optional but strongly recommended for domains that produce
+    note-level (sub-file) diffs.
     """
 
     # ------------------------------------------------------------------
@@ -535,10 +539,316 @@ class MusicPlugin:
             schema_version=1,
         )
 
+    # ------------------------------------------------------------------
+    # 7. merge_ops — Phase 3 operation-level merge (StructuredMergePlugin)
+    # ------------------------------------------------------------------
+
+    def merge_ops(
+        self,
+        base: StateSnapshot,
+        ours_snap: StateSnapshot,
+        theirs_snap: StateSnapshot,
+        ours_ops: list[DomainOp],
+        theirs_ops: list[DomainOp],
+        *,
+        repo_root: pathlib.Path | None = None,
+    ) -> MergeResult:
+        """Operation-level three-way merge using the Phase 3 OT engine.
+
+        Extends the file-level ``merge()`` method with sub-file granularity: two
+        changes to non-overlapping notes in the same MIDI file no longer produce
+        a conflict.
+
+        Algorithm
+        ---------
+        1. Run :func:`~muse.core.op_transform.merge_op_lists` on the flat op
+           lists to classify each (ours, theirs) pair as commuting or
+           conflicting.
+        2. Build the merged manifest from *base* by applying all clean merged
+           ops.  ``InsertOp`` and ``ReplaceOp`` entries supply a ``content_id``
+           / ``new_content_id`` directly.  For ``PatchOp`` entries (sub-file
+           note changes), the final file hash is looked up from *ours_snap* or
+           *theirs_snap*.  When both sides produced a ``PatchOp`` for the same
+           MIDI file and the note-level ops commute, an attempt is made to
+           reconstruct the merged MIDI bytes; on failure the file falls back to
+           a conflict.
+        3. For conflicting pairs, consult ``.museattributes``.  Strategies
+           ``"ours"`` and ``"theirs"`` are applied automatically; everything
+           else enters ``MergeResult.conflicts``.
+
+        Args:
+            base:        Common ancestor snapshot.
+            ours_snap:   Final snapshot of our branch.
+            theirs_snap: Final snapshot of their branch.
+            ours_ops:    Operations from our branch delta (base → ours).
+            theirs_ops:  Operations from their branch delta (base → theirs).
+            repo_root:   Repository root for object store and attributes.
+
+        Returns:
+            A :class:`~muse.domain.MergeResult` with the reconciled snapshot
+            and any remaining unresolvable conflicts.
+        """
+        from muse.core.attributes import load_attributes, resolve_strategy
+        from muse.core.op_transform import merge_op_lists
+
+        attrs = load_attributes(repo_root) if repo_root is not None else []
+
+        # OT classification: find commuting and conflicting op pairs.
+        ot_result = merge_op_lists([], ours_ops, theirs_ops)
+
+        # Build the merged manifest starting from base.
+        merged_files: dict[str, str] = dict(base["files"])
+        applied_strategies: dict[str, str] = {}
+        final_conflicts: list[str] = []
+        op_log: list[DomainOp] = list(ot_result.merged_ops)
+
+        # Group PatchOps by address so we can detect same-file note merges.
+        ours_patches: dict[str, PatchOp] = {}
+        theirs_patches: dict[str, PatchOp] = {}
+        for op in ours_ops:
+            if op["op"] == "patch":
+                ours_patches[op["address"]] = op
+        for op in theirs_ops:
+            if op["op"] == "patch":
+                theirs_patches[op["address"]] = op
+
+        # Track which addresses are involved in a conflict.
+        conflicting_addresses: set[str] = {
+            our_op["address"] for our_op, _ in ot_result.conflict_ops
+        }
+
+        # --- Apply clean merged ops ---
+        for op in ot_result.merged_ops:
+            addr = op["address"]
+            if addr in conflicting_addresses:
+                continue  # handled in conflict resolution below
+
+            if op["op"] == "insert":
+                merged_files[addr] = op["content_id"]
+
+            elif op["op"] == "delete":
+                merged_files.pop(addr, None)
+
+            elif op["op"] == "replace":
+                merged_files[addr] = op["new_content_id"]
+
+            elif op["op"] == "patch":
+                # PatchOp: determine which side(s) patched this file.
+                has_ours = addr in ours_patches
+                has_theirs = addr in theirs_patches
+
+                if has_ours and not has_theirs:
+                    # Only our side changed this file — take our version.
+                    if addr in ours_snap["files"]:
+                        merged_files[addr] = ours_snap["files"][addr]
+                    else:
+                        merged_files.pop(addr, None)
+
+                elif has_theirs and not has_ours:
+                    # Only their side changed this file — take their version.
+                    if addr in theirs_snap["files"]:
+                        merged_files[addr] = theirs_snap["files"][addr]
+                    else:
+                        merged_files.pop(addr, None)
+
+                else:
+                    # Both sides patched the same file with commuting note ops.
+                    # Attempt note-level MIDI reconstruction.
+                    merged_content_id = _merge_patch_ops(
+                        addr=addr,
+                        ours_patch=ours_patches[addr],
+                        theirs_patch=theirs_patches[addr],
+                        base_files=dict(base["files"]),
+                        ours_snap_files=dict(ours_snap["files"]),
+                        theirs_snap_files=dict(theirs_snap["files"]),
+                        repo_root=repo_root,
+                    )
+                    if merged_content_id is not None:
+                        merged_files[addr] = merged_content_id
+                    else:
+                        # Reconstruction failed — treat as manual conflict.
+                        final_conflicts.append(addr)
+
+        # --- Resolve conflicts ---
+        for our_op, their_op in ot_result.conflict_ops:
+            addr = our_op["address"]
+            strategy = resolve_strategy(attrs, addr, "*")
+
+            if strategy == "ours":
+                if addr in ours_snap["files"]:
+                    merged_files[addr] = ours_snap["files"][addr]
+                else:
+                    merged_files.pop(addr, None)
+                applied_strategies[addr] = "ours"
+
+            elif strategy == "theirs":
+                if addr in theirs_snap["files"]:
+                    merged_files[addr] = theirs_snap["files"][addr]
+                else:
+                    merged_files.pop(addr, None)
+                applied_strategies[addr] = "theirs"
+
+            else:
+                # Strategy "manual" or "auto" without a clear resolution.
+                final_conflicts.append(addr)
+
+        return MergeResult(
+            merged=SnapshotManifest(files=merged_files, domain=_DOMAIN_TAG),
+            conflicts=sorted(set(final_conflicts)),
+            applied_strategies=applied_strategies,
+            op_log=op_log,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Module-level helpers
 # ---------------------------------------------------------------------------
+
+
+def _merge_patch_ops(
+    *,
+    addr: str,
+    ours_patch: PatchOp,
+    theirs_patch: PatchOp,
+    base_files: dict[str, str],
+    ours_snap_files: dict[str, str],
+    theirs_snap_files: dict[str, str],
+    repo_root: pathlib.Path | None,
+) -> str | None:
+    """Attempt note-level MIDI merge for two ``PatchOp``\\s on the same file.
+
+    Runs OT on the child_ops of each PatchOp.  If the note-level ops all
+    commute, reconstructs the merged MIDI by:
+
+    1. Loading base, ours, and theirs MIDI bytes from the object store.
+    2. Extracting note sequences from all three versions.
+    3. Building ``content_id → NoteKey`` look-ups for the ours and theirs
+       sequences (so that InsertOp content IDs can be resolved to real notes).
+    4. Applying the merged note ops (deletions then insertions) to the base
+       note sequence.
+    5. Calling :func:`~muse.plugins.music.midi_diff.reconstruct_midi` and
+       storing the resulting bytes.
+
+    Returns the SHA-256 hash of the reconstructed MIDI (ready to store in the
+    object store) on success, or ``None`` when:
+
+    - *repo_root* is ``None`` (cannot access object store).
+    - Base or branch bytes are not in the local object store.
+    - Note-level OT found conflicts.
+    - MIDI reconstruction raised any exception.
+
+    Args:
+        addr:              Workspace-relative MIDI file path.
+        ours_patch:        Our PatchOp for this file.
+        theirs_patch:      Their PatchOp for this file.
+        base_files:        Content-ID map for the common ancestor snapshot.
+        ours_snap_files:   Content-ID map for our branch's final snapshot.
+        theirs_snap_files: Content-ID map for their branch's final snapshot.
+        repo_root:         Repository root for object store access.
+
+    Returns:
+        Content-ID (SHA-256 hex) of the merged MIDI, or ``None`` on failure.
+    """
+    if repo_root is None or addr not in base_files:
+        return None
+
+    from muse.core.object_store import read_object, write_object
+    from muse.core.op_transform import merge_op_lists
+    from muse.plugins.music.midi_diff import NoteKey, extract_notes, reconstruct_midi
+
+    # Run OT on note-level ops to classify conflicts.
+    note_result = merge_op_lists([], ours_patch["child_ops"], theirs_patch["child_ops"])
+    if not note_result.is_clean:
+        logger.debug(
+            "⚠️ Note-level conflict in %r: %d pair(s) — falling back to file conflict",
+            addr,
+            len(note_result.conflict_ops),
+        )
+        return None
+
+    try:
+        base_bytes = read_object(repo_root, base_files[addr])
+        if base_bytes is None:
+            return None
+
+        ours_hash = ours_snap_files.get(addr)
+        theirs_hash = theirs_snap_files.get(addr)
+        ours_bytes = read_object(repo_root, ours_hash) if ours_hash else None
+        theirs_bytes = read_object(repo_root, theirs_hash) if theirs_hash else None
+
+        base_notes, ticks_per_beat = extract_notes(base_bytes)
+
+        # Build content_id → NoteKey lookups from ours and theirs versions.
+        ours_by_id: dict[str, NoteKey] = {}
+        if ours_bytes is not None:
+            ours_notes, _ = extract_notes(ours_bytes)
+            ours_by_id = {_note_content_id(n): n for n in ours_notes}
+
+        theirs_by_id: dict[str, NoteKey] = {}
+        if theirs_bytes is not None:
+            theirs_notes, _ = extract_notes(theirs_bytes)
+            theirs_by_id = {_note_content_id(n): n for n in theirs_notes}
+
+        # Collect content IDs to delete.
+        delete_ids: set[str] = {
+            op["content_id"] for op in note_result.merged_ops if op["op"] == "delete"
+        }
+
+        # Apply deletions to base note list.
+        base_note_by_id = {_note_content_id(n): n for n in base_notes}
+        surviving: list[NoteKey] = [
+            n for n in base_notes if _note_content_id(n) not in delete_ids
+        ]
+
+        # Collect insertions: resolve content_id → NoteKey via ours then theirs.
+        inserted: list[NoteKey] = []
+        for op in note_result.merged_ops:
+            if op["op"] == "insert":
+                cid = op["content_id"]
+                note = ours_by_id.get(cid) or theirs_by_id.get(cid)
+                if note is None:
+                    # Fallback: base itself shouldn't have it, but check anyway.
+                    note = base_note_by_id.get(cid)
+                if note is None:
+                    logger.debug(
+                        "⚠️ Cannot resolve note content_id %s for %r — skipping",
+                        cid[:12],
+                        addr,
+                    )
+                    continue
+                inserted.append(note)
+
+        merged_notes = surviving + inserted
+        merged_bytes = reconstruct_midi(merged_notes, ticks_per_beat=ticks_per_beat)
+
+        merged_hash = hashlib.sha256(merged_bytes).hexdigest()
+        write_object(repo_root, merged_hash, merged_bytes)
+
+        logger.info(
+            "✅ Note-level MIDI merge for %r: %d ops clean, %d notes in result",
+            addr,
+            len(note_result.merged_ops),
+            len(merged_notes),
+        )
+        return merged_hash
+
+    except Exception as exc:  # noqa: BLE001  intentional broad catch
+        logger.debug("⚠️ MIDI note-level reconstruction failed for %r: %s", addr, exc)
+        return None
+
+
+def _note_content_id(note: NoteKey) -> str:
+    """Return the SHA-256 content ID for a :class:`~muse.plugins.music.midi_diff.NoteKey`.
+
+    Delegates to the same algorithm used in :mod:`muse.plugins.music.midi_diff`
+    so that content IDs computed here are identical to those stored in
+    ``InsertOp`` / ``DeleteOp`` entries.
+    """
+    payload = (
+        f"{note['pitch']}:{note['velocity']}:"
+        f"{note['start_tick']}:{note['duration_ticks']}:{note['channel']}"
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 def _diff_modified_file(
@@ -649,4 +959,7 @@ plugin = MusicPlugin()
 
 assert isinstance(plugin, MuseDomainPlugin), (
     "MusicPlugin does not satisfy the MuseDomainPlugin protocol"
+)
+assert isinstance(plugin, StructuredMergePlugin), (
+    "MusicPlugin does not satisfy the StructuredMergePlugin protocol"
 )
