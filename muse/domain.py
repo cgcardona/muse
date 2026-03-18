@@ -232,10 +232,10 @@ class DriftReport:
 
 @runtime_checkable
 class MuseDomainPlugin(Protocol):
-    """The five interfaces a domain plugin must implement.
+    """The six interfaces a domain plugin must implement.
 
     Muse provides everything else: the DAG, branching, checkout, lineage
-    walking, ASCII log graph, and merge base finder. Implement these five
+    walking, ASCII log graph, and merge base finder. Implement these six
     methods and your domain gets the full Muse VCS for free.
 
     Music is the reference implementation (``muse.plugins.music``).

@@ -1,11 +1,11 @@
 """Music domain plugin — reference implementation of :class:`MuseDomainPlugin`.
 
-This plugin implements the five Muse domain interfaces for MIDI state:
+This plugin implements the six Muse domain interfaces for MIDI state:
 notes, velocities, controller events (CC), pitch bends, and aftertouch.
 
 It is the domain that proved the abstraction. Every other domain — scientific
 simulation, genomics, 3D spatial design — is a new plugin that implements
-the same five interfaces.
+the same six interfaces.
 
 Live State
 ----------

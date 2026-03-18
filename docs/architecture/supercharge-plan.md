@@ -6,8 +6,8 @@
 > | Phase | Status | Branch / PR |
 > |-------|--------|-------------|
 > | Phase 1 — Typed Delta Algebra | ✅ **Complete** — merged to `dev` ([PR #13](https://github.com/cgcardona/muse/pull/13)) | `feat/phase-1-typed-delta-algebra` |
-> | Phase 2 — Domain Schema & Diff Algorithm Library | 🔄 **In progress** | `feat/phase-2-domain-schema-diff-library` |
-> | Phase 3 — Operation-Level Merge Engine | ⏳ Pending Phase 2 | — |
+> | Phase 2 — Domain Schema & Diff Algorithm Library | ✅ **Complete** — merged to `dev` ([PR #15](https://github.com/cgcardona/muse/pull/15)) | `feat/phase-2-domain-schema-diff-library` |
+> | Phase 3 — Operation-Level Merge Engine | 🔄 **In progress** | `feat/phase-3-op-level-merge-engine` |
 > | Phase 4 — CRDT Semantics | ⏳ Pending Phase 3 | — |
 
 ---
@@ -785,16 +785,30 @@ test_plugin_registry_schema_lookup
 | File | Change |
 |---|---|
 | `muse/core/schema.py` | **New.** All schema `TypedDict` types. |
-| `muse/core/diff_algorithms/__init__.py` | **New.** Schema-driven dispatch. |
-| `muse/core/diff_algorithms/lcs.py` | **New.** Myers + patience diff. |
-| `muse/core/diff_algorithms/tree_edit.py` | **New.** Zhang-Shasha implementation. |
-| `muse/core/diff_algorithms/numerical.py` | **New.** Sparse/block/full tensor diff. |
-| `muse/core/diff_algorithms/set_ops.py` | **New.** Extracted from `merge_engine.py`. |
-| `muse/domain.py` | Add `schema()` to `MuseDomainPlugin` protocol. |
-| `muse/core/plugin_registry.py` | Add `schema_for(domain) -> DomainSchema \| None`. |
-| `muse/plugins/music/plugin.py` | Implement `schema()` returning full `DomainSchema`. `diff()` dispatches through `diff_by_schema`. |
-| `tests/test_diff_algorithms.py` | **New.** |
-| `tests/test_domain_schema.py` | **New.** |
+| `muse/core/diff_algorithms/__init__.py` | **New.** Schema-driven dispatch + typed input containers. |
+| `muse/core/diff_algorithms/lcs.py` | **New.** `myers_ses()`, `detect_moves()`, `diff()` on `list[str]`. |
+| `muse/core/diff_algorithms/tree_edit.py` | **New.** `TreeNode` dataclass + LCS-based labeled tree diff. |
+| `muse/core/diff_algorithms/numerical.py` | **New.** Epsilon-tolerant sparse/block/full tensor diff. |
+| `muse/core/diff_algorithms/set_ops.py` | **New.** Hash-set algebra for unordered content-ID collections. |
+| `muse/domain.py` | Add sixth protocol method `schema() -> DomainSchema`. |
+| `muse/plugins/registry.py` | Add `schema_for(domain) -> DomainSchema \| None`. |
+| `muse/plugins/music/plugin.py` | Implement `schema()` returning full four-dimension `DomainSchema`. |
+| `muse/plugins/music/midi_diff.py` | `lcs_edit_script()` now delegates to `lcs.myers_ses()` from core; no private LCS copy. |
+| `tests/test_diff_algorithms.py` | **New.** 54 tests across all algorithms and dispatch. |
+| `tests/test_domain_schema.py` | **New.** 20 tests for schema structure and registry lookup. |
+
+### 4.9 Phase 2 Completion Checklist
+
+- [x] `schema()` is on the `MuseDomainPlugin` protocol as the sixth method
+- [x] Music plugin returns a complete `DomainSchema` with four dimensions
+- [x] `diff_algorithms/` contains LCS, tree-edit, numerical, set-ops implementations
+- [x] All four algorithms tested with comprehensive unit and dispatch tests
+- [x] `diff_by_schema` dispatch is exhaustively typed (no `Any`, mypy verified)
+- [x] `schema_for()` added to plugin registry for schema lookup without a plugin instance
+- [x] `midi_diff.py` delegates LCS to `lcs.myers_ses()` — music domain uses the shared library
+- [x] `mypy muse/` — zero errors
+- [x] `python tools/typing_audit.py --dirs muse/ tests/ --max-any 0` — zero violations
+- [x] `pytest tests/ -v` — 530 tests green (74 new Phase 2 tests)
 
 ---
 
