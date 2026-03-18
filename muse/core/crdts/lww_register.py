@@ -114,7 +114,10 @@ class LWWRegister:
         """Return the lattice join — the value with the higher timestamp.
 
         Tiebreaks on equal timestamps by taking the lexicographically greater
-        ``author`` string.
+        ``author`` string.  When both ``timestamp`` and ``author`` are equal
+        (rare in practice but possible in tests), the value string itself is
+        used as the final tiebreaker, ensuring commutativity is preserved even
+        in this degenerate case.
 
         Args:
             other: The register to merge with.
@@ -122,8 +125,10 @@ class LWWRegister:
         Returns:
             A new :class:`LWWRegister` holding the winning value.
         """
-        self_key = (self._timestamp, self._author)
-        other_key = (other._timestamp, other._author)
+        # Include value as the final tiebreaker so that join is commutative even
+        # when two writes carry identical (timestamp, author) metadata.
+        self_key = (self._timestamp, self._author, self._value)
+        other_key = (other._timestamp, other._author, other._value)
         if other_key > self_key:
             return LWWRegister(other._value, other._timestamp, other._author)
         return LWWRegister(self._value, self._timestamp, self._author)

@@ -38,7 +38,7 @@ Level 3: StructuredMergePlugin   ← enables sub-file OT merge
 Level 4: CRDTPlugin              ← enables convergent multi-agent join
 ```
 
-The reference implementation is `muse/plugins/music/plugin.py`. Read it alongside this
+The reference implementation is `muse/plugins/midi/plugin.py`. Read it alongside this
 guide — it shows every method with real implementation and full docstrings.
 
 ---
@@ -512,7 +512,7 @@ Add one line to `muse/plugins/registry.py`:
 from muse.plugins.my_domain.plugin import MyDomainPlugin
 
 _REGISTRY: dict[str, MuseDomainPlugin] = {
-    "music":     MusicPlugin(),
+    "music":     MidiPlugin(),
     "my_domain": MyDomainPlugin(),   # ← add this
 }
 ```

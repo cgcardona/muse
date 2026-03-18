@@ -8,15 +8,17 @@ Core VCS commands::
 
 Music-domain semantic commands (impossible in Git)::
 
-    notes           list every note in a MIDI track as musical notation
-    note-log        note-level commit history for a track
-    note-blame      per-bar attribution — which commit wrote these notes?
-    harmony         chord analysis and key detection
-    piano-roll      ASCII piano roll visualization
-    note-hotspots   bar-level churn leaderboard
+    notes            list every note in a MIDI track as musical notation
+    note-log         note-level commit history for a track
+    note-blame       per-bar attribution — which commit wrote these notes?
+    harmony          chord analysis and key detection
+    piano-roll       ASCII piano roll visualization
+    note-hotspots    bar-level churn leaderboard
     velocity-profile dynamic range and velocity histogram
-    transpose       transpose all notes by N semitones (agent command)
-    mix             combine two MIDI tracks into one (agent command)
+    transpose        transpose all notes by N semitones (agent command)
+    mix              combine two MIDI tracks into one (agent command)
+    music-query      music DSL predicate search over commit history
+    music-check      enforce musical invariant rules (polyphony, range, key, fifths)
 
 Code-domain semantic commands — symbol graph::
 
@@ -101,6 +103,8 @@ from muse.cli.commands import (
     log,
     merge,
     mix,
+    midi_check,
+    midi_query,
     note_blame,
     note_hotspots,
     note_log,
@@ -153,16 +157,18 @@ cli.add_typer(stash.app,        name="stash",       help="Shelve and restore unc
 cli.add_typer(tag.app,          name="tag",         help="Attach and query semantic tags on commits.")
 cli.add_typer(domains.app,      name="domains",     help="Domain plugin dashboard — list capabilities and scaffold new domains.")
 
-# Music-domain commands
-cli.add_typer(notes.app,            name="notes",            help="[music] List every note in a MIDI track as musical notation.")
-cli.add_typer(note_log.app,         name="note-log",         help="[music] Note-level commit history — which notes were added or removed in each commit.")
-cli.add_typer(note_blame.app,       name="note-blame",       help="[music] Per-bar attribution — which commit introduced the notes in this bar?")
-cli.add_typer(harmony.app,          name="harmony",          help="[music] Chord analysis and key detection from MIDI note content.")
-cli.add_typer(piano_roll.app,       name="piano-roll",       help="[music] ASCII piano roll visualization of a MIDI track.")
-cli.add_typer(note_hotspots.app,    name="note-hotspots",    help="[music] Bar-level churn leaderboard — which bars change most across commits.")
-cli.add_typer(velocity_profile.app, name="velocity-profile", help="[music] Dynamic range and velocity histogram for a MIDI track.")
-cli.add_typer(transpose.app,        name="transpose",        help="[music] Transpose all notes in a MIDI track by N semitones.")
-cli.add_typer(mix.app,              name="mix",              help="[music] Combine notes from two MIDI tracks into a single output track.")
+# MIDI-domain commands
+cli.add_typer(notes.app,            name="notes",            help="[midi] List every note in a MIDI track as musical notation.")
+cli.add_typer(note_log.app,         name="note-log",         help="[midi] Note-level commit history — which notes were added or removed in each commit.")
+cli.add_typer(note_blame.app,       name="note-blame",       help="[midi] Per-bar attribution — which commit introduced the notes in this bar?")
+cli.add_typer(harmony.app,          name="harmony",          help="[midi] Chord analysis and key detection from MIDI note content.")
+cli.add_typer(piano_roll.app,       name="piano-roll",       help="[midi] ASCII piano roll visualization of a MIDI track.")
+cli.add_typer(note_hotspots.app,    name="note-hotspots",    help="[midi] Bar-level churn leaderboard — which bars change most across commits.")
+cli.add_typer(velocity_profile.app, name="velocity-profile", help="[midi] Dynamic range and velocity histogram for a MIDI track.")
+cli.add_typer(transpose.app,        name="transpose",        help="[midi] Transpose all notes in a MIDI track by N semitones.")
+cli.add_typer(mix.app,              name="mix",              help="[midi] Combine notes from two MIDI tracks into a single output track.")
+cli.add_typer(midi_query.app,      name="midi-query",       help="[midi] MIDI DSL predicate query over commit history — bars, chords, agents, pitches.")
+cli.add_typer(midi_check.app,      name="midi-check",       help="[midi] Enforce MIDI invariant rules (polyphony, pitch range, key consistency, parallel fifths).")
 
 # Code-domain commands
 cli.add_typer(symbols.app,         name="symbols",          help="[code] List every semantic symbol (function, class, method…) in a snapshot.")

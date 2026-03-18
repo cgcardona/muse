@@ -1,4 +1,4 @@
-"""Tests for muse.plugins.music.midi_diff — Myers LCS on MIDI note sequences.
+"""Tests for muse.plugins.midi.midi_diff — Myers LCS on MIDI note sequences.
 
 Covers:
 - NoteKey extraction from MIDI bytes.
@@ -16,7 +16,7 @@ import struct
 import mido
 import pytest
 
-from muse.plugins.music.midi_diff import (
+from muse.plugins.midi.midi_diff import (
     NoteKey,
     diff_midi_notes,
     extract_notes,

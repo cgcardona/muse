@@ -1,4 +1,4 @@
-"""Tests for muse.plugins.music.plugin — the MuseDomainPlugin reference implementation."""
+"""Tests for muse.plugins.midi.plugin — the MuseDomainPlugin reference implementation."""
 from __future__ import annotations
 
 import pathlib
@@ -6,11 +6,11 @@ import pathlib
 import pytest
 
 from muse.domain import DriftReport, MergeResult, MuseDomainPlugin, SnapshotManifest
-from muse.plugins.music.plugin import MusicPlugin, content_hash, plugin
+from muse.plugins.midi.plugin import MidiPlugin, content_hash, plugin
 
 
 def _snap(files: dict[str, str]) -> SnapshotManifest:
-    return SnapshotManifest(files=files, domain="music")
+    return SnapshotManifest(files=files, domain="midi")
 
 
 class TestProtocolConformance:
@@ -18,12 +18,12 @@ class TestProtocolConformance:
         assert isinstance(plugin, MuseDomainPlugin)
 
     def test_module_singleton_is_music_plugin(self) -> None:
-        assert isinstance(plugin, MusicPlugin)
+        assert isinstance(plugin, MidiPlugin)
 
 
 class TestSnapshot:
     def test_from_dict_passthrough(self) -> None:
-        snap = SnapshotManifest(files={"a.mid": "h1"}, domain="music")
+        snap = SnapshotManifest(files={"a.mid": "h1"}, domain="midi")
         assert plugin.snapshot(snap) is snap
 
     def test_from_workdir(self, tmp_path: pathlib.Path) -> None:
@@ -33,7 +33,7 @@ class TestSnapshot:
         snap = plugin.snapshot(workdir)
         assert "files" in snap
         assert "beat.mid" in snap["files"]
-        assert snap["domain"] == "music"
+        assert snap["domain"] == "midi"
 
     def test_empty_workdir(self, tmp_path: pathlib.Path) -> None:
         workdir = tmp_path / "muse-work"
@@ -79,7 +79,7 @@ class TestDiff:
     def test_domain_is_music(self) -> None:
         snap = _snap({"a.mid": "h"})
         delta = plugin.diff(snap, snap)
-        assert delta["domain"] == "music"
+        assert delta["domain"] == "midi"
 
 
 class TestMerge:
@@ -134,10 +134,10 @@ class TestDrift:
 
 class TestContentHash:
     def test_deterministic(self) -> None:
-        snap = SnapshotManifest(files={"a.mid": "h1"}, domain="music")
+        snap = SnapshotManifest(files={"a.mid": "h1"}, domain="midi")
         assert content_hash(snap) == content_hash(snap)
 
     def test_different_content_different_hash(self) -> None:
-        a = SnapshotManifest(files={"a.mid": "h1"}, domain="music")
-        b = SnapshotManifest(files={"a.mid": "h2"}, domain="music")
+        a = SnapshotManifest(files={"a.mid": "h1"}, domain="midi")
+        b = SnapshotManifest(files={"a.mid": "h2"}, domain="midi")
         assert content_hash(a) != content_hash(b)

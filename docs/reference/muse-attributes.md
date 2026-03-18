@@ -17,7 +17,7 @@ and to allow richer structure (comments, typed values, named sections).
 # Documentation: docs/reference/muse-attributes.md
 
 [meta]
-domain = "music"    # must match .muse/repo.json "domain" field (optional but recommended)
+domain = "midi"    # must match .muse/repo.json "domain" field (optional but recommended)
 
 [[rules]]
 path = "drums/*"
@@ -26,7 +26,7 @@ strategy = "ours"
 
 [[rules]]
 path = "keys/*"
-dimension = "harmonic"
+dimension = "pitch_bend"
 strategy = "theirs"
 
 [[rules]]
@@ -59,7 +59,7 @@ Each `[[rules]]` entry is a single merge strategy rule. Rules are evaluated
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `path` | string | yes | An `fnmatch` glob matched against workspace-relative POSIX paths (e.g. `"drums/*"`, `"src/**/*.mid"`). |
-| `dimension` | string | yes | A domain axis name (e.g. `"harmonic"`, `"rhythmic"`) or `"*"` to match any dimension. |
+| `dimension` | string | yes | A domain axis name (e.g. `"pitch_bend"`, `"notes"`) or `"*"` to match any dimension. |
 | `strategy` | string | yes | One of the five strategies below. |
 
 ---
@@ -81,7 +81,7 @@ Each `[[rules]]` entry is a single merge strategy rule. Rules are evaluated
 - **Path matching** uses Python's `fnmatch.fnmatch()`. Patterns are matched
   against workspace-relative POSIX path strings (forward slashes, no leading `/`).
 - **Dimension matching**: `"*"` in the `dimension` field matches any dimension.
-  A named dimension (e.g. `"harmonic"`) matches only that dimension.
+  A named dimension (e.g. `"pitch_bend"`) matches only that dimension.
 - **First match wins.** Order your rules from most-specific to least-specific.
 
 ---
@@ -104,7 +104,7 @@ rules are validated against the active plugin — a useful guard when copying
 
 ```toml
 [meta]
-domain = "music"
+domain = "midi"
 
 [[rules]]
 path = "drums/*"
@@ -113,7 +113,7 @@ strategy = "ours"
 
 [[rules]]
 path = "keys/*"
-dimension = "harmonic"
+dimension = "pitch_bend"
 strategy = "auto"
 
 [[rules]]
@@ -126,11 +126,11 @@ strategy = "auto"
 
 ```toml
 [meta]
-domain = "music"
+domain = "midi"
 
 [[rules]]
 path = "*"
-dimension = "structural"
+dimension = "track_structure"
 strategy = "manual"
 
 [[rules]]

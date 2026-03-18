@@ -67,7 +67,7 @@ def _patch(addr: str, child_ops: list[DomainOp] | None = None) -> PatchOp:
     )
 
 
-def _delta(ops: list[DomainOp], *, domain: str = "music") -> StructuredDelta:
+def _delta(ops: list[DomainOp], *, domain: str = "midi") -> StructuredDelta:
     return StructuredDelta(domain=domain, ops=ops, summary="test")
 
 
