@@ -82,11 +82,12 @@
       margin-bottom: 32px;
     }
     .hero-sub {
-      font-size: 18px;
+      font-size: clamp(14px, 3.5vw, 18px);
       color: var(--mute);
       max-width: 600px;
       margin: 0 auto 40px;
       line-height: 1.6;
+      padding: 0 8px;
     }
     .hero-sub strong { color: var(--text); }
     .hero-cta-row {
@@ -175,7 +176,7 @@
       margin-bottom: 10px;
     }
     section h2 {
-      font-size: 32px;
+      font-size: clamp(22px, 5vw, 32px);
       font-weight: 700;
       letter-spacing: -0.5px;
       margin-bottom: 12px;
@@ -860,6 +861,43 @@
       color: var(--mute);
     }
     footer a { color: var(--accent2); }
+
+    /* ---- Mobile ---- */
+    @media (max-width: 600px) {
+      /* Nav */
+      nav { padding: 0 16px; }
+      .nav-link { padding: 0 8px; font-size: 12px; }
+      .nav-logo { margin-right: 12px; font-size: 14px; }
+
+      /* Hero */
+      .hero { padding: 48px 20px 40px; }
+      .hero-version-any { letter-spacing: 2px; font-size: clamp(14px, 4vw, 18px); }
+      .hero-sub { font-size: 15px; padding: 0 4px; }
+
+      /* Sections */
+      section { padding: 48px 16px; }
+      section h2 { font-size: 24px; }
+      .section-lead { font-size: 14px; }
+
+      /* Protocol table — stack columns vertically */
+      .proto-row { grid-template-columns: 1fr; }
+      .proto-row.hdr { display: none; }
+      .proto-row > div { padding: 8px 12px; }
+      .proto-method { border-bottom: none; }
+      .proto-sig::before { content: 'Signature  '; font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.6px; display: block; margin-bottom: 2px; font-family: var(--ui); }
+      .proto-desc::before { content: 'Description  '; font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.6px; display: block; margin-bottom: 2px; font-family: var(--ui); }
+
+      /* Proto layout */
+      .proto-layout { grid-template-columns: 1fr; }
+      .stat-strip { border-right: none; border-bottom: 1px solid var(--border); flex-direction: row; flex-wrap: wrap; }
+      .stat-cell { flex: 1 1 40%; border-right: 1px solid var(--border); }
+
+      /* Cap showcase */
+      .cap-showcase-grid { grid-template-columns: 1fr; }
+
+      /* Footer */
+      footer { padding: 40px 16px; }
+    }
 
     /* ---- Nav ---- */
     nav {
