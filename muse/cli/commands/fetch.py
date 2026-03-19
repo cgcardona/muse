@@ -90,11 +90,11 @@ def fetch(
         typer.echo(f"❌ Fetch failed: {exc}")
         raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
 
-    new_objects = apply_pack(root, bundle)
+    apply_result = apply_pack(root, bundle)
     set_remote_head(remote, target_branch, remote_commit_id, root)
 
     commits_received = len(bundle.get("commits") or [])
     typer.echo(
-        f"✅ Fetched {commits_received} commit(s), {new_objects} new object(s) "
+        f"✅ Fetched {commits_received} commit(s), {apply_result['objects_written']} new object(s) "
         f"from {remote}/{target_branch} ({remote_commit_id[:8]})"
     )

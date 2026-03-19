@@ -356,7 +356,7 @@ through six commands built on a typed, swappable transport layer.
 | `muse fetch [remote]` | Download commits/snapshots/objects (no merge) |
 | `muse pull [remote]` | Fetch + three-way merge into current branch |
 | `muse push [remote]` | Upload local commits/snapshots/objects |
-| `muse ls-remote [remote]` | List branch refs on a remote (plumbing) |
+| `muse plumbing ls-remote [remote]` | List branch refs on a remote (Tier 1 plumbing) |
 
 ### Transport Architecture
 
@@ -385,7 +385,7 @@ dependency order (objects → snapshots → commits).
 ```
 muse/core/pack.py
  ├─ build_pack(root, commit_ids, *, have) → PackBundle
- └─ apply_pack(root, bundle) → int  # count of new objects written
+ └─ apply_pack(root, bundle) → ApplyResult  # commits/snapshots/objects written + skipped
 ```
 
 ### Local State for Remotes

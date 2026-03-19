@@ -1,4 +1,4 @@
-"""muse ls-remote — list references on a remote repository.
+"""muse plumbing ls-remote — list references on a remote repository.
 
 Plumbing command that contacts the remote and prints every branch and its
 current commit ID without modifying any local state.  Useful for scripting,
@@ -11,12 +11,20 @@ Output format (default)::
 Output format (--json)::
 
     {"branches": {"main": "<commit_id>", ...}, "repo_id": "...", "domain": "..."}
+
+Plumbing contract
+-----------------
+
+- Exit 0: remote contacted, refs printed.
+- Exit 1: remote not configured or URL looks invalid.
+- Exit 3: transport error (network unreachable, HTTP error).
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import pathlib
 
 import typer
 
@@ -47,34 +55,31 @@ def ls_remote(
     state.  Pass a remote name (configured via ``muse remote add``) or a full
     URL.  Use ``--json`` for structured output.
     """
-    import pathlib
-
     root = find_repo_root(pathlib.Path.cwd())
     token: str | None = None
 
-    # Resolve URL: accept either a named remote or a bare URL.
     url: str | None = None
     if root is not None:
         token = get_auth_token(root)
         url = get_remote(remote_or_url, root)
 
     if url is None:
-        # Treat the argument as a bare URL if it looks like one.
         if remote_or_url.startswith("http://") or remote_or_url.startswith("https://"):
             url = remote_or_url
         else:
             typer.echo(
                 f"❌ '{remote_or_url}' is not a configured remote and does not "
-                "look like a URL."
+                "look like a URL.",
+                err=True,
             )
-            typer.echo("  Configure it with: muse remote add <name> <url>")
+            typer.echo("  Configure it with: muse remote add <name> <url>", err=True)
             raise typer.Exit(code=ExitCode.USER_ERROR)
 
     transport = HttpTransport()
     try:
         info = transport.fetch_remote_info(url, token)
     except TransportError as exc:
-        typer.echo(f"❌ Cannot reach remote: {exc}")
+        typer.echo(f"❌ Cannot reach remote: {exc}", err=True)
         raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
 
     if output_json:
