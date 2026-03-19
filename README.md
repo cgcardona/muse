@@ -231,7 +231,7 @@ tests/
   test_crdts.py              — CRDT primitive lattice laws and integration tests
   test_op_transform.py       — Operational Transformation tests
   test_diff_algorithms.py    — diff algorithm library tests
-  test_music_plugin.py / test_midi_*.py — MIDI plugin tests
+  test_midi_plugin.py / test_midi_*.py  — MIDI plugin tests
   test_code_plugin_attributes.py        — .museattributes × CodePlugin integration
   test_stress_*.py           — stress and adversarial tests for every major subsystem
   test_plugin_registry.py

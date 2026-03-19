@@ -1,4 +1,4 @@
-# Muse Code Plugin — Tour de Force
+# Muse Code Plugin — Demo
 
 > **The question is not "why would you use Muse instead of Git?"**
 > **The question is: "how did you ever live without this?"**

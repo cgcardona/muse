@@ -65,11 +65,11 @@ Automatic voice lane assignment uses a coarse tessiture model:
 | 72–127 | 3 | Soprano |
 
 Agents performing explicit voice separation can override `voice_lane` when
-calling `MusicRGA.insert()`.
+calling `MidiRGA.insert()`.
 
 ## Relationship to the commit DAG
 
-At commit time, `MusicRGA.to_domain_ops(base_sequence)` translates the CRDT
+At commit time, `MidiRGA.to_domain_ops(base_sequence)` translates the CRDT
 state into canonical `InsertOp` / `DeleteOp` entries for storage in the commit
 record.  The CRDT state itself is ephemeral — not stored in the object store.
 
@@ -77,6 +77,6 @@ record.  The CRDT state itself is ephemeral — not stored in the object store.
 
 | File | Role |
 |------|------|
-| `muse/plugins/midi/_crdt_notes.py` | `NotePosition`, `RGANoteEntry`, `MusicRGA` |
+| `muse/plugins/midi/_crdt_notes.py` | `NotePosition`, `RGANoteEntry`, `MidiRGA` |
 | `tests/test_crdt.py` | CRDT law verification + unit tests |
 | `tools/benchmark.py` | RGA throughput benchmark |

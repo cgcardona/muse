@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Muse Tour de Force — 5-act VCS stress test + shareable visualization.
+"""Muse Demo — 5-act VCS stress test + shareable visualization.
 
 Creates a fresh Muse repository in a temporary directory, runs a complete
 5-act narrative exercising every primitive, builds a commit DAG, and renders
@@ -7,13 +7,13 @@ a self-contained HTML file you can share anywhere.
 
 Usage
 -----
-    python tools/tour_de_force.py
-    python tools/tour_de_force.py --output-dir my_output/
-    python tools/tour_de_force.py --json-only   # skip HTML rendering
+    python tools/demo.py
+    python tools/demo.py --output-dir my_output/
+    python tools/demo.py --json-only   # skip HTML rendering
 
 Output
 ------
-    artifacts/tour_de_force.json   — structured event log + DAG
+    artifacts/demo.json   — structured event log + DAG
     artifacts/demo.html            — shareable visualization
 """
 
@@ -111,7 +111,7 @@ class TourStats(TypedDict):
     operations: int
 
 
-class TourData(TypedDict):
+class DemoData(TypedDict):
     meta: TourMeta
     stats: TourStats
     dag: DAGData
@@ -438,7 +438,7 @@ def build_dag(root: pathlib.Path) -> DAGData:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Muse Tour de Force — stress test + visualization generator",
+        description="Muse Demo — stress test + visualization generator",
     )
     parser.add_argument(
         "--output-dir",
@@ -458,7 +458,7 @@ def main() -> None:
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
-        print(f"Muse Tour de Force — repo: {root}")
+        print(f"Muse Demo — repo: {root}")
         t_start = time.perf_counter()
 
         saved_ids: dict[str, str] = {}
@@ -479,13 +479,13 @@ def main() -> None:
     conflicts = sum(1 for e in _events if not e["exit_code"] == 0 and "conflict" in e["output"].lower())
 
     elapsed_total = time.perf_counter() - t_start
-    print(f"\n✓ Tour de Force complete — {_step} operations in {elapsed_total:.2f}s")
+    print(f"\n✓ Demo complete — {_step} operations in {elapsed_total:.2f}s")
     print("  Engine capabilities (Typed Deltas, Domain Schema, OT Merge, CRDT)")
     print("  → see artifacts/domain_registry.html")
 
-    tour: TourData = TourData(
+    tour: DemoData = DemoData(
         meta=TourMeta(
-            domain="music",
+            domain="midi",
             muse_version="0.1.1",
             generated_at=datetime.now(timezone.utc).isoformat(),
             elapsed_s=f"{elapsed_total:.2f}",
@@ -501,7 +501,7 @@ def main() -> None:
         events=_events,
     )
 
-    json_path = output_dir / "tour_de_force.json"
+    json_path = output_dir / "demo.json"
     json_path.write_text(json.dumps(tour, indent=2))
     print(f"✓ JSON  → {json_path}")
 

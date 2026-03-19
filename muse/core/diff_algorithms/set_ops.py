@@ -9,7 +9,7 @@ of content IDs. The result is a ``StructuredDelta`` containing:
 No ``MoveOp`` or ``ReplaceOp`` is ever produced: unordered sets have no
 positional semantics, so every element is either added or removed.
 
-This is the algorithm the music plugin uses for file-level diffing (which set
+This is the algorithm the MIDI plugin uses for file-level diffing (which set
 of POSIX paths changed). Plugins with a ``SetSchema`` in their ``DomainSchema``
 get this algorithm for free via :func:`~muse.core.diff_algorithms.diff_by_schema`.
 

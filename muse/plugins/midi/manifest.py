@@ -1,4 +1,4 @@
-"""Hierarchical chunk manifests for the Muse music plugin.
+"""Hierarchical chunk manifests for the Muse MIDI plugin.
 
 Evolves the flat ``{"files": {"track.mid": "<sha256>"}}`` snapshot beyond
 a single content hash per file to a rich, per-bar, per-track manifest that

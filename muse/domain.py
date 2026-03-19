@@ -4,7 +4,7 @@ Muse provides the DAG engine, content-addressed object store, branching,
 lineage walking, topological log graph, and merge base finder. A domain plugin
 implements these six interfaces and Muse does the rest.
 
-The music plugin (``muse.plugins.midi``) is the reference implementation.
+The MIDI plugin (``muse.plugins.midi``) is the reference implementation.
 Every other domain — scientific simulation, genomics, 3D spatial design,
 spacetime — is a new plugin.
 
@@ -414,7 +414,7 @@ def infer_sem_ver_bump(delta: "StructuredDelta") -> tuple[SemVerBump, list[str]]
 # ---------------------------------------------------------------------------
 
 #: Live state is either an already-snapshotted manifest dict or a workdir path.
-#: The music plugin accepts both: a Path (for CLI commit/status) and a
+#: The MIDI plugin accepts both: a Path (for CLI commit/status) and a
 #: SnapshotManifest dict (for in-memory merge and diff operations).
 type LiveState = SnapshotManifest | pathlib.Path
 

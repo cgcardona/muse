@@ -1,4 +1,4 @@
-"""MIDI dimension-aware merge for the Muse music plugin.
+"""MIDI dimension-aware merge for the Muse MIDI plugin.
 
 This module implements the multidimensional merge that makes Muse meaningfully
 different from git.  Git treats every file as an opaque byte sequence: any

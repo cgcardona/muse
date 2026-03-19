@@ -1,6 +1,6 @@
-# Muse Tour de Force — Video Narration Script (v0.1.1)
+# Muse Demo — Video Narration Script (v0.1.2)
 
-> **Format:** YouTube walkthrough of the Tour de Force interactive demo.
+> **Format:** YouTube walkthrough of the interactive Muse demo.
 > Open `artifacts/demo.html` before recording. Click **Play Tour**
 > and let the demo advance step by step while you narrate. Timestamps are
 > approximate at 1.2 s/step; adjust to your natural pace.
@@ -78,7 +78,7 @@ every single dimension lights up on this first commit. Melodic, rhythmic,
 harmonic, dynamic, structural — all five. Because this is the root: we're
 establishing the baseline state for every dimension simultaneously.
 
-Under the hood, Muse called `MusicPlugin.snapshot()` — which walked the
+Under the hood, Muse called `MidiPlugin.snapshot()` — which walked the
 working directory, hashed every MIDI file with SHA-256, and returned a
 content-addressed manifest. That manifest is what got committed to the DAG.
 
@@ -239,7 +239,7 @@ and try to figure out what "their" version of a binary MIDI file even means.
 Good luck.
 
 In Muse, the merge engine already knows *which dimensions* conflicted.
-It ran `MusicPlugin.merge()` with `repo_root` set, which:
+It ran `MidiPlugin.merge()` with `repo_root` set, which:
 
 1. Loaded `.museattributes` to check for strategy rules
 2. Called `merge_midi_dimensions()` on `shared-state.mid`

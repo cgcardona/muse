@@ -512,7 +512,7 @@ Add one line to `muse/plugins/registry.py`:
 from muse.plugins.my_domain.plugin import MyDomainPlugin
 
 _REGISTRY: dict[str, MuseDomainPlugin] = {
-    "music":     MidiPlugin(),
+    "midi":     MidiPlugin(),
     "my_domain": MyDomainPlugin(),   # ← add this
 }
 ```

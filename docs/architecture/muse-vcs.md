@@ -333,7 +333,7 @@ walkthrough covering Phases 1–4 with examples.
 | `muse tag list [<ref>]` | List tags |
 | `muse domains` | Show domain dashboard — registered domains, capabilities, schema |
 
-### Music-Domain Extras (music plugin only)
+### MIDI-Domain Extras (MIDI plugin only)
 
 | Command | Description |
 |---------|-------------|

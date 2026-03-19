@@ -1,4 +1,4 @@
-"""Stable entity identity for MIDI note objects in the Muse music plugin.
+"""Stable entity identity for MIDI note objects in the Muse MIDI plugin.
 
 The key insight
 ---------------
