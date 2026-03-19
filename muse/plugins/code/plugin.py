@@ -86,6 +86,7 @@ import hashlib
 import logging
 import pathlib
 
+from muse.core.attributes import load_attributes, resolve_strategy
 from muse.core.diff_algorithms import snapshot_diff
 from muse.core.ignore import is_ignored, load_patterns
 from muse.core.object_store import read_object
@@ -256,13 +257,22 @@ class CodePlugin:
         *,
         repo_root: pathlib.Path | None = None,
     ) -> MergeResult:
-        """Three-way merge at file granularity.
+        """Three-way merge at file granularity, respecting ``.museattributes``.
 
-        Standard three-way logic:
+        Standard three-way logic, augmented by per-path strategy overrides
+        declared in ``.museattributes``:
 
         - Both sides agree → consensus wins (including both deleted).
         - Only one side changed → take that side.
-        - Both sides changed differently → conflict.
+        - Both sides changed differently → consult ``.museattributes``:
+
+          - ``ours``   — take left; remove from conflict list.
+          - ``theirs`` — take right; remove from conflict list.
+          - ``base``   — revert to the common ancestor; remove from conflicts.
+          - ``union``  — keep all additions from both sides; prefer left for
+            conflicting blobs; remove from conflict list.
+          - ``manual`` — force into conflict list regardless of auto resolution.
+          - ``auto``   — default three-way conflict.
 
         This is the fallback used by ``muse cherry-pick`` and contexts where
         the OT merge path is not available.  :meth:`merge_ops` provides
@@ -272,19 +282,22 @@ class CodePlugin:
             base:      Common ancestor snapshot.
             left:      Our branch snapshot.
             right:     Their branch snapshot.
-            repo_root: Repository root (unused at file level; kept for
-                       protocol conformance and future attribute lookups).
+            repo_root: Repository root; when provided, ``.museattributes`` is
+                       consulted for per-path strategy overrides.
 
         Returns:
-            A ``MergeResult`` with the reconciled snapshot and any file-level
-            conflicts.
+            A ``MergeResult`` with the reconciled snapshot, any file-level
+            conflicts, and ``applied_strategies`` recording which rules fired.
         """
+        attrs = load_attributes(repo_root, domain=_DOMAIN_NAME) if repo_root else []
+
         base_files = base["files"]
         left_files = left["files"]
         right_files = right["files"]
 
         merged: dict[str, str] = dict(base_files)
         conflicts: list[str] = []
+        applied_strategies: dict[str, str] = {}
 
         all_paths = set(base_files) | set(left_files) | set(right_files)
         for path in sorted(all_paths):
@@ -293,27 +306,66 @@ class CodePlugin:
             r = right_files.get(path)
 
             if l == r:
+                # Both sides agree — or both deleted.
                 if l is None:
                     merged.pop(path, None)
                 else:
                     merged[path] = l
+                # Honour "manual" override even on clean paths.
+                if attrs and resolve_strategy(attrs, path) == "manual":
+                    conflicts.append(path)
+                    applied_strategies[path] = "manual"
             elif b == l:
+                # Only right changed.
                 if r is None:
                     merged.pop(path, None)
                 else:
                     merged[path] = r
+                if attrs and resolve_strategy(attrs, path) == "manual":
+                    conflicts.append(path)
+                    applied_strategies[path] = "manual"
             elif b == r:
+                # Only left changed.
                 if l is None:
                     merged.pop(path, None)
                 else:
                     merged[path] = l
+                if attrs and resolve_strategy(attrs, path) == "manual":
+                    conflicts.append(path)
+                    applied_strategies[path] = "manual"
             else:
-                conflicts.append(path)
-                merged[path] = l or r or b or ""
+                # Both sides changed differently — consult attributes.
+                strategy = resolve_strategy(attrs, path) if attrs else "auto"
+                if strategy == "ours":
+                    merged[path] = l or b or ""
+                    applied_strategies[path] = "ours"
+                elif strategy == "theirs":
+                    merged[path] = r or b or ""
+                    applied_strategies[path] = "theirs"
+                elif strategy == "base":
+                    if b is None:
+                        merged.pop(path, None)
+                    else:
+                        merged[path] = b
+                    applied_strategies[path] = "base"
+                elif strategy == "union":
+                    # For file-level blobs, full union is not representable —
+                    # prefer left and keep all additions from both branches.
+                    merged[path] = l or r or b or ""
+                    applied_strategies[path] = "union"
+                elif strategy == "manual":
+                    conflicts.append(path)
+                    merged[path] = l or r or b or ""
+                    applied_strategies[path] = "manual"
+                else:
+                    # "auto" — standard three-way conflict.
+                    conflicts.append(path)
+                    merged[path] = l or r or b or ""
 
         return MergeResult(
             merged=SnapshotManifest(files=merged, domain=_DOMAIN_NAME),
             conflicts=conflicts,
+            applied_strategies=applied_strategies,
         )
 
     # ------------------------------------------------------------------
@@ -512,6 +564,8 @@ class CodePlugin:
         # whether they touch the same or different symbols.  We therefore
         # implement symbol-level conflict detection directly here.
 
+        attrs = load_attributes(repo_root, domain=_DOMAIN_NAME) if repo_root else []
+
         # ── Step 1: symbol-level conflict detection for PatchOps ──────────
         ours_patches: dict[str, PatchOp] = {
             op["address"]: op for op in ours_ops if op["op"] == "patch"
@@ -540,15 +594,37 @@ class CodePlugin:
         for our_op, _ in file_result.conflict_ops:
             conflict_addresses.add(our_op["address"])
 
-        conflicts: list[str] = sorted(conflict_addresses)
+        # ── Step 3: apply .museattributes to symbol-level conflicts ──────
+        # Symbol addresses are of the form "src/utils.py::function_name".
+        # We resolve strategy against the file path portion so that a
+        # path = "src/**/*.py" / strategy = "ours" rule suppresses symbol
+        # conflicts in those files, not just file-level manifest conflicts.
+        op_applied_strategies: dict[str, str] = {}
+        resolved_conflicts: list[str] = []
+        if attrs:
+            for addr in sorted(conflict_addresses):
+                file_path = addr.split("::")[0] if "::" in addr else addr
+                strategy = resolve_strategy(attrs, file_path)
+                if strategy in ("ours", "theirs", "base", "union"):
+                    op_applied_strategies[addr] = strategy
+                elif strategy == "manual":
+                    resolved_conflicts.append(addr)
+                    op_applied_strategies[addr] = "manual"
+                else:
+                    resolved_conflicts.append(addr)
+        else:
+            resolved_conflicts = sorted(conflict_addresses)
+
         merged_ops: list[DomainOp] = list(file_result.merged_ops) + list(ours_ops)
 
-        # Fall back to file-level merge for the manifest.
+        # Fall back to file-level merge for the manifest (carries its own
+        # applied_strategies from file-level attribute resolution).
         fallback = self.merge(base, ours_snap, theirs_snap, repo_root=repo_root)
+        combined_strategies = {**fallback.applied_strategies, **op_applied_strategies}
         return MergeResult(
             merged=fallback.merged,
-            conflicts=conflicts,
-            applied_strategies=fallback.applied_strategies,
+            conflicts=resolved_conflicts,
+            applied_strategies=combined_strategies,
             dimension_reports=fallback.dimension_reports,
             op_log=merged_ops,
         )

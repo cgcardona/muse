@@ -17,28 +17,80 @@ Format
     domain = "midi"          # optional — validated against .muse/repo.json
 
     [[rules]]
-    path = "drums/*"          # fnmatch glob against workspace-relative POSIX paths
-    dimension = "*"           # domain axis name, or "*" to match any dimension
-    strategy = "ours"
+    path      = "drums/*"   # fnmatch glob against workspace-relative POSIX paths
+    dimension = "*"          # domain axis name, or "*" to match any dimension
+    strategy  = "ours"       # resolution strategy (see below)
+    comment   = "Drums are always authored by branch A — always prefer ours."
+    priority  = 10           # optional; higher priority rules are tried first
 
     [[rules]]
-    path = "keys/*"
+    path      = "keys/*"
     dimension = "pitch_bend"
-    strategy = "theirs"
+    strategy  = "theirs"
+    comment   = "Remote always has the better pitch-bend automation."
 
     [[rules]]
-    path = "*"
+    path      = "*"
     dimension = "*"
-    strategy = "auto"
+    strategy  = "auto"
 
-**path** — ``fnmatch`` glob matched against workspace-relative POSIX paths.
-**dimension** — a domain-defined axis name (e.g. ``notes``, ``pitch_bend``)
-or ``*`` to match any dimension.
-**strategy** — one of ``ours | theirs | union | auto | manual``.
+Strategies
+----------
 
-**First matching rule wins.**  ``[meta]`` is optional; its absence has no
-effect on merge correctness.  When both ``[meta] domain`` and a repo
-``domain`` are known, a mismatch logs a warning.
+``ours``
+    Take the left / current-branch version; the path is removed from the
+    conflict list.
+
+``theirs``
+    Take the right / incoming-branch version; the path is removed from the
+    conflict list.
+
+``union``
+    Include **all** additions from both sides.  Deletions are honoured only
+    when **both** sides agree.  For independent element sets (MIDI notes,
+    code symbol additions, import sets) this produces a combined result with
+    no conflicts.  For opaque binary blobs where full unification is
+    impossible, the left / current-branch blob is preferred and the path is
+    removed from the conflict list.
+
+``base``
+    Revert to the common merge-base version — discard changes from *both*
+    branches.  Useful for generated files, lock files, or any path that
+    should always stay at a known-good state during a merge.
+
+``auto``
+    Default behaviour.  Defer to the engine's three-way algorithm.
+
+``manual``
+    Force the path into the conflict list even if the engine would
+    auto-resolve it.  Use this to guarantee human review on safety-critical
+    paths.
+
+Rule fields
+-----------
+
+``path``      (required) — ``fnmatch`` glob matched against workspace-relative
+              POSIX paths (e.g. ``"tracks/*.mid"``, ``"src/**/*.py"``).
+
+``dimension`` (required) — domain axis name (e.g. ``"notes"``,
+              ``"pitch_bend"``, ``"symbols"``) or ``"*"`` to match any
+              dimension.
+
+``strategy``  (required) — one of the six strategies listed above.
+
+``comment``   (optional) — free-form documentation string; ignored at
+              runtime.  Use it to explain *why* the rule exists.
+
+``priority``  (optional, default 0) — integer used to order rules before
+              file order.  Higher-priority rules are evaluated first.  Rules
+              with equal priority preserve their declaration order.
+
+**First matching rule wins** after sorting by priority (descending) then
+file order (ascending).
+
+``[meta]`` is optional; its absence has no effect on merge correctness.
+When both ``[meta] domain`` and a repo ``domain`` are known, a mismatch
+logs a warning.
 
 Public API
 ----------
@@ -57,13 +109,13 @@ import fnmatch
 import logging
 import pathlib
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TypedDict
 
 _logger = logging.getLogger(__name__)
 
 VALID_STRATEGIES: frozenset[str] = frozenset(
-    {"ours", "theirs", "union", "auto", "manual"}
+    {"ours", "theirs", "union", "base", "auto", "manual"}
 )
 
 _FILENAME = ".museattributes"
@@ -75,12 +127,18 @@ class AttributesMeta(TypedDict, total=False):
     domain: str
 
 
-class AttributesRuleDict(TypedDict):
-    """Typed representation of a single ``[[rules]]`` entry."""
+class AttributesRuleDict(TypedDict, total=False):
+    """Typed representation of a single ``[[rules]]`` entry.
+
+    ``path``, ``dimension``, and ``strategy`` are required at parse time.
+    ``comment`` and ``priority`` are optional.
+    """
 
     path: str
     dimension: str
     strategy: str
+    comment: str
+    priority: int
 
 
 class MuseAttributesFile(TypedDict, total=False):
@@ -97,13 +155,21 @@ class AttributeRule:
     Attributes:
         path_pattern: ``fnmatch`` glob matched against workspace-relative paths.
         dimension:    Domain axis name (e.g. ``"notes"``) or ``"*"``.
-        strategy:     Resolution strategy: ``ours | theirs | union | auto | manual``.
+        strategy:     Resolution strategy: one of ``ours | theirs | union |
+                      base | auto | manual``.
+        comment:      Human-readable annotation explaining the rule's purpose.
+                      Ignored at runtime.
+        priority:     Ordering weight.  Higher values are evaluated before
+                      lower values.  Rules with equal priority preserve
+                      declaration order.
         source_index: 0-based index of the rule in the ``[[rules]]`` array.
     """
 
     path_pattern: str
     dimension: str
     strategy: str
+    comment: str = ""
+    priority: int = 0
     source_index: int = 0
 
 
@@ -149,16 +215,26 @@ def _parse_raw(root: pathlib.Path) -> MuseAttributesFile:
                 and isinstance(dim_val, str)
                 and isinstance(strat_val, str)
             ):
-                rules.append(
-                    AttributesRuleDict(
-                        path=path_val,
-                        dimension=dim_val,
-                        strategy=strat_val,
-                    )
-                )
+                rule: AttributesRuleDict = {
+                    "path": path_val,
+                    "dimension": dim_val,
+                    "strategy": strat_val,
+                }
+                comment_val = entry.get("comment")
+                if isinstance(comment_val, str):
+                    rule["comment"] = comment_val
+                priority_val = entry.get("priority")
+                if isinstance(priority_val, int):
+                    rule["priority"] = priority_val
+                rules.append(rule)
             else:
                 missing = [
-                    f for f, v in (("path", path_val), ("dimension", dim_val), ("strategy", strat_val))
+                    f
+                    for f, v in (
+                        ("path", path_val),
+                        ("dimension", dim_val),
+                        ("strategy", strat_val),
+                    )
                     if not isinstance(v, str)
                 ]
                 raise ValueError(
@@ -202,6 +278,9 @@ def load_attributes(
 ) -> list[AttributeRule]:
     """Parse ``.museattributes`` from *root* and return the ordered rule list.
 
+    Rules are sorted by ``priority`` (descending) then by declaration order
+    (ascending), so higher-priority rules are evaluated first.
+
     Args:
         root:   Repository root directory (the directory that contains ``.muse/``
                 and ``muse-work/``).
@@ -210,8 +289,9 @@ def load_attributes(
                 warning.  Pass ``None`` to skip domain validation.
 
     Returns:
-        A list of :class:`AttributeRule` in file order.  Returns an empty list
-        when ``.museattributes`` is absent or contains no valid rules.
+        A list of :class:`AttributeRule` sorted by priority then file order.
+        Returns an empty list when ``.museattributes`` is absent or contains
+        no valid rules.
 
     Raises:
         ValueError: If a rule entry is missing required fields, or contains an
@@ -251,10 +331,14 @@ def load_attributes(
                 path_pattern=entry["path"],
                 dimension=entry["dimension"],
                 strategy=strategy,
+                comment=entry.get("comment", ""),
+                priority=entry.get("priority", 0),
                 source_index=idx,
             )
         )
 
+    # Stable sort: higher priority first, ties preserve declaration order.
+    rules.sort(key=lambda r: -r.priority)
     return rules
 
 
@@ -271,7 +355,8 @@ def resolve_strategy(
     - **dimension**: ``rule.dimension`` must be ``"*"`` (matches anything) **or**
       equal *dimension*.
 
-    First-match wins.  Returns ``"auto"`` when no rule matches.
+    First-match wins after priority ordering applied by :func:`load_attributes`.
+    Returns ``"auto"`` when no rule matches.
 
     Args:
         rules:     Rule list from :func:`load_attributes`.
@@ -279,12 +364,16 @@ def resolve_strategy(
         dimension: Domain axis name or ``"*"`` to match any rule dimension.
 
     Returns:
-        A strategy string: ``"ours"``, ``"theirs"``, ``"union"``, ``"auto"``,
-        or ``"manual"``.
+        A strategy string: ``"ours"``, ``"theirs"``, ``"union"``, ``"base"``,
+        ``"auto"``, or ``"manual"``.
     """
     for rule in rules:
         path_match = fnmatch.fnmatch(path, rule.path_pattern)
-        dim_match = rule.dimension == "*" or rule.dimension == dimension or dimension == "*"
+        dim_match = (
+            rule.dimension == "*"
+            or rule.dimension == dimension
+            or dimension == "*"
+        )
         if path_match and dim_match:
             return rule.strategy
     return "auto"
