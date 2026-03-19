@@ -1,6 +1,6 @@
 # Muse VCS — Type Contracts Reference
 
-> Updated: 2026-03-18 (v0.2.0) | Reflects every named entity in the Muse VCS surface.
+> Updated: 2026-03-18 (v0.1.2) | Reflects every named entity in the Muse VCS surface.
 > `Any` and `object` do not exist in any production file. Every type boundary
 > is named. The typing audit ratchet enforces zero violations on every CI run.
 

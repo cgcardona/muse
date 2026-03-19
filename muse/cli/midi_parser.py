@@ -14,6 +14,7 @@ Named result types registered in ``docs/reference/type_contracts.md``:
 """
 from __future__ import annotations
 
+import copy
 import dataclasses
 import logging
 import pathlib
@@ -319,7 +320,7 @@ def apply_track_map(notes: list[NoteEvent], track_map: dict[str, str]) -> list[N
     result: list[NoteEvent] = []
     for note in notes:
         if note.channel in normalised:
-            result.append(dataclasses.replace(note, channel_name=normalised[note.channel]))
+            result.append(copy.replace(note, channel_name=normalised[note.channel]))
         else:
             result.append(note)
     return result
