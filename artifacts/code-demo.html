@@ -17,24 +17,35 @@
 }
 *,*::before,*::after { box-sizing:border-box; margin:0; padding:0 }
 html { font-size:14px }
-body { background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; min-height:100vh; padding-top:52px }
+body { background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; min-height:100vh; padding-top:60px }
 
 /* ── NAV ── */
-nav { position:fixed; top:0; left:0; right:0; height:52px;
+nav { position:fixed; top:0; left:0; right:0; height:60px;
       background:rgba(9,13,22,.92); backdrop-filter:blur(12px);
       border-bottom:1px solid var(--border);
-      display:flex; align-items:center; padding:0 20px; gap:12px; z-index:100 }
-.nav-logo { font-weight:600; font-size:15px; color:var(--text); text-decoration:none; letter-spacing:-.01em }
-.nav-logo:hover { color:var(--accent) }
-.nav-sep { color:var(--border); font-size:18px }
-.nav-tags { display:flex; gap:6px; flex:1; flex-wrap:nowrap; overflow:hidden }
-.nav-tag { font-size:10px; font-family:'JetBrains Mono',monospace;
-           background:rgba(255,255,255,.04); border:1px solid var(--border);
-           border-radius:4px; padding:2px 7px; color:var(--muted); white-space:nowrap }
-.nav-tag.accent { color:var(--accent); border-color:rgba(79,142,247,.3) }
-.nav-tag.green  { color:var(--green);  border-color:rgba(52,211,153,.3) }
-.nav-tag.gold   { color:var(--gold);   border-color:rgba(251,191,36,.3) }
-.nav-demos { display:flex; gap:6px; flex-shrink:0 }
+      display:flex; align-items:center; justify-content:space-between;
+      padding:0 20px; z-index:100 }
+.nav-logo { font-size:13px; font-family:'JetBrains Mono',monospace;
+            color:var(--accent); letter-spacing:.05em;
+            text-decoration:none; white-space:nowrap; flex-shrink:0 }
+.nav-center { display:flex; flex-direction:column; align-items:center;
+              gap:3px; flex:1; min-width:0 }
+.nav-title { font-size:14px; font-weight:700; letter-spacing:-.01em;
+             white-space:nowrap; color:var(--text) }
+.nav-meta { display:flex; align-items:center; gap:6px; flex-wrap:nowrap }
+.nav-meta-text { font-size:10px; color:var(--muted);
+                 font-family:'JetBrains Mono',monospace; white-space:nowrap }
+.nav-tag { font-size:9px; font-family:'JetBrains Mono',monospace;
+           padding:1px 6px; border-radius:4px; border:1px solid var(--border);
+           color:var(--muted); white-space:nowrap }
+.nav-tag.on    { color:var(--accent); background:rgba(79,142,247,.08);
+                 border-color:rgba(79,142,247,.25) }
+.nav-tag.green { color:var(--green);  border-color:rgba(52,211,153,.3) }
+.nav-tag.gold  { color:var(--gold);   border-color:rgba(251,191,36,.3) }
+.nav-right { display:flex; align-items:center; gap:6px; flex-shrink:0 }
+.nav-badge { font-family:'JetBrains Mono',monospace; font-size:11px;
+             color:var(--accent); border:1px solid rgba(79,142,247,.3);
+             border-radius:4px; padding:2px 7px; white-space:nowrap }
 .nav-demo-link { font-size:11px; color:var(--muted); text-decoration:none;
                  padding:3px 8px; border:1px solid var(--border); border-radius:4px }
 .nav-demo-link:hover { color:var(--text); border-color:rgba(255,255,255,.15) }
@@ -191,16 +202,22 @@ nav { position:fixed; top:0; left:0; right:0; height:52px;
 
 <nav>
   <a href="index.html" class="nav-logo">Muse</a>
-  <span class="nav-sep">·</span>
-  <div class="nav-tags">
-    <span class="nav-tag accent">code plugin</span>
-    <span class="nav-tag">symbol graph</span>
-    <span class="nav-tag green">0 conflicts</span>
-    <span class="nav-tag gold">4 agents</span>
-    <span class="nav-tag">25 symbols</span>
-    <span class="nav-tag">Python</span>
+  <div class="nav-center">
+    <span class="nav-title">Hexagon API Gateway · Muse VCS</span>
+    <div class="nav-meta">
+      <span class="nav-meta-text">6 acts · 6 commits · 4 branches · 25 symbols</span>
+      <span class="nav-tag on">auth</span>
+      <span class="nav-tag on">router</span>
+      <span class="nav-tag on">db</span>
+      <span class="nav-tag on">models</span>
+      <span class="nav-tag on">gateway</span>
+      <span class="nav-tag green">0 conflicts</span>
+      <span class="nav-tag gold">4 agents</span>
+      <span class="nav-tag">Python</span>
+    </div>
   </div>
-  <div class="nav-demos">
+  <div class="nav-right">
+    <span class="nav-badge">v0.1.2</span>
     <a href="midi-demo.html" class="nav-demo-link">🎹 MIDI Demo</a>
     <a href="code-demo.html" class="nav-demo-link active">⌨️ Code Demo</a>
   </div>
