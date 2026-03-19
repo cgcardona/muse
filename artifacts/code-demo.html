@@ -9,47 +9,38 @@
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <style>
 :root {
-  --bg:#090d16; --card:#0f1520; --card2:#111827;
-  --border:rgba(255,255,255,.06); --text:rgba(255,255,255,.88);
-  --muted:rgba(255,255,255,.45); --accent:#4f8ef7;
-  --green:#34d399; --gold:#fbbf24; --red:#f87171;
+  --bg:#07090f; --card:#0d1118; --card2:#111724;
+  --border:rgba(255,255,255,0.07); --text:#e8eaf0;
+  --muted:rgba(255,255,255,0.38); --accent:#4f8ef7;
+  --green:#34d399; --gold:#f59e0b; --red:#f87171;
   --purple:#a78bfa; --teal:#2dd4bf; --pink:#f472b6;
 }
 *,*::before,*::after { box-sizing:border-box; margin:0; padding:0 }
-html { font-size:14px; zoom:1.25 }
-body { background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; min-height:100vh; padding-top:60px }
+html { font-size:14px; scroll-behavior:smooth; zoom:1.25 }
+body { background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; min-height:100vh; overflow-x:hidden }
 
 /* ── NAV ── */
-nav { position:fixed; top:0; left:0; right:0; height:60px;
-      background:rgba(9,13,22,.92); backdrop-filter:blur(12px);
-      border-bottom:1px solid var(--border);
-      display:flex; align-items:center; justify-content:space-between;
-      padding:0 20px; z-index:100 }
-.nav-logo { font-size:13px; font-family:'JetBrains Mono',monospace;
-            color:var(--accent); letter-spacing:.05em;
-            text-decoration:none; white-space:nowrap; flex-shrink:0 }
-.nav-center { display:flex; flex-direction:column; align-items:center;
-              gap:3px; flex:1; min-width:0 }
-.nav-title { font-size:14px; font-weight:700; letter-spacing:-.01em;
-             white-space:nowrap; color:var(--text) }
+nav { display:flex; align-items:center; justify-content:space-between; padding:0 20px; height:60px;
+      background:rgba(13,17,24,0.92); border-bottom:1px solid var(--border);
+      position:sticky; top:0; z-index:50; backdrop-filter:blur(8px); gap:16px }
+.nav-logo { font-size:13px; font-family:'JetBrains Mono',monospace; color:var(--accent);
+            letter-spacing:.05em; text-decoration:none; white-space:nowrap; flex-shrink:0 }
+.nav-center { display:flex; flex-direction:column; align-items:center; gap:3px; flex:1; min-width:0 }
+.nav-title { font-size:14px; font-weight:700; letter-spacing:-.01em; white-space:nowrap;
+             background:linear-gradient(135deg,#fff 40%,var(--accent) 100%);
+             -webkit-background-clip:text; -webkit-text-fill-color:transparent }
 .nav-meta { display:flex; align-items:center; gap:6px; flex-wrap:nowrap }
-.nav-meta-text { font-size:10px; color:var(--muted);
-                 font-family:'JetBrains Mono',monospace; white-space:nowrap }
-.nav-tag { font-size:9px; font-family:'JetBrains Mono',monospace;
-           padding:1px 6px; border-radius:4px; border:1px solid var(--border);
+.nav-meta-text { font-size:10px; color:var(--muted); font-family:'JetBrains Mono',monospace; white-space:nowrap }
+.nav-tag { font-size:9px; font-family:'JetBrains Mono',monospace; padding:1px 6px;
+           border-radius:20px; background:rgba(255,255,255,0.06); border:1px solid var(--border);
            color:var(--muted); white-space:nowrap }
-.nav-tag.on    { color:var(--accent); background:rgba(79,142,247,.08);
-                 border-color:rgba(79,142,247,.25) }
-.nav-tag.green { color:var(--green);  border-color:rgba(52,211,153,.3) }
-.nav-tag.gold  { color:var(--gold);   border-color:rgba(251,191,36,.3) }
+.nav-tag.on    { color:var(--accent); background:rgba(79,142,247,.08); border-color:rgba(79,142,247,.25) }
+.nav-tag.green { color:var(--green);  background:rgba(52,211,153,.08); border-color:rgba(52,211,153,.3) }
+.nav-tag.gold  { color:var(--gold);   background:rgba(245,158,11,.08); border-color:rgba(245,158,11,.3) }
 .nav-right { display:flex; align-items:center; gap:6px; flex-shrink:0 }
-.nav-badge { font-family:'JetBrains Mono',monospace; font-size:11px;
-             color:var(--accent); border:1px solid rgba(79,142,247,.3);
-             border-radius:4px; padding:2px 7px; white-space:nowrap }
-.nav-demo-link { font-size:11px; color:var(--muted); text-decoration:none;
-                 padding:3px 8px; border:1px solid var(--border); border-radius:4px }
-.nav-demo-link:hover { color:var(--text); border-color:rgba(255,255,255,.15) }
-.nav-demo-link.active { color:var(--accent); border-color:rgba(79,142,247,.3) }
+.nav-badge { font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--accent);
+             background:rgba(79,142,247,.1); border:1px solid rgba(79,142,247,.25);
+             padding:2px 8px; border-radius:20px }
 
 /* ── LAYOUT ── */
 .main-grid { display:grid; grid-template-columns:282px 1fr; gap:12px;
@@ -211,6 +202,11 @@ nav { position:fixed; top:0; left:0; right:0; height:60px;
 
 <nav>
   <a href="index.html" class="nav-logo">Muse</a>
+  <span style="color:rgba(255,255,255,.12);font-size:16px">·</span>
+  <div style="display:flex;gap:6px;margin-left:auto">
+    <a href="midi-demo.html" style="font-size:11px;color:rgba(255,255,255,.45);text-decoration:none;padding:3px 8px;border:1px solid rgba(255,255,255,.07);border-radius:4px">🎹 MIDI Demo</a>
+    <a href="code-demo.html" style="font-size:11px;color:var(--accent);text-decoration:none;padding:3px 8px;border:1px solid rgba(79,142,247,.3);border-radius:4px">⌨️ Code Demo</a>
+  </div>
   <div class="nav-center">
     <span class="nav-title">Hexagon API Gateway · Muse VCS</span>
     <div class="nav-meta">
@@ -227,8 +223,6 @@ nav { position:fixed; top:0; left:0; right:0; height:60px;
   </div>
   <div class="nav-right">
     <span class="nav-badge">v0.1.2</span>
-    <a href="midi-demo.html" class="nav-demo-link">🎹 MIDI Demo</a>
-    <a href="code-demo.html" class="nav-demo-link active">⌨️ Code Demo</a>
   </div>
 </nav>
 
