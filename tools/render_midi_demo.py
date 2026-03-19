@@ -1414,7 +1414,7 @@ const DAG = (() => {
   // Commit message (two lines, below node)
   nodeGs.each(function(d) {
     const g = d3.select(this);
-    const lines = d.label.split('\n');
+    const lines = d.label.split('\\n');
     lines.forEach((line, i) => {
       g.append('text')
         .attr('text-anchor', 'middle')
