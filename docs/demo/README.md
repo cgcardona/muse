@@ -8,34 +8,32 @@ Choose a domain to see Muse's full power:
 
 ---
 
-## [MIDI Demo →](demo-midi.md)
+## [MIDI Demo →](midi-demo.md)
 
-**9 new commands — version control that understands music.**
+**31 semantic porcelain commands — version control that understands music.**
 
 Muse treats MIDI as a typed, content-addressed graph of note events.  Every
 note has a stable content ID.  Every commit stores a note-level structured
 delta.  Two composers can independently harmonize the same track and merge
 at the note level — changes to non-overlapping notes never conflict.
 
-| Command | One-line description |
-|---------|---------------------|
-| `muse midi notes` | Every note in a MIDI track as musical notation — pitch, beat, duration, velocity |
-| `muse midi note-log` | Note-level commit history — which notes were added/removed in each commit |
-| `muse midi note-blame` | Which commit introduced the notes in bar N? One answer, per bar. |
-| `muse midi harmony` | Chord analysis and key detection from note content |
-| `muse midi piano-roll` | ASCII piano roll visualization — pitch vs time, bar lines included |
-| `muse midi hotspots` | Bar-level churn leaderboard — which bars change most across commits |
-| `muse midi velocity-profile` | Dynamic range, RMS, and velocity histogram; per-bar mode |
-| `muse midi transpose` | Transpose all notes in a track by N semitones (agent command) |
-| `muse midi mix` | Combine notes from two tracks into one output track (agent command) |
+| Group | Commands |
+|-------|---------|
+| Notation & Visualization | `notes` · `piano-roll` · `instrumentation` |
+| Pitch, Harmony & Scale | `harmony` · `scale` · `contour` · `tension` · `cadence` |
+| Rhythm & Dynamics | `rhythm` · `tempo` · `density` · `velocity-profile` |
+| Structure & Voice Leading | `motif` · `voice-leading` · `compare` |
+| History & Attribution | `note-log` · `note-blame` · `hotspots` |
+| Multi-Agent Intelligence | `agent-map` · `find-phrase` · `shard` · `query` |
+| Transformation | `transpose` · `invert` · `retrograde` · `quantize` · `humanize` · `arpeggiate` · `normalize` · `mix` |
+| Invariants & Quality Gates | `check` |
 
 Plus the core VCS operations with musical semantics:
 `muse diff` shows "C4 added at beat 3.5" · `muse merge` resolves conflicts
 per dimension (melodic / harmonic / dynamic / structural) · `muse show`
 displays note-level changes in musical notation.
 
----
-
+Full command reference: [MIDI Domain Reference](../reference/midi-domain.md)
 ## [Code Demo →](demo-code.md)
 
 **12 commands that are strictly impossible in Git.**

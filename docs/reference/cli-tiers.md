@@ -276,19 +276,78 @@ semantic model (note events, symbol graphs, agent coordination).
 
 ### `muse midi …` — MIDI Domain
 
+Full reference: [MIDI Domain Reference](midi-domain.md)
+
+**Notation & Visualization**
+
 | Command | Description |
 |---------|-------------|
 | `muse midi notes` | List every note in a MIDI track as musical notation |
-| `muse midi note-log` | Note-level commit history |
-| `muse midi note-blame` | Per-bar attribution |
-| `muse midi harmony` | Chord analysis and key detection |
 | `muse midi piano-roll` | ASCII piano roll visualization |
+| `muse midi instrumentation` | Per-channel note range, register, and velocity map |
+
+**Pitch, Harmony & Scale**
+
+| Command | Description |
+|---------|-------------|
+| `muse midi harmony` | Bar-by-bar chord detection and key signature estimation |
+| `muse midi scale` | Scale/mode detection: 15 types × 12 roots, ranked by confidence |
+| `muse midi contour` | Melodic contour shape and interval sequence |
+| `muse midi tension` | Harmonic tension curve: dissonance score per bar |
+| `muse midi cadence` | Cadence detection: authentic, deceptive, half, plagal |
+
+**Rhythm & Dynamics**
+
+| Command | Description |
+|---------|-------------|
+| `muse midi rhythm` | Syncopation score, swing ratio, quantisation accuracy, subdivision |
+| `muse midi tempo` | BPM estimation via IOI voting; confidence rated |
+| `muse midi density` | Notes-per-beat per bar — textural arc of a composition |
+| `muse midi velocity-profile` | Dynamic range, RMS velocity, and histogram (ppp–fff) |
+
+**Structure & Voice Leading**
+
+| Command | Description |
+|---------|-------------|
+| `muse midi motif` | Recurring interval-pattern detection, transposition-invariant |
+| `muse midi voice-leading` | Parallel fifths/octaves + large leaps — counterpoint lint |
+| `muse midi compare` | Semantic diff across key, rhythm, density, swing between two commits |
+
+**History & Attribution**
+
+| Command | Description |
+|---------|-------------|
+| `muse midi note-log` | Note-level commit history |
+| `muse midi note-blame` | Per-bar attribution: which commit introduced each note |
 | `muse midi hotspots` | Bar-level churn leaderboard |
-| `muse midi velocity-profile` | Dynamic range and velocity histogram |
-| `muse midi transpose` | Transpose all notes by N semitones |
-| `muse midi mix` | Combine two MIDI tracks into one |
-| `muse midi query` | MIDI DSL predicate query over commit history |
-| `muse midi check` | Enforce MIDI invariant rules |
+
+**Multi-Agent Intelligence**
+
+| Command | Description |
+|---------|-------------|
+| `muse midi agent-map` | Bar-level blame: which agent last edited each bar |
+| `muse midi find-phrase` | Phrase similarity search across commit history |
+| `muse midi shard` | Partition composition into N bar-range shards for parallel agents |
+| `muse midi query` | MIDI DSL predicate query over note data and commit history |
+
+**Transformation**
+
+| Command | Description |
+|---------|-------------|
+| `muse midi transpose` | Shift all pitches by N semitones |
+| `muse midi invert` | Melodic inversion around a pivot pitch |
+| `muse midi retrograde` | Reverse pitch order (retrograde transformation) |
+| `muse midi quantize` | Snap onsets to a rhythmic grid with adjustable strength |
+| `muse midi humanize` | Add timing/velocity jitter for human feel |
+| `muse midi arpeggiate` | Convert chord voicings to arpeggios |
+| `muse midi normalize` | Rescale velocities to a target dynamic range |
+| `muse midi mix` | Combine notes from two MIDI tracks into one output file |
+
+**Invariants & Quality Gates**
+
+| Command | Description |
+|---------|-------------|
+| `muse midi check` | Enforce MIDI invariant rules (CI gate) |
 
 ### `muse code …` — Code Domain
 
