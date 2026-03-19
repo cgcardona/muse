@@ -177,8 +177,17 @@ nav { position:fixed; top:0; left:0; right:0; height:60px;
 .agent-sha  { font-family:'JetBrains Mono',monospace; font-size:9px; color:rgba(255,255,255,.28) }
 
 /* ── CLI SECTION ── */
-.cli-section { max-width:1300px; margin:0 auto; padding:12px }
-.cli-section h2 { font-size:18px; font-weight:600; margin-bottom:14px; letter-spacing:-.01em }
+.cli-section { max-width:1300px; margin:32px auto; padding:0 16px }
+.cli-section h2 { font-size:18px; font-weight:600; margin-bottom:24px; letter-spacing:-.01em }
+.cli-group-section { margin-bottom:32px }
+.cli-group-hd { display:flex; align-items:center; gap:10px; margin-bottom:12px;
+                padding-bottom:8px; border-bottom:1px solid var(--border) }
+.cli-group-icon  { font-size:16px }
+.cli-group-label { font-size:13px; font-weight:600; letter-spacing:-.01em }
+.cli-group-desc  { font-size:11px; color:var(--muted); flex:1 }
+.cli-group-count { font-size:10px; font-family:'JetBrains Mono',monospace;
+                   color:var(--accent); background:rgba(79,142,247,.08);
+                   border:1px solid rgba(79,142,247,.25); border-radius:10px; padding:1px 7px }
 .cli-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px }
 .cli-card { background:var(--card2); border:1px solid var(--border); border-radius:8px; padding:12px 14px }
 .cli-cmd  { font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--accent); margin-bottom:4px }
@@ -295,7 +304,7 @@ nav { position:fixed; top:0; left:0; right:0; height:60px;
 <!-- ── CLI REFERENCE ── -->
 <div class="cli-section">
   <h2>muse code — Semantic Porcelain Commands</h2>
-  <div class="cli-grid" id="cli-grid"></div>
+  <div id="cli-groups"></div>
 </div>
 
 <script>
@@ -999,15 +1008,21 @@ function selectCommit(idx) {
 // ═══════════════════════════════════════════════════════════════
 // CLI REFERENCE
 // ═══════════════════════════════════════════════════════════════
-const COMMANDS = [
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+const GROUPS = [
   {
-    cmd:'muse code symbols [<commit>]',
-    desc:'List every semantic symbol in a snapshot — functions, classes, methods with locations.',
-    flags:['--diff           show what changed vs parent',
-           '--kind <k>       filter: class | function | method',
-           '--file <path>    restrict to one file',
-           '--json           machine-readable output'],
-    example:`<span class="ex-cmd">$ muse code symbols e5f6a7b8 --kind class</span>
+    icon:'🔍', label:'Snapshot & Inventory',
+    desc:'Inspect the symbol graph at any commit — list, search, and map the full codebase.',
+    commands:[
+      {
+        cmd:'muse code symbols [<commit>]',
+        desc:'List every semantic symbol in a snapshot — functions, classes, methods with locations.',
+        flags:['--diff           show what changed vs parent',
+               '--kind <k>       filter: class | function | method',
+               '--file <path>    restrict to one file',
+               '--json           machine-readable output'],
+        example:`<span class="ex-cmd">$ muse code symbols e5f6a7b8 --kind class</span>
 <span class="ex-dim">7 classes  ·  4 files  ·  Python</span>
   <span class="ex-hi">AuthService</span>     <span class="ex-dim">auth.py:1     Agent·1  b2c3d4e5</span>
   <span class="ex-hi">Cache</span>           <span class="ex-dim">cache.py:1    Agent·3  d4e5f6a7</span>
@@ -1016,222 +1031,464 @@ const COMMANDS = [
   <span class="ex-hi">Request</span>         <span class="ex-dim">models.py:18  Agent·0  a1b2c3d4</span>
   <span class="ex-hi">Response</span>        <span class="ex-dim">models.py:32  Agent·0  a1b2c3d4</span>
   <span class="ex-hi">Router</span>          <span class="ex-dim">router.py:12  Agent·0  a1b2c3d4</span>`
+      },
+      {
+        cmd:'muse code languages [<commit>]',
+        desc:'Language and symbol-type breakdown across the whole snapshot.',
+        flags:['--commit <sha>   analyse a historical snapshot (default: HEAD)',
+               '--json           emit as JSON'],
+        example:`<span class="ex-cmd">$ muse code languages</span>
+<span class="ex-dim">Python  ·  5 files  ·  25 symbols</span>
+
+  <span class="ex-dim">kind        count</span>
+  class           7
+  method         12
+  function        4
+  variable        2
+<span class="ex-dim">Supported: Python, TypeScript, Go, Rust, Java, C, C++, C#, Ruby, Kotlin</span>`
+      },
+      {
+        cmd:'muse code grep <pattern>',
+        desc:'Search the symbol graph by name, kind, or file — AST-exact, no false positives.',
+        flags:['--kind <k>       filter: class | function | method | variable',
+               '--file <path>    restrict to one file',
+               '--json           emit as JSON'],
+        example:`<span class="ex-cmd">$ muse code grep AuthService</span>
+<span class="ex-dim">3 matches at HEAD</span>
+  <span class="ex-hi">AuthService</span>              <span class="ex-dim">auth.py:1     class    Agent·1</span>
+  <span class="ex-teal">AuthService.validate_token</span>  <span class="ex-dim">auth.py:12    method   Agent·1</span>
+  <span class="ex-teal">AuthService.hash_password</span>   <span class="ex-dim">auth.py:32    method   Agent·1</span>`
+      },
+      {
+        cmd:'muse code codemap [<commit>]',
+        desc:'Semantic topology of the codebase: modules by size, import graph, cycles, and centrality hot-spots.',
+        flags:['--top <N>        entries per section (default: 5)',
+               '--commit <sha>   snapshot to analyse',
+               '--json           structured output'],
+        example:`<span class="ex-cmd">$ muse code codemap --top 3</span>
+<span class="ex-dim">Modules by size</span>
+  auth.py         8 symbols  <span class="ex-dim">fan-in: 2</span>
+  db.py           9 symbols  <span class="ex-dim">fan-in: 1</span>
+  router.py       5 symbols  <span class="ex-dim">fan-in: 1</span>
+<span class="ex-gold">⚠ import cycle: router.py → middleware.py → router.py</span>
+<span class="ex-dim">High centrality: Router.dispatch (called from 3 files)</span>`
+      },
+    ]
   },
   {
-    cmd:'muse code blame <symbol>',
-    desc:'Which commit and agent last touched this symbol — follows renames automatically.',
-    flags:['--follow         track across renames and file moves',
-           '--json           emit blame as JSON'],
-    example:`<span class="ex-cmd">$ muse code blame Router.dispatch --follow</span>
+    icon:'🕰️', label:'Symbol Identity & History',
+    desc:'Follow any symbol through renames, moves, and body changes across the full commit graph.',
+    commands:[
+      {
+        cmd:'muse code blame <symbol>',
+        desc:'Which commit and agent last touched this symbol — follows renames automatically.',
+        flags:['--follow         track across renames and file moves',
+               '--json           emit blame as JSON'],
+        example:`<span class="ex-cmd">$ muse code blame Router.dispatch --follow</span>
 <span class="ex-dim">symbol      </span><span class="ex-teal">Router.dispatch</span>  <span class="ex-dim">router.py:28</span>
 <span class="ex-dim">last change </span><span class="ex-ok">c3d4e5f6</span>  Agent·2  "Router: dispatch + middleware"
 <span class="ex-dim">body edits  </span>2 times  <span class="ex-dim">(a1b2c3d4, c3d4e5f6)</span>
 <span class="ex-dim">created     </span>a1b2c3d4  Agent·0  "Foundation"
 <span class="ex-dim">callers     </span>main  <span class="ex-dim">(1 direct)</span>`
-  },
-  {
-    cmd:'muse code symbol-log <symbol>',
-    desc:'Full commit-by-commit history of one symbol — body changes, renames, caller evolution.',
-    flags:['--from <sha>     start at this commit (default: HEAD)',
-           '--max <N>        max commits to walk',
-           '--json           emit history as JSON'],
-    example:`<span class="ex-cmd">$ muse code symbol-log Router._match_path</span>
+      },
+      {
+        cmd:'muse code symbol-log <symbol>',
+        desc:'Full commit-by-commit history of one symbol — body changes, renames, caller evolution.',
+        flags:['--from <sha>     start at this commit (default: HEAD)',
+               '--max <N>        max commits to walk',
+               '--json           emit history as JSON'],
+        example:`<span class="ex-cmd">$ muse code symbol-log Router._match_path</span>
 <span class="ex-dim">2 commits  (renamed from Router._match)</span>
 
 <span class="ex-ok">c3d4e5f6</span>  Agent·2  "Router: dispatch + middleware"
   <span class="ex-gold">RENAME</span>  Router._match → Router._match_path
   <span class="ex-ok">+</span> added param <span class="ex-teal">method: str</span>  <span class="ex-dim">(query-method aware)</span>
-  <span class="ex-dim">body_hash unchanged</span>
 
 <span class="ex-ok">a1b2c3d4</span>  Agent·0  "Foundation"
   <span class="ex-dim">BORN as</span> Router._match  body: 14 lines`
-  },
-  {
-    cmd:'muse code detect-refactor [<commit>]',
-    desc:'Detect semantic operations — renames, moves, extractions, inlinings across commits.',
-    flags:['--from <sha>     start of range (default: HEAD~1)',
-           '--confidence <f> min confidence 0.0–1.0 (default 0.8)',
-           '--json           emit refactors as JSON'],
-    example:`<span class="ex-cmd">$ muse code detect-refactor c3d4e5f6</span>
+      },
+      {
+        cmd:'muse code lineage <address>',
+        desc:'Full provenance chain of a symbol — born, renamed, moved, modified — from first commit to HEAD.',
+        flags:['--commit <sha>   stop walk at this commit (default: HEAD)',
+               '--json           emit provenance array as JSON'],
+        example:`<span class="ex-cmd">$ muse code lineage router.py::Router._match_path</span>
+<span class="ex-dim">3 events</span>
+
+<span class="ex-ok">a1b2c3d4</span>  <span class="ex-gold">BORN</span>     as Router._match        "Foundation"
+<span class="ex-ok">c3d4e5f6</span>  <span class="ex-gold">RENAMED</span>  → Router._match_path    "Router: dispatch + middleware"
+           <span class="ex-dim">body_hash unchanged  ·  callers auto-updated</span>
+<span class="ex-ok">e5f6a7b8</span>  <span class="ex-dim">PRESENT</span>  no further changes     "Merge commit"`
+      },
+      {
+        cmd:'muse code detect-refactor [<commit>]',
+        desc:'Detect semantic operations — renames, moves, extractions, inlinings across commits.',
+        flags:['--from <sha>     start of range (default: HEAD~1)',
+               '--confidence <f> min confidence 0.0–1.0 (default: 0.8)',
+               '--json           emit refactors as JSON'],
+        example:`<span class="ex-cmd">$ muse code detect-refactor c3d4e5f6</span>
 <span class="ex-dim">1 semantic operation detected</span>
 
 <span class="ex-gold">RENAME</span>  <span class="ex-teal">Router._match</span>  →  <span class="ex-teal">Router._match_path</span>
   <span class="ex-dim">file        </span>router.py
   <span class="ex-dim">confidence  </span><span class="ex-ok">0.98</span>  <span class="ex-dim">body_hash identical</span>
-  <span class="ex-dim">blame       </span>preserved  <span class="ex-ok">✓</span>
   <span class="ex-dim">callers     </span>1 auto-updated  <span class="ex-ok">✓</span>`
+      },
+    ]
   },
   {
-    cmd:'muse code hotspots [--top N]',
-    desc:'Symbol churn leaderboard — which functions change most and which agents touch them.',
-    flags:['--top <N>        symbols to show (default: 20)',
-           '--file <path>    restrict to one file',
-           '--from <sha>     start of commit range',
-           '--json           emit as JSON'],
-    example:`<span class="ex-cmd">$ muse code hotspots --top 5</span>
+    icon:'🔎', label:'Query & Search',
+    desc:'Predicate DSL and temporal search across the full commit graph — SQL for your codebase.',
+    commands:[
+      {
+        cmd:'muse code query "<expr>"',
+        desc:'Symbol graph predicate DSL — filter by name, kind, file, agent, callers, or hash.',
+        flags:['--all-commits    search across all commits (temporal)',
+               '--from <sha>     commit to query (default: HEAD)',
+               '--json           emit results as JSON'],
+        example:`<span class="ex-cmd">$ muse code query "kind=method AND callers=0 AND NOT name~_"</span>
+<span class="ex-dim">2 matches at HEAD</span>
+  <span class="ex-teal">AuthService.hash_password</span>   <span class="ex-dim">auth.py:32  0 callers</span>
+  <span class="ex-teal">ConnectionPool.execute</span>      <span class="ex-dim">db.py:42    0 callers</span>
+<span class="ex-gold">⚠ public methods with no callers — missing tests?</span>`
+      },
+      {
+        cmd:'muse code query-history "<expr>"',
+        desc:'Temporal symbol search — track matching symbols across a commit range, with first/last-seen and change count.',
+        flags:['--from <sha>     start of range (default: initial commit)',
+               '--to <sha>       end of range (default: HEAD)',
+               '--json           emit results as JSON'],
+        example:`<span class="ex-cmd">$ muse code query-history "kind=function language=Python" --from a1b2c3d4</span>
+<span class="ex-dim">4 symbols matched across 6 commits</span>
+
+  <span class="ex-teal">main</span>           <span class="ex-dim">first: a1b2c3d4  last: f6a7b8c9  changes: 1</span>
+  <span class="ex-teal">parse_headers</span>  <span class="ex-dim">first: b2c3d4e5  last: e5f6a7b8  changes: 2</span>
+  <span class="ex-teal">log_request</span>    <span class="ex-dim">first: c3d4e5f6  last: e5f6a7b8  changes: 1</span>`
+      },
+      {
+        cmd:'muse code find-symbol <name>',
+        desc:'Cross-commit, cross-branch symbol search by name or body hash — finds a symbol even after it was renamed.',
+        flags:['--hash <hex>     search by body_hash prefix',
+               '--branch <b>     restrict to one branch',
+               '--json           emit as JSON'],
+        example:`<span class="ex-cmd">$ muse code find-symbol _match</span>
+<span class="ex-dim">Found in 2 commits</span>
+
+  <span class="ex-ok">a1b2c3d4</span>  Router._match        router.py:44  <span class="ex-dim">born here</span>
+  <span class="ex-ok">c3d4e5f6</span>  Router._match_path   router.py:44  <span class="ex-dim">renamed (body_hash identical)</span>`
+      },
+      {
+        cmd:'muse code code-query "<expr>"',
+        desc:'Predicate query over code commit history — find when symbols matching a filter were first or last seen.',
+        flags:['--from <sha>     start of commit range',
+               '--to <sha>       end of commit range',
+               '--json           emit as JSON'],
+        example:`<span class="ex-cmd">$ muse code code-query "kind=class" --from a1b2c3d4 --to e5f6a7b8</span>
+<span class="ex-dim">7 classes appeared in range</span>
+
+  <span class="ex-hi">AuthService</span>     <span class="ex-dim">first seen: b2c3d4e5  "Auth: JWT validation"</span>
+  <span class="ex-hi">ConnectionPool</span>  <span class="ex-dim">first seen: d4e5f6a7  "DB: connection pool"</span>
+  <span class="ex-hi">Cache</span>           <span class="ex-dim">first seen: d4e5f6a7  "DB: connection pool"</span>`
+      },
+    ]
+  },
+  {
+    icon:'📊', label:'Architecture & Quality',
+    desc:'Churn, stability, coupling, duplication, API surface, and coverage — at symbol granularity.',
+    commands:[
+      {
+        cmd:'muse code hotspots [--top N]',
+        desc:'Symbol churn leaderboard — which functions change most and which agents touch them.',
+        flags:['--top <N>        symbols to show (default: 20)',
+               '--file <path>    restrict to one file',
+               '--from <sha>     start of commit range',
+               '--json           emit as JSON'],
+        example:`<span class="ex-cmd">$ muse code hotspots --top 5</span>
 <span class="ex-dim">rank  symbol              changes  agents</span>
  <span class="ex-gold">#1</span>   <span class="ex-teal">Router.dispatch</span>      3        <span class="ex-dim">Agent·0 Agent·2</span>
  <span class="ex-gold">#2</span>   <span class="ex-teal">Router.register</span>      2        <span class="ex-dim">Agent·0 Agent·2</span>
- <span class="ex-ok">#3</span>   <span class="ex-hi">Router</span>               2        <span class="ex-dim">Agent·0 Agent·2</span>
- <span class="ex-ok">#4</span>   <span class="ex-teal">Router._match_path</span>   1        <span class="ex-dim">Agent·2  (renamed)</span>
- <span class="ex-ok">#5</span>   <span class="ex-hi">AuthService</span>          1        <span class="ex-dim">Agent·1</span>`
-  },
-  {
-    cmd:'muse code stable [--top N]',
-    desc:'Stability leaderboard — the bedrock symbols that never change. Safe to build on.',
-    flags:['--top <N>        symbols to show (default: 20)',
-           '--min-age <N>    min commits since born (default: 3)',
-           '--json           emit as JSON'],
-    example:`<span class="ex-cmd">$ muse code stable --top 5</span>
+ <span class="ex-ok">#3</span>   <span class="ex-hi">Router</span>               2        <span class="ex-dim">Agent·0 Agent·2</span>`
+      },
+      {
+        cmd:'muse code stable [--top N]',
+        desc:'Stability leaderboard — the bedrock symbols that never change. Safe to build on.',
+        flags:['--top <N>        symbols to show (default: 20)',
+               '--min-age <N>    min commits since born (default: 3)',
+               '--json           emit as JSON'],
+        example:`<span class="ex-cmd">$ muse code stable --top 4</span>
 <span class="ex-dim">symbol              age         last change  callers</span>
 <span class="ex-ok">User</span>                6 commits   a1b2c3d4     2
 <span class="ex-ok">Request</span>             6 commits   a1b2c3d4     3
 <span class="ex-ok">Response</span>            6 commits   a1b2c3d4     2
 <span class="ex-ok">AuthService</span>         4 commits   b2c3d4e5     1
-<span class="ex-ok">Cache</span>               3 commits   d4e5f6a7     1
 <span class="ex-dim">these symbols have never changed — safe foundation</span>`
+      },
+      {
+        cmd:'muse code coupling [--top N]',
+        desc:'File co-change analysis — files that always change together reveal hidden coupling.',
+        flags:['--top <N>        pairs to show (default: 10)',
+               '--from <sha>     start of commit range (default: all history)',
+               '--json           emit as JSON'],
+        example:`<span class="ex-cmd">$ muse code coupling --top 3</span>
+<span class="ex-dim">file pair                         co-changes  score</span>
+<span class="ex-red">router.py + middleware.py</span>          2/3        <span class="ex-red">0.85</span>  <span class="ex-dim">← high</span>
+<span class="ex-gold">auth.py + utils.py</span>                2/3        <span class="ex-gold">0.72</span>
+<span class="ex-ok">db.py + cache.py</span>                  2/3        <span class="ex-ok">0.68</span>`
+      },
+      {
+        cmd:'muse code compare <sha-a> <sha-b>',
+        desc:'Deep semantic diff between any two commits — added, removed, renamed, and modified symbols side-by-side.',
+        flags:['--from <sha>     base commit (default: HEAD~1)',
+               '--to <sha>       target commit (default: HEAD)',
+               '--json           emit as JSON'],
+        example:`<span class="ex-cmd">$ muse code compare a1b2c3d4 e5f6a7b8</span>
+<span class="ex-dim">Comparing a1b2c3d4 → e5f6a7b8</span>
+
+<span class="ex-ok">+18</span> symbols added    <span class="ex-dim">(AuthService, ConnectionPool, Cache, …)</span>
+<span class="ex-dim">  0</span> symbols removed
+<span class="ex-gold"> 1</span> rename detected  <span class="ex-dim">Router._match → Router._match_path</span>
+<span class="ex-dim">  4</span> symbols modified  <span class="ex-dim">(Router.dispatch, Router.register, …)</span>`
+      },
+      {
+        cmd:'muse code clones [--tier both]',
+        desc:'Exact and near-duplicate symbol clusters — literal copy-pastes and diverged implementations of the same contract.',
+        flags:['--tier exact     body_hash duplicates only',
+               '--tier near      signature_id duplicates only',
+               '--tier both      all clone types (default)',
+               '--json           emit clusters as JSON'],
+        example:`<span class="ex-cmd">$ muse code clones</span>
+<span class="ex-dim">1 exact clone cluster  ·  0 near-clone clusters</span>
+
+<span class="ex-red">EXACT</span>  body_hash <span class="ex-dim">a3f2c9…</span>
+  ConnectionPool._acquire   db.py:55
+  ConnectionPool._release   db.py:68  <span class="ex-dim">← identical body</span>
+<span class="ex-gold">tip: extract shared logic into a helper</span>`
+      },
+      {
+        cmd:'muse code coverage [--class <name>]',
+        desc:'Show which public interface methods of a class are exercised by test symbols.',
+        flags:['--class <name>   target class (default: all classes)',
+               '--json           emit as JSON'],
+        example:`<span class="ex-cmd">$ muse code coverage --class AuthService</span>
+<span class="ex-dim">AuthService  ·  4 public methods</span>
+
+  <span class="ex-ok">✓</span> validate_token      <span class="ex-dim">tested in test_auth.py</span>
+  <span class="ex-ok">✓</span> hash_password       <span class="ex-dim">tested in test_auth.py</span>
+  <span class="ex-red">✗</span> verify_password     <span class="ex-dim">no test symbol found</span>
+  <span class="ex-red">✗</span> refresh_token       <span class="ex-dim">no test symbol found</span>
+<span class="ex-gold">coverage: 2/4  (50%)</span>`
+      },
+      {
+        cmd:'muse code api-surface [<commit>]',
+        desc:'Public API surface at a snapshot — every non-underscore symbol. Diff versions to detect breaking changes.',
+        flags:['--commit <sha>   snapshot to inspect (default: HEAD)',
+               '--diff <sha>     compare public API against this commit',
+               '--json           emit as JSON'],
+        example:`<span class="ex-cmd">$ muse code api-surface --diff a1b2c3d4</span>
+<span class="ex-dim">Public API diff: a1b2c3d4 → HEAD</span>
+
+<span class="ex-ok">+</span> AuthService                  <span class="ex-dim">new class</span>
+<span class="ex-ok">+</span> AuthService.validate_token    <span class="ex-dim">new method</span>
+<span class="ex-ok">+</span> ConnectionPool                <span class="ex-dim">new class</span>
+<span class="ex-gold">~</span> Router.dispatch               <span class="ex-dim">signature changed  ← BREAKING</span>
+<span class="ex-dim">sem_ver_bump: major</span>`
+      },
+    ]
   },
   {
-    cmd:'muse code impact <symbol>',
-    desc:'Transitive blast radius — every caller that breaks if this symbol\'s signature changes.',
-    flags:['--depth <N>      max transitive depth (default: unlimited)',
-           '--format tree    render as an indented call tree',
-           '--json           emit impact graph as JSON'],
-    example:`<span class="ex-cmd">$ muse code impact Router.dispatch --format tree</span>
-<span class="ex-teal">Router.dispatch</span>  <span class="ex-dim">changing this affects:</span>
-  └─ <span class="ex-dim">direct (1)</span>
-       └─ main
-  └─ <span class="ex-dim">via → AuthService.validate_token (2)</span>
-       └─ AuthService.validate_token → parse_headers
-  └─ <span class="ex-dim">via → ConnectionPool.query (3)</span>
-       └─ ConnectionPool.query → Cache.get
-       └─ ConnectionPool.query → _acquire, _release
-<span class="ex-gold">blast radius: 7 symbols  ·  4 files</span>`
-  },
-  {
-    cmd:'muse code dead',
-    desc:'Dead code candidates — symbols with zero callers and zero importers in the call graph.',
-    flags:['--commit <sha>   analyse a historical snapshot (default: HEAD)',
-           '--strict         exclude public API surface symbols',
-           '--json           emit as JSON'],
-    example:`<span class="ex-cmd">$ muse code dead</span>
-<span class="ex-dim">2 dead symbols  ·  0 callers, 0 importers</span>
-
-<span class="ex-red">_setup_logging</span>    main.py:18
-  <span class="ex-dim">born    a1b2c3d4  "Foundation"  (5 commits)</span>
-  <span class="ex-dim">callers 0   importers  0</span>
-
-<span class="ex-red">_compute_hash</span>     utils.py:22
-  <span class="ex-dim">born    b2c3d4e5  "Auth"  (2 commits)</span>
-  <span class="ex-dim">note    AuthService uses its own hash</span>
-
-<span class="ex-gold">tip: run muse code patch --remove to delete both</span>`
-  },
-  {
-    cmd:'muse code deps <symbol>',
-    desc:'Import graph + call graph for a symbol. --reverse finds who calls or imports it.',
-    flags:['--reverse        show callers/importers instead of callees',
-           '--depth <N>      max traversal depth',
-           '--json           emit as JSON'],
-    example:`<span class="ex-cmd">$ muse code deps AuthService.validate_token --reverse</span>
+    icon:'💥', label:'Impact & Dependencies',
+    desc:'Blast radius, call graphs, dead code, and structural breakage — before merging a single line.',
+    commands:[
+      {
+        cmd:'muse code deps <symbol>',
+        desc:'Import graph + call graph for a symbol. --reverse finds who calls or imports it.',
+        flags:['--reverse        show callers/importers instead of callees',
+               '--depth <N>      max traversal depth',
+               '--json           emit as JSON'],
+        example:`<span class="ex-cmd">$ muse code deps AuthService.validate_token --reverse</span>
 <span class="ex-dim">callers of </span><span class="ex-teal">AuthService.validate_token</span>
   <span class="ex-ok">←</span> <span class="ex-teal">Router.dispatch</span>      router.py:35
      <span class="ex-ok">←</span> main               main.py:8
 
 <span class="ex-dim">callees of </span><span class="ex-teal">AuthService.validate_token</span>
-  <span class="ex-ok">→</span> parse_headers       utils.py:3
-  <span class="ex-ok">→</span> <span class="ex-dim">_verify  (internal)</span>  auth.py:61`
-  },
-  {
-    cmd:'muse code coupling [--top N]',
-    desc:'File co-change analysis — files that always change together reveal hidden coupling.',
-    flags:['--top <N>        pairs to show (default: 10)',
-           '--from <sha>     start of commit range (default: all history)',
-           '--json           emit as JSON'],
-    example:`<span class="ex-cmd">$ muse code coupling --top 4</span>
-<span class="ex-dim">file pair                         co-changes  score</span>
-<span class="ex-red">router.py + middleware.py</span>          2/3        <span class="ex-red">0.85</span>  <span class="ex-dim">← high</span>
-<span class="ex-gold">auth.py + utils.py</span>                2/3        <span class="ex-gold">0.72</span>
-<span class="ex-ok">db.py + cache.py</span>                  2/3        <span class="ex-ok">0.68</span>
-<span class="ex-dim">models.py + router.py</span>             1/3        <span class="ex-dim">0.33</span>
-<span class="ex-gold">⚠ router.py ↔ middleware.py may need extraction</span>`
-  },
-  {
-    cmd:'muse code query "<expr>"',
-    desc:'Symbol graph predicate DSL — filter by name, kind, file, agent, callers, complexity.',
-    flags:['--all-commits    search across all commits (temporal)',
-           '--from <sha>     commit to query (default: HEAD)',
-           '--json           emit results as JSON'],
-    example:`<span class="ex-cmd">$ muse code query "kind=method AND callers=0 AND NOT name~_"</span>
-<span class="ex-dim">2 matches at HEAD</span>
-  <span class="ex-teal">AuthService.hash_password</span>   <span class="ex-dim">auth.py:32  0 callers</span>
-  <span class="ex-teal">ConnectionPool.execute</span>      <span class="ex-dim">db.py:42    0 callers</span>
-<span class="ex-gold">⚠ public methods with no callers — missing tests?</span>
+  <span class="ex-ok">→</span> parse_headers       utils.py:3`
+      },
+      {
+        cmd:'muse code impact <symbol>',
+        desc:'Transitive blast radius — every caller that breaks if this symbol\'s signature changes.',
+        flags:['--depth <N>      max transitive depth (default: unlimited)',
+               '--format tree    render as an indented call tree',
+               '--json           emit impact graph as JSON'],
+        example:`<span class="ex-cmd">$ muse code impact Router.dispatch --format tree</span>
+<span class="ex-teal">Router.dispatch</span>  <span class="ex-dim">changing this affects:</span>
+  └─ main
+  └─ <span class="ex-dim">via → AuthService.validate_token</span>
+       └─ parse_headers
+  └─ <span class="ex-dim">via → ConnectionPool.query</span>
+       └─ Cache.get
+<span class="ex-gold">blast radius: 7 symbols  ·  4 files</span>`
+      },
+      {
+        cmd:'muse code dead [<commit>]',
+        desc:'Dead code candidates — symbols with zero callers and zero importers in the call graph.',
+        flags:['--commit <sha>   analyse a historical snapshot (default: HEAD)',
+               '--strict         exclude public API surface symbols',
+               '--json           emit as JSON'],
+        example:`<span class="ex-cmd">$ muse code dead</span>
+<span class="ex-dim">2 dead symbols  ·  0 callers, 0 importers</span>
 
-<span class="ex-cmd">$ muse code query "agent=Agent·1" --all-commits</span>
-<span class="ex-dim">6 symbols  ·  1 commit  ·  Agent·1</span>`
+<span class="ex-red">_setup_logging</span>    main.py:18
+  <span class="ex-dim">born    a1b2c3d4  "Foundation"  (5 commits)</span>
+
+<span class="ex-red">_compute_hash</span>     utils.py:22
+  <span class="ex-dim">born    b2c3d4e5  "Auth"  (2 commits)</span>
+<span class="ex-gold">tip: run muse code patch --remove to delete both</span>`
+      },
+      {
+        cmd:'muse code breakage',
+        desc:'Detect structural breakage in the working tree: stale imports and missing interface methods — no execution needed.',
+        flags:['--language <L>   restrict to this language',
+               '--json           emit issues as JSON'],
+        example:`<span class="ex-cmd">$ muse code breakage</span>
+<span class="ex-dim">2 issues found</span>
+
+<span class="ex-red">stale_import</span>       utils.py:3
+  <span class="ex-dim">imports _compute_hash from auth.py</span>
+  <span class="ex-dim">but _compute_hash was removed in f6a7b8c9</span>
+
+<span class="ex-gold">⚠ run</span> muse code symbols <span class="ex-gold">to verify current symbol list</span>`
+      },
+    ]
   },
   {
-    cmd:'muse code patch <symbol> --body "<code>"',
-    desc:'Surgical edit of exactly one named symbol — validates syntax, no file context needed.',
-    flags:['--body "<code>"  new function/method/class body',
-           '--dry-run        validate without writing',
-           '--remove         delete the symbol entirely',
-           '--commit -m ""   commit the patch immediately'],
-    example:`<span class="ex-cmd">$ muse code patch Router._match_path --dry-run --body \
-  "def _match_path(self, path: str, method: str) -> Route | None:
-      for r in self._routes:
-          if r.pattern.match(path) and r.method == method:
-              return r
-      return None"</span>
+    icon:'✏️', label:'Write & Transform',
+    desc:'Surgical symbol-level edits, historical restores, and cross-commit cherry-picks.',
+    commands:[
+      {
+        cmd:'muse code patch <symbol> --body "<code>"',
+        desc:'Surgical edit of exactly one named symbol — validates syntax, no file context needed.',
+        flags:['--body "<code>"  new function/method/class body',
+               '--dry-run        validate without writing',
+               '--remove         delete the symbol entirely',
+               '--commit -m ""   commit the patch immediately'],
+        example:`<span class="ex-cmd">$ muse code patch Router._match_path --dry-run --body \
+  "def _match_path(self, path, method): ..."</span>
 <span class="ex-ok">✓</span> syntax valid  (Python 3.14)
 <span class="ex-ok">✓</span> signature compatible  (callers unaffected)
 <span class="ex-dim">dry-run — no files written</span>`
-  },
-  {
-    cmd:'muse code semantic-cherry-pick <sym> --from <sha>',
-    desc:'Cherry-pick exactly one named symbol from a historical commit into the working tree.',
-    flags:['--from <sha>     source commit',
-           '--rename <name>  rename as you insert it',
-           '--dry-run        preview without writing'],
-    example:`<span class="ex-cmd">$ muse code semantic-cherry-pick AuthService.hash_password \\
+      },
+      {
+        cmd:'muse code checkout-symbol <address> --commit <sha>',
+        desc:'Restore exactly one named symbol from a historical commit — only that symbol\'s lines change.',
+        flags:['--commit <sha>   (required) source commit',
+               '--dry-run        print the diff without writing'],
+        example:`<span class="ex-cmd">$ muse code checkout-symbol auth.py::AuthService.hash_password \\
+    --commit b2c3d4e5 --dry-run</span>
+<span class="ex-dim">source  b2c3d4e5  "Auth: JWT validation"</span>
+<span class="ex-ok">-</span> <span class="ex-red">def hash_password(self, pw):  # 6 lines</span>
+<span class="ex-ok">+</span> <span class="ex-ok">def hash_password(self, pw, rounds=12):  # 8 lines</span>
+<span class="ex-dim">dry-run — no files written</span>`
+      },
+      {
+        cmd:'muse code semantic-cherry-pick <sym> --from <sha>',
+        desc:'Cherry-pick exactly one named symbol from a historical commit into the working tree.',
+        flags:['--from <sha>     source commit',
+               '--rename <name>  rename as you insert it',
+               '--dry-run        preview without writing'],
+        example:`<span class="ex-cmd">$ muse code semantic-cherry-pick AuthService.hash_password \\
     --from b2c3d4e5</span>
 <span class="ex-dim">source  b2c3d4e5  "Auth: JWT validation"</span>
 <span class="ex-dim">symbol  </span><span class="ex-teal">AuthService.hash_password</span>  <span class="ex-dim">auth.py:32</span>
-<span class="ex-dim">body    14 lines  ·  deps: bcrypt, hmac</span>
 <span class="ex-ok">✓</span> inserted  <span class="ex-dim">(no merge conflict)</span>
 <span class="ex-ok">✓</span> import stmts added
 <span class="ex-dim">run</span> muse commit -m "cherry-pick: hash_password"`
+      },
+    ]
   },
   {
-    cmd:'muse code check [<commit>]',
-    desc:'Enforce architectural invariant rules — complexity, import cycles, dead exports, coverage.',
-    flags:['--rules <file>   invariants TOML (default: .muse/invariants.toml)',
-           '--strict         exit 1 on any warning',
-           '--json           machine-readable output'],
-    example:`<span class="ex-cmd">$ muse code check --strict</span>
+    icon:'🛡️', label:'Infrastructure & Enforcement',
+    desc:'Indexes, architectural rules, and CI quality gates — the foundation for agent pipelines.',
+    commands:[
+      {
+        cmd:'muse code index <status|rebuild>',
+        desc:'Manage local symbol indexes — show status or rebuild from scratch after import.',
+        flags:['status           show index health and entry counts',
+               'rebuild          rebuild all indexes from commit history',
+               '--index <name>   rebuild only this index (symbol_history | hash_occurrence)'],
+        example:`<span class="ex-cmd">$ muse code index status</span>
+<span class="ex-dim">index             entries  status</span>
+symbol_history    125      <span class="ex-ok">ok</span>
+hash_occurrence    98      <span class="ex-ok">ok</span>
+
+<span class="ex-cmd">$ muse code index rebuild</span>
+<span class="ex-ok">✓</span> symbol_history rebuilt  (125 entries)
+<span class="ex-ok">✓</span> hash_occurrence rebuilt  (98 entries)`
+      },
+      {
+        cmd:'muse code invariants [<commit>]',
+        desc:'Enforce architectural rules from .muse/invariants.toml — import cycles, forbidden dependencies, layer boundaries.',
+        flags:['--commit <sha>   check a historical snapshot (default: HEAD)',
+               '--json           structured violation list'],
+        example:`<span class="ex-cmd">$ muse code invariants</span>
+<span class="ex-ok">✓</span> no import cycles
+<span class="ex-ok">✓</span> core must not import cli
+<span class="ex-ok">✓</span> plugins must not import from cli
+<span class="ex-ok">✓</span> all billing functions must have tests
+<span class="ex-dim">0 violations  ·  4 rules checked</span>`
+      },
+      {
+        cmd:'muse code check [<commit>]',
+        desc:'Enforce architectural invariant rules — complexity, import cycles, dead exports, coverage.',
+        flags:['--rules <file>   invariants TOML (default: .muse/invariants.toml)',
+               '--strict         exit 1 on any warning',
+               '--json           machine-readable output'],
+        example:`<span class="ex-cmd">$ muse code check --strict</span>
 <span class="ex-ok">✓</span> cyclomatic complexity   max 3.4  ≤ ceiling 8
 <span class="ex-ok">✓</span> import cycles          0 detected
 <span class="ex-ok">✓</span> dead exports           0  <span class="ex-dim">(cleaned in f6a7b8c9)</span>
 <span class="ex-ok">✓</span> class size             max 5 methods  ≤ ceiling 15
 <span class="ex-gold">⚠</span> test coverage          <span class="ex-gold">0 test symbols</span>  <span class="ex-dim">below 80%</span>
 <span class="ex-dim">1 warning, 0 errors  (exit 0)</span>`
+      },
+    ]
   },
 ];
 
-// Render CLI cards
+// Render grouped CLI cards
 (function renderCLI() {
-  const grid = document.getElementById('cli-grid');
-  COMMANDS.forEach(c => {
-    const card = document.createElement('div');
-    card.className = 'cli-card';
-    card.innerHTML = `<div class="cli-cmd">$ ${c.cmd}</div>
-      <div class="cli-desc">${c.desc}</div>
-      <div class="cli-flags">${c.flags.map(f=>`<div class="cli-flag">${f.replace(/^(--?\S+)/,'<span>$1</span>')}</div>`).join('')}</div>
-      ${c.example ? `<div class="cli-example">${c.example}</div>` : ''}`;
-    grid.appendChild(card);
+  const container = document.getElementById('cli-groups');
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  GROUPS.forEach(group => {
+    const section = document.createElement('div');
+    section.className = 'cli-group-section';
+
+    const hd = document.createElement('div');
+    hd.className = 'cli-group-hd';
+    hd.innerHTML = `<span class="cli-group-icon">${group.icon}</span>
+      <span class="cli-group-label">${group.label}</span>
+      <span class="cli-group-desc">${group.desc}</span>
+      <span class="cli-group-count">${group.commands.length}</span>`;
+    section.appendChild(hd);
+
+    const grid = document.createElement('div');
+    grid.className = 'cli-grid';
+
+    group.commands.forEach(c => {
+      const card = document.createElement('div');
+      card.className = 'cli-card';
+      card.innerHTML = `<div class="cli-cmd">$ ${esc(c.cmd)}</div>
+        <div class="cli-desc">${esc(c.desc)}</div>
+        <div class="cli-flags">${c.flags.map(f => `<div class="cli-flag">${esc(f).replace(/^(--?\S+|\w+)/,'<span>$1</span>')}</div>`).join('')}</div>
+        ${c.example ? `<div class="cli-example">${c.example}</div>` : ''}`;
+      grid.appendChild(card);
+    });
+
+    section.appendChild(grid);
+    container.appendChild(section);
   });
 })();
+
 
 // ═══════════════════════════════════════════════════════════════
 // EVENT WIRING
