@@ -354,6 +354,402 @@ muse midi velocity-profile tracks/ensemble.mid --by-bar
 
 ---
 
+## Act X — Rhythmic Intelligence
+
+### `muse midi rhythm` — syncopation, swing, quantisation
+
+```
+$ muse midi rhythm tracks/drums.mid
+
+Rhythmic analysis: tracks/drums.mid — working tree
+Notes: 64  ·  Bars: 8  ·  Notes/bar avg: 8.0
+Dominant subdivision: sixteenth
+Quantisation score:   0.942  (very tight)
+Syncopation score:    0.382  (moderate)
+Swing ratio:          1.003  (straight)
+```
+
+Every rhythmic dimension in one command — impossible in Git.
+
+```bash
+muse midi rhythm tracks/drums.mid --commit HEAD~3    # historical snapshot
+muse midi rhythm tracks/bass.mid --json              # agent-readable
+```
+
+---
+
+### `muse midi tempo` — BPM estimation
+
+```
+$ muse midi tempo tracks/drums.mid
+
+Tempo analysis: tracks/drums.mid — working tree
+Estimated BPM:    96.0
+Ticks per beat:   480
+Confidence:       high  (ioi_voting method)
+```
+
+Uses inter-onset interval voting to estimate the underlying beat.  Use `--json` to pipe into downstream agents that need to match tempo across branches.
+
+---
+
+### `muse midi density` — note density arc
+
+```
+$ muse midi density tracks/drums.mid
+
+Note density: tracks/drums.mid — working tree
+Bars: 8  ·  Peak: bar 5 (6.25 notes/beat)  ·  Avg: 5.1
+
+bar   1  ████████████         4.00 notes/beat  (16 notes)
+bar   2  ████████████████████ 5.25 notes/beat  (21 notes)
+bar   3  █████████████        4.25 notes/beat  (17 notes)
+bar   4  █████████████        4.00 notes/beat  (16 notes)
+bar   5  ████████████████████ 6.25 notes/beat  (25 notes)  ← peak
+```
+
+Reveals textural arc: sparse verses, dense choruses, quiet codas.
+
+---
+
+## Act XI — Pitch & Harmony (Deep)
+
+### `muse midi scale` — scale and mode detection
+
+```
+$ muse midi scale tracks/epiano.mid --top 3
+
+Scale analysis: tracks/epiano.mid — working tree
+
+  Rank  Root   Scale             Confidence  Out-of-scale
+  ─────────────────────────────────────────────────────────
+     1  E      natural minor          0.971             0
+     2  E      dorian                 0.929             2
+     3  A      major                  0.886             4
+```
+
+Goes beyond key: tests 15 scale types (major, minor, all seven modes, pentatonic, blues, whole-tone, diminished, chromatic) across all 12 roots.
+
+```bash
+muse midi scale tracks/lead.mid                     # top 3 matches
+muse midi scale tracks/melody.mid --top 5 --json    # agent-readable
+```
+
+---
+
+### `muse midi tension` — harmonic tension curve
+
+```
+$ muse midi tension tracks/epiano.mid
+
+Harmonic tension: tracks/epiano.mid — working tree
+
+bar  1  ▂▂▂▂▂▂▂▂           0.08  consonant
+bar  2  ████████████████   0.43  mild
+bar  3  ████████████████████  0.67  tense
+bar  4  ████               0.12  consonant
+```
+
+Scores each bar's dissonance level from 0 (consonant) to 1 (maximally tense).  Agents can use this as a quality gate: tension should build toward climaxes and resolve at cadences.
+
+---
+
+### `muse midi cadence` — cadence detection
+
+```
+$ muse midi cadence tracks/epiano.mid
+
+Cadence analysis: tracks/epiano.mid — working tree
+Found 2 cadences
+
+  Bar   Type         From       To
+  ──────────────────────────────────────
+    5   half         Em         Bdom7
+    9   authentic    Bdom7      Em     ← resolution
+```
+
+Detects authentic, deceptive, half, and plagal cadences at phrase boundaries.  Use `--strict` to fail CI if a composition lacks proper phrase closure.
+
+---
+
+### `muse midi contour` — melodic contour
+
+```
+$ muse midi contour tracks/lead.mid
+
+Melodic contour: tracks/lead.mid — working tree
+Shape:             arch
+Pitch range:       D3 – C6  (35 semitones)
+Direction changes: 6
+Avg interval size: 2.43 semitones
+
+Interval sequence (semitones):
+  +2 +3 +2 -1 +4 -3 +2 -2 -3 +1 -1 +2 …
+```
+
+Six shape types: ascending, descending, arch, valley, wave, flat.  A fast structural fingerprint: detect when an agent has accidentally flattened or inverted a melody.
+
+---
+
+## Act XII — Structure & Counterpoint
+
+### `muse midi motif` — recurring pattern detection
+
+```
+$ muse midi motif tracks/lead.mid
+
+Motif analysis: tracks/lead.mid — working tree
+Found 2 motifs
+
+Motif 0  [+2 +2 -3]   3×   first: E4   bars: 1, 5, 9
+Motif 1  [-2 +4 -2]   2×   first: G4   bars: 3, 7
+```
+
+Scans the interval sequence between consecutive notes for repeated sub-sequences.  Identifies thematic material independent of key — the pattern `[+2 +2 -3]` is the same motif whether it starts on E4 or G3.
+
+```bash
+muse midi motif tracks/melody.mid --min-length 4 --min-occurrences 3
+muse midi motif tracks/theme.mid --commit HEAD~5    # did the motif survive the merge?
+```
+
+---
+
+### `muse midi voice-leading` — counterpoint lint
+
+```
+$ muse midi voice-leading tracks/strings.mid
+
+Voice-leading check: tracks/strings.mid — working tree
+⚠️  2 issues found
+
+  Bar   Type               Description
+  ──────────────────────────────────────────────────────
+    6   parallel_fifths    voices 0–1: parallel perfect fifths
+    9   large_leap         top voice: leap of 11 semitones
+```
+
+Detects parallel fifths, parallel octaves, and large leaps in the top voice.  Use `--strict` in CI pipelines to block agents from committing harmonically problematic voice-leading.
+
+```bash
+muse midi voice-leading tracks/choir.mid --strict    # CI gate
+muse midi voice-leading tracks/strings.mid --json    # agent-readable
+```
+
+---
+
+### `muse midi instrumentation` — channel & register map
+
+```
+$ muse midi instrumentation tracks/full_score.mid
+
+Instrumentation map: tracks/full_score.mid — working tree
+Channels: 3  ·  Total notes: 106
+
+  Ch   Notes  Range        Register   Mean vel
+  ───────────────────────────────────────────────
+   0      34  C2–G2        bass         84.2
+   1      40  E4–B5        treble       71.8
+   2      32  C3–A4        mid          78.6
+```
+
+Shows which MIDI channels carry notes, the pitch range each channel spans, and the register.  Verify that the bass channel stays low and the melody occupies the right register.
+
+---
+
+## Act XIII — History Deep-Dive
+
+### `muse midi compare` — semantic diff between commits
+
+```
+$ muse midi compare tracks/epiano.mid HEAD~2 HEAD
+
+Semantic comparison: tracks/epiano.mid
+A: HEAD~2 (1b3c8f02)   B: HEAD (3f0b5c8d)
+
+  Dimension          A              B              Δ
+  ──────────────────────────────────────────────────────────
+  Notes              18             32             +14
+  Bars                4              8             +4
+  Key                E minor        E minor         =
+  Density avg        4.5/beat       5.1/beat       +0.6
+  Swing ratio        1.00           1.00            0.0
+  Syncopation        0.11           0.38           +0.27 (more syncopated)
+  Quantisation       0.97           0.94           -0.03
+  Subdivision        quarter        sixteenth       changed
+```
+
+Musical meaning of a diff: not "binary changed" but "8 bars added, syncopation doubled, subdivision tightened to sixteenth notes."
+
+---
+
+## Act XIV — Multi-Agent Intelligence
+
+### `muse midi agent-map` — bar-level blame
+
+```
+$ muse midi agent-map tracks/lead.mid
+
+Agent map: tracks/lead.mid
+
+  Bar   Last author              Commit    Message
+  ──────────────────────────────────────────────────────────────
+    1   agent-melody             3f0b5c8d  Groove: full kit + lead
+    2   agent-melody             3f0b5c8d  Groove: full kit + lead
+    3   agent-harmony            4e2c91aa  Harmony: modal interchange
+    4   agent-harmony            4e2c91aa  Harmony: modal interchange
+    5   agent-arranger           1b2c3d4e  Structure: add bridge
+```
+
+The musical equivalent of `git blame` at the bar level.  "Which agent owns bars 3–4?"  One command.
+
+```bash
+muse midi agent-map tracks/lead.mid --depth 100    # walk deeper history
+muse midi agent-map tracks/bass.mid --json         # pipe to dashboard
+```
+
+---
+
+### `muse midi find-phrase` — phrase similarity search
+
+```
+$ muse midi find-phrase tracks/lead.mid --query query/motif.mid --depth 20
+
+Phrase search: tracks/lead.mid  (query: query/motif.mid)
+Scanning 20 commits…
+
+  Score   Commit    Author              Message
+  ──────────────────────────────────────────────────────────────────
+  0.934   3f0b5c8d  agent-melody        Groove: full arrangement
+  0.812   4e2c91aa  agent-harmony       Harmony: modal interchange
+  0.643   2d9e1a47  agent-melody        Groove: syncopated kick
+```
+
+Answer the question: "At which commit did this theme first appear, and on which branches does it still live?"  Uses pitch-class histogram and interval fingerprint similarity — finds the motif regardless of transposition.
+
+---
+
+### `muse midi shard` — partition for parallel agents
+
+```
+$ muse midi shard tracks/full.mid --shards 4
+
+Shard plan: tracks/full.mid  →  4 shards
+Total bars: 16  ·  ~4 bars per shard
+
+Shard 0  bars  1– 4  →  shards/full_shard_0.mid  (48 notes)
+Shard 1  bars  5– 8  →  shards/full_shard_1.mid  (52 notes)
+Shard 2  bars  9–12  →  shards/full_shard_2.mid  (41 notes)
+Shard 3  bars 13–16  →  shards/full_shard_3.mid  (38 notes)
+
+✅ 4 shards written to shards/
+```
+
+The musical equivalent of `muse coord shard` for code: partition a composition into non-overlapping bar ranges so an agent swarm can work in parallel with zero note-level conflicts.  Merge the shards back with `muse midi mix`.
+
+```bash
+muse midi shard tracks/symphony.mid --bars-per-shard 32 --output-dir agents/
+muse midi shard tracks/full.mid --shards 8 --dry-run    # preview plan
+```
+
+---
+
+## Act XV — Transformation Commands
+
+### `muse midi quantize` — snap to rhythmic grid
+
+```bash
+# Preview
+$ muse midi quantize tracks/piano.mid --grid 16th --strength 0.8 --dry-run
+
+[dry-run] Would quantise tracks/piano.mid  →  16th-note grid  (strength=0.80)
+  Notes adjusted:  28 / 32
+  Avg tick shift:  18.4  ·  Max: 57
+  No changes written (--dry-run).
+
+# Apply
+$ muse midi quantize tracks/piano.mid --grid 16th
+```
+
+Grid values: `whole`, `half`, `quarter`, `8th`, `16th`, `32nd`, `triplet-8th`, `triplet-16th`.
+Use `--strength` < 1.0 for partial quantisation that preserves human feel.
+
+---
+
+### `muse midi humanize` — add human feel
+
+```bash
+$ muse midi humanize tracks/piano.mid --timing 0.015 --velocity 10 --seed 42
+
+✅ Humanised tracks/piano.mid
+   32 notes adjusted
+   Timing jitter: ±0.015 beats  ·  Velocity jitter: ±10
+   Run `muse status` to review, then `muse commit`
+```
+
+Applies controlled randomness to onset times and velocities.  Use `--seed` for reproducible results in deterministic agent pipelines.
+
+---
+
+### `muse midi invert` — melodic inversion
+
+```bash
+$ muse midi invert tracks/melody.mid --pivot E4 --dry-run
+
+[dry-run] Would invert tracks/melody.mid  (pivot: E4 / MIDI 64)
+  Notes:      23
+  Transforms: G4 → C4, B4 → A3, D5 → F3, …
+  New range:  B1–E4  (was E4–G6)
+  No changes written (--dry-run).
+```
+
+Every upward interval becomes downward and vice versa, reflected around the pivot.  Classic fugal transformation — combinable with the original for invertible counterpoint.
+
+---
+
+### `muse midi retrograde` — play it backward
+
+```bash
+$ muse midi retrograde tracks/melody.mid
+
+✅ Retrograded tracks/melody.mid
+   23 notes reversed  (G4 → was last, now first)
+   Duration preserved  ·  original span: 8.00 beats
+   Run `muse status` to review, then `muse commit`
+```
+
+Reverses pitch order while preserving timing, velocity, and duration.  Fundamental twelve-tone operation; impossible to describe in Git's binary model.
+
+---
+
+### `muse midi arpeggiate` — chords → arpeggios
+
+```bash
+$ muse midi arpeggiate tracks/epiano.mid --rate 8th --order up-down
+
+✅ Arpeggiated tracks/epiano.mid  (8th-note rate, up-down order)
+   8 chord clusters → 40 arpeggio notes
+   Run `muse status` to review, then `muse commit`
+```
+
+Orders: `up`, `down`, `up-down` (ping-pong), `random` (with `--seed` for reproducibility).
+
+---
+
+### `muse midi normalize` — rescale velocities
+
+```bash
+$ muse midi normalize tracks/lead.mid --min 50 --max 100
+
+✅ Normalised tracks/lead.mid
+   32 notes rescaled  ·  range: 62–104 → 50–100
+   Mean velocity: 83.0 → 75.2
+   Run `muse status` to review, then `muse commit`
+```
+
+Linearly maps the existing velocity range to [--min, --max], preserving relative dynamics.  Essential first step when integrating tracks from multiple agents recorded at different volumes.
+
+---
+
 ## The Full Collaborative Music Workflow
 
 Here's what a multi-agent music session looks like with Muse:
@@ -407,28 +803,83 @@ muse midi piano-roll tracks/melody.mid --bars 1-8  # visual sanity check
 
 ---
 
-## The Full Command Matrix
+## The Full Command Matrix — 31 Semantic Porcelain Commands
 
-| Command | What it does | Impossible in Git because… |
-|---------|-------------|---------------------------|
-| `muse midi notes` | Every note as musical notation | Git stores .mid as binary |
-| `muse midi note-log` | Note-level change history | Git log shows binary diffs |
-| `muse midi note-blame` | Per-bar attribution | Git blame is per line |
-| `muse midi harmony` | Chord analysis + key detection | Git has no MIDI model |
-| `muse midi piano-roll` | ASCII piano roll visualization | Git has no MIDI model |
-| `muse midi hotspots` | Bar-level churn leaderboard | Git churn is file/line-level |
-| `muse midi velocity-profile` | Dynamic range + histogram | Git has no MIDI model |
-| `muse midi transpose` | Surgical pitch transformation | Git has no musical operations |
-| `muse midi mix` | Combine two tracks into one | Git has no MIDI assembly |
+### Notation & Visualization
 
-Plus the core VCS operations, all working at note level:
+| Command | What it does |
+|---------|-------------|
+| `muse midi notes` | Every note as musical notation: pitch name, beat, velocity, duration |
+| `muse midi piano-roll` | ASCII piano roll — pitches on Y-axis, time on X-axis |
+| `muse midi instrumentation` | Per-channel note range, register (bass/mid/treble), velocity map |
 
-| Command | What's different in Muse |
-|---------|-------------------------|
-| `muse commit` | Structured delta records note-level inserts/deletes |
-| `muse diff` | Shows "C4 added at beat 3.5", not "binary changed" |
-| `muse merge` | Three-way merge per dimension (melodic/harmonic/dynamic/structural) |
-| `muse show` | Displays note-level changes in musical notation |
+### Pitch, Harmony & Scale
+
+| Command | What it does |
+|---------|-------------|
+| `muse midi harmony` | Bar-by-bar chord detection + Krumhansl-Schmuckler key signature |
+| `muse midi scale` | Scale/mode detection: 15 types × 12 roots, ranked by confidence |
+| `muse midi contour` | Melodic contour shape (arch, ascending, valley, wave…) + interval sequence |
+| `muse midi tension` | Harmonic tension curve: dissonance score per bar from interval weights |
+| `muse midi cadence` | Cadence detection: authentic, deceptive, half, plagal at phrase boundaries |
+
+### Rhythm & Dynamics
+
+| Command | What it does |
+|---------|-------------|
+| `muse midi rhythm` | Syncopation score, swing ratio, quantisation accuracy, dominant subdivision |
+| `muse midi tempo` | BPM estimation via IOI voting; confidence rated high/medium/low |
+| `muse midi density` | Notes-per-beat per bar — textural arc of a composition |
+| `muse midi velocity-profile` | Dynamic range, RMS velocity, and histogram (ppp–fff) |
+
+### Structure & Voice Leading
+
+| Command | What it does |
+|---------|-------------|
+| `muse midi motif` | Recurring interval-pattern (motif) detection, transposition-invariant |
+| `muse midi voice-leading` | Parallel fifths/octaves + large leaps — classical counterpoint lint |
+| `muse midi compare` | Semantic diff across key, rhythm, density, swing between two commits |
+
+### History & Attribution
+
+| Command | What it does |
+|---------|-------------|
+| `muse midi note-log` | Note-level commit history: pitches added/removed per commit |
+| `muse midi note-blame` | Per-bar attribution: which commit introduced each note |
+| `muse midi hotspots` | Bar-level churn leaderboard: which bars change most across commits |
+
+### Multi-Agent Intelligence
+
+| Command | What it does |
+|---------|-------------|
+| `muse midi agent-map` | Bar-level blame: which agent last edited each bar |
+| `muse midi find-phrase` | Similarity search for a melodic phrase across all commit history |
+| `muse midi shard` | Partition composition into N bar-range shards for parallel agent work |
+| `muse midi query` | MIDI DSL predicate query: bar, pitch, velocity, agent, chord |
+
+### Transformation
+
+| Command | What it does |
+|---------|-------------|
+| `muse midi transpose` | Shift all pitches by N semitones; dry-run + clamp support |
+| `muse midi invert` | Melodic inversion around a pivot pitch |
+| `muse midi retrograde` | Reverse pitch order (retrograde transformation) |
+| `muse midi quantize` | Snap onsets to a rhythmic grid with adjustable strength |
+| `muse midi humanize` | Add timing/velocity jitter for human feel; seed for determinism |
+| `muse midi arpeggiate` | Convert chord voicings to arpeggios (up/down/up-down/random) |
+| `muse midi normalize` | Rescale velocities to a target dynamic range |
+| `muse midi mix` | Combine notes from two MIDI tracks into one output file |
+
+### Invariants & Quality Gates
+
+| Command | What it does |
+|---------|-------------|
+| `muse midi check` | Enforce MIDI invariant rules: polyphony, range, key, parallel fifths |
+
+---
+
+Every command above operates on structured note data and works at any historical commit.
+Every one is impossible in Git, which stores MIDI as an opaque binary blob.
 
 ---
 
@@ -436,21 +887,26 @@ Plus the core VCS operations, all working at note level:
 
 When millions of agents are composing music in real-time, you need:
 
-1. **Musical reads** — `muse midi notes`, `muse midi harmony`, `muse midi piano-roll` return
-   structured note data that agents can reason about, not binary blobs
+1. **Musical reads** — `notes`, `harmony`, `scale`, `contour`, `rhythm`, `tension`, `density`
+   return structured data agents can reason about, not binary blobs.
 
-2. **Musical writes** — `muse midi transpose`, `muse midi mix` apply well-defined
-   transformations that produce valid MIDI, with full note-level attribution
+2. **Musical writes** — `transpose`, `invert`, `retrograde`, `quantize`, `humanize`,
+   `arpeggiate`, `normalize`, `mix` apply well-defined transformations with full note-level
+   attribution in the next commit.
 
-3. **Creative intelligence** — `muse midi harmony` gives agents harmonic awareness;
-   `muse midi velocity-profile` gives dynamic awareness; `muse midi hotspots` reveals
-   which sections are in flux
+3. **Swarm coordination** — `shard` partitions the composition for parallel agents;
+   `agent-map` shows who owns which bars; `find-phrase` locates thematic material across
+   branches; `query` answers arbitrary musical questions across all history.
 
-4. **Semantic merges** — two agents independently harmonizing the same melody
-   can merge at the note level — changes to non-overlapping notes never conflict
+4. **Quality gates** — `check` enforces MIDI invariants; `voice-leading --strict` blocks
+   parallel fifths; `cadence` verifies phrase closure; `tension` ensures the emotional arc.
 
-5. **Structured history** — every commit records a note-level structured delta;
-   every note has a content ID; `muse midi note-blame` attributes any bar to any agent
+5. **Semantic merges** — two agents independently harmonizing the same melody
+   can merge at the note level — changes to non-overlapping notes never conflict.
+
+6. **Structured history** — every commit records a note-level structured delta;
+   every note has a content ID; `note-blame` attributes any bar to any agent;
+   `compare` shows the musical meaning of any diff.
 
 Muse doesn't just store your music.  It understands it.
 
