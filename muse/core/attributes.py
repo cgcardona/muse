@@ -104,6 +104,8 @@ Public API
 - :func:`resolve_strategy` — first-match strategy lookup.
 """
 
+from __future__ import annotations
+
 import fnmatch
 import logging
 import pathlib

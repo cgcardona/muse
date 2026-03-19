@@ -22,7 +22,7 @@ Storage layout::
 
     .muse/music_manifests/
         <snapshot_id>.json     — full MusicManifest for this snapshot
-        (rebuildable from history; add to .museignore in CI)
+        (rebuildable from history; add to .museignore [domain.midi] in CI)
 
 Public API
 ----------
@@ -35,6 +35,8 @@ Public API
 - :func:`write_music_manifest` — persist to ``.muse/music_manifests/``.
 - :func:`read_music_manifest`  — load from the sidecar store.
 """
+
+from __future__ import annotations
 
 import hashlib
 import json

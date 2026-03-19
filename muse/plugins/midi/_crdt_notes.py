@@ -61,6 +61,8 @@ Public API
 - :class:`MidiRGA`      — the voice-aware ordered note sequence CRDT.
 """
 
+from __future__ import annotations
+
 import logging
 import uuid as _uuid_mod
 from typing import NamedTuple, TypedDict

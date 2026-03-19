@@ -13,8 +13,11 @@ Layout::
         commits/            — commit records (JSON, one file per commit)
         snapshots/          — snapshot manifests (JSON, one file per snapshot)
     .museattributes         — TOML merge strategy overrides (created in repo root)
+    .museignore             — TOML ignore rules (created in repo root)
     muse-work/              — working tree (absent for --bare repos)
 """
+
+from __future__ import annotations
 
 import datetime
 import json
@@ -72,6 +75,116 @@ token = ""
 # Genomics examples:
 #   reference_assembly = "GRCh38"
 """
+
+
+def _museignore_template(domain: str) -> str:
+    """Return a TOML ``.museignore`` template pre-filled for *domain*.
+
+    The ``[global]`` section covers cross-domain OS artifacts.  The
+    ``[domain.<name>]`` section lists patterns specific to the chosen domain.
+    Patterns from other domains are never loaded at snapshot time.
+    """
+    global_section = """\
+[global]
+# Patterns applied to every domain. Last match wins; prefix with ! to un-ignore.
+patterns = [
+    ".DS_Store",
+    "Thumbs.db",
+    "*.tmp",
+    "*.swp",
+    "*.swo",
+]
+"""
+    midi_section = """\
+[domain.midi]
+# Patterns applied only when the active domain plugin is "midi".
+patterns = [
+    "*.bak",
+    "*.autosave",
+    "/renders/",
+    "/exports/",
+    "/previews/",
+]
+"""
+    code_section = """\
+[domain.code]
+# Patterns applied only when the active domain plugin is "code".
+patterns = [
+    "__pycache__/",
+    "*.pyc",
+    "*.pyo",
+    "node_modules/",
+    "dist/",
+    "build/",
+    ".venv/",
+    "venv/",
+    ".tox/",
+    "*.egg-info/",
+]
+"""
+    genomics_section = """\
+[domain.genomics]
+# Patterns applied only when the active domain plugin is "genomics".
+patterns = [
+    "*.sam",
+    "*.bam.bai",
+    "pipeline-cache/",
+    "*.log",
+]
+"""
+    simulation_section = """\
+[domain.simulation]
+# Patterns applied only when the active domain plugin is "simulation".
+patterns = [
+    "frames/raw/",
+    "*.frame.bin",
+    "checkpoint-tmp/",
+]
+"""
+    spatial_section = """\
+[domain.spatial]
+# Patterns applied only when the active domain plugin is "spatial".
+patterns = [
+    "previews/",
+    "*.preview.vdb",
+    "**/.shadercache/",
+]
+"""
+
+    domain_blocks: dict[str, str] = {
+        "midi": midi_section,
+        "code": code_section,
+        "genomics": genomics_section,
+        "simulation": simulation_section,
+        "spatial": spatial_section,
+    }
+    domain_block = domain_blocks.get(domain, f"""\
+[domain.{domain}]
+# Patterns applied only when the active domain plugin is "{domain}".
+# patterns = [
+#     "*.generated",
+#     "/cache/",
+# ]
+""")
+
+    header = f"""\
+# .museignore — snapshot exclusion rules for this repository.
+# Documentation: docs/reference/museignore.md
+#
+# Format: TOML with [global] and [domain.<name>] sections.
+#   [global]          — patterns applied to every domain
+#   [domain.<name>]   — patterns applied only when the active domain is <name>
+#
+# Pattern syntax (gitignore-compatible):
+#   *.ext             ignore files with this extension at any depth
+#   /path             anchor to the root of muse-work/
+#   dir/              directory pattern (silently skipped — Muse tracks files)
+#   !pattern          un-ignore a previously matched path
+#
+# Last matching rule wins.
+
+"""
+    return header + global_section + "\n" + domain_block
 
 
 def _museattributes_template(domain: str) -> str:
@@ -261,6 +374,10 @@ def init(
         attrs_path = cwd / ".museattributes"
         if not attrs_path.exists():
             attrs_path.write_text(_museattributes_template(domain))
+
+        ignore_path = cwd / ".museignore"
+        if not ignore_path.exists():
+            ignore_path.write_text(_museignore_template(domain))
 
         if not bare:
             work_dir = cwd / "muse-work"

@@ -6,6 +6,8 @@ Modes::
     --hard   — move the branch pointer AND restore muse-work/ from the target snapshot.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import pathlib

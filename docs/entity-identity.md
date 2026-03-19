@@ -64,8 +64,16 @@ Entity indexes live under `.muse/entity_index/` as derived artifacts:
         <track_safe_name>_<hash[:8]>.json
 ```
 
-They are fully rebuildable from commit history and should be added to
-`.museignore` in CI to avoid accidental commits.
+They are fully rebuildable from commit history and should be added to the
+`[domain.midi]` section of `.museignore` (TOML format) in CI to avoid
+accidental commits:
+
+```toml
+[domain.midi]
+patterns = [
+    ".muse/entity_index/",
+]
+```
 
 ## Independence from core
 

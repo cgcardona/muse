@@ -775,7 +775,7 @@ class TestCodePluginSnapshot:
         (workdir / "keep.py").write_text("x = 1\n")
         (workdir / "skip.log").write_text("log\n")
         ignore = tmp_path / ".museignore"
-        ignore.write_text("*.log\n")
+        ignore.write_text('[global]\npatterns = ["*.log"]\n')
         snap = self.plugin.snapshot(workdir)
         assert "keep.py" in snap["files"]
         assert "skip.log" not in snap["files"]

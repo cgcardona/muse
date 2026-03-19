@@ -26,6 +26,8 @@ Each inferred classification carries a ``confidence`` float (0.0–1.0) and an
 These are used by ``muse detect-refactor`` to produce the enhanced JSON output.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Literal
 

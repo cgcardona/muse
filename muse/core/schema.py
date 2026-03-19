@@ -28,6 +28,8 @@ annotations`` all annotations are evaluated lazily, so this forward reference
 is resolved correctly by both the Python runtime and mypy.
 """
 
+from __future__ import annotations
+
 from typing import Literal, TypedDict
 
 

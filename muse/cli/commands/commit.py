@@ -13,6 +13,8 @@ Algorithm
 9. Advance ``.muse/refs/heads/<branch>`` to the new commit_id.
 """
 
+from __future__ import annotations
+
 import datetime
 import json
 import logging

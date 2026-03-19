@@ -72,6 +72,8 @@ Public API
 - :func:`run_invariants`        — top-level runner.
 """
 
+from __future__ import annotations
+
 import ast
 import logging
 import pathlib

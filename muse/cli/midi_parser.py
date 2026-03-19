@@ -13,6 +13,8 @@ Named result types registered in ``docs/reference/type_contracts.md``:
 - ``NoteEvent``
 """
 
+from __future__ import annotations
+
 import copy
 import dataclasses
 import logging

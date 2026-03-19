@@ -1,5 +1,7 @@
 """muse revert — create a new commit that undoes a prior commit."""
 
+from __future__ import annotations
+
 import datetime
 import json
 import logging

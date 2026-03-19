@@ -18,8 +18,9 @@ implement an ``Ed25519Signer`` adapter following the same interface as
 
 Key management
 --------------
-Keys live in ``.muse/keys/`` which should be added to ``.gitignore`` /
-``.museignore``.  Each agent or human has one key file.  Key ID is the
+Keys live in ``.muse/keys/`` which should be added to ``.gitignore`` and
+to the ``[global]`` section of ``.museignore`` (TOML format).  Each agent
+or human has one key file.  Key ID is the
 first 16 hex characters of the SHA-256 of the raw key bytes — short enough
 to log, long enough to be unique.
 
@@ -38,6 +39,8 @@ Usage
     sig = sign_commit_hmac(commit_hash, key)
     assert verify_commit_hmac(commit_hash, sig, key)
 """
+
+from __future__ import annotations
 
 import hashlib
 import hmac
