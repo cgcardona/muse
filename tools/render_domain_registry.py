@@ -209,22 +209,44 @@ def _load_domains() -> list[dict]:
     # Fallback: static reference data
     return [
         {
-            "domain": "music",
+            "domain": "midi",
             "active": "true",
-            "capabilities": ["Typed Deltas", "Domain Schema", "OT Merge"],
+            "capabilities": ["Typed Deltas", "Domain Schema", "OT Merge", "CRDT Primitives"],
             "schema": {
                 "schema_version": "1",
                 "merge_mode": "three_way",
-                "description": "MIDI and audio file versioning with note-level diff and semantic merge",
+                "description": "MIDI file versioning with 21-dimension structured merge — notes, CC, pitch bend, tempo, time signatures, and more. Each dimension merges independently; only conflicting axes require resolution.",
                 "dimensions": [
-                    {"name": "melodic",    "description": "Note pitches and durations over time"},
-                    {"name": "rhythmic",   "description": "Timing, groove, and quantisation (shares notes bucket with melodic)"},
-                    {"name": "harmonic",   "description": "Chord progressions and key signatures"},
-                    {"name": "dynamic",    "description": "Velocity and expression curves"},
-                    {"name": "structural", "description": "Track layout, time signatures, tempo map"},
+                    {"name": "notes",          "description": "Note-on/off events (pitch, velocity, channel, timing)"},
+                    {"name": "control_change",  "description": "CC curves: modulation, sustain, expression, pan"},
+                    {"name": "pitch_bend",      "description": "Pitch bend envelope per channel"},
+                    {"name": "tempo",           "description": "Tempo map (BPM changes over time)"},
+                    {"name": "time_signature",  "description": "Metre changes across the piece"},
+                    {"name": "key_signature",   "description": "Key and mode declarations"},
+                    {"name": "program_change",  "description": "Instrument (patch) assignments per channel"},
+                    {"name": "aftertouch",      "description": "Channel and polyphonic pressure"},
+                    {"name": "sysex",           "description": "System-exclusive device messages"},
+                    {"name": "track_name",      "description": "Human-readable track labels"},
                 ],
             },
-        }
+        },
+        {
+            "domain": "code",
+            "active": "true",
+            "capabilities": ["Typed Deltas", "Domain Schema", "OT Merge", ".museattributes"],
+            "schema": {
+                "schema_version": "1",
+                "merge_mode": "symbol_ot",
+                "description": "Source-code versioning with symbol-level operational-transform merge. Tree-sitter parses 11 languages into ASTs; functions, classes, and imports merge independently. .museattributes gives per-path strategy control.",
+                "dimensions": [
+                    {"name": "functions",   "description": "Function and method definitions"},
+                    {"name": "classes",     "description": "Class and struct declarations"},
+                    {"name": "imports",     "description": "Import and module-level declarations"},
+                    {"name": "variables",   "description": "Module-level variable and constant assignments"},
+                    {"name": "expressions", "description": "Top-level expression statements"},
+                ],
+            },
+        },
     ]
 
 
@@ -1776,7 +1798,7 @@ _HTML_TEMPLATE = """\
   <a class="nav-link" href="demo.html">Demo</a>
   <a class="nav-link" href="https://github.com/cgcardona/muse/blob/main/docs/guide/plugin-authoring-guide.md">Plugin Guide</a>
   <div class="nav-spacer"></div>
-  <span class="nav-badge">v0.1.1</span>
+  <span class="nav-badge">v0.1.2</span>
 </nav>
 
 <!-- =================== HERO =================== -->
@@ -1794,7 +1816,8 @@ _HTML_TEMPLATE = """\
   </div>
   <div class="domain-ticker">
     <div class="ticker-track">
-      <span class="ticker-item active">{{ICON_MUSIC}} music</span>
+      <span class="ticker-item active">{{ICON_MUSIC}} midi</span>
+      <span class="ticker-item active">{{ICON_CODE}} code</span>
       <span class="ticker-item">{{ICON_GENOMICS}} genomics</span>
       <span class="ticker-item">{{ICON_CUBE}} 3d-spatial</span>
       <span class="ticker-item">{{ICON_TRENDING}} financial</span>
@@ -1804,7 +1827,8 @@ _HTML_TEMPLATE = """\
       <span class="ticker-item">{{ICON_ZAP}} game-state</span>
       <span class="ticker-item">{{ICON_PLUS}} your-domain</span>
       <!-- duplicate for seamless loop -->
-      <span class="ticker-item active">{{ICON_MUSIC}} music</span>
+      <span class="ticker-item active">{{ICON_MUSIC}} midi</span>
+      <span class="ticker-item active">{{ICON_CODE}} code</span>
       <span class="ticker-item">{{ICON_GENOMICS}} genomics</span>
       <span class="ticker-item">{{ICON_CUBE}} 3d-spatial</span>
       <span class="ticker-item">{{ICON_TRENDING}} financial</span>
@@ -1823,10 +1847,10 @@ _HTML_TEMPLATE = """\
     <div class="section-eyebrow">The Contract</div>
     <h2>The MuseDomainPlugin Protocol</h2>
     <p class="section-lead">
-      Every domain — music, genomics, 3D spatial, financial models — implements
-      the same <strong>six-method protocol</strong>. The core engine handles
-      everything else: content-addressed storage, DAG, branches, log, merge base,
-      cherry-pick, revert, stash, tags.
+      Every domain — MIDI, source code, genomics, 3D spatial, financial models —
+      implements the same <strong>six-method protocol</strong>. The core engine
+      handles everything else: content-addressed storage, DAG, branches, log,
+      merge base, cherry-pick, revert, stash, tags.
     </p>
 
     <div class="proto-layout">
@@ -1899,8 +1923,9 @@ _HTML_TEMPLATE = """\
     <div class="section-eyebrow">Ecosystem</div>
     <h2>The Plugin Ecosystem</h2>
     <p class="section-lead">
-      Music is the reference implementation. These are the domains planned
-      next — and the slot waiting for yours.
+      MIDI and code are the two shipped domains — both fully active with typed
+      deltas, structured merge, and <code>.museattributes</code> rule control.
+      These are the domains planned next — and the slot waiting for yours.
     </p>
     <div class="planned-grid">
       {{PLANNED_DOMAINS}}
@@ -2000,7 +2025,7 @@ _HTML_TEMPLATE = """\
             <div class="ot-scenario ot-conflict">
               <div class="ot-scenario-hdr">
                 <span class="ot-scenario-label">Scenario B</span>
-                <span class="ot-scenario-title">Same address, conflicting musical intent</span>
+                <span class="ot-scenario-title">Same address, conflicting intent — conflict surfaced</span>
               </div>
               <div class="ot-ops">
                 <div class="ot-op">
@@ -2172,7 +2197,7 @@ _HTML_TEMPLATE = """\
 </div>
 
 <footer>
-  <span>Muse v0.1.1 · domain-agnostic version control for multidimensional state</span>
+  <span>Muse v0.1.2 · domain-agnostic version control for multidimensional state · Python 3.14</span>
   <span>
     <a href="demo.html">Demo</a> ·
     <a href="https://github.com/cgcardona/muse">GitHub</a> ·

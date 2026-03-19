@@ -76,16 +76,16 @@ _ARCH_HTML = """\
   <div class="arch-connector"><div class="connector-line"></div><div class="connector-arrow">▼</div></div>
   <div class="arch-row plugins-row">
     <div class="arch-box plugin active">
-      <div class="box-title">MusicPlugin</div>
-      <div class="box-sub">reference impl<br>MIDI · notes · CC · pitch</div>
+      <div class="box-title">MidiPlugin</div>
+      <div class="box-sub">shipped · 21 dims<br>notes · CC · tempo · structure</div>
+    </div>
+    <div class="arch-box plugin active">
+      <div class="box-title">CodePlugin</div>
+      <div class="box-sub">shipped · symbol OT<br>11 languages · tree-sitter AST</div>
     </div>
     <div class="arch-box plugin planned">
       <div class="box-title">GenomicsPlugin</div>
       <div class="box-sub">planned<br>sequences · variants</div>
-    </div>
-    <div class="arch-box plugin planned">
-      <div class="box-title">SpacetimePlugin</div>
-      <div class="box-sub">planned<br>3D fields · time-slices</div>
     </div>
     <div class="arch-box plugin planned">
       <div class="box-title">YourPlugin</div>
@@ -1694,7 +1694,7 @@ def render(tour: dict, output_path: pathlib.Path) -> None:
         gen_str = gen_raw[:19]
 
     html = _HTML_TEMPLATE
-    html = html.replace("{{VERSION}}",      str(meta.get("muse_version", "0.1.1")))
+    html = html.replace("{{VERSION}}",      str(meta.get("muse_version", "0.1.2")))
     html = html.replace("{{DOMAIN}}",       str(meta.get("domain", "music")))
     html = html.replace("{{ELAPSED}}",      str(meta.get("elapsed_s", "?")))
     html = html.replace("{{GENERATED_AT}}", gen_str)
