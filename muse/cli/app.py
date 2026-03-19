@@ -40,9 +40,21 @@ Tier 2 — Core Porcelain commands::
 
 Tier 3 — MIDI domain commands (``muse midi …``)::
 
-    notes           note-log        note-blame      harmony
-    piano-roll      hotspots        velocity-profile
-    transpose       mix             query           check
+    Analysis:
+    notes           note-log        note-blame      harmony         piano-roll
+    hotspots        velocity-profile rhythm          scale           contour
+    density         tension         cadence         motif           voice-leading
+    instrumentation tempo           compare
+
+    Transformation:
+    transpose       mix             quantize        humanize        invert
+    retrograde      arpeggiate      normalize
+
+    Multi-agent & search:
+    shard           agent-map       find-phrase
+
+    Invariants:
+    query           check
 
 Tier 3 — Code domain commands (``muse code …``)::
 
@@ -134,6 +146,27 @@ from muse.cli.commands import (
     breakage,
     transpose,
     velocity_profile,
+    # New MIDI semantic porcelain — analysis
+    agent_map,
+    arpeggiate,
+    cadence,
+    contour,
+    density,
+    find_phrase,
+    humanize,
+    instrumentation,
+    invert,
+    midi_compare,
+    midi_shard,
+    motif_detect,
+    quantize,
+    retrograde,
+    rhythm,
+    scale_detect,
+    tempo,
+    tension,
+    velocity_normalize,
+    voice_leading,
 )
 from muse.cli.commands.plumbing import (
     cat_object,
@@ -240,6 +273,29 @@ midi_cli.add_typer(transpose.app,        name="transpose",        help="Transpos
 midi_cli.add_typer(mix.app,              name="mix",              help="Combine notes from two MIDI tracks into a single output track.")
 midi_cli.add_typer(midi_query.app,       name="query",            help="MIDI DSL predicate query over commit history — bars, chords, agents, pitches.")
 midi_cli.add_typer(midi_check.app,       name="check",            help="Enforce MIDI invariant rules (polyphony, pitch range, key consistency, parallel fifths).")
+# --- Analysis porcelain ---
+midi_cli.add_typer(rhythm.app,           name="rhythm",           help="Quantify syncopation, swing ratio, and quantisation accuracy of a MIDI track.")
+midi_cli.add_typer(scale_detect.app,     name="scale",            help="Detect scale or mode (major, dorian, blues, whole-tone…) from pitch-class analysis.")
+midi_cli.add_typer(contour.app,          name="contour",          help="Classify melodic contour shape (arch, ascending, wave…) and report interval sequence.")
+midi_cli.add_typer(density.app,          name="density",          help="Note density (notes per beat) per bar — reveals textural arc of a composition.")
+midi_cli.add_typer(tension.app,          name="tension",          help="Harmonic tension curve per bar — consonance/dissonance arc from interval dissonance weights.")
+midi_cli.add_typer(cadence.app,          name="cadence",          help="Detect phrase-ending cadences (authentic, deceptive, half, plagal) at bar boundaries.")
+midi_cli.add_typer(motif_detect.app,     name="motif",            help="Find recurring melodic interval patterns (motifs) in a MIDI track.")
+midi_cli.add_typer(voice_leading.app,    name="voice-leading",    help="Detect parallel fifths, octaves, and large leaps — classical voice-leading lint.")
+midi_cli.add_typer(instrumentation.app,  name="instrumentation",  help="Per-channel note distribution, pitch range, register, and velocity map.")
+midi_cli.add_typer(tempo.app,            name="tempo",            help="Estimate BPM from inter-onset intervals; report ticks-per-beat metadata.")
+midi_cli.add_typer(midi_compare.app,     name="compare",          help="Semantic comparison between two MIDI snapshots across key, rhythm, density, and swing.")
+# --- Transformation porcelain ---
+midi_cli.add_typer(quantize.app,         name="quantize",         help="Snap note onsets to a rhythmic grid (16th, 8th, triplet, …) with adjustable strength.")
+midi_cli.add_typer(humanize.app,         name="humanize",         help="Add subtle timing and velocity variation to give quantised MIDI a human feel.")
+midi_cli.add_typer(invert.app,           name="invert",           help="Melodic inversion — reflect all intervals around a pivot pitch.")
+midi_cli.add_typer(retrograde.app,       name="retrograde",       help="Retrograde transformation — reverse the pitch order of all notes.")
+midi_cli.add_typer(arpeggiate.app,       name="arpeggiate",       help="Convert simultaneous chord voicings into a sequential arpeggio pattern.")
+midi_cli.add_typer(velocity_normalize.app, name="normalize",      help="Rescale note velocities to a target dynamic range [min, max].")
+# --- Multi-agent & search porcelain ---
+midi_cli.add_typer(midi_shard.app,       name="shard",            help="Partition a MIDI composition into bar-range shards for parallel agent work.")
+midi_cli.add_typer(agent_map.app,        name="agent-map",        help="Show which agent last edited each bar of a MIDI track (bar-level blame).")
+midi_cli.add_typer(find_phrase.app,      name="find-phrase",      help="Search for a melodic phrase across MIDI commit history by similarity scoring.")
 
 cli.add_typer(midi_cli, name="midi")
 
