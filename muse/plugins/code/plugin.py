@@ -86,6 +86,7 @@ import hashlib
 import logging
 import pathlib
 
+from muse.core.diff_algorithms import snapshot_diff
 from muse.core.ignore import is_ignored, load_patterns
 from muse.core.object_store import read_object
 from muse.core.op_transform import merge_op_lists, ops_commute
@@ -234,10 +235,12 @@ class CodePlugin:
         target_files = target["files"]
 
         if repo_root is None:
-            ops = _file_level_ops(base_files, target_files)
-        else:
-            ops = _semantic_ops(base_files, target_files, repo_root)
+            # snapshot_diff provides the free file-level diff promised by the
+            # DomainSchema architecture: any plugin that declares a schema can
+            # call this instead of writing file-set algebra from scratch.
+            return snapshot_diff(self.schema(), base, target)
 
+        ops = _semantic_ops(base_files, target_files, repo_root)
         summary = delta_summary(ops)
         return StructuredDelta(domain=_DOMAIN_NAME, ops=ops, summary=summary)
 

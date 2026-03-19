@@ -71,6 +71,7 @@ from __future__ import annotations
 import typer
 
 from muse.cli.commands import (
+    annotate,
     api_surface,
     attributes,
     blame,
@@ -78,8 +79,11 @@ from muse.cli.commands import (
     cherry_pick,
     checkout,
     checkout_symbol,
+    check,
     clones,
     codemap,
+    code_check,
+    code_query,
     commit,
     compare,
     coupling,
@@ -198,6 +202,12 @@ cli.add_typer(semantic_cherry_pick.app, name="semantic-cherry-pick", help="[code
 cli.add_typer(index_rebuild.app,   name="index",            help="[code] Manage local indexes: status, rebuild symbol_history / hash_occurrence.")
 cli.add_typer(breakage.app,        name="breakage",         help="[code] Detect symbol-level structural breakage in the working tree vs HEAD.")
 cli.add_typer(invariants.app,      name="invariants",       help="[code] Enforce architectural rules from .muse/invariants.toml.")
+cli.add_typer(code_check.app,      name="code-check",       help="[code] Semantic invariant enforcement — complexity, import cycles, dead exports, test coverage.")
+cli.add_typer(code_query.app,      name="code-query",       help="[code] Predicate query over code commit history — symbol, file, language, agent_id, sem_ver_bump.")
+
+# Cross-domain commands (work for any domain)
+cli.add_typer(check.app,           name="check",            help="[*] Domain-agnostic invariant check — dispatches to midi-check or code-check based on repo domain.")
+cli.add_typer(annotate.app,        name="annotate",         help="[*] CRDT-backed commit annotations — reviewed-by (ORSet) and test-run counter (GCounter).")
 
 # Multi-agent coordination commands
 cli.add_typer(reserve.app,         name="reserve",          help="[coord] Advisory symbol reservation — announce intent before editing.")
