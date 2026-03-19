@@ -477,4 +477,4 @@ Muse doesn't just store your code.  It understands it.
 
 ---
 
-*Next: [Music Tour de Force →](tour-de-force-script.md)*
+*Next: [Demo Script →](demo-script.md)*

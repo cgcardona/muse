@@ -19,7 +19,7 @@ This directory contains the complete documentation for Muse — a domain-agnosti
 | Look up a named type | [Type Contracts](reference/type-contracts.md) |
 | Configure merge strategies | [`.museattributes` Reference](reference/muse-attributes.md) |
 | Exclude files from snapshots | [`.museignore` Reference](reference/museignore.md) |
-| Watch the demo narration | [Tour de Force Script](demo/tour-de-force-script.md) |
+| Watch the demo narration | [Demo Script](demo/demo-script.md) |
 
 ---
 
@@ -64,7 +64,7 @@ docs/
 │                                   dotfile exclusion rules
 │
 └── demo/
-    └── tour-de-force-script.md   — narration script for the video demo covering
+    └── demo-script.md            — narration script for the video demo covering
                                     all nine acts: core VCS through CRDT semantics
                                     and the live domain dashboard
 ```
