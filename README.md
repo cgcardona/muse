@@ -241,7 +241,7 @@ docs/
   guide/                 — plugin authoring guide and CRDT reference
   protocol/              — MuseDomainPlugin protocol spec and domain concepts
   reference/             — type contracts, .museattributes, .museignore, code-domain
-  demo/                  — demo-midi.md, demo-code.md, demo-script.md
+  demo/                  — midi-demo.md, demo-code.md, demo-script.md
 ```
 
 ---
