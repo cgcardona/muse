@@ -29,7 +29,6 @@ errors are caught at compile time rather than at runtime.
 :class:`TreeNode` is re-exported here for convenience; import it from this
 package rather than from the submodule.
 """
-
 from __future__ import annotations
 
 import logging
@@ -307,7 +306,7 @@ def snapshot_diff(
 ) -> StructuredDelta:
     """Compute a ``StructuredDelta`` from two snapshots using the declared schema.
 
-    This is the **"free diff"** promised by Phase 2 of the supercharge plan:
+    This is the **"free diff"** promised by the domain schema architecture:
     a plugin author who declares a ``DomainSchema`` via ``schema()`` can call
     this function from their ``diff()`` implementation instead of writing
     file-set algebra from scratch.  The core engine dispatches to the correct

@@ -1,4 +1,4 @@
-# Muse — Supercharge Plan: From File-Hash MVP to Universal Multidimensional VCS
+# Muse — Architecture Plan: From File-Hash MVP to Universal Multidimensional VCS
 
 > **Status:** Working document — pre-implementation spec.
 > No backward compatibility constraints. We own every line.
