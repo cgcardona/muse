@@ -15,7 +15,6 @@ Covers:
 - list_commits and list_branches.
 - list_tags returns all tags.
 """
-from __future__ import annotations
 
 import datetime
 import pathlib

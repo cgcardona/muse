@@ -35,7 +35,6 @@ Public API
 - :func:`write_music_manifest` — persist to ``.muse/music_manifests/``.
 - :func:`read_music_manifest`  — load from the sidecar store.
 """
-from __future__ import annotations
 
 import hashlib
 import json

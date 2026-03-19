@@ -20,8 +20,6 @@ Public API
   ``happens_before``, ``concurrent_with``, ``to_dict``, ``from_dict``.
 """
 
-from __future__ import annotations
-
 from typing import TypedDict
 
 
@@ -32,7 +30,6 @@ class VClockDict(TypedDict, total=False):
     is equivalent to the value ``0``).  Serialise with :meth:`VectorClock.to_dict`
     and deserialise with :meth:`VectorClock.from_dict`.
     """
-
 
 class VectorClock:
     """Causal clock for distributed agent writes.

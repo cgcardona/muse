@@ -10,7 +10,6 @@ Stand-alone usage
     python tools/render_html.py artifacts/tour_de_force.json
     python tools/render_html.py artifacts/tour_de_force.json --out custom.html
 """
-from __future__ import annotations
 
 import json
 import pathlib

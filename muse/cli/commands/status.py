@@ -27,7 +27,6 @@ Default::
      A tracks/lead.mp3
      D tracks/scratch.mid
 """
-from __future__ import annotations
 
 import json
 import logging

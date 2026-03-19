@@ -32,7 +32,6 @@ Schema compliance
     - updated_at is present and is a non-empty string.
     - index field matches the index name.
 """
-from __future__ import annotations
 
 import json
 import pathlib

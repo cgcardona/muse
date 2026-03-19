@@ -15,7 +15,6 @@ Additional adversarial cases:
   - AWMap: nested concurrent updates converge.
   - LWWRegister: last writer wins with tie-broken by agent_id.
 """
-from __future__ import annotations
 
 import datetime
 import itertools

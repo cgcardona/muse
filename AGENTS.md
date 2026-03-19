@@ -129,7 +129,6 @@ Only fall back to `gh` CLI for operations not yet covered by the MCP server.
 
 ## Code Standards
 
-- **`from __future__ import annotations`** is the first import in every Python file, immediately after the module docstring. No exceptions.
 - **Type hints everywhere — 100% coverage.** No untyped function parameters, no untyped return values.
 - **Modern syntax only:** `list[X]`, `dict[K, V]`, `X | None` — never `List`, `Dict`, `Optional[X]`.
 - **Synchronous I/O.** No `async`, no `await`, no `asyncio` anywhere in `muse/`.

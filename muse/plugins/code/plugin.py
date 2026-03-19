@@ -80,7 +80,6 @@ The code domain schema declares five dimensions:
 ``metadata``
     Configuration and non-code files — ``SetSchema``.
 """
-from __future__ import annotations
 
 import hashlib
 import logging

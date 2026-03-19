@@ -257,7 +257,7 @@ pip install -e ".[dev]"
 
 Core dependencies:
 
-- Python 3.13+
+- Python 3.14+
 - Typer (CLI)
 - mido (MIDI parsing — MIDI plugin only)
 - tree-sitter + language grammars (AST parsing — code plugin only)
@@ -281,4 +281,4 @@ No database required. Muse stores all state in the `.muse/` directory — object
 
 ---
 
-*Muse v0.1.2 · Python 3.13 · Built from the couch. March 2026.*
+*Muse v0.1.2 · Python 3.14 · Built from the couch. March 2026.*

@@ -42,7 +42,6 @@ The core engine detects ``CRDTPlugin`` via ``isinstance`` at merge time.
 ``DomainSchema.merge_mode == "crdt"`` signals that the CRDT path should be
 taken.
 """
-from __future__ import annotations
 
 import pathlib
 from dataclasses import dataclass, field
@@ -296,7 +295,6 @@ SemVerBump = Literal["major", "minor", "patch", "none"]
 ``patch``  Implementation-only change: body changed, signature stable.
 ``none``   No semantic change (formatting, whitespace, metadata only).
 """
-
 
 class StructuredDelta(TypedDict, total=False):
     """Rich, composable delta between two domain snapshots.

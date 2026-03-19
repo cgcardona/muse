@@ -1,5 +1,4 @@
 """Tests for muse.plugins.midi._invariants — rule checks and runner."""
-from __future__ import annotations
 
 import pathlib
 

@@ -32,7 +32,6 @@ Usage::
     muse code-query QUERY --branch dev --max 100
     muse code-query QUERY --json
 """
-from __future__ import annotations
 
 import json
 import logging

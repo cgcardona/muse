@@ -1,5 +1,4 @@
 """Tests for the code domain query evaluator."""
-from __future__ import annotations
 
 import pathlib
 

@@ -1,5 +1,4 @@
 """Tests for muse/plugins/midi/midi_merge.py — 21-dimension MIDI merge."""
-from __future__ import annotations
 
 import io
 

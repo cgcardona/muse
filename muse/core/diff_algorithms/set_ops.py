@@ -17,7 +17,6 @@ Public API
 ----------
 - :func:`diff` — ``frozenset[str]`` × ``frozenset[str]`` → ``StructuredDelta``.
 """
-from __future__ import annotations
 
 import logging
 

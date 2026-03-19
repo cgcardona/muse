@@ -54,7 +54,6 @@ Flags:
     Include the list of caller addresses next to each covered method
     (shown by default; use ``--no-show-callers`` to suppress).
 """
-from __future__ import annotations
 
 import json
 import logging

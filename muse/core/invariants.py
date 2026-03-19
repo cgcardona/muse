@@ -46,7 +46,6 @@ Public API
 - :func:`load_rules_toml`       — parse any ``[[rule]]`` TOML file.
 - :func:`format_report`         — human-readable report text.
 """
-from __future__ import annotations
 
 import logging
 import pathlib

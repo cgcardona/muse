@@ -24,8 +24,6 @@ Public API
 - :class:`GCounter` — the counter itself.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TypedDict
 
@@ -38,7 +36,6 @@ class GCounterDict(TypedDict, total=False):
     ``total=False`` because absent keys are equivalent to ``0``.  Serialise
     with :meth:`GCounter.to_dict` and deserialise with :meth:`GCounter.from_dict`.
     """
-
 
 class GCounter:
     """Grow-only Counter — a CRDT counter that only ever increases.

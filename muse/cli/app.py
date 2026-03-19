@@ -66,7 +66,6 @@ Multi-agent coordination commands::
     shard           partition the codebase into N low-coupling work zones
     reconcile       recommend merge ordering and integration strategy
 """
-from __future__ import annotations
 
 import typer
 

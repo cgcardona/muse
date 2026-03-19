@@ -63,7 +63,6 @@ Synchronous guarantee
 All functions are synchronous, pure, and allocation-bounded — no I/O, no
 async, no external state.
 """
-from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field

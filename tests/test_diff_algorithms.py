@@ -8,7 +8,6 @@ Each algorithm is tested at three levels:
 2. **Output shape** — the returned ``StructuredDelta`` is well-formed.
 3. **Dispatch** — ``diff_by_schema`` routes correctly for each schema kind.
 """
-from __future__ import annotations
 
 import hashlib
 

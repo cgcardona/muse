@@ -41,7 +41,6 @@ Usage::
     muse midi-check --strict             # exit 1 on any error-severity violation
     muse midi-check --json               # machine-readable output
 """
-from __future__ import annotations
 
 import json
 import logging

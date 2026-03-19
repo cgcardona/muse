@@ -12,7 +12,6 @@ Algorithm
 8. Write commit JSON to ``.muse/commits/<commit_id>.json``.
 9. Advance ``.muse/refs/heads/<branch>`` to the new commit_id.
 """
-from __future__ import annotations
 
 import datetime
 import json

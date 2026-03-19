@@ -11,7 +11,6 @@ Exercises:
 - Double diamond: two diamonds chained together.
 - Long parallel branches that converge at a single point.
 """
-from __future__ import annotations
 
 import datetime
 import pathlib

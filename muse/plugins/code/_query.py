@@ -8,7 +8,6 @@ None of these functions are part of the public ``CodePlugin`` API.  They
 are internal helpers for the CLI layer and must not be imported by any
 core module.
 """
-from __future__ import annotations
 
 import itertools
 import logging

@@ -47,7 +47,6 @@ Call-Graph Tier
     muse find-symbol    [--name NAME] [--json]
     muse patch          ADDRESS FILE
 """
-from __future__ import annotations
 
 import json
 import pathlib
