@@ -81,23 +81,121 @@ def _museattributes_template(domain: str) -> str:
 # .museattributes — merge strategy overrides for this repository.
 # Documentation: docs/reference/muse-attributes.md
 #
-# Format: TOML. [[rules]] entries are matched top-to-bottom; first match wins.
-# Strategies: ours | theirs | union | auto | manual
+# Format: TOML with an optional [meta] header and an ordered [[rules]] array.
+# Rules are evaluated top-to-bottom after sorting by priority (descending).
+# The first matching rule wins.  Unmatched paths fall back to "auto".
+#
+# ─── Strategies ───────────────────────────────────────────────────────────────
+#
+#   ours     Take the current-branch (left) version; remove from conflicts.
+#   theirs   Take the incoming-branch (right) version; remove from conflicts.
+#   union    Include all additions from both sides.  Deletions are honoured
+#            only when both sides agree.  Best for independent element sets
+#            (MIDI notes, symbol additions, import sets, genomic mutations).
+#            Falls back to "ours" for binary blobs.
+#   base     Revert to the common ancestor; discard changes from both branches.
+#            Use this for generated files, lock files, or pinned assets.
+#   auto     Default — let the three-way merge engine decide.
+#   manual   Force the path into the conflict list for human review, even when
+#            the engine would auto-resolve it.
+#
+# ─── Rule fields ──────────────────────────────────────────────────────────────
+#
+#   path      (required)  fnmatch glob against workspace-relative POSIX paths.
+#   dimension (required)  Domain axis name (e.g. "notes", "symbols") or "*".
+#   strategy  (required)  One of the six strategies above.
+#   comment   (optional)  Free-form note explaining the rule — ignored at runtime.
+#   priority  (optional)  Integer; higher-priority rules are tried first.
+#                         Default 0; ties preserve declaration order.
 
 [meta]
-domain = "{domain}"    # must match .muse/repo.json "domain" field
+domain = "{domain}"    # must match the "domain" field in .muse/repo.json
 
-# Add [[rules]] entries below. Examples:
+# ─── MIDI domain examples ─────────────────────────────────────────────────────
+# [[rules]]
+# path      = "drums/*"
+# dimension = "*"
+# strategy  = "ours"
+# comment   = "Drum tracks are always authored on this branch."
+# priority  = 20
 #
 # [[rules]]
-# path = "tracks/*"
-# dimension = "*"
-# strategy = "auto"
+# path      = "keys/*.mid"
+# dimension = "pitch_bend"
+# strategy  = "theirs"
+# comment   = "Remote always has the better pitch-bend automation."
+# priority  = 15
 #
 # [[rules]]
-# path = "*"
+# path      = "stems/*"
+# dimension = "notes"
+# strategy  = "union"
+# comment   = "Unify note additions from both arrangers; let the engine merge."
+#
+# [[rules]]
+# path      = "mixdown.mid"
 # dimension = "*"
-# strategy = "auto"
+# strategy  = "base"
+# comment   = "Mixdown is generated — always revert to ancestor during merge."
+#
+# [[rules]]
+# path      = "master.mid"
+# dimension = "*"
+# strategy  = "manual"
+# comment   = "Master track must always be reviewed by a human before merge."
+
+# ─── Code domain examples ─────────────────────────────────────────────────────
+# [[rules]]
+# path      = "src/generated/**"
+# dimension = "*"
+# strategy  = "base"
+# comment   = "Generated code — revert to base; re-run codegen after merge."
+# priority  = 30
+#
+# [[rules]]
+# path      = "src/**/*.py"
+# dimension = "imports"
+# strategy  = "union"
+# comment   = "Import sets are independent; accumulate additions from both sides."
+#
+# [[rules]]
+# path      = "tests/**"
+# dimension = "symbols"
+# strategy  = "union"
+# comment   = "Test additions from both branches are always safe to combine."
+#
+# [[rules]]
+# path      = "src/core/**"
+# dimension = "*"
+# strategy  = "manual"
+# comment   = "Core module changes need human review on every merge."
+# priority  = 25
+#
+# [[rules]]
+# path      = "package-lock.json"
+# dimension = "*"
+# strategy  = "ours"
+# comment   = "Lock file is managed by this branch's CI; ignore incoming."
+
+# ─── Generic / domain-agnostic examples ───────────────────────────────────────
+# [[rules]]
+# path      = "docs/**"
+# dimension = "*"
+# strategy  = "union"
+# comment   = "Documentation additions from both branches are always welcome."
+#
+# [[rules]]
+# path      = "config/secrets.*"
+# dimension = "*"
+# strategy  = "manual"
+# comment   = "Secrets files require manual review — never auto-merge."
+# priority  = 100
+#
+# [[rules]]
+# path      = "*"
+# dimension = "*"
+# strategy  = "auto"
+# comment   = "Fallback: let the engine decide for everything else."
 """
 
 
