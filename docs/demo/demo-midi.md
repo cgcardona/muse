@@ -27,10 +27,10 @@ muse commit -m "Initial composition"
 
 ## Act I — What's in the Track?
 
-### `muse notes` — musical notation view
+### `muse midi notes` — musical notation view
 
 ```
-$ muse notes tracks/melody.mid
+$ muse midi notes tracks/melody.mid
 
 tracks/melody.mid — 23 notes — cb4afaed
 Key signature (estimated): G major
@@ -49,26 +49,26 @@ Key signature (estimated): G major
 ```
 
 **Why Git can't do this:** `git show HEAD:tracks/melody.mid` gives you a
-binary blob.  `muse notes` gives you the *actual musical content* — pitch
+binary blob.  `muse midi notes` gives you the *actual musical content* — pitch
 names, beat positions, durations, velocities — readable as sheet music,
 queryable by an agent, auditable in a code review.
 
 Use `--commit` to see the notes at any historical point:
 
 ```bash
-muse notes tracks/melody.mid --commit HEAD~10
-muse notes tracks/melody.mid --bar 4    # just bar 4
-muse notes tracks/melody.mid --json    # machine-readable
+muse midi notes tracks/melody.mid --commit HEAD~10
+muse midi notes tracks/melody.mid --bar 4    # just bar 4
+muse midi notes tracks/melody.mid --json    # machine-readable
 ```
 
 ---
 
 ## Act II — See the Score
 
-### `muse piano-roll` — ASCII piano roll
+### `muse midi piano-roll` — ASCII piano roll
 
 ```
-$ muse piano-roll tracks/melody.mid --bars 1-4
+$ muse midi piano-roll tracks/melody.mid --bars 1-4
 
 Piano roll: tracks/melody.mid — cb4afaed  (bars 1–4,  res=2 cells/beat)
 
@@ -86,18 +86,18 @@ where the bar lines fall.  This is the visual interface to a content-addressed
 note graph.  It works on any historical snapshot.
 
 ```bash
-muse piano-roll tracks/melody.mid --bars 1-8
-muse piano-roll tracks/melody.mid --commit HEAD~5 --resolution 4  # sixteenth-note grid
+muse midi piano-roll tracks/melody.mid --bars 1-8
+muse midi piano-roll tracks/melody.mid --commit HEAD~5 --resolution 4  # sixteenth-note grid
 ```
 
 ---
 
 ## Act III — The Harmonic Layer
 
-### `muse harmony` — chord analysis and key detection
+### `muse midi harmony` — chord analysis and key detection
 
 ```
-$ muse harmony tracks/melody.mid
+$ muse midi harmony tracks/melody.mid
 
 Harmonic analysis: tracks/melody.mid — cb4afaed
 Key signature (estimated): G major
@@ -126,20 +126,20 @@ Pitch class distribution:
 
 **This is impossible in Git** because Git has no model of what the bytes in a
 `.mid` file mean.  Muse stores every note as a typed semantic event with a
-stable content ID.  `muse harmony` reads the note graph and applies music
+stable content ID.  `muse midi harmony` reads the note graph and applies music
 theory to find the implied chords — at any commit, for any track.
 
-For AI agents, `muse harmony` is gold: an agent composing in a key can verify
+For AI agents, `muse midi harmony` is gold: an agent composing in a key can verify
 the harmonic content of its work before committing.
 
 ---
 
 ## Act IV — The Dynamic Layer
 
-### `muse velocity-profile` — dynamic range analysis
+### `muse midi velocity-profile` — dynamic range analysis
 
 ```
-$ muse velocity-profile tracks/melody.mid
+$ muse midi velocity-profile tracks/melody.mid
 
 Velocity profile: tracks/melody.mid — cb4afaed
 Notes: 23  ·  Range: 48–96  ·  Mean: 78.3  ·  RMS: 79.1
@@ -157,7 +157,7 @@ Dynamic character: mf
 ```
 
 ```
-$ muse velocity-profile tracks/melody.mid --by-bar
+$ muse midi velocity-profile tracks/melody.mid --by-bar
 
   bar    1  ████████████████████████████████   avg= 80.0  (4 notes)
   bar    2  ██████████████████████████         avg= 76.0  (3 notes)
@@ -173,10 +173,10 @@ verify that a composition has the intended emotional shape.
 
 ## Act V — Note-Level History
 
-### `muse note-log` — what changed in each commit
+### `muse midi note-log` — what changed in each commit
 
 ```
-$ muse note-log tracks/melody.mid
+$ muse midi note-log tracks/melody.mid
 
 Note history: tracks/melody.mid
 Commits analysed: 12
@@ -199,7 +199,7 @@ a3f2c9e1  2026-03-14  "Initial composition"  (14 changes)
 
 **Every change expressed in musical language**, not binary diffs.
 
-`muse note-log` is the musical equivalent of `git log -p` — but instead of
+`muse midi note-log` is the musical equivalent of `git log -p` — but instead of
 showing `+line` / `-line`, it shows `+note` / `-note` with pitch name, beat
 position, velocity, and duration.  A composer reading this log understands
 immediately what changed between commits.
@@ -208,10 +208,10 @@ immediately what changed between commits.
 
 ## Act VI — Note Attribution
 
-### `muse note-blame` — which commit wrote these notes?
+### `muse midi note-blame` — which commit wrote these notes?
 
 ```
-$ muse note-blame tracks/melody.mid --bar 4
+$ muse midi note-blame tracks/melody.mid --bar 4
 
 Note attribution: tracks/melody.mid  bar 4
 
@@ -228,7 +228,7 @@ Note attribution: tracks/melody.mid  bar 4
 **This is strictly impossible in Git.**
 
 Git cannot tell you "these specific notes in bar 4 were added in commit X"
-because Git has no model of notes or bars.  `muse note-blame` traces the
+because Git has no model of notes or bars.  `muse midi note-blame` traces the
 exact content IDs of each note in the bar through the commit history to find
 the commit that first inserted them.
 
@@ -239,10 +239,10 @@ One command. One answer.
 
 ## Act VII — Where is the Compositional Instability?
 
-### `muse note-hotspots` — bar-level churn
+### `muse midi hotspots` — bar-level churn
 
 ```
-$ muse note-hotspots --top 10
+$ muse midi hotspots --top 10
 
 Note churn — top 10 most-changed bars
 Commits analysed: 47
@@ -258,22 +258,22 @@ High churn = compositional instability. Consider locking this section.
 
 Bar 8 is the trouble spot.  Twelve revisions.  An agent or composer working
 on a large piece can use this to identify which sections are unresolved —
-the musical equivalent of `muse hotspots` for code.
+the musical equivalent of `muse code hotspots` for code.
 
 ```bash
-muse note-hotspots --track tracks/melody.mid   # focus on one track
-muse note-hotspots --from HEAD~20 --top 5      # last 20 commits
+muse midi hotspots --track tracks/melody.mid   # focus on one track
+muse midi hotspots --from HEAD~20 --top 5      # last 20 commits
 ```
 
 ---
 
 ## Act VIII — Agent Command: Transpose
 
-### `muse transpose` — surgical pitch transformation
+### `muse midi transpose` — surgical pitch transformation
 
 ```bash
 # Preview
-$ muse transpose tracks/melody.mid --semitones 7 --dry-run
+$ muse midi transpose tracks/melody.mid --semitones 7 --dry-run
 
 [dry-run] Would transpose tracks/melody.mid  +7 semitones
   Notes:       23
@@ -282,7 +282,7 @@ $ muse transpose tracks/melody.mid --semitones 7 --dry-run
   No changes written (--dry-run).
 
 # Apply
-$ muse transpose tracks/melody.mid --semitones 7
+$ muse midi transpose tracks/melody.mid --semitones 7
 
 ✅ Transposed tracks/melody.mid  +7 semitones
    23 notes shifted  (G4 → D5, B4 → F#5, D5 → A5, …)
@@ -291,12 +291,12 @@ $ muse transpose tracks/melody.mid --semitones 7
 ```
 
 ```bash
-muse transpose tracks/bass.mid --semitones -12   # down an octave
-muse transpose tracks/melody.mid --semitones 5   # up a perfect fourth
-muse transpose tracks/melody.mid --semitones 2 --clamp  # clamp to MIDI range
+muse midi transpose tracks/bass.mid --semitones -12   # down an octave
+muse midi transpose tracks/melody.mid --semitones 5   # up a perfect fourth
+muse midi transpose tracks/melody.mid --semitones 2 --clamp  # clamp to MIDI range
 ```
 
-For AI agents, `muse transpose` is the music equivalent of `muse patch`:
+For AI agents, `muse midi transpose` is the music equivalent of `muse code patch`:
 a single command that applies a well-defined musical transformation.  The
 agent says "move this track up a fifth" — Muse applies it surgically and
 records the note-level delta in the next commit.
@@ -305,7 +305,7 @@ After transposing:
 
 ```bash
 muse status          # shows melody.mid as modified
-muse harmony tracks/melody.mid   # verify the new key — still G major? No, now D major
+muse midi harmony tracks/melody.mid   # verify the new key — still G major? No, now D major
 muse commit -m "Transpose melody up a fifth for verse 2"
 ```
 
@@ -316,10 +316,10 @@ a note-level diff of the entire transposition.
 
 ## Act IX — Agent Command: Mix
 
-### `muse mix` — layer two tracks into one
+### `muse midi mix` — layer two tracks into one
 
 ```bash
-$ muse mix tracks/melody.mid tracks/harmony.mid \
+$ muse midi mix tracks/melody.mid tracks/harmony.mid \
     --output tracks/full.mid \
     --channel-a 0 \
     --channel-b 1
@@ -331,7 +331,7 @@ $ muse mix tracks/melody.mid tracks/harmony.mid \
    Run `muse status` to review, then `muse commit`
 ```
 
-`muse mix` is the compositional assembly command for the AI age.  An agent
+`muse midi mix` is the compositional assembly command for the AI age.  An agent
 that has generated a melody and a harmony in separate tracks can combine them
 into a single performance track without a merge conflict.
 
@@ -342,14 +342,14 @@ Agent workflow for a full arrangement:
 
 ```bash
 # Agent generates individual parts
-muse transpose tracks/violin.mid --semitones 0  # keeps content hash consistent
-muse mix tracks/violin.mid tracks/cello.mid --output tracks/strings.mid --channel-a 0 --channel-b 1
-muse mix tracks/strings.mid tracks/piano.mid  --output tracks/ensemble.mid --channel-a 0 --channel-b 2
+muse midi transpose tracks/violin.mid --semitones 0  # keeps content hash consistent
+muse midi mix tracks/violin.mid tracks/cello.mid --output tracks/strings.mid --channel-a 0 --channel-b 1
+muse midi mix tracks/strings.mid tracks/piano.mid  --output tracks/ensemble.mid --channel-a 0 --channel-b 2
 muse commit -m "Assemble full ensemble arrangement"
 
 # Verify the harmonic content of the final mix
-muse harmony tracks/ensemble.mid
-muse velocity-profile tracks/ensemble.mid --by-bar
+muse midi harmony tracks/ensemble.mid
+muse midi velocity-profile tracks/ensemble.mid --by-bar
 ```
 
 ---
@@ -374,9 +374,9 @@ muse commit -m "Agent A: initial melody sketch"
 git checkout -b feat/harmony  # Muse branching
 
 # Analyse what Agent A wrote
-muse notes tracks/melody.mid
-muse harmony tracks/melody.mid        # Key: G major
-muse velocity-profile tracks/melody.mid  # Dynamic: mf
+muse midi notes tracks/melody.mid
+muse midi harmony tracks/melody.mid        # Key: G major
+muse midi velocity-profile tracks/melody.mid  # Dynamic: mf
 
 # Generate a compatible harmony
 echo "..." | muse-generate --type harmony --key "G major" > muse-work/tracks/harmony.mid
@@ -399,10 +399,10 @@ muse merge feat/harmony
 
 ```bash
 # After merge, verify the full picture
-muse harmony tracks/melody.mid    # still G major?
-muse note-hotspots --top 5        # which bars got the most revisions?
-muse velocity-profile tracks/melody.mid  # did the dynamics survive the merge?
-muse piano-roll tracks/melody.mid --bars 1-8  # visual sanity check
+muse midi harmony tracks/melody.mid    # still G major?
+muse midi hotspots --top 5        # which bars got the most revisions?
+muse midi velocity-profile tracks/melody.mid  # did the dynamics survive the merge?
+muse midi piano-roll tracks/melody.mid --bars 1-8  # visual sanity check
 ```
 
 ---
@@ -411,15 +411,15 @@ muse piano-roll tracks/melody.mid --bars 1-8  # visual sanity check
 
 | Command | What it does | Impossible in Git because… |
 |---------|-------------|---------------------------|
-| `muse notes` | Every note as musical notation | Git stores .mid as binary |
-| `muse note-log` | Note-level change history | Git log shows binary diffs |
-| `muse note-blame` | Per-bar attribution | Git blame is per line |
-| `muse harmony` | Chord analysis + key detection | Git has no MIDI model |
-| `muse piano-roll` | ASCII piano roll visualization | Git has no MIDI model |
-| `muse note-hotspots` | Bar-level churn leaderboard | Git churn is file/line-level |
-| `muse velocity-profile` | Dynamic range + histogram | Git has no MIDI model |
-| `muse transpose` | Surgical pitch transformation | Git has no musical operations |
-| `muse mix` | Combine two tracks into one | Git has no MIDI assembly |
+| `muse midi notes` | Every note as musical notation | Git stores .mid as binary |
+| `muse midi note-log` | Note-level change history | Git log shows binary diffs |
+| `muse midi note-blame` | Per-bar attribution | Git blame is per line |
+| `muse midi harmony` | Chord analysis + key detection | Git has no MIDI model |
+| `muse midi piano-roll` | ASCII piano roll visualization | Git has no MIDI model |
+| `muse midi hotspots` | Bar-level churn leaderboard | Git churn is file/line-level |
+| `muse midi velocity-profile` | Dynamic range + histogram | Git has no MIDI model |
+| `muse midi transpose` | Surgical pitch transformation | Git has no musical operations |
+| `muse midi mix` | Combine two tracks into one | Git has no MIDI assembly |
 
 Plus the core VCS operations, all working at note level:
 
@@ -436,21 +436,21 @@ Plus the core VCS operations, all working at note level:
 
 When millions of agents are composing music in real-time, you need:
 
-1. **Musical reads** — `muse notes`, `muse harmony`, `muse piano-roll` return
+1. **Musical reads** — `muse midi notes`, `muse midi harmony`, `muse midi piano-roll` return
    structured note data that agents can reason about, not binary blobs
 
-2. **Musical writes** — `muse transpose`, `muse mix` apply well-defined
+2. **Musical writes** — `muse midi transpose`, `muse midi mix` apply well-defined
    transformations that produce valid MIDI, with full note-level attribution
 
-3. **Creative intelligence** — `muse harmony` gives agents harmonic awareness;
-   `muse velocity-profile` gives dynamic awareness; `muse note-hotspots` reveals
+3. **Creative intelligence** — `muse midi harmony` gives agents harmonic awareness;
+   `muse midi velocity-profile` gives dynamic awareness; `muse midi hotspots` reveals
    which sections are in flux
 
 4. **Semantic merges** — two agents independently harmonizing the same melody
    can merge at the note level — changes to non-overlapping notes never conflict
 
 5. **Structured history** — every commit records a note-level structured delta;
-   every note has a content ID; `muse note-blame` attributes any bar to any agent
+   every note has a content ID; `muse midi note-blame` attributes any bar to any agent
 
 Muse doesn't just store your music.  It understands it.
 

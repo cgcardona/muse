@@ -1,6 +1,6 @@
 # Muse Plugin Authoring Guide
 
-> A complete walkthrough for building a domain plugin for Muse v0.1.1. By the end
+> A complete walkthrough for building a domain plugin for Muse v0.1.2. By the end
 > you will have a fully typed, schema-aware, OT-capable, CRDT-ready plugin that
 > works with every `muse` CLI command immediately — no core changes needed.
 >

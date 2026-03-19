@@ -24,10 +24,10 @@ muse commit -m "Add billing module"
 
 ## Act I — What's in the Snapshot?
 
-### `muse symbols` — see every named thing
+### `muse code symbols` — see every named thing
 
 ```
-$ muse symbols
+$ muse code symbols
 
 src/billing.py
   class       Invoice                            line   4
@@ -47,7 +47,7 @@ src/utils.py
 3 files, 9 symbols
 ```
 
-**Why Git can't do this:** `git ls-files` gives you filenames.  `muse symbols`
+**Why Git can't do this:** `git ls-files` gives you filenames.  `muse code symbols`
 gives you the semantic inventory — functions, classes, methods — extracted from
 actual ASTs across 10 languages (Python, TypeScript, JavaScript, Go, Rust, Java,
 C, C++, C#, Ruby, Kotlin).
@@ -56,10 +56,10 @@ C, C++, C#, Ruby, Kotlin).
 
 ## Act II — Grep the Symbol Graph
 
-### `muse grep` — semantic symbol search
+### `muse code grep` — semantic symbol search
 
 ```
-$ muse grep "validate"
+$ muse code grep "validate"
 
   src/auth.py::AuthService.validate_token    method     line 11
   src/billing.py::validate_amount            function   line 34
@@ -68,7 +68,7 @@ $ muse grep "validate"
 ```
 
 ```
-$ muse grep "^Invoice" --kind class --regex
+$ muse code grep "^Invoice" --kind class --regex
 
   src/billing.py::Invoice                    class      line  4
 
@@ -76,7 +76,7 @@ $ muse grep "^Invoice" --kind class --regex
 ```
 
 ```
-$ muse grep "handle" --language Go
+$ muse code grep "handle" --language Go
 
   api/server.go::Server.HandleRequest        method     line 12
   api/server.go::handleError                 function   line 28
@@ -86,7 +86,7 @@ $ muse grep "handle" --language Go
 
 **Why Git can't do this:** `git grep "validate"` searches raw text lines.  It
 finds every comment, every string literal, every `# validate_token is deprecated`
-in your codebase.  `muse grep` searches the *typed symbol graph* — only actual
+in your codebase.  `muse code grep` searches the *typed symbol graph* — only actual
 symbol declarations, with their kind, language, and stable identity hash.  Zero
 false positives.
 
@@ -94,10 +94,10 @@ false positives.
 
 ## Act III — Query the Symbol Graph
 
-### `muse query` — SQL for your codebase
+### `muse code query` — SQL for your codebase
 
 ```
-$ muse query "kind=function" "language=Python" "name~=validate"
+$ muse code query "kind=function" "language=Python" "name~=validate"
 
   src/billing.py::validate_amount    fn   line 34
   src/auth.py::validate_token        fn   line 11
@@ -106,7 +106,7 @@ $ muse query "kind=function" "language=Python" "name~=validate"
 ```
 
 ```
-$ muse query "kind=method" "name^=__"
+$ muse code query "kind=method" "name^=__"
 
   src/billing.py::Invoice.__init__      method   line  8
   src/models.py::User.__init__          method   line  9
@@ -116,7 +116,7 @@ $ muse query "kind=method" "name^=__"
 ```
 
 ```
-$ muse query "hash=a3f2c9" --hashes
+$ muse code query "hash=a3f2c9" --hashes
 
   src/billing.py::validate_amount        fn   line 34   a3f2c9..
   src/payments.py::validate_payment      fn   line  7   a3f2c9..
@@ -124,7 +124,7 @@ $ muse query "hash=a3f2c9" --hashes
 2 match(es) across 2 file(s)  [hash=a3f2c9]
 ```
 
-**The `hash` predicate is uniquely powerful.** `muse query "hash=a3f2c9"` finds
+**The `hash` predicate is uniquely powerful.** `muse code query "hash=a3f2c9"` finds
 every symbol across your entire repo whose normalized AST is byte-for-byte
 identical to the one with that hash prefix.  Copy detection.  Duplication
 tracking.  Cross-module clone detection.  This has no analogue anywhere in
@@ -137,10 +137,10 @@ Predicate keys: `kind`, `language`, `name`, `file`, `hash`.
 
 ## Act IV — Language Breakdown
 
-### `muse languages` — composition at a glance
+### `muse code languages` — composition at a glance
 
 ```
-$ muse languages
+$ muse code languages
 
 Language breakdown — commit cb4afaed
 
@@ -159,10 +159,10 @@ no custom tooling.
 
 ## Act V — Who Changed What?
 
-### `muse blame` — per-symbol attribution
+### `muse code blame` — per-symbol attribution
 
 ```
-$ muse blame "src/billing.py::Invoice.compute_total"
+$ muse code blame "src/billing.py::Invoice.compute_total"
 
 src/billing.py::Invoice.compute_total
 ──────────────────────────────────────────────────────────────
@@ -180,7 +180,7 @@ change:        created
 
 **Why Git can't do this:** `git blame src/billing.py` gives you 300 attribution
 entries for a 300-line file — one per line, including blank lines, docstrings,
-and closing braces.  `muse blame` gives you **one answer per function**: this
+and closing braces.  `muse code blame` gives you **one answer per function**: this
 commit, this author, this specific kind of change.  That's the level of
 precision code review actually needs.
 
@@ -188,10 +188,10 @@ precision code review actually needs.
 
 ## Act VI — Symbol History
 
-### `muse symbol-log` — the life of a function
+### `muse code symbol-log` — the life of a function
 
 ```
-$ muse symbol-log "src/billing.py::Invoice.compute_total"
+$ muse code symbol-log "src/billing.py::Invoice.compute_total"
 
 Symbol timeline: src/billing.py::Invoice.compute_total
 
@@ -202,7 +202,7 @@ Symbol timeline: src/billing.py::Invoice.compute_total
 3 events tracked across 3 commits
 ```
 
-`muse symbol-log` follows renames and cross-file moves automatically.
+`muse code symbol-log` follows renames and cross-file moves automatically.
 If `compute_total` was called `calculate_total` last week, you get the
 full continuous history — not the truncated stub that `git log -- src/billing.py`
 would give you after a rename.
@@ -211,10 +211,10 @@ would give you after a rename.
 
 ## Act VII — Detect Refactoring
 
-### `muse detect-refactor` — classify semantic changes
+### `muse code detect-refactor` — classify semantic changes
 
 ```
-$ muse detect-refactor HEAD~5..HEAD
+$ muse code detect-refactor HEAD~5..HEAD
 
 Semantic refactoring — HEAD~5..HEAD
 Commits analysed: 5
@@ -229,7 +229,7 @@ Commits analysed: 5
 
 **Why Git can't do this:** Git knows nothing about renames at the function
 level.  It might guess at file renames if the diff is similar enough.
-`muse detect-refactor` reads the structured delta stored in every commit
+`muse code detect-refactor` reads the structured delta stored in every commit
 and classifies operations with precision: rename, move, signature change,
 implementation change.  No guessing.
 
@@ -237,10 +237,10 @@ implementation change.  No guessing.
 
 ## Act VIII — Where is the Instability?
 
-### `muse hotspots` — symbol churn leaderboard
+### `muse code hotspots` — symbol churn leaderboard
 
 ```
-$ muse hotspots --top 10
+$ muse code hotspots --top 10
 
 Symbol churn — top 10 most-changed symbols
 Commits analysed: 47
@@ -254,28 +254,28 @@ Commits analysed: 47
 High churn = instability signal. Consider refactoring or adding tests.
 ```
 
-`muse hotspots` is the complexity map of your codebase.  The functions that
+`muse code hotspots` is the complexity map of your codebase.  The functions that
 change most are the ones most likely to harbour bugs, missing abstractions,
 or untested edge cases.  In a mature CI pipeline, this list drives test
 coverage prioritisation.
 
 ```bash
 # Scope to Python functions only, last 30 commits
-muse hotspots --kind function --language Python --from HEAD~30 --top 5
+muse code hotspots --kind function --language Python --from HEAD~30 --top 5
 ```
 
 **Why Git can't do this:** File-level churn (how many lines changed in
 `billing.py`) misses the signal.  A 1,000-line file might have 999 stable
-lines and one function that burns.  `muse hotspots` finds that function.
+lines and one function that burns.  `muse code hotspots` finds that function.
 
 ---
 
 ## Act IX — Where is the Bedrock?
 
-### `muse stable` — symbol stability leaderboard
+### `muse code stable` — symbol stability leaderboard
 
 ```
-$ muse stable --top 10
+$ muse code stable --top 10
 
 Symbol stability — top 10 most stable symbols
 Commits analysed: 47
@@ -297,10 +297,10 @@ compose upward.
 
 ## Act X — Hidden Dependencies
 
-### `muse coupling` — co-change analysis
+### `muse code coupling` — co-change analysis
 
 ```
-$ muse coupling --top 10
+$ muse code coupling --top 10
 
 File co-change analysis — top 10 most coupled pairs
 Commits analysed: 47
@@ -320,7 +320,7 @@ graph.  Extract a `BillingProtocol` interface, define the contract explicitly,
 and watch the coupling drop.
 
 **Why Git can't do this cleanly:** A Git tool could count raw file
-co-modifications.  `muse coupling` counts *semantic* co-changes — commits
+co-modifications.  `muse code coupling` counts *semantic* co-changes — commits
 where both files had AST-level symbol modifications.  Formatting-only
 edits and non-code files are excluded.  The signal is real.
 
@@ -328,10 +328,10 @@ edits and non-code files are excluded.  The signal is real.
 
 ## Act XI — Release Semantic Diff
 
-### `muse compare` — any two historical snapshots
+### `muse code compare` — any two historical snapshots
 
 ```
-$ muse compare v1.0 v2.0
+$ muse code compare v1.0 v2.0
 
 Semantic comparison
   From: a3f2c9e1  "Release v1.0"
@@ -361,7 +361,7 @@ src/auth.py
 manual writing, no diff archaeology.  Every function that was added, removed,
 renamed, moved, or modified between v1.0 and v2.0, classified and attributed.
 
-`muse compare` reads both snapshots from the content-addressed object store,
+`muse code compare` reads both snapshots from the content-addressed object store,
 parses their AST symbol trees, and diffs them.  Any two refs — tags, branches,
 commit IDs, relative refs (`HEAD~10`).
 
@@ -369,7 +369,7 @@ commit IDs, relative refs (`HEAD~10`).
 
 ## Act XII — The Agent Interface
 
-### `muse patch` — surgical semantic modification
+### `muse code patch` — surgical semantic modification
 
 This is where Muse becomes the version control system of the AI age.
 
@@ -379,7 +379,7 @@ def compute_total(self, items: list[Item], tax_rate: Decimal = Decimal("0")) -> 
     subtotal = sum(item.price * (1 - item.discount) for item in items)
     return subtotal * (1 + tax_rate)
 
-$ muse patch "src/billing.py::Invoice.compute_total" --body new_compute_total.py
+$ muse code patch "src/billing.py::Invoice.compute_total" --body new_compute_total.py
 
 ✅ Patched src/billing.py::Invoice.compute_total
    Lines 18–24 replaced (was 7 lines, now 3 lines)
@@ -390,17 +390,17 @@ $ muse patch "src/billing.py::Invoice.compute_total" --body new_compute_total.py
 **This is the paradigm shift for agents:**
 
 An AI agent that needs to change `Invoice.compute_total` can do so with
-surgical precision.  It constructs a new function body, calls `muse patch`,
+surgical precision.  It constructs a new function body, calls `muse code patch`,
 and the change is applied at the *symbol* level — not the line level, not
 the file level.  No risk of accidentally touching adjacent functions.  No
 diff noise.  No merge required.
 
 ```bash
 # Preview without writing
-muse patch "src/billing.py::Invoice.compute_total" --body new_body.py --dry-run
+muse code patch "src/billing.py::Invoice.compute_total" --body new_body.py --dry-run
 
 # Apply from stdin — pipe directly from an AI agent's output
-cat <<'EOF' | muse patch "src/auth.py::generate_token" --body -
+cat <<'EOF' | muse code patch "src/auth.py::generate_token" --body -
 def generate_token(user_id: str, ttl: int = 3600) -> str:
     payload = {"sub": user_id, "exp": time.time() + ttl}
     return jwt.encode(payload, SECRET_KEY)
@@ -411,13 +411,13 @@ Now the full agent workflow:
 
 ```bash
 # Agent identifies which function to change
-muse blame "src/billing.py::Invoice.compute_total"
+muse code blame "src/billing.py::Invoice.compute_total"
 
 # Agent verifies current symbol state
-muse symbols --file src/billing.py
+muse code symbols --file src/billing.py
 
 # Agent applies the change surgically
-muse patch "src/billing.py::Invoice.compute_total" --body /tmp/new_impl.py
+muse code patch "src/billing.py::Invoice.compute_total" --body /tmp/new_impl.py
 
 # Agent verifies semantic correctness
 muse status
@@ -434,7 +434,7 @@ The structured delta captured in that commit will record exactly:
 And immediately after, any agent in the world can run:
 
 ```bash
-muse blame "src/billing.py::Invoice.compute_total"
+muse code blame "src/billing.py::Invoice.compute_total"
 ```
 
 And get a one-line answer: this commit, this agent, this change.
@@ -445,18 +445,18 @@ And get a one-line answer: this commit, this agent, this change.
 
 | Command | What it does | Impossible in Git because… |
 |---------|-------------|---------------------------|
-| `muse symbols` | List all semantic symbols in a snapshot | Git has no AST model |
-| `muse grep` | Search symbols by name/kind/language | `git grep` searches text lines |
-| `muse query` | Predicate DSL over the symbol graph | Git has no typed graph |
-| `muse languages` | Language + symbol-type breakdown | Git has no language awareness |
-| `muse blame` | Per-symbol attribution (one answer) | `git blame` is per-line |
-| `muse symbol-log` | Full history of one symbol across renames | Git loses history on rename |
-| `muse detect-refactor` | Classify renames, moves, signature changes | Git cannot reason about symbols |
-| `muse hotspots` | Symbol churn leaderboard | Git churn is file/line-level |
-| `muse stable` | Symbol stability leaderboard | Git has no stability model |
-| `muse coupling` | Semantic file co-change analysis | Git co-change is line-level noise |
-| `muse compare` | Semantic diff between any two snapshots | `git diff` is line-level |
-| `muse patch` | Surgical per-symbol modification | Git patches are line-level |
+| `muse code symbols` | List all semantic symbols in a snapshot | Git has no AST model |
+| `muse code grep` | Search symbols by name/kind/language | `git grep` searches text lines |
+| `muse code query` | Predicate DSL over the symbol graph | Git has no typed graph |
+| `muse code languages` | Language + symbol-type breakdown | Git has no language awareness |
+| `muse code blame` | Per-symbol attribution (one answer) | `git blame` is per-line |
+| `muse code symbol-log` | Full history of one symbol across renames | Git loses history on rename |
+| `muse code detect-refactor` | Classify renames, moves, signature changes | Git cannot reason about symbols |
+| `muse code hotspots` | Symbol churn leaderboard | Git churn is file/line-level |
+| `muse code stable` | Symbol stability leaderboard | Git has no stability model |
+| `muse code coupling` | Semantic file co-change analysis | Git co-change is line-level noise |
+| `muse code compare` | Semantic diff between any two snapshots | `git diff` is line-level |
+| `muse code patch` | Surgical per-symbol modification | Git patches are line-level |
 
 ---
 
@@ -466,11 +466,11 @@ Muse is the version control system designed for the AI age.
 
 When millions of agents are making millions of changes a minute, you need:
 
-1. **Surgical writes** — `muse patch` modifies one symbol, leaves everything else alone
-2. **Semantic reads** — `muse query`, `muse grep`, `muse symbols` return typed data, not text
-3. **Instant attribution** — `muse blame` answers "who touched this?" in one command
-4. **Stability signals** — `muse hotspots`, `muse stable` tell agents what's safe to build on
-5. **Coupling maps** — `muse coupling` reveals the hidden dependencies agents need to respect
+1. **Surgical writes** — `muse code patch` modifies one symbol, leaves everything else alone
+2. **Semantic reads** — `muse code query`, `muse code grep`, `muse code symbols` return typed data, not text
+3. **Instant attribution** — `muse code blame` answers "who touched this?" in one command
+4. **Stability signals** — `muse code hotspots`, `muse code stable` tell agents what's safe to build on
+5. **Coupling maps** — `muse code coupling` reveals the hidden dependencies agents need to respect
 6. **Structured history** — every commit stores a symbol-level delta, machine-readable
 
 Muse doesn't just store your code.  It understands it.
