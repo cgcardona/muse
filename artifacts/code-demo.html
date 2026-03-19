@@ -943,19 +943,17 @@ function selectSymbol(sym) {
   state.selectedSym = sym;
   const panel = document.getElementById('sym-info');
 
-  // Impact mode: highlight callers
+  // Impact mode: highlight transitive callers using the current commit's edges
   if (state.graphMode === 'impact') {
+    const edges = COMMIT_EDGES[state.cur];
     const impacted = new Set([sym.id]);
-    // Find all symbols that call this one (transitive, 3 levels)
     for (let depth = 0; depth < 3; depth++) {
-      COMMIT_EDGES[5].forEach(([f, t]) => {
-        if (impacted.has(t)) impacted.add(f);
-      });
+      edges.forEach(([f, t]) => { if (impacted.has(t)) impacted.add(f); });
     }
     d3.selectAll('.sym-node').classed('in-impact', function() {
       return impacted.has(this.getAttribute('data-id'));
     });
-    const activeEdgeKeys = new Set(COMMIT_EDGES[5].map(([f,t]) => `${f}→${t}`));
+    const activeEdgeKeys = new Set(edges.map(([f,t]) => `${f}→${t}`));
     d3.selectAll('.sym-edge').classed('in-impact', function() {
       const key = `${this.getAttribute('data-from')}→${this.getAttribute('data-to')}`;
       return activeEdgeKeys.has(key) &&
@@ -963,9 +961,9 @@ function selectSymbol(sym) {
     });
   }
 
-  // Get callees and callers from final commit state
-  const callees = COMMIT_EDGES[5].filter(([f]) => f === sym.id).map(([,t]) => t);
-  const callers = COMMIT_EDGES[5].filter(([,t]) => t === sym.id).map(([f]) => f);
+  // Get callees and callers from the active commit's edges
+  const callees = COMMIT_EDGES[state.cur].filter(([f]) => f === sym.id).map(([,t]) => t);
+  const callers = COMMIT_EDGES[state.cur].filter(([,t]) => t === sym.id).map(([f]) => f);
   const agentColor = AGENT_COLORS[sym.agent] || '#94a3b8';
   const kindColor  = KIND_COLOR[sym.kind];
 
@@ -998,6 +996,10 @@ function selectCommit(idx) {
   state.cur = idx;
   dagSelectCommit(idx);
   updateSymbolGraph(idx);
+  // Re-apply impact overlay against the new commit's edges
+  if (state.graphMode === 'impact' && state.selectedSym) {
+    selectSymbol(state.selectedSym);
+  }
   _heatmapSelectCol(idx);
   updateAnalyzePanel(idx);
   updateCtrlBar(idx);
