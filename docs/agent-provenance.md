@@ -83,8 +83,8 @@ patterns = [
 The music query DSL supports provenance fields directly:
 
 ```bash
-muse midi-query "agent_id == 'counterpoint-bot' and note.pitch > 60"
-muse midi-query "model_id == 'gpt-5'"
+muse midi query "agent_id == 'counterpoint-bot' and note.pitch > 60"
+muse midi query "model_id == 'gpt-5'"
 ```
 
 ## Related files

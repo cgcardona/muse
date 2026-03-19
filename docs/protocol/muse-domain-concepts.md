@@ -36,7 +36,7 @@ domain-specific meaning.
 ## The Term "Variation"
 
 **"Variation" is currently a midi-domain concept.** It is not part of the core
-Muse engine in v0.1.1. This section explains its current meaning and how it might
+Muse engine in v0.1.2. This section explains its current meaning and how it might
 generalize.
 
 ### Current meaning (MIDI domain)
@@ -116,7 +116,7 @@ as `dict[str, str]` — no music-specific meaning is enforced.
 - DAW (Digital Audio Workstation) integration
 - Beat-based time (all time in the MIDI plugin is measured in beats, not seconds)
 - Groove analysis, swing, harmonic analysis, chord maps
-- The `muse groove-check`, `muse emotion-diff`, `muse harmony`, `muse dynamics`
+- The `muse midi groove-check`, `muse midi emotion-diff`, `muse midi harmony`, `muse dynamics`
   commands
 - `.museattributes` merge strategies keyed on track names and musical dimensions
   (pitch_bend, notes, notes, track_structure, cc_volume) — though the file format
