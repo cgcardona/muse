@@ -43,7 +43,7 @@ import logging
 import pathlib
 import re
 from dataclasses import dataclass
-from typing import Literal, TypeGuard, get_args
+from typing import Literal, TypeIs, get_args
 
 from muse.core.query_engine import CommitEvaluator, QueryMatch
 from muse.core.store import CommitRecord
@@ -107,11 +107,11 @@ _VALID_FIELDS: frozenset[str] = frozenset(get_args(CodeField))
 _VALID_OPS: frozenset[str] = frozenset(get_args(CodeOp))
 
 
-def _is_code_field(tok: str) -> TypeGuard[CodeField]:
+def _is_code_field(tok: str) -> TypeIs[CodeField]:
     return tok in _VALID_FIELDS
 
 
-def _is_code_op(tok: str) -> TypeGuard[CodeOp]:
+def _is_code_op(tok: str) -> TypeIs[CodeOp]:
     return tok in _VALID_OPS
 
 

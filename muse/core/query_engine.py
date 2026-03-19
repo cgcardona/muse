@@ -46,7 +46,8 @@ from __future__ import annotations
 
 import logging
 import pathlib
-from typing import Callable, TypedDict
+from collections.abc import Callable
+from typing import TypedDict
 
 from muse.core.store import CommitRecord, get_commit_snapshot_manifest, read_commit
 
