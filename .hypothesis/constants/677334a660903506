@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/diff.py
+# hypothesis_version: 6.151.9
+
+['--stat', '.muse', 'HEAD', 'No differences.', 'child_summary', 'delete', 'insert', 'move', 'muse-work', 'op', 'ops', 'patch', 'refs/heads/', 'replace', 'repo.json', 'repo_id', 'summary']

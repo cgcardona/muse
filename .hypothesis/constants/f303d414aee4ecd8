@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/impact.py
+# hypothesis_version: 6.151.9
+
+['--commit', '--depth', '--json', '-c', '-d', '.', '.muse', '::', 'ADDRESS', 'HEAD', 'N', 'Python', 'REF', 'address', 'blast_radius', 'callers of callers', 'commit', 'depth_limit', 'direct callers', 'file', 'files', 'refs/heads/', 'repo.json', 'repo_id', 'target_name', 'total', '─']

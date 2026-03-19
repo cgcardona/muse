@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/core/diff_algorithms/lcs.py
+# hypothesis_version: 6.151.9
+
+[', ', 'address', 'content_id', 'delete', 'element_type', 'insert', 'keep', 'move', 'position']

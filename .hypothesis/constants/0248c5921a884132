@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/breakage.py
+# hypothesis_version: 6.151.9
+
+['--json', '--language', '-l', '.', '.muse', '.py', '.pyi', '::', 'HEAD', 'LANG', '_', 'class', 'commit', 'content_id', 'description', 'error', 'errors', 'file_path', 'import', 'issue_type', 'issues', 'kind', 'language_filter', 'name', 'refs/heads/', 'repo.json', 'repo_id', 'schema_version', 'severity', 'stale_import', 'total', 'warning', 'warnings', '─', '⚠️ ', '🔴']

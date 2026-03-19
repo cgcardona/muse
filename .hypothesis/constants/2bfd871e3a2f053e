@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/compare.py
+# hypothesis_version: 6.151.9
+
+['\nSemantic comparison', '  (new file)', '  (removed)', '--json', '--kind', '-k', '.muse', '::', 'Base commit (older).', 'HEAD', 'KIND', 'REF-A', 'REF-B', 'address', 'child_ops', 'commit_id', 'content_summary', 'delete', 'from', 'insert', 'message', 'moved from', 'moved to', 'new_summary', 'op', 'ops', 'patch', 'refs/heads/', 'replace', 'repo.json', 'repo_id', 'to']

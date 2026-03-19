@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/attributes.py
+# hypothesis_version: 6.151.9
+
+['--json', 'dimension', 'domain', 'path_pattern', 'rules', 'source_index', 'strategy']

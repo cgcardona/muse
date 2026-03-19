@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/blame.py
+# hypothesis_version: 6.151.9
+
+['            :', '%Y-%m-%d', '--all', '--from', '--json', '-a', '.muse', '::', 'ADDRESS', 'HEAD', 'REF', 'address', 'author', 'before that: ', 'child_ops', 'commit_id', 'committed_at', 'content_summary', 'created', 'delete', 'deleted', 'detail', 'event', 'events', 'insert', 'last touched:', 'message', 'modified', 'moved', 'moved to', 'moved to ', 'new_address', 'new_summary', 'op', 'ops', 'patch', 'previous:    ', 'refs/heads/', 'renamed', 'renamed to ', 'replace', 'repo.json', 'repo_id', 'signature', 'signature changed', '─']

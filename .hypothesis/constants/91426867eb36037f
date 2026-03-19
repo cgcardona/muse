@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/revert.py
+# hypothesis_version: 6.151.9
+
+['--message', '--no-commit', '-m', '-n', '.muse', 'Commit to revert.', 'HEAD', 'heads', 'muse-work', 'refs', 'refs/heads/', 'repo.json', 'repo_id']

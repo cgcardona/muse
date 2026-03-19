@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/init.py
+# hypothesis_version: 6.151.9
+
+['--bare', '--default-branch', '--domain', '--force', '--template', '.muse', '.museattributes', '2', 'BRANCH', 'HEAD', 'Initialised', 'PATH', 'Reinitialised', 'bare', 'bare ', 'commits', 'config.toml', 'created_at', 'domain', 'heads', 'main', 'midi', 'muse-work', 'objects', 'refs', 'repo.json', 'repo_id', 'schema_version', 'snapshots']

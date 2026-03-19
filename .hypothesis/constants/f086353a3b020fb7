@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/plugins/midi/_crdt_notes.py
+# hypothesis_version: 6.151.9
+
+[480, 'MusicRGA', 'actor_id', 'delete', 'insert', 'note', 'op_id', 'parent_op_id', 'pitch', 'position', 'start_tick', 'tombstone']

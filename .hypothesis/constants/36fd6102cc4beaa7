@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/stash.py
+# hypothesis_version: 6.151.9
+
+['.muse', '.muse/stash.json', 'Dropped stash@{0}', 'HEAD', 'No stash entries.', 'Nothing to stash.', 'drop', 'files', 'list', 'manifest', 'muse-work', 'pop', 'refs/heads/', 'repo.json', 'repo_id']

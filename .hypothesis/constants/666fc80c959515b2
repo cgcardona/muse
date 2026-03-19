@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/plugins/midi/_invariants.py
+# hypothesis_version: 6.151.9
+
+[0.15, 127, '.mid', 'A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'bar', 'error', 'global', 'info', 'key_consistency', 'major', 'max_pitch', 'max_polyphony', 'max_simultaneous', 'min_pitch', 'name', 'no_parallel_fifths', 'params', 'pathlib.Path', 'pitch_range', 'rb', 'rule', 'rule_type', 'scope', 'severity', 'threshold', 'track', 'unnamed', 'voice_pair', 'warning']

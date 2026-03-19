@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/plugins/midi/_midi_query.py
+# hypothesis_version: 6.151.9
+
+[1000, 10000, '!=', '"', "'", '.', '.mid', '5', '<', '<=', '==', '>', '>=', 'KW', 'LPAREN', 'NAME', 'NUM', 'OP', 'RPAREN', 'STR', 'WS', '\\"', "\\'", '\\s+', 'agent_id', 'and', 'aug', 'author', 'bar', 'dim', 'dim7', 'dom7', 'harmony.chord', 'harmony.quality', 'maj', 'maj7', 'min', 'min7', 'model_id', 'not', 'note.channel', 'note.duration', 'note.pitch', 'note.pitch_class', 'note.velocity', 'or', 'sus2', 'sus4', 'toolchain_id', 'track']

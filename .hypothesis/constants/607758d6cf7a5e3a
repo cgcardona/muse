@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/deps.py
+# hypothesis_version: 6.151.9
+
+['  (no imports found)', '--commit', '--json', '--reverse', '-c', '-r', '.', '.muse', '/', '::', 'HEAD', 'Python', 'REF', 'TARGET', 'address', 'called_by', 'calls', 'file', 'import', 'imported_by', 'imports', 'kind', 'muse-work', 'qualified_name', 'refs/heads/', 'repo.json', 'repo_id', 'target_name', '─', '❌ No commits found.']

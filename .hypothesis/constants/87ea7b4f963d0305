@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/plugins/midi/entity.py
+# hypothesis_version: 6.151.9
+
+[127, '.', '.muse/entity_index', '/', '_', 'channel', 'content_id', 'delete', 'duration_ticks', 'entities', 'entity_id', 'inf', 'insert', 'mutate', 'note:untracked', 'origin_commit_id', 'pitch', 'start_tick', 'velocity', 'voice_id']

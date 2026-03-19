@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/show.py
+# hypothesis_version: 6.151.9
+
+[' (no changes)', ', ', '--json', '--stat/--no-stat', '.muse', 'HEAD', 'Output as JSON.', 'child_summary', 'delete', 'fields', 'files_added', 'files_modified', 'files_removed', 'insert', 'move', 'mutate', 'op', 'ops', 'refs/heads/', 'replace', 'repo.json', 'repo_id']

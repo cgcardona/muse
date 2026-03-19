@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/harmony.py
+# hypothesis_version: 6.151.9
+
+[100, ', ', '--commit', '--json', '-c', '.muse', 'HEAD', 'REF', 'TRACK', 'bar', 'bars', 'chord', 'commit', 'key', 'note_count', 'pitch_classes', 'refs/heads/', 'repo.json', 'repo_id', 'total_notes', 'track', 'working tree', '─', '█']

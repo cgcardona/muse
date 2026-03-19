@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/grep.py
+# hypothesis_version: 6.151.9
+
+['--commit', '--hashes', '--json', '--kind', '--language', '--regex', '-c', '-e', '-k', '-l', '.muse', '::', 'HEAD', 'KIND', 'LANG', 'PATTERN', 'REF', 'address', 'async_function', 'async_method', 'class', 'content_id', 'file', 'fn', 'fn~', 'function', 'import', 'kind', 'language', 'lineno', 'method', 'method~', 'name', 'qualified_name', 'refs/heads/', 'repo.json', 'repo_id', 'var', 'variable']

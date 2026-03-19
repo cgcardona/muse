@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/merge.py
+# hypothesis_version: 6.151.9
+
+[', ', '--message', '--no-ff', '-m', '.muse', 'Already up to date.', 'HEAD', 'dimension-merge', 'files', 'heads', 'manifest', 'manual', 'muse-work', 'ops', 'refs', 'refs/heads/', 'repo.json', 'repo_id', 'snapshots']

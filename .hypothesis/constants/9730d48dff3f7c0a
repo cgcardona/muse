@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/velocity_profile.py
+# hypothesis_version: 6.151.9
+
+[0.0, 100, 111, 112, 127, '--by-bar', '--commit', '--json', '-b', '-c', '.muse', 'HEAD', 'REF', 'TRACK', 'bar', 'by_bar', 'commit', 'f', 'ff', 'fff', 'histogram', 'max', 'mean', 'mean_velocity', 'mf', 'min', 'mp', 'note_count', 'notes', 'p', 'pp', 'ppp', 'refs/heads/', 'repo.json', 'repo_id', 'rms', 'track', 'working tree']

@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/plugins/midi/manifest.py
+# hypothesis_version: 6.151.9
+
+[',', '.mid', ':', 'bars', 'channel', 'chunk_hash', 'content_hash', 'duration_ticks', 'midi', 'pathlib.Path', 'pitch', 'snapshot_id', 'start_tick', 'tracks', 'velocity']

@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/lineage.py
+# hypothesis_version: 6.151.9
+
+['--commit', '--json', '-c', '.muse', '::', 'ADDRESS', 'HEAD', 'REF', 'address', 'async_function', 'async_method', 'body_hash', 'class', 'commit_id', 'committed_at', 'content_id', 'copied_from', 'created', 'delete', 'deleted', 'detail', 'event', 'events', 'full_rewrite', 'function', 'impl_only', 'insert', 'method', 'modified', 'moved_from', 'new_body_hash', 'new_content_id', 'new_summary', 'old_body_hash', 'old_content_id', 'old_summary', 'op', 'ops', 'refs/heads/', 'renamed_from', 'replace', 'repo.json', 'repo_id', 'signature', 'signature_change', 'total', '─']

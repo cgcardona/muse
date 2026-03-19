@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/status.py
+# hypothesis_version: 6.151.9
+
+['--branch', '--porcelain', '--short', '-b', '-s', '.muse', 'Condensed output.', 'HEAD', 'address', 'delete', 'insert', 'muse-work', 'op', 'ops', 'patch', 'refs/heads/', 'replace', 'repo.json', 'repo_id']

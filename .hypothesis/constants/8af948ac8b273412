@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/core/merge_engine.py
+# hypothesis_version: 6.151.9
+
+['.muse', 'MERGE_STATE.json', 'base_commit', 'conflict_paths', 'crdt_state', 'domain', 'files', 'muse-work', 'other_branch', 'ours_commit', 'schema_version', 'theirs_commit', 'vclock']

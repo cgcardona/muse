@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/plugins/code/_query.py
+# hypothesis_version: 6.151.9
+
+[10000, '(no ext)', '.c', '.cc', '.cjs', '.cpp', '.cs', '.cxx', '.go', '.h', '.hpp', '.hxx', '.java', '.js', '.jsx', '.kt', '.kts', '.mjs', '.py', '.pyi', '.rb', '.rs', '.ts', '.tsx', '::', 'C', 'C#', 'C++', 'Go', 'Java', 'JavaScript', 'Kotlin', 'Python', 'Ruby', 'Rust', 'TypeScript', 'address', 'child_ops', 'kind', 'op', 'patch']

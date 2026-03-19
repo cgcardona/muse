@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/reconcile.py
+# hypothesis_version: 6.151.9
+
+[', ', '--json', 'Emit report as JSON.', 'active_intents', 'active_reservations', 'address', 'branch', 'branches', 'conflict_hotspots', 'hotspots', 'intents', 'predicted_conflicts', 'reserved_addresses', 'run_ids', 'schema_version', 'strategies', '─']

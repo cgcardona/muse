@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/languages.py
+# hypothesis_version: 6.151.9
+
+['--commit', '--json', '-c', '.muse', 'HEAD', 'REF', 'async_function', 'async_method', 'class', 'commit', 'file ', 'files', 'fn', 'fn~', 'function', 'kind', 'languages', 'method', 'method~', 'refs/heads/', 'repo.json', 'repo_id', 'var', 'variable', '─']

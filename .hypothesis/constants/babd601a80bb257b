@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/core/diff_algorithms/numerical.py
+# hypothesis_version: 6.151.9
+
+[',', 'diff_mode', 'epsilon', 'full', 'no numerical changes', 'replace', 'sparse']

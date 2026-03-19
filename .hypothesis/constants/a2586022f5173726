@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/patch.py
+# hypothesis_version: 6.151.9
+
+['-', '--body', '--dry-run', '-b', '-n', '::', 'ADDRESS', 'FILE', 'end_lineno', 'lineno', 'muse-work', 'utf-8']

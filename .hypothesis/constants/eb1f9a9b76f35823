@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/plugins/code/symbol_diff.py
+# hypothesis_version: 6.151.9
+
+[', ', '::', 'address', 'body_hash', 'child_ops', 'code_symbols', 'content_id', 'delete', 'insert', 'move', 'no changes', 'no symbol changes', 'op', 'patch', 'position', 'replace', 'signature_id']

@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/coverage.py
+# hypothesis_version: 6.151.9
+
+[100, ', ', '--commit', '--json', '-c', '.', '.muse', '::', 'CLASS_ADDRESS', 'HEAD', 'REF', 'address', 'async_method', 'called', 'callers', 'commit', 'covered', 'kind', 'method', 'methods', 'name', 'percent', 'refs/heads/', 'repo.json', 'repo_id', 'total_methods', '─']

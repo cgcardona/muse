@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/dead.py
+# hypothesis_version: 6.151.9
+
+['--commit', '--exclude-tests', '--json', '--kind', '-c', '-k', '.', '.muse', '/', 'HEAD', 'KIND', 'REF', 'address', 'called', 'commit', 'dead_candidates', 'import', 'kind', 'module not imported', 'module_imported', 'name', 'qualified_name', 'reason', 'refs/heads/', 'repo.json', 'repo_id', 'spec', 'test', '─']

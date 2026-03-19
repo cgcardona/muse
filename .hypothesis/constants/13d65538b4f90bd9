@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/api_surface.py
+# hypothesis_version: 6.151.9
+
+['--commit', '--diff', '--json', '--language', '-c', '-l', '.', '.muse', '::', 'HEAD', 'LANG', 'REF', '_', 'added', 'address', 'async_function', 'async_method', 'base_commit', 'body_hash', 'change', 'changed', 'class', 'commit', 'content_id', 'function', 'impl_only', 'kind', 'language', 'language_filter', 'method', 'name', 'qualified_name', 'refs/heads/', 'removed', 'repo.json', 'repo_id', 'schema_version', 'signature+impl', 'signature_change', 'signature_id', 'symbols', 'total', 'unchanged', '─']

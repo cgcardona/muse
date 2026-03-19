@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/core/op_transform.py
+# hypothesis_version: 6.151.9
+
+['address', 'child_domain', 'child_ops', 'content_id', 'content_summary', 'delete', 'entity_id', 'from_position', 'insert', 'move', 'mutate', 'new_content_id', 'old_content_id', 'op', 'ops', 'patch', 'position', 'replace', 'to_position']

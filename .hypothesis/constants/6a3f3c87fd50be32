@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/plugins/code/manifest.py
+# hypothesis_version: 6.151.9
+
+['(no ext)', '.c', '.cc', '.cjs', '.cpp', '.cs', '.cxx', '.go', '.h', '.hpp', '.java', '.js', '.jsx', '.kt', '.kts', '.mjs', '.muse', '.py', '.pyi', '.rb', '.rs', '.ts', '.tsx', 'C', 'C#', 'C++', 'Go', 'Java', 'JavaScript', 'Kotlin', 'Python', 'Ruby', 'Rust', 'TypeScript', 'added', 'ast_changed', 'ast_hash', 'code_manifests', 'content_hash', 'content_id', 'modified', 'module_path', 'modules', 'packages', 'removed', 'snapshot_id', '|']

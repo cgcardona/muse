@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/plugins/code/plugin.py
+# hypothesis_version: 6.151.9
+
+[65536, '*', '.DS_Store', '.eggs', '.git', '.muse', '.mypy_cache', '.pytest_cache', '.ruff_cache', '.tox', '.venv', '__pycache__', 'address', 'build', 'by_content', 'child_ops', 'code', 'delete', 'dist', 'file', 'files', 'gumtree', 'import', 'imports', 'insert', 'metadata', 'module', 'node_modules', 'op', 'ops', 'patch', 'rb', 'replace', 'set', 'structure', 'summary', 'symbol', 'symbols', 'three_way', 'tree', 'variable', 'variables', 'venv']

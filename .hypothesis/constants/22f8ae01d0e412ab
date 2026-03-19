@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/code_check.py
+# hypothesis_version: 6.151.9
+
+['--json', '--rules', '--strict', '.muse', 'HEAD', 'has_errors', 'refs/heads/', '❌ No commit found.']

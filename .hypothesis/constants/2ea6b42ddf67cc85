@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/query_history.py
+# hypothesis_version: 6.151.9
+
+[' AND ', '--from', '--json', '--to', '.muse', 'HEAD', 'PREDICATE...', 'REF', 'address', 'change_count', 'commit_count', 'commits_scanned', 'content_id', 'first_commit_id', 'first_committed_at', 'from_commit', 'kind', 'language', 'last_commit_id', 'last_committed_at', 'refs/heads/', 'repo.json', 'repo_id', 'results', 'schema_version', 'stable', 'symbols_found', 'to_commit', '─']

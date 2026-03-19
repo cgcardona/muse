@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/intent.py
+# hypothesis_version: 6.151.9
+
+['--detail', '--json', '--op', '--reservation-id', '--run-id', '.muse', 'ADDRESS...', 'HEAD', 'ID', 'OPERATION', 'TEXT', 'UUID', 'delete', 'extract', 'inline', 'merge', 'modify', 'move', 'refs/heads/', 'rename', 'split', 'unknown']

@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/note_hotspots.py
+# hypothesis_version: 6.151.9
+
+[480, '--from', '--json', '--to', '--top', '--track', '-n', '-t', '.mid', '.muse', '@beat=', 'HEAD', 'N', 'REF', 'TRACK', 'address', 'bar', 'change', 'changes', 'child_ops', 'commits_analysed', 'content_summary', 'delete', 'hotspots', 'insert', 'op', 'ops', 'patch', 'refs/heads/', 'repo.json', 'repo_id', 'track']

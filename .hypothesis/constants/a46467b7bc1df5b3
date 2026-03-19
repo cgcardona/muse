@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/piano_roll.py
+# hypothesis_version: 6.151.9
+
+[120, 127, '-', '--bars', '--commit', '--resolution', '-b', '-c', '-r', '.muse', 'HEAD', 'N', 'REF', 'START-END', 'TRACK', 'refs/heads/', 'repo.json', 'repo_id', 'working tree', '─', '│', '═══']

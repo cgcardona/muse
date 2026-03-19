@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/transpose.py
+# hypothesis_version: 6.151.9
+
+[127, '+', '--clamp', '--dry-run', '--semitones', '-n', '-s', 'N', 'TRACK', 'muse-work']

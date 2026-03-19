@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/stable.py
+# hypothesis_version: 6.151.9
+
+['--json', '--kind', '--language', '--top', '-k', '-l', '-n', '.muse', 'HEAD', 'KIND', 'LANG', 'N', 'address', 'commit', 'commits', 'commits_analysed', 'ops', 'refs/heads/', 'repo.json', 'repo_id', 'since_first_commit', 'stable', 'unchanged_for', '❌ No commits found.']

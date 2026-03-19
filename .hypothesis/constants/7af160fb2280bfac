@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/core/store.py
+# hypothesis_version: 6.151.9
+
+[10000, '*.json', '.muse', 'CommitRecord', 'HEAD', 'SnapshotRecord', 'TagRecord', 'agent_id', 'author', 'branch', 'breaking_changes', 'commit_id', 'commits', 'committed_at', 'created_at', 'format_version', 'heads', 'manifest', 'message', 'metadata', 'model_id', 'none', 'parent2_commit_id', 'parent_commit_id', 'prompt_hash', 'refs', 'repo_id', 'sem_ver_bump', 'signature', 'signer_key_id', 'snapshot_id', 'snapshots', 'structured_delta', 'tag', 'tag_id', 'tags', 'toolchain_id']

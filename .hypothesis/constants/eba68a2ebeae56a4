@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/core/crdts/rga.py
+# hypothesis_version: 6.151.9
+
+['deleted', 'id', 'parent_id', 'value']

@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/invariants.py
+# hypothesis_version: 6.151.9
+
+[' → ', '"', '#', "'", '--commit', '--json', '-c', '.', '.muse', '=', 'HEAD', 'REF', 'VIOLATED', '[[rules]]', '_', 'async_function', 'commit', 'forbidden_dependency', 'forbidden_pattern', 'function', 'import', 'import::', 'invariants.toml', 'kind', 'layer_boundary', 'lower', 'name', 'no_cycles', 'passed', 'qualified_name', 'refs/heads/', 'repo.json', 'repo_id', 'required_test', 'results', 'rule_type', 'rules_checked', 'schema_version', 'source_pattern', 'test_pattern', 'type', 'unnamed', 'upper', 'violated', 'violations', '─', '✅', '🔴']

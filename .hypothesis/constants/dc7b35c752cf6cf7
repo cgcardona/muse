@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/plugins/code/_code_query.py
+# hypothesis_version: 6.151.9
+
+['!=', '"', "'", '::', '==', '?', 'added', 'address', 'agent_id', 'and', 'author', 'branch', 'change', 'child_ops', 'contains', 'delete', 'file', 'insert', 'kind', 'language', 'model_id', 'modified', 'op', 'ops', 'or', 'removed', 'sem_ver_bump', 'startswith', 'symbol', 'toolchain_id']

@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/query.py
+# hypothesis_version: 6.151.9
+
+['  AND  ', '%Y-%m-%d', '--all-commits', '--commit', '--hashes', '--json', '-c', '.muse', 'HEAD', 'PREDICATE...', 'REF', 'address', 'all-commits', 'async_function', 'async_method', 'body_hash', 'branch', 'class', 'commit', 'commit_id', 'commit_message', 'committed_at', 'content_id', 'end_lineno', 'file', 'first_seen', 'fn', 'fn~', 'function', 'import', 'kind', 'language', 'lineno', 'manifest', 'method', 'method~', 'mode', 'name', 'qualified_name', 'refs/heads/', 'repo.json', 'repo_id', 'results', 'schema_version', 'signature_id', 'snapshots', 'var', 'variable']

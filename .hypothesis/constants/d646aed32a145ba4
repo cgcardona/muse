@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/cli/commands/hotspots.py
+# hypothesis_version: 6.151.9
+
+['--from', '--json', '--kind', '--language', '--to', '--top', '-k', '-l', '-n', '.muse', '::', 'HEAD', 'KIND', 'LANG', 'N', 'REF', 'address', 'change', 'changes', 'commits_analysed', 'hotspots', 'ops', 'refs/heads/', 'repo.json', 'repo_id']

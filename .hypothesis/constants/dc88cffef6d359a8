@@ -1,0 +1,4 @@
+# file: /Users/gabriel/muse/muse/plugins/code/_predicate.py
+# hypothesis_version: 6.151.9
+
+['!=', '"', '$=', '<', '<=', '=', '>', '>=', 'AND', 'ATOM', 'LPAREN', 'NOT', 'OR', 'RPAREN', 'WS', '\\(', '\\)', '\\bAND\\b', '\\bNOT\\b', '\\bOR\\b', '\\s+', '^=', '_', 'body_hash', 'content_id', 'file', 'hash', 'kind', 'language', 'lineno', 'lineno_gt', 'lineno_lt', 'name', 'pos', 'qualified_name', 'signature_id', 'value', '|', '~=']
