@@ -30,6 +30,7 @@ Output::
        Surrounding code untouched (4 symbols preserved)
        Run `muse status` to review, then `muse commit`
 """
+
 from __future__ import annotations
 
 import logging

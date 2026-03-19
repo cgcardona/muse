@@ -1,5 +1,4 @@
 """Tests for muse reset and muse revert."""
-from __future__ import annotations
 
 import pathlib
 

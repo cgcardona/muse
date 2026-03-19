@@ -14,6 +14,9 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     name: Build site
@@ -22,16 +25,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
+      - name: Set up Python 3.14
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
       - name: Install dependencies
         run: pip install -e ".[dev]"
 
-      - name: Generate Tour de Force
-        run: python tools/tour_de_force.py
+      - name: Generate demo pages
+        run: python tools/demo.py
+
+      - name: Generate MIDI demo page
+        run: python tools/render_midi_demo.py
 
       - name: Generate Domain Registry (also writes index.html)
         run: python tools/render_domain_registry.py

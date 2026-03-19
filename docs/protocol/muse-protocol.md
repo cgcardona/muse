@@ -1,6 +1,6 @@
 # MuseDomainPlugin Protocol — Language-Agnostic Specification
 
-> **Status:** Canonical · **Version:** v0.1.1
+> **Status:** Canonical · **Version:** v0.1.2
 > **Audience:** Anyone implementing a Muse domain plugin in any language.
 
 ---
@@ -278,7 +278,7 @@ Plugins MAY add additional top-level keys for domain-specific metadata:
 ```json
 {
   "files": { ... },
-  "domain": "music",
+  "domain": "midi",
   "tempo_bpm": 120,
   "key": "Am"
 }

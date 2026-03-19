@@ -24,6 +24,7 @@ Output::
 
     High churn = compositional instability. Consider locking this section.
 """
+
 from __future__ import annotations
 
 import json

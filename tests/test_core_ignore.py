@@ -1,56 +1,187 @@
-"""Tests for muse/core/ignore.py — .museignore parser and path filter."""
-from __future__ import annotations
+"""Tests for muse/core/ignore.py — .museignore TOML parser and path filter."""
 
 import pathlib
 
 import pytest
 
-from muse.core.ignore import _matches, is_ignored, load_patterns
+from muse.core.ignore import (
+    MuseIgnoreConfig,
+    _matches,
+    is_ignored,
+    load_ignore_config,
+    resolve_patterns,
+)
 
 
 # ---------------------------------------------------------------------------
-# load_patterns
+# load_ignore_config
 # ---------------------------------------------------------------------------
 
 
-class TestLoadPatterns:
+class TestLoadIgnoreConfig:
     def test_returns_empty_when_no_file(self, tmp_path: pathlib.Path) -> None:
-        assert load_patterns(tmp_path) == []
+        assert load_ignore_config(tmp_path) == {}
 
-    def test_reads_patterns(self, tmp_path: pathlib.Path) -> None:
-        (tmp_path / ".museignore").write_text("*.tmp\n*.bak\n")
-        assert load_patterns(tmp_path) == ["*.tmp", "*.bak"]
+    def test_empty_toml_file(self, tmp_path: pathlib.Path) -> None:
+        (tmp_path / ".museignore").write_text("")
+        assert load_ignore_config(tmp_path) == {}
 
-    def test_strips_blank_lines(self, tmp_path: pathlib.Path) -> None:
-        (tmp_path / ".museignore").write_text("\n*.tmp\n\n*.bak\n\n")
-        assert load_patterns(tmp_path) == ["*.tmp", "*.bak"]
+    def test_toml_comments_only(self, tmp_path: pathlib.Path) -> None:
+        (tmp_path / ".museignore").write_text("# just a comment\n")
+        assert load_ignore_config(tmp_path) == {}
 
-    def test_strips_comments(self, tmp_path: pathlib.Path) -> None:
+    def test_global_section_parsed(self, tmp_path: pathlib.Path) -> None:
         (tmp_path / ".museignore").write_text(
-            "# ignore backups\n*.bak\n# and temps\n*.tmp\n"
+            '[global]\npatterns = ["*.tmp", "*.bak"]\n'
         )
-        assert load_patterns(tmp_path) == ["*.bak", "*.tmp"]
+        config = load_ignore_config(tmp_path)
+        assert config.get("global", {}).get("patterns") == ["*.tmp", "*.bak"]
 
-    def test_strips_whitespace_around_patterns(self, tmp_path: pathlib.Path) -> None:
-        (tmp_path / ".museignore").write_text("  *.tmp  \n  *.bak  \n")
-        assert load_patterns(tmp_path) == ["*.tmp", "*.bak"]
+    def test_domain_section_parsed(self, tmp_path: pathlib.Path) -> None:
+        (tmp_path / ".museignore").write_text(
+            '[domain.midi]\npatterns = ["*.bak"]\n'
+        )
+        config = load_ignore_config(tmp_path)
+        domain_map = config.get("domain", {})
+        assert domain_map.get("midi", {}).get("patterns") == ["*.bak"]
 
-    def test_inline_comment_not_stripped(self, tmp_path: pathlib.Path) -> None:
-        # Only leading-# lines are comments; inline # is part of the pattern.
-        (tmp_path / ".museignore").write_text("*.tmp  # not a comment\n")
-        assert load_patterns(tmp_path) == ["*.tmp  # not a comment"]
+    def test_multiple_domain_sections_parsed(self, tmp_path: pathlib.Path) -> None:
+        content = (
+            '[domain.midi]\npatterns = ["*.bak"]\n'
+            '[domain.code]\npatterns = ["__pycache__/"]\n'
+        )
+        (tmp_path / ".museignore").write_text(content)
+        config = load_ignore_config(tmp_path)
+        domain_map = config.get("domain", {})
+        assert domain_map.get("midi", {}).get("patterns") == ["*.bak"]
+        assert domain_map.get("code", {}).get("patterns") == ["__pycache__/"]
+
+    def test_global_and_domain_sections_parsed(self, tmp_path: pathlib.Path) -> None:
+        content = (
+            '[global]\npatterns = ["*.tmp"]\n'
+            '[domain.midi]\npatterns = ["*.bak"]\n'
+        )
+        (tmp_path / ".museignore").write_text(content)
+        config = load_ignore_config(tmp_path)
+        assert config.get("global", {}).get("patterns") == ["*.tmp"]
+        domain_map = config.get("domain", {})
+        assert domain_map.get("midi", {}).get("patterns") == ["*.bak"]
 
     def test_negation_pattern_preserved(self, tmp_path: pathlib.Path) -> None:
-        (tmp_path / ".museignore").write_text("*.bak\n!keep.bak\n")
-        assert load_patterns(tmp_path) == ["*.bak", "!keep.bak"]
+        (tmp_path / ".museignore").write_text(
+            '[global]\npatterns = ["*.bak", "!keep.bak"]\n'
+        )
+        config = load_ignore_config(tmp_path)
+        assert config.get("global", {}).get("patterns") == ["*.bak", "!keep.bak"]
 
-    def test_empty_file(self, tmp_path: pathlib.Path) -> None:
-        (tmp_path / ".museignore").write_text("")
-        assert load_patterns(tmp_path) == []
+    def test_invalid_toml_raises_value_error(self, tmp_path: pathlib.Path) -> None:
+        (tmp_path / ".museignore").write_text("this is not valid toml ][")
+        with pytest.raises(ValueError, match=".museignore"):
+            load_ignore_config(tmp_path)
+
+    def test_section_without_patterns_key(self, tmp_path: pathlib.Path) -> None:
+        # A section with no patterns key produces an empty DomainSection.
+        (tmp_path / ".museignore").write_text("[global]\n")
+        config = load_ignore_config(tmp_path)
+        assert config.get("global") == {}
+
+    def test_non_string_patterns_silently_dropped(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # Non-string items in the patterns array are silently skipped.
+        (tmp_path / ".museignore").write_text(
+            '[global]\npatterns = ["*.tmp", 42, true, "*.bak"]\n'
+        )
+        config = load_ignore_config(tmp_path)
+        assert config.get("global", {}).get("patterns") == ["*.tmp", "*.bak"]
 
 
 # ---------------------------------------------------------------------------
-# _matches (internal — gitignore path semantics)
+# resolve_patterns
+# ---------------------------------------------------------------------------
+
+
+class TestResolvePatterns:
+    def test_empty_config_returns_empty(self) -> None:
+        config: MuseIgnoreConfig = {}
+        assert resolve_patterns(config, "midi") == []
+
+    def test_global_only(self) -> None:
+        config: MuseIgnoreConfig = {"global": {"patterns": ["*.tmp", ".DS_Store"]}}
+        assert resolve_patterns(config, "midi") == ["*.tmp", ".DS_Store"]
+
+    def test_domain_only(self) -> None:
+        config: MuseIgnoreConfig = {"domain": {"midi": {"patterns": ["*.bak"]}}}
+        assert resolve_patterns(config, "midi") == ["*.bak"]
+
+    def test_global_and_matching_domain_merged(self) -> None:
+        config: MuseIgnoreConfig = {
+            "global": {"patterns": ["*.tmp"]},
+            "domain": {"midi": {"patterns": ["*.bak"]}},
+        }
+        result = resolve_patterns(config, "midi")
+        # Global comes first, then domain-specific.
+        assert result == ["*.tmp", "*.bak"]
+
+    def test_other_domain_patterns_excluded(self) -> None:
+        config: MuseIgnoreConfig = {
+            "global": {"patterns": ["*.tmp"]},
+            "domain": {
+                "midi": {"patterns": ["*.bak"]},
+                "code": {"patterns": ["node_modules/"]},
+            },
+        }
+        # Asking for "midi" — code patterns must not appear.
+        result = resolve_patterns(config, "midi")
+        assert "*.bak" in result
+        assert "node_modules/" not in result
+
+    def test_active_domain_not_in_config_returns_global_only(self) -> None:
+        config: MuseIgnoreConfig = {
+            "global": {"patterns": ["*.tmp"]},
+            "domain": {"midi": {"patterns": ["*.bak"]}},
+        }
+        # Active domain "genomics" has no section — only global patterns.
+        result = resolve_patterns(config, "genomics")
+        assert result == ["*.tmp"]
+
+    def test_global_section_without_patterns_key(self) -> None:
+        config: MuseIgnoreConfig = {"global": {}}
+        assert resolve_patterns(config, "midi") == []
+
+    def test_domain_section_without_patterns_key(self) -> None:
+        config: MuseIgnoreConfig = {"domain": {"midi": {}}}
+        assert resolve_patterns(config, "midi") == []
+
+    def test_order_preserved(self) -> None:
+        config: MuseIgnoreConfig = {
+            "global": {"patterns": ["a", "b", "c"]},
+            "domain": {"midi": {"patterns": ["d", "e"]}},
+        }
+        assert resolve_patterns(config, "midi") == ["a", "b", "c", "d", "e"]
+
+    def test_negation_in_global_preserved(self) -> None:
+        config: MuseIgnoreConfig = {
+            "global": {"patterns": ["*.bak", "!keep.bak"]},
+        }
+        patterns = resolve_patterns(config, "midi")
+        assert patterns == ["*.bak", "!keep.bak"]
+
+    def test_negation_in_domain_overrides_global(self) -> None:
+        # A negation in the domain section can un-ignore a globally ignored path.
+        config: MuseIgnoreConfig = {
+            "global": {"patterns": ["*.bak"]},
+            "domain": {"midi": {"patterns": ["!session.bak"]}},
+        }
+        patterns = resolve_patterns(config, "midi")
+        # session.bak is globally ignored but negated by domain section.
+        assert not is_ignored("session.bak", patterns)
+        # other.bak is globally ignored and not negated.
+        assert is_ignored("other.bak", patterns)
+
+
+# ---------------------------------------------------------------------------
+# _matches (internal — gitignore path semantics, unchanged)
 # ---------------------------------------------------------------------------
 
 
@@ -120,7 +251,7 @@ class TestMatchesInternal:
 
 
 # ---------------------------------------------------------------------------
-# is_ignored — full rule evaluation with negation
+# is_ignored — full rule evaluation with negation (unchanged layer)
 # ---------------------------------------------------------------------------
 
 
@@ -189,12 +320,12 @@ class TestIsIgnored:
 
 
 # ---------------------------------------------------------------------------
-# Integration: MidiPlugin.snapshot() honours .museignore
+# Integration: MidiPlugin.snapshot() honours .museignore TOML format
 # ---------------------------------------------------------------------------
 
 
 class TestMidiPluginSnapshotIgnore:
-    """End-to-end: .museignore filters out paths during snapshot()."""
+    """End-to-end: .museignore TOML format filters paths during snapshot()."""
 
     def _make_repo(self, tmp_path: pathlib.Path) -> pathlib.Path:
         """Create a minimal repo structure with a muse-work/ directory."""
@@ -217,19 +348,58 @@ class TestMidiPluginSnapshotIgnore:
         assert "beat.mid" in snap["files"]
         assert "session.tmp" in snap["files"]
 
-    def test_snapshot_excludes_ignored_files(self, tmp_path: pathlib.Path) -> None:
+    def test_snapshot_excludes_global_pattern(self, tmp_path: pathlib.Path) -> None:
         from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
         workdir = root / "muse-work"
         (workdir / "beat.mid").write_text("data")
         (workdir / "session.tmp").write_text("temp")
-        (root / ".museignore").write_text("*.tmp\n")
+        (root / ".museignore").write_text('[global]\npatterns = ["*.tmp"]\n')
 
         plugin = MidiPlugin()
         snap = plugin.snapshot(workdir)
         assert "beat.mid" in snap["files"]
         assert "session.tmp" not in snap["files"]
+
+    def test_snapshot_excludes_domain_specific_pattern(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        from muse.plugins.midi.plugin import MidiPlugin
+
+        root = self._make_repo(tmp_path)
+        workdir = root / "muse-work"
+        (workdir / "beat.mid").write_text("data")
+        (workdir / "session.bak").write_text("backup")
+        (root / ".museignore").write_text(
+            '[domain.midi]\npatterns = ["*.bak"]\n'
+        )
+
+        plugin = MidiPlugin()
+        snap = plugin.snapshot(workdir)
+        assert "beat.mid" in snap["files"]
+        assert "session.bak" not in snap["files"]
+
+    def test_snapshot_domain_isolation_other_domain_ignored(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        from muse.plugins.midi.plugin import MidiPlugin
+
+        root = self._make_repo(tmp_path)
+        workdir = root / "muse-work"
+        (workdir / "beat.mid").write_text("data")
+        (workdir / "requirements.txt").write_text("pytest\n")
+        # code-only ignore — must NOT apply to the midi plugin.
+        (root / ".museignore").write_text(
+            '[domain.code]\npatterns = ["requirements.txt"]\n'
+        )
+
+        plugin = MidiPlugin()
+        snap = plugin.snapshot(workdir)
+        # requirements.txt should remain because the [domain.code] section
+        # does not apply when the active domain is "midi".
+        assert "requirements.txt" in snap["files"]
+        assert "beat.mid" in snap["files"]
 
     def test_snapshot_negation_keeps_file(self, tmp_path: pathlib.Path) -> None:
         from muse.plugins.midi.plugin import MidiPlugin
@@ -238,12 +408,33 @@ class TestMidiPluginSnapshotIgnore:
         workdir = root / "muse-work"
         (workdir / "session.tmp").write_text("temp")
         (workdir / "important.tmp").write_text("keep me")
-        (root / ".museignore").write_text("*.tmp\n!important.tmp\n")
+        (root / ".museignore").write_text(
+            '[global]\npatterns = ["*.tmp", "!important.tmp"]\n'
+        )
 
         plugin = MidiPlugin()
         snap = plugin.snapshot(workdir)
         assert "session.tmp" not in snap["files"]
         assert "important.tmp" in snap["files"]
+
+    def test_snapshot_domain_negation_overrides_global(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        from muse.plugins.midi.plugin import MidiPlugin
+
+        root = self._make_repo(tmp_path)
+        workdir = root / "muse-work"
+        (workdir / "session.bak").write_text("backup")
+        content = (
+            '[global]\npatterns = ["*.bak"]\n'
+            '[domain.midi]\npatterns = ["!session.bak"]\n'
+        )
+        (root / ".museignore").write_text(content)
+
+        plugin = MidiPlugin()
+        snap = plugin.snapshot(workdir)
+        # session.bak is globally ignored but un-ignored by the midi domain section.
+        assert "session.bak" in snap["files"]
 
     def test_snapshot_nested_pattern(self, tmp_path: pathlib.Path) -> None:
         from muse.plugins.midi.plugin import MidiPlugin
@@ -254,7 +445,9 @@ class TestMidiPluginSnapshotIgnore:
         renders.mkdir()
         (workdir / "beat.mid").write_text("data")
         (renders / "preview.wav").write_text("audio")
-        (root / ".museignore").write_text("renders/*.wav\n")
+        (root / ".museignore").write_text(
+            '[global]\npatterns = ["renders/*.wav"]\n'
+        )
 
         plugin = MidiPlugin()
         snap = plugin.snapshot(workdir)
@@ -268,7 +461,7 @@ class TestMidiPluginSnapshotIgnore:
         workdir = root / "muse-work"
         (workdir / "beat.mid").write_text("data")
         (workdir / ".DS_Store").write_bytes(b"\x00" * 16)
-        # No .museignore — dotfiles excluded by the built-in rule.
+        # No .museignore — dotfiles excluded by the built-in plugin rule.
 
         plugin = MidiPlugin()
         snap = plugin.snapshot(workdir)
@@ -281,7 +474,8 @@ class TestMidiPluginSnapshotIgnore:
         root = self._make_repo(tmp_path)
         workdir = root / "muse-work"
         (workdir / "beat.mid").write_text("data")
-        (root / ".museignore").write_text("# just a comment\n\n")
+        # Valid TOML — just a comment, no sections.
+        (root / ".museignore").write_text("# empty config\n")
 
         plugin = MidiPlugin()
         snap = plugin.snapshot(workdir)
@@ -298,7 +492,7 @@ class TestMidiPluginSnapshotIgnore:
         renders.mkdir()
         (renders / "mix.wav").write_text("audio")
         # Directory-only pattern — should not exclude files.
-        (root / ".museignore").write_text("renders/\n")
+        (root / ".museignore").write_text('[global]\npatterns = ["renders/"]\n')
 
         plugin = MidiPlugin()
         snap = plugin.snapshot(workdir)

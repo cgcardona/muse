@@ -10,7 +10,6 @@ Stand-alone usage
     python tools/render_domain_registry.py
     python tools/render_domain_registry.py --out artifacts/domain_registry.html
 """
-from __future__ import annotations
 
 import json
 import pathlib
@@ -29,7 +28,7 @@ def _compute_crdt_demos() -> list[dict]:
     """Run the four CRDT primitives live and return formatted demo output."""
     sys.path.insert(0, str(_ROOT))
     try:
-        from muse.core.crdts import GCounter, LWWRegister, ORSet, VectorClock
+        from muse.core.crdts import AWMap, GCounter, LWWRegister, ORSet, RGA, VectorClock
 
         # ORSet
         base, _ = ORSet().add("annotation-GO:0001234")
@@ -179,11 +178,88 @@ def _compute_crdt_demos() -> list[dict]:
           <div class="crdt-join-rule" style="font-size:10.5px;color:var(--mute);font-style:italic">component-wise max &mdash; causal happens-before tracking</div>
         </div>"""
 
+        # RGA — ordered note sequence: A inserts C4+E4, B inserts G4 concurrently
+        rga_a = RGA()
+        rga_a = rga_a.insert(None,    "hash-C4", element_id="1@agent-A")
+        rga_a = rga_a.insert("1@agent-A", "hash-E4", element_id="2@agent-A")
+        rga_b = RGA()
+        rga_b = rga_b.insert(None,    "hash-C4", element_id="1@agent-A")  # same start
+        rga_b = rga_b.insert("1@agent-A", "hash-G4", element_id="1@agent-B")  # concurrent
+        rga_m = rga_a.join(rga_b)
+        rga_seq_a = ["C4", "E4"]
+        rga_seq_b = ["C4", "G4"]
+        _rga_hash_to_note = {"hash-C4": "C4", "hash-E4": "E4", "hash-G4": "G4"}
+        rga_seq_m = [_rga_hash_to_note.get(h, h) for h in rga_m.to_sequence()]
+        rga_out = "\n".join([
+            "RGA — ordered sequence (Google-Docs-style):",
+            f"  Agent A sequence: {rga_seq_a}",
+            f"  Agent B sequence: {rga_seq_b}",
+            f"  join(A, B): {rga_seq_m}  [deterministic, ID-ordered]",
+            "  Tombstones kept — deletions never lose causal history",
+        ])
+        rga_html = """<div class="crdt-vis">
+          <div class="crdt-concurrent">
+            <div class="crdt-rep">
+              <div class="crdt-rep-hdr">Replica A</div>
+              <div class="crdt-op crdt-op-add">+ insert("C4", id=1@A)</div>
+              <div class="crdt-op crdt-op-add">+ insert("E4", id=2@A)</div>
+              <div class="crdt-rep-state">&rarr;&thinsp;[C4, E4]</div>
+            </div>
+            <div class="crdt-rep">
+              <div class="crdt-rep-hdr">Replica B</div>
+              <div class="crdt-op crdt-op-add">+ insert("C4", id=1@A)</div>
+              <div class="crdt-op crdt-op-add">+ insert("G4", id=1@B) <em>concurrent</em></div>
+              <div class="crdt-rep-state">&rarr;&thinsp;[C4, G4]</div>
+            </div>
+          </div>
+          <div class="crdt-join" style="--crdt-c:#f9a825">
+            <span class="crdt-join-label">join(A, B)</span>
+            <span class="crdt-join-val" style="color:#f9a825">[C4, E4, G4]</span>
+            <span class="crdt-join-rule">ID-ordered &mdash; larger ID wins leftmost; all elements preserved</span>
+          </div>
+        </div>"""
+
+        # AWMap — key-value map: A sets "tempo", B sets "key_sig", both survive
+        aw_a = AWMap()
+        aw_a = aw_a.set("tempo",   "120 BPM")
+        aw_b = AWMap()
+        aw_b = aw_b.set("key_sig", "C major")
+        aw_m = aw_a.join(aw_b)
+        aw_keys = sorted(aw_m.keys())
+        awmap_out = "\n".join([
+            "AWMap — add-wins key/value map:",
+            f"  Agent A sets: {{tempo: '120 BPM'}}",
+            f"  Agent B sets: {{key_sig: 'C major'}}",
+            f"  join(A, B) keys: {aw_keys}",
+            "  Both additions survive — concurrent removes cannot win",
+        ])
+        awmap_html = """<div class="crdt-vis">
+          <div class="crdt-concurrent">
+            <div class="crdt-rep">
+              <div class="crdt-rep-hdr">Replica A</div>
+              <div class="crdt-op crdt-op-add">+ set("tempo", "120 BPM")</div>
+              <div class="crdt-rep-state">&rarr;&thinsp;{tempo}</div>
+            </div>
+            <div class="crdt-rep">
+              <div class="crdt-rep-hdr">Replica B</div>
+              <div class="crdt-op crdt-op-add">+ set("key_sig", "C major")</div>
+              <div class="crdt-rep-state">&rarr;&thinsp;{key_sig}</div>
+            </div>
+          </div>
+          <div class="crdt-join" style="--crdt-c:#3fb950">
+            <span class="crdt-join-label">join(A, B)</span>
+            <span class="crdt-join-val" style="color:#3fb950">{key_sig, tempo}</span>
+            <span class="crdt-join-rule">add-wins &mdash; concurrent removes cannot evict new tokens</span>
+          </div>
+        </div>"""
+
         return [
-            {"type": "ORSet",       "sub": "Observed-Remove Set",           "color": "#bc8cff", "icon": _ICONS["union"],      "output": orset_out, "html_output": orset_html},
-            {"type": "LWWRegister", "sub": "Last-Write-Wins Register",      "color": "#58a6ff", "icon": _ICONS["edit"],        "output": lww_out,   "html_output": lww_html},
-            {"type": "GCounter",    "sub": "Grow-Only Distributed Counter",  "color": "#3fb950", "icon": _ICONS["arrow-up"],   "output": gc_out,    "html_output": gc_html},
-            {"type": "VectorClock", "sub": "Causal Ordering",               "color": "#f9a825", "icon": _ICONS["git-branch"],  "output": vc_out,    "html_output": vc_html},
+            {"type": "ORSet",       "sub": "Observed-Remove Set",           "color": "#bc8cff", "icon": _ICONS["union"],      "output": orset_out,  "html_output": orset_html},
+            {"type": "LWWRegister", "sub": "Last-Write-Wins Register",      "color": "#58a6ff", "icon": _ICONS["edit"],        "output": lww_out,    "html_output": lww_html},
+            {"type": "GCounter",    "sub": "Grow-Only Distributed Counter",  "color": "#3fb950", "icon": _ICONS["arrow-up"],   "output": gc_out,     "html_output": gc_html},
+            {"type": "VectorClock", "sub": "Causal Ordering",               "color": "#f9a825", "icon": _ICONS["git-branch"],  "output": vc_out,     "html_output": vc_html},
+            {"type": "RGA",         "sub": "Replicated Growable Array",     "color": "#f9a825", "icon": _ICONS["layers"],      "output": rga_out,    "html_output": rga_html},
+            {"type": "AWMap",       "sub": "Add-Wins Map",                  "color": "#3fb950", "icon": _ICONS["code"],        "output": awmap_out,  "html_output": awmap_html},
         ]
     except Exception as exc:
         print(f"  ⚠ CRDT demo failed ({exc}); using static fallback")
@@ -210,22 +286,44 @@ def _load_domains() -> list[dict]:
     # Fallback: static reference data
     return [
         {
-            "domain": "music",
+            "domain": "midi",
             "active": "true",
-            "capabilities": ["Typed Deltas", "Domain Schema", "OT Merge"],
+            "capabilities": ["Typed Deltas", "Domain Schema", "OT Merge", "CRDT Primitives", "MidiRGA"],
             "schema": {
                 "schema_version": "1",
                 "merge_mode": "three_way",
-                "description": "MIDI and audio file versioning with note-level diff and semantic merge",
+                "description": "MIDI file versioning with 21-dimension structured merge — notes, CC, pitch bend, tempo, time signatures, and more. Each dimension merges independently. MidiRGA provides voice-aware CRDT ordering (bass→tenor→alto→soprano) for concurrent note edits.",
                 "dimensions": [
-                    {"name": "melodic",    "description": "Note pitches and durations over time"},
-                    {"name": "rhythmic",   "description": "Timing, groove, and quantisation (shares notes bucket with melodic)"},
-                    {"name": "harmonic",   "description": "Chord progressions and key signatures"},
-                    {"name": "dynamic",    "description": "Velocity and expression curves"},
-                    {"name": "structural", "description": "Track layout, time signatures, tempo map"},
+                    {"name": "notes",          "description": "Note-on/off events (pitch, velocity, channel, timing)"},
+                    {"name": "control_change",  "description": "CC curves: modulation, sustain, expression, pan"},
+                    {"name": "pitch_bend",      "description": "Pitch bend envelope per channel"},
+                    {"name": "tempo",           "description": "Tempo map (BPM changes over time)"},
+                    {"name": "time_signature",  "description": "Metre changes across the piece"},
+                    {"name": "key_signature",   "description": "Key and mode declarations"},
+                    {"name": "program_change",  "description": "Instrument (patch) assignments per channel"},
+                    {"name": "aftertouch",      "description": "Channel and polyphonic pressure"},
+                    {"name": "sysex",           "description": "System-exclusive device messages"},
+                    {"name": "track_name",      "description": "Human-readable track labels"},
                 ],
             },
-        }
+        },
+        {
+            "domain": "code",
+            "active": "true",
+            "capabilities": ["Typed Deltas", "Domain Schema", "OT Merge", ".museattributes"],
+            "schema": {
+                "schema_version": "1",
+                "merge_mode": "symbol_ot",
+                "description": "Source-code versioning with symbol-level operational-transform merge. Tree-sitter parses 11 languages into ASTs; functions, classes, and imports merge independently. .museattributes gives per-path strategy control.",
+                "dimensions": [
+                    {"name": "functions",   "description": "Function and method definitions"},
+                    {"name": "classes",     "description": "Class and struct declarations"},
+                    {"name": "imports",     "description": "Import and module-level declarations"},
+                    {"name": "variables",   "description": "Module-level variable and constant assignments"},
+                    {"name": "expressions", "description": "Top-level expression statements"},
+                ],
+            },
+        },
     ]
 
 
@@ -262,7 +360,6 @@ _TYPED_DELTA_EXAMPLE = """\
 
 
 _SCAFFOLD_SNIPPET = """\
-from __future__ import annotations
 from muse.domain import (
     MuseDomainPlugin, LiveState, StateSnapshot,
     StateDelta, DriftReport, MergeResult, DomainSchema,
@@ -318,7 +415,7 @@ def _icon(paths: str) -> str:
 
 _ICONS: dict[str, str] = {
     # Domains
-    "music":     _icon('<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'),
+    "midi":      _icon('<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'),
     "genomics":  _icon('<path d="M2 15c6.667-6 13.333 0 20-6"/><path d="M2 9c6.667 6 13.333 0 20 6"/><line x1="5.5" y1="11" x2="5.5" y2="13"/><line x1="18.5" y1="11" x2="18.5" y2="13"/>'),
     "cube":      _icon('<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>'),
     "trending":  _icon('<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>'),
@@ -563,7 +660,7 @@ def render(output_path: pathlib.Path) -> None:
 
     # Inject SVG icons into template placeholders
     _ICON_SLOTS: dict[str, str] = {
-        "MUSIC":     _ICONS["music"],
+        "MUSIC":     _ICONS["midi"],
         "GENOMICS":  _ICONS["genomics"],
         "CUBE":      _ICONS["cube"],
         "TRENDING":  _ICONS["trending"],
@@ -1775,10 +1872,11 @@ _HTML_TEMPLATE = """\
 
 <nav>
   <a class="nav-logo" href="#">muse</a>
-  <a class="nav-link" href="demo.html">Demo</a>
+  <a class="nav-link" href="demo.html">VCS Demo</a>
+  <a class="nav-link" href="midi-demo.html">🎹 MIDI Demo</a>
   <a class="nav-link" href="https://github.com/cgcardona/muse/blob/main/docs/guide/plugin-authoring-guide.md">Plugin Guide</a>
   <div class="nav-spacer"></div>
-  <span class="nav-badge">v0.1.1</span>
+  <span class="nav-badge">v0.1.2</span>
 </nav>
 
 <!-- =================== HERO =================== -->
@@ -1792,11 +1890,13 @@ _HTML_TEMPLATE = """\
   </p>
   <div class="hero-cta-row">
     <a class="btn-primary" href="#build">Build a Domain Plugin</a>
-    <a class="btn-outline" href="demo.html">Watch the Demo →</a>
+    <a class="btn-outline" href="demo.html">VCS Demo →</a>
+    <a class="btn-outline" href="midi-demo.html">🎹 Bach BWV 846 × 21 Dimensions</a>
   </div>
   <div class="domain-ticker">
     <div class="ticker-track">
-      <span class="ticker-item active">{{ICON_MUSIC}} music</span>
+      <span class="ticker-item active">{{ICON_MUSIC}} midi</span>
+      <span class="ticker-item active">{{ICON_CODE}} code</span>
       <span class="ticker-item">{{ICON_GENOMICS}} genomics</span>
       <span class="ticker-item">{{ICON_CUBE}} 3d-spatial</span>
       <span class="ticker-item">{{ICON_TRENDING}} financial</span>
@@ -1806,7 +1906,8 @@ _HTML_TEMPLATE = """\
       <span class="ticker-item">{{ICON_ZAP}} game-state</span>
       <span class="ticker-item">{{ICON_PLUS}} your-domain</span>
       <!-- duplicate for seamless loop -->
-      <span class="ticker-item active">{{ICON_MUSIC}} music</span>
+      <span class="ticker-item active">{{ICON_MUSIC}} midi</span>
+      <span class="ticker-item active">{{ICON_CODE}} code</span>
       <span class="ticker-item">{{ICON_GENOMICS}} genomics</span>
       <span class="ticker-item">{{ICON_CUBE}} 3d-spatial</span>
       <span class="ticker-item">{{ICON_TRENDING}} financial</span>
@@ -1825,10 +1926,10 @@ _HTML_TEMPLATE = """\
     <div class="section-eyebrow">The Contract</div>
     <h2>The MuseDomainPlugin Protocol</h2>
     <p class="section-lead">
-      Every domain — music, genomics, 3D spatial, financial models — implements
-      the same <strong>six-method protocol</strong>. The core engine handles
-      everything else: content-addressed storage, DAG, branches, log, merge base,
-      cherry-pick, revert, stash, tags.
+      Every domain — MIDI, source code, genomics, 3D spatial, financial models —
+      implements the same <strong>six-method protocol</strong>. The core engine
+      handles everything else: content-addressed storage, DAG, branches, log,
+      merge base, cherry-pick, revert, stash, tags.
     </p>
 
     <div class="proto-layout">
@@ -1901,8 +2002,9 @@ _HTML_TEMPLATE = """\
     <div class="section-eyebrow">Ecosystem</div>
     <h2>The Plugin Ecosystem</h2>
     <p class="section-lead">
-      Music is the reference implementation. These are the domains planned
-      next — and the slot waiting for yours.
+      MIDI and code are the two shipped domains — both fully active with typed
+      deltas, structured merge, and <code>.museattributes</code> rule control.
+      These are the domains planned next — and the slot waiting for yours.
     </p>
     <div class="planned-grid">
       {{PLANNED_DOMAINS}}
@@ -2002,7 +2104,7 @@ _HTML_TEMPLATE = """\
             <div class="ot-scenario ot-conflict">
               <div class="ot-scenario-hdr">
                 <span class="ot-scenario-label">Scenario B</span>
-                <span class="ot-scenario-title">Same address, conflicting musical intent</span>
+                <span class="ot-scenario-title">Same address, conflicting intent — conflict surfaced</span>
               </div>
               <div class="ot-ops">
                 <div class="ot-op">
@@ -2037,8 +2139,12 @@ _HTML_TEMPLATE = """\
         </div>
         <div class="cap-showcase-body">
           <p class="cap-showcase-desc">
-            Plugins implementing <strong>CRDTPlugin</strong> get four battle-tested
+            Plugins implementing <strong>CRDTPlugin</strong> get six battle-tested
             convergent data structures. No coordination required between replicas.
+            The MIDI plugin extends RGA into <strong>MidiRGA</strong> &mdash; a
+            voice-aware variant that orders concurrent note insertions by voice lane
+            (bass &rarr; tenor &rarr; alto &rarr; soprano) before falling back to
+            op-id, preventing voice crossings without human intervention.
           </p>
           <div class="crdt-mini-grid">
             {{CRDT_CARDS}}
@@ -2174,7 +2280,7 @@ _HTML_TEMPLATE = """\
 </div>
 
 <footer>
-  <span>Muse v0.1.1 · domain-agnostic version control for multidimensional state</span>
+  <span>Muse v0.1.2 · domain-agnostic version control for multidimensional state · Python 3.14</span>
   <span>
     <a href="demo.html">Demo</a> ·
     <a href="https://github.com/cgcardona/muse">GitHub</a> ·

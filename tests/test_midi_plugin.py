@@ -1,5 +1,4 @@
 """Tests for muse.plugins.midi.plugin — the MuseDomainPlugin reference implementation."""
-from __future__ import annotations
 
 import pathlib
 

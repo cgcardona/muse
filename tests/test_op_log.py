@@ -1,5 +1,4 @@
 """Tests for muse.core.op_log — OpEntry, OpLogCheckpoint, OpLog."""
-from __future__ import annotations
 
 import pathlib
 

@@ -49,6 +49,7 @@ Flags:
 ``--dry-run``
     Print the diff without writing anything.
 """
+
 from __future__ import annotations
 
 import difflib

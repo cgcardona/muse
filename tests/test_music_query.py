@@ -1,5 +1,4 @@
 """Tests for muse.plugins.midi._music_query — tokenizer, parser, evaluator."""
-from __future__ import annotations
 
 import datetime
 

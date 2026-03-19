@@ -44,6 +44,7 @@ All functions are synchronous — file I/O on a local ``.muse/`` directory
 does not require async. This removes the SQLAlchemy/asyncpg dependency from
 the CLI entirely.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -95,8 +96,9 @@ class CommitDict(TypedDict, total=False):
                      :func:`muse.core.provenance.verify_commit_hmac`.
     ``signer_key_id`` Fingerprint of the signing key
                      (SHA-256[:16] of the raw key bytes).
-    ``format_version`` Schema evolution counter.  Each architecture phase
-                     that extends the commit record bumps this value.  Readers use it to know which optional fields
+    ``format_version`` Schema evolution counter.  Each phase of the Muse
+                     supercharge plan that extends the commit record bumps
+                     this value.  Readers use it to know which optional fields
                      are present:
 
                      - ``1`` — base record (commit_id, snapshot_id, parent, message, author)
@@ -106,6 +108,9 @@ class CommitDict(TypedDict, total=False):
                      - ``4`` — adds agent provenance: ``agent_id``, ``model_id``,
                                ``toolchain_id``, ``prompt_hash``, ``signature``,
                                ``signer_key_id`` (Phase 4: Agent Identity)
+                     - ``5`` — adds CRDT annotation fields: ``reviewed_by``
+                               (ORSet of reviewer IDs), ``test_runs``
+                               (GCounter of test-run events)
 
                      Old records without this field default to ``1``.
     """
@@ -130,6 +135,13 @@ class CommitDict(TypedDict, total=False):
     signature: str
     signer_key_id: str
     format_version: int
+    # CRDT-backed annotation fields (format_version >= 5).
+    # ``reviewed_by`` is the logical state of an ORSet: a list of unique
+    # reviewer identifiers.  Merging two records takes the union (set join).
+    # ``test_runs`` is a GCounter: monotonically increasing test-run count.
+    # Both fields are absent in older records and default to [] / 0.
+    reviewed_by: list[str]
+    test_runs: int
 
 
 class SnapshotDict(TypedDict):
@@ -208,8 +220,10 @@ class CommitRecord:
     signature: str = ""
     signer_key_id: str = ""
     #: Schema evolution counter — see :class:`CommitDict` for the version table.
-    #: All new commits are written at the current maximum version (4).
-    format_version: int = 4
+    #: Version 5 adds ``reviewed_by`` (ORSet) and ``test_runs`` (GCounter).
+    format_version: int = 5
+    reviewed_by: list[str] = field(default_factory=list)
+    test_runs: int = 0
 
     def to_dict(self) -> CommitDict:
         return CommitDict(
@@ -233,6 +247,8 @@ class CommitRecord:
             signature=self.signature,
             signer_key_id=self.signer_key_id,
             format_version=self.format_version,
+            reviewed_by=list(self.reviewed_by),
+            test_runs=self.test_runs,
         )
 
     @classmethod
@@ -262,6 +278,8 @@ class CommitRecord:
             signature=d.get("signature", ""),
             signer_key_id=d.get("signer_key_id", ""),
             format_version=d.get("format_version", 1),
+            reviewed_by=list(d.get("reviewed_by") or []),
+            test_runs=int(d.get("test_runs") or 0),
         )
 
 
@@ -382,6 +400,24 @@ def read_commit(repo_root: pathlib.Path, commit_id: str) -> CommitRecord | None:
     except (json.JSONDecodeError, KeyError) as exc:
         logger.warning("⚠️ Corrupt commit file %s: %s", path, exc)
         return None
+
+
+def overwrite_commit(repo_root: pathlib.Path, commit: CommitRecord) -> None:
+    """Overwrite an existing commit record on disk (e.g. for annotation updates).
+
+    Unlike :func:`write_commit`, this function always writes the record even if
+    the file already exists.  Use only for annotation fields
+    (``reviewed_by``, ``test_runs``) that are semantically additive — never
+    for changing history (commit_id, parent, snapshot, message).
+
+    Args:
+        repo_root: Repository root.
+        commit:    The updated commit record to persist.
+    """
+    _commits_dir(repo_root).mkdir(parents=True, exist_ok=True)
+    path = _commit_path(repo_root, commit.commit_id)
+    path.write_text(json.dumps(commit.to_dict(), indent=2) + "\n")
+    logger.debug("✅ Updated annotation on commit %s", commit.commit_id[:8])
 
 
 def update_commit_metadata(

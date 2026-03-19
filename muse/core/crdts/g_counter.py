@@ -39,7 +39,6 @@ class GCounterDict(TypedDict, total=False):
     with :meth:`GCounter.to_dict` and deserialise with :meth:`GCounter.from_dict`.
     """
 
-
 class GCounter:
     """Grow-only Counter — a CRDT counter that only ever increases.
 

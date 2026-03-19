@@ -22,6 +22,7 @@ Output::
        full.mid:     41 notes  (C2–G5)
        Run `muse status` to review, then `muse commit`
 """
+
 from __future__ import annotations
 
 import json

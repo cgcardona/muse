@@ -31,6 +31,7 @@ Output::
 
     7 symbol changes across 3 files
 """
+
 from __future__ import annotations
 
 import json

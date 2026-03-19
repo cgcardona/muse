@@ -5,7 +5,7 @@
 Muse — domain-agnostic version control for multidimensional state. Version control is the abstraction; music is the first domain; genomics, scientific simulation, 3D spatial design, and spacetime simulation are next.
 
 - **Entry point:** `muse` CLI (Typer). No web server, no HTTP API, no database.
-- **Stack:** Python 3.11, Typer, file-based content-addressed storage (`.muse/`), synchronous I/O throughout.
+- **Stack:** Python 3.14, Typer, file-based content-addressed storage (`.muse/`), synchronous I/O throughout.
 - **Plugin contract:** `MuseDomainPlugin` protocol in `muse/domain.py`. Every new domain is a new plugin — the core engine never changes.
 - **Version:** single source of truth in `pyproject.toml`.
 
@@ -72,10 +72,10 @@ muse/
     commands/        → one file per command (init, commit, log, status, …)
     models.py        → re-exports CommitRecord, SnapshotRecord, TagRecord
     config.py        → .muse/config.toml helpers
-    midi_parser.py   → MIDI / MusicXML → NoteEvent (music domain utility)
+    midi_parser.py   → MIDI / MusicXML → NoteEvent (MIDI domain utility)
   plugins/
     music/
-      plugin.py      → MusicPlugin — reference MuseDomainPlugin implementation
+      plugin.py      → MidiPlugin — reference MuseDomainPlugin implementation
 tools/
   typing_audit.py    → typing violation scanner (ratchet: --max-any 0)
 tests/               → pytest suite
@@ -89,7 +89,6 @@ tests/               → pytest suite
 
 ## Code standards
 
-- **Every Python file** has `from __future__ import annotations` as the first import, immediately after the module docstring (if present). No exceptions.
 - Type hints everywhere — 100% coverage, no untyped functions or parameters.
 - `list[X]` / `dict[K, V]` style — never `List`, `Dict`, `Optional`.
 - `X | None` — never `Optional[X]`.
@@ -155,10 +154,10 @@ Run locally before opening any PR — in this exact order:
 
 | Area | Module | Tests |
 |------|--------|-------|
-| Plugin contract | `muse/domain.py` | `tests/test_music_plugin.py` |
+| Plugin contract | `muse/domain.py` | `tests/test_midi_plugin.py` |
 | Object store | `muse/core/object_store.py` | `tests/test_core_snapshot.py` |
 | File store | `muse/core/store.py` | `tests/test_core_store.py` |
 | Merge engine | `muse/core/merge_engine.py` | `tests/test_core_merge_engine.py` |
 | CLI commands | `muse/cli/commands/` | `tests/test_cli_workflow.py` |
-| Music plugin | `muse/plugins/music/plugin.py` | `tests/test_music_plugin.py` |
+| MIDI plugin | `muse/plugins/midi/plugin.py` | `tests/test_midi_plugin.py` |
 | Typing audit | `tools/typing_audit.py` | run with `--max-any 0` |

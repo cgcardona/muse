@@ -8,7 +8,6 @@ Verifies that:
 - ``schema_for()`` in the plugin registry performs the correct lookup.
 - The protocol assertion still holds after adding ``schema()``.
 """
-from __future__ import annotations
 
 import json
 

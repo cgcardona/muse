@@ -26,6 +26,7 @@ Grammar::
 
 See ``muse/plugins/midi/_midi_query.py`` for the full grammar reference.
 """
+
 from __future__ import annotations
 
 import json

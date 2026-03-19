@@ -55,6 +55,7 @@ Flags:
 ``--json``
     Emit the full codemap as JSON.
 """
+
 from __future__ import annotations
 
 import json

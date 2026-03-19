@@ -8,6 +8,7 @@ Algorithm
 4. If conflicts → write muse-work/ with conflict markers, write
    ``.muse/MERGE_STATE.json``, exit non-zero.
 """
+
 from __future__ import annotations
 
 import datetime

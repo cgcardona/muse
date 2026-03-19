@@ -27,6 +27,7 @@ All graph-building functions perform a single linear pass over the manifest
 callers always see the committed state for a given manifest.  CLI commands
 that need the graph multiple times should call once and pass the result.
 """
+
 from __future__ import annotations
 
 import ast

@@ -1,22 +1,22 @@
 # Muse Tools
 
-## Tour de Force
+## Demo
 
-`tour_de_force.py` runs a 5-act VCS stress test against a real (temporary) Muse
+`demo.py` runs a 5-act VCS stress test against a real (temporary) Muse
 repository and renders a shareable, self-contained HTML visualization.
 
 ### Run
 
 ```bash
 # From the repo root, with the venv active:
-python tools/tour_de_force.py
+python tools/demo.py
 ```
 
 Output lands in `artifacts/` (gitignored):
 
 | File | Description |
 |---|---|
-| `artifacts/tour_de_force.json` | Structured event log + full commit DAG |
+| `artifacts/demo.json` | Structured event log + full commit DAG |
 | `artifacts/demo.html` | Self-contained shareable visualization |
 
 Open the HTML in any browser:

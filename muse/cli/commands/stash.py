@@ -10,6 +10,7 @@ Usage::
     muse stash list      — list all stash entries
     muse stash drop      — discard the most recent stash
 """
+
 from __future__ import annotations
 
 import datetime

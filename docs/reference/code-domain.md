@@ -67,14 +67,14 @@ Two symbols are classified by comparing their four hashes:
 
 ## 2. Provenance & Topology Commands
 
-### `muse lineage ADDRESS`
+### `muse code lineage ADDRESS`
 
 Full provenance chain of a named symbol from its first appearance to the present.
 
 ```
-muse lineage src/billing.py::compute_total
-muse lineage src/billing.py::compute_total --commit HEAD~10
-muse lineage src/billing.py::compute_total --json
+muse code lineage src/billing.py::compute_total
+muse code lineage src/billing.py::compute_total --commit HEAD~10
+muse code lineage src/billing.py::compute_total --json
 ```
 
 **How it works:** Walks all commits in chronological order, scanning `InsertOp`/`DeleteOp`/`ReplaceOp` entries in each `structured_delta`.  Rename detection uses `content_id` matching across Insert+Delete pairs within a single commit.
@@ -101,15 +101,15 @@ muse lineage src/billing.py::compute_total --json
 
 ---
 
-### `muse api-surface`
+### `muse code api-surface`
 
 Public API surface of a snapshot — every non-underscore function, class, and method.
 
 ```
-muse api-surface
-muse api-surface --commit v1.0
-muse api-surface --diff v1.0
-muse api-surface --json
+muse code api-surface
+muse code api-surface --commit v1.0
+muse code api-surface --diff v1.0
+muse code api-surface --json
 ```
 
 **With `--diff REF`:** Shows three sections — **Added** (new public symbols), **Removed** (deleted public symbols), **Changed** (same address, different `content_id`).
@@ -118,15 +118,15 @@ muse api-surface --json
 
 ---
 
-### `muse codemap`
+### `muse code codemap`
 
 Semantic topology of the entire codebase at a snapshot.
 
 ```
-muse codemap
-muse codemap --top 10
-muse codemap --commit HEAD~5
-muse codemap --json
+muse code codemap
+muse code codemap --top 10
+muse code codemap --commit HEAD~5
+muse code codemap --json
 ```
 
 **What it shows:**
@@ -143,16 +143,16 @@ muse codemap --json
 
 ---
 
-### `muse clones`
+### `muse code clones`
 
 Find exact and near-duplicate symbol clusters across the snapshot.
 
 ```
-muse clones
-muse clones --tier exact
-muse clones --tier near
-muse clones --tier both
-muse clones --commit HEAD~3 --json
+muse code clones
+muse code clones --tier exact
+muse code clones --tier near
+muse code clones --tier both
+muse code clones --commit HEAD~3 --json
 ```
 
 **Exact clones:** Same `body_hash` at different addresses.  These are literal copy-paste duplicates — same implementation, possibly different name.
@@ -163,13 +163,13 @@ muse clones --commit HEAD~3 --json
 
 ---
 
-### `muse checkout-symbol ADDRESS --commit REF`
+### `muse code checkout-symbol ADDRESS --commit REF`
 
 Restore a single named symbol from a historical commit into the current working tree.  Only the target symbol's lines change; everything else is untouched.
 
 ```
-muse checkout-symbol src/billing.py::compute_total --commit v1.0
-muse checkout-symbol src/billing.py::compute_total --commit abc123 --dry-run
+muse code checkout-symbol src/billing.py::compute_total --commit v1.0
+muse code checkout-symbol src/billing.py::compute_total --commit abc123 --dry-run
 ```
 
 **Flags:**
@@ -180,14 +180,14 @@ muse checkout-symbol src/billing.py::compute_total --commit abc123 --dry-run
 
 ---
 
-### `muse semantic-cherry-pick ADDRESS... --from REF`
+### `muse code semantic-cherry-pick ADDRESS... --from REF`
 
 Cherry-pick one or more named symbols from a historical commit.  Applies each symbol patch to the working tree at the symbol's current location; appends at the end of the file if the symbol is not present in the current tree.
 
 ```
-muse semantic-cherry-pick src/billing.py::compute_total --from v1.0
-muse semantic-cherry-pick src/billing.py::f1 src/billing.py::f2 --from abc123
-muse semantic-cherry-pick src/billing.py::compute_total --from v1.0 --dry-run --json
+muse code semantic-cherry-pick src/billing.py::compute_total --from v1.0
+muse code semantic-cherry-pick src/billing.py::f1 src/billing.py::f2 --from abc123
+muse code semantic-cherry-pick src/billing.py::compute_total --from v1.0 --dry-run --json
 ```
 
 **Flags:**
@@ -199,18 +199,18 @@ muse semantic-cherry-pick src/billing.py::compute_total --from v1.0 --dry-run --
 
 ## 3. Query & Temporal Search
 
-### `muse query PREDICATE...`
+### `muse code query PREDICATE...`
 
 Symbol graph predicate DSL — SQL for your codebase.
 
 ```
-muse query kind=function language=Python
-muse query "(kind=function OR kind=method) name^=_"
-muse query "NOT kind=import file~=billing"
-muse query kind=function name~=validate --all-commits
-muse query hash=a3f2c9 --all-commits --first
-muse query --commit v1.0 kind=class
-muse query kind=function --json
+muse code query kind=function language=Python
+muse code query "(kind=function OR kind=method) name^=_"
+muse code query "NOT kind=import file~=billing"
+muse code query kind=function name~=validate --all-commits
+muse code query hash=a3f2c9 --all-commits --first
+muse code query --commit v1.0 kind=class
+muse code query kind=function --json
 ```
 
 #### Predicate Grammar (v2)
@@ -262,14 +262,14 @@ atom     = KEY OP VALUE
 
 ---
 
-### `muse query-history PREDICATE... [--from REF] [--to REF]`
+### `muse code query-history PREDICATE... [--from REF] [--to REF]`
 
 Temporal symbol search — track matching symbols across a commit range.
 
 ```
-muse query-history kind=function language=Python
-muse query-history name~=validate --from v1.0 --to HEAD
-muse query-history kind=class --json
+muse code query-history kind=function language=Python
+muse code query-history name~=validate --from v1.0 --to HEAD
+muse code query-history kind=class --json
 ```
 
 **Output:** For each matching symbol address, reports `first_seen`, `last_seen`, `commit_count` (how many commits touched it), and `change_count` (how many times its `content_id` changed).
@@ -297,23 +297,23 @@ muse query-history kind=class --json
 
 ## 4. Index Infrastructure
 
-### `muse index status`
+### `muse code index status`
 
 Show present/absent/corrupt status and entry counts for all local indexes.
 
 ```
-muse index status
-muse index status --json
+muse code index status
+muse code index status --json
 ```
 
-### `muse index rebuild`
+### `muse code index rebuild`
 
 Rebuild one or all indexes by walking the full commit history.
 
 ```
-muse index rebuild
-muse index rebuild --index symbol_history
-muse index rebuild --index hash_occurrence
+muse code index rebuild
+muse code index rebuild --index symbol_history
+muse code index rebuild --index hash_occurrence
 ```
 
 **Flags:**
@@ -324,7 +324,7 @@ muse index rebuild --index hash_occurrence
 Indexes live under `.muse/indices/` and are:
 - **Derived** — computed entirely from the commit history.
 - **Optional** — no command requires them for correctness; they only provide speed.
-- **Fully rebuildable** — `muse index rebuild` reconstructs them from scratch in one pass.
+- **Fully rebuildable** — `muse code index rebuild` reconstructs them from scratch in one pass.
 - **Versioned** — `schema_version` field for forward compatibility.
 
 #### `symbol_history` index
@@ -333,7 +333,7 @@ Maps `symbol_address → list[HistoryEntry]` (chronological).  Enables O(1) line
 
 #### `hash_occurrence` index
 
-Maps `body_hash → list[symbol_address]`.  Enables O(1) clone detection and `muse find-symbol hash=` queries.
+Maps `body_hash → list[symbol_address]`.  Enables O(1) clone detection and `muse code find-symbol hash=` queries.
 
 ---
 
@@ -349,7 +349,7 @@ Maps `body_hash → list[symbol_address]`.  Enables O(1) clone detection and `mu
 **`canonical_key`**
 : `{file}#{scope}#{kind}#{name}#{lineno}` — a stable, unique machine handle for a symbol within a snapshot.  Enables agent-to-agent symbol handoff without re-querying.  Disambiguates overloaded names and nested scopes.
 
-### `muse detect-refactor` (v2 output)
+### `muse code detect-refactor` (v2 output)
 
 With `--json`, emits `schema_version: 2` with a richer classification:
 
@@ -400,15 +400,15 @@ All records are **write-once** (never mutated) and use TTL-based expiry.  Expire
 
 ---
 
-### `muse reserve ADDRESS... [OPTIONS]`
+### `muse coord reserve ADDRESS... [OPTIONS]`
 
 Announce intent to edit one or more symbol addresses.
 
 ```
-muse reserve src/billing.py::compute_total
-muse reserve src/billing.py::f1 src/billing.py::f2 --run-id agent-007 --ttl 7200
-muse reserve src/billing.py::compute_total --op rename
-muse reserve src/billing.py::compute_total --json
+muse coord reserve src/billing.py::compute_total
+muse coord reserve src/billing.py::f1 src/billing.py::f2 --run-id agent-007 --ttl 7200
+muse coord reserve src/billing.py::compute_total --op rename
+muse coord reserve src/billing.py::compute_total --json
 ```
 
 **Flags:**
@@ -435,13 +435,13 @@ muse reserve src/billing.py::compute_total --json
 
 ---
 
-### `muse intent ADDRESS... --op OPERATION [OPTIONS]`
+### `muse coord intent ADDRESS... --op OPERATION [OPTIONS]`
 
-Declare a specific operation before executing it.  More precise than a reservation; enables `muse forecast` to produce accurate conflict predictions.
+Declare a specific operation before executing it.  More precise than a reservation; enables `muse coord forecast` to produce accurate conflict predictions.
 
 ```
-muse intent src/billing.py::compute_total --op rename --detail "rename to compute_invoice_total"
-muse intent src/billing.py::compute_total --op modify --reservation-id <uuid>
+muse coord intent src/billing.py::compute_total --op rename --detail "rename to compute_invoice_total"
+muse coord intent src/billing.py::compute_total --op modify --reservation-id <uuid>
 ```
 
 **Flags:**
@@ -468,14 +468,14 @@ muse intent src/billing.py::compute_total --op modify --reservation-id <uuid>
 
 ---
 
-### `muse forecast [OPTIONS]`
+### `muse coord forecast [OPTIONS]`
 
 Predict merge conflicts from active reservations and intents — **before** writing any code.
 
 ```
-muse forecast
-muse forecast --branch feature-x
-muse forecast --json
+muse coord forecast
+muse coord forecast --branch feature-x
+muse coord forecast --json
 ```
 
 **Conflict types detected:**
@@ -492,13 +492,13 @@ muse forecast --json
 
 ---
 
-### `muse plan-merge OURS THEIRS [OPTIONS]`
+### `muse coord plan-merge OURS THEIRS [OPTIONS]`
 
 Dry-run semantic merge plan — classify all symbol conflicts without writing anything.
 
 ```
-muse plan-merge main feature-x
-muse plan-merge HEAD~5 HEAD --json
+muse coord plan-merge main feature-x
+muse coord plan-merge HEAD~5 HEAD --json
 ```
 
 **Output:** Classifies each diverging symbol into one of:
@@ -512,14 +512,14 @@ muse plan-merge HEAD~5 HEAD --json
 
 ---
 
-### `muse shard --agents N [OPTIONS]`
+### `muse coord shard --agents N [OPTIONS]`
 
 Partition the codebase into N low-coupling work zones for parallel agent assignment.
 
 ```
-muse shard --agents 4
-muse shard --agents 8 --language Python
-muse shard --agents 4 --json
+muse coord shard --agents 4
+muse coord shard --agents 8 --language Python
+muse coord shard --agents 4 --json
 ```
 
 **Algorithm:** Builds the import graph, finds connected components, greedily merges small components into N balanced shards (by symbol count).  Reports cross-shard edges as a coupling score (lower is better).
@@ -531,13 +531,13 @@ muse shard --agents 4 --json
 
 ---
 
-### `muse reconcile [OPTIONS]`
+### `muse coord reconcile [OPTIONS]`
 
 Recommend merge ordering and integration strategy from the current coordination state.
 
 ```
-muse reconcile
-muse reconcile --json
+muse coord reconcile
+muse coord reconcile --json
 ```
 
 **Output:** For each active branch with reservations, recommends:
@@ -576,14 +576,14 @@ class ConflictRecord:
 
 ---
 
-### `muse breakage`
+### `muse code breakage`
 
 Detect symbol-level structural breakage in the current working tree vs HEAD.
 
 ```
-muse breakage
-muse breakage --language Python
-muse breakage --json
+muse code breakage
+muse code breakage --language Python
+muse code breakage --json
 ```
 
 **Checks performed:**
@@ -609,14 +609,14 @@ muse breakage --json
 
 ---
 
-### `muse invariants`
+### `muse code invariants`
 
 Enforce architectural rules declared in `.muse/invariants.toml`.
 
 ```
-muse invariants
-muse invariants --commit HEAD~5
-muse invariants --json
+muse code invariants
+muse code invariants --commit HEAD~5
+muse code invariants --json
 ```
 
 **Rule types:**
@@ -659,7 +659,7 @@ test_pattern = "tests/test_billing.py"
 ```
 Every public function in `source_pattern` must have a corresponding test function in `test_pattern` (matched by bare name).
 
-**Bootstrapping:** If `.muse/invariants.toml` does not exist, `muse invariants` creates it with a commented template and exits with a guided onboarding message.
+**Bootstrapping:** If `.muse/invariants.toml` does not exist, `muse code invariants` creates it with a commented template and exits with a guided onboarding message.
 
 ---
 
@@ -708,14 +708,14 @@ Breaking: src/billing.py::compute_total, src/billing.py::Invoice (+2 more)
 
 ## 9. Call-Graph Tier Commands
 
-### `muse impact ADDRESS [OPTIONS]`
+### `muse code impact ADDRESS [OPTIONS]`
 
 Transitive blast-radius analysis — what else breaks if this function changes?
 
 ```
-muse impact src/billing.py::compute_total
-muse impact src/billing.py::compute_total --commit HEAD~5
-muse impact src/billing.py::compute_total --json
+muse code impact src/billing.py::compute_total
+muse code impact src/billing.py::compute_total --commit HEAD~5
+muse code impact src/billing.py::compute_total --json
 ```
 
 **Algorithm:** BFS over the reverse call graph (Python only via `ast`).  Traverses until the transitive closure is exhausted, annotating each affected symbol with its depth.
@@ -724,15 +724,15 @@ muse impact src/billing.py::compute_total --json
 
 ---
 
-### `muse dead [OPTIONS]`
+### `muse code dead [OPTIONS]`
 
 Dead code detection — symbols with no callers and no importers.
 
 ```
-muse dead
-muse dead --kind function
-muse dead --exclude-tests
-muse dead --json
+muse code dead
+muse code dead --kind function
+muse code dead --exclude-tests
+muse code dead --json
 ```
 
 **Detection logic:** A symbol is a dead-code candidate when:
@@ -743,30 +743,30 @@ muse dead --json
 
 ---
 
-### `muse coverage CLASS_ADDRESS [OPTIONS]`
+### `muse code coverage CLASS_ADDRESS [OPTIONS]`
 
 Class interface call-coverage — which methods of a class are actually called?
 
 ```
-muse coverage src/billing.py::Invoice
-muse coverage src/billing.py::Invoice --show-callers
-muse coverage src/billing.py::Invoice --json
+muse code coverage src/billing.py::Invoice
+muse code coverage src/billing.py::Invoice --show-callers
+muse code coverage src/billing.py::Invoice --json
 ```
 
 **Output:** Lists every method of the class, marks which ones appear in `ast.Call` nodes anywhere in the snapshot, and prints a coverage percentage.  No test suite required.
 
 ---
 
-### `muse deps ADDRESS_OR_FILE [OPTIONS]`
+### `muse code deps ADDRESS_OR_FILE [OPTIONS]`
 
 Import graph + call-graph analysis.
 
 ```
-muse deps src/billing.py
-muse deps src/billing.py --reverse
-muse deps src/billing.py::compute_total
-muse deps src/billing.py::compute_total --reverse
-muse deps src/billing.py --commit v1.0 --json
+muse code deps src/billing.py
+muse code deps src/billing.py --reverse
+muse code deps src/billing.py::compute_total
+muse code deps src/billing.py::compute_total --reverse
+muse code deps src/billing.py --commit v1.0 --json
 ```
 
 **File mode:** Lists all `import`-kind symbols from the file (what does it import?).  With `--reverse`: which other files import this one.
@@ -775,16 +775,16 @@ muse deps src/billing.py --commit v1.0 --json
 
 ---
 
-### `muse find-symbol [OPTIONS]`
+### `muse code find-symbol [OPTIONS]`
 
 Cross-commit, cross-branch symbol search by hash, name, or kind.
 
 ```
-muse find-symbol --hash a3f2c9
-muse find-symbol --name compute_total
-muse find-symbol --name compute_* --kind function
-muse find-symbol --hash a3f2c9 --all-branches --first
-muse find-symbol --name validate --json
+muse code find-symbol --hash a3f2c9
+muse code find-symbol --name compute_total
+muse code find-symbol --name compute_* --kind function
+muse code find-symbol --hash a3f2c9 --all-branches --first
+muse code find-symbol --name validate --json
 ```
 
 **Flags:**
@@ -797,14 +797,14 @@ muse find-symbol --name validate --json
 
 ---
 
-### `muse patch ADDRESS SOURCE [OPTIONS]`
+### `muse code patch ADDRESS SOURCE [OPTIONS]`
 
 Surgical semantic patch — replace exactly one named symbol in the working tree.
 
 ```
-muse patch src/billing.py::compute_total new_impl.py
-echo "def compute_total(x): return x * 2" | muse patch src/billing.py::compute_total -
-muse patch src/billing.py::compute_total new_impl.py --dry-run
+muse code patch src/billing.py::compute_total new_impl.py
+echo "def compute_total(x): return x * 2" | muse code patch src/billing.py::compute_total -
+muse code patch src/billing.py::compute_total new_impl.py --dry-run
 ```
 
 **Syntax validation:** Before writing, validates the replacement source with:
@@ -984,5 +984,5 @@ InferredRefactor = Literal["extract", "inline", "split", "merge", "none"]
 - [Plugin Authoring Guide](plugin-authoring-guide.md) — implementing `MuseDomainPlugin`
 - [Type Contracts](type-contracts.md) — strict typing rules and enforcement
 - [CRDT Reference](crdt-reference.md) — CRDT and OT merge primitives
-- [Tour de Force — Code](../demo/tour-de-force-code.md) — full narrative walkthrough of all code commands
-- [Tour de Force — Music](../demo/tour-de-force-music.md) — MIDI domain reference demo
+- [Demo — Code](../demo/demo-code.md) — full narrative walkthrough of all code commands
+- [Demo — MIDI](../demo/demo-midi.md) — MIDI domain reference demo

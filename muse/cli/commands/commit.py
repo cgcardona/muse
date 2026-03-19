@@ -12,11 +12,13 @@ Algorithm
 8. Write commit JSON to ``.muse/commits/<commit_id>.json``.
 9. Advance ``.muse/refs/heads/<branch>`` to the new commit_id.
 """
+
 from __future__ import annotations
 
 import datetime
 import json
 import logging
+import os
 import pathlib
 
 import typer
@@ -24,6 +26,7 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.merge_engine import read_merge_state
 from muse.core.object_store import write_object_from_path
+from muse.core.provenance import make_agent_identity, read_agent_key, sign_commit_hmac
 from muse.core.repo import require_repo
 from muse.core.snapshot import compute_commit_id, compute_snapshot_id
 from muse.core.store import (
@@ -71,6 +74,10 @@ def commit(
     track: str | None = typer.Option(None, "--track", help="Tag this commit with an instrument track (drums, bass, keys…)."),
     emotion: str | None = typer.Option(None, "--emotion", help="Attach an emotion label (joyful, melancholic, tense…)."),
     author: str | None = typer.Option(None, "--author", help="Override the commit author."),
+    agent_id: str | None = typer.Option(None, "--agent-id", help="Agent identity string (overrides MUSE_AGENT_ID env var)."),
+    model_id: str | None = typer.Option(None, "--model-id", help="Model identifier for AI agents (overrides MUSE_MODEL_ID env var)."),
+    toolchain_id: str | None = typer.Option(None, "--toolchain-id", help="Toolchain string (overrides MUSE_TOOLCHAIN_ID env var)."),
+    sign: bool = typer.Option(False, "--sign", help="HMAC-sign the commit using the agent's stored key (requires --agent-id or MUSE_AGENT_ID)."),
 ) -> None:
     """Record the current muse-work/ state as a new version."""
     if message is None and not allow_empty:
@@ -158,6 +165,23 @@ def commit(
         structured_delta["sem_ver_bump"] = sem_ver_bump
         structured_delta["breaking_changes"] = breaking_changes
 
+    # Resolve agent provenance: CLI flags take priority over environment vars.
+    resolved_agent_id = agent_id or os.environ.get("MUSE_AGENT_ID", "")
+    resolved_model_id = model_id or os.environ.get("MUSE_MODEL_ID", "")
+    resolved_toolchain_id = toolchain_id or os.environ.get("MUSE_TOOLCHAIN_ID", "")
+    resolved_prompt_hash = os.environ.get("MUSE_PROMPT_HASH", "")
+
+    signature = ""
+    signer_key_id = ""
+    if sign and resolved_agent_id:
+        key = read_agent_key(root, resolved_agent_id)
+        if key is not None:
+            signature = sign_commit_hmac(commit_id, key)
+            from muse.core.provenance import key_fingerprint
+            signer_key_id = key_fingerprint(key)
+        else:
+            logger.warning("No signing key found for agent %r — commit will be unsigned.", resolved_agent_id)
+
     write_commit(root, CommitRecord(
         commit_id=commit_id,
         repo_id=repo_id,
@@ -171,6 +195,12 @@ def commit(
         structured_delta=structured_delta,
         sem_ver_bump=sem_ver_bump,
         breaking_changes=breaking_changes,
+        agent_id=resolved_agent_id,
+        model_id=resolved_model_id,
+        toolchain_id=resolved_toolchain_id,
+        prompt_hash=resolved_prompt_hash,
+        signature=signature,
+        signer_key_id=signer_key_id,
     ))
 
     ref_path.parent.mkdir(parents=True, exist_ok=True)

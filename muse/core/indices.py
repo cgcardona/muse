@@ -57,6 +57,7 @@ Indexes are rebuilt by ``muse index rebuild``.  They can also be built
 incrementally: the ``update_*_index`` functions accept an existing index
 dict and patch it rather than rebuilding from scratch.
 """
+
 from __future__ import annotations
 
 import datetime

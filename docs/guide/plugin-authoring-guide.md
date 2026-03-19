@@ -1,6 +1,6 @@
 # Muse Plugin Authoring Guide
 
-> A complete walkthrough for building a domain plugin for Muse v0.1.1. By the end
+> A complete walkthrough for building a domain plugin for Muse v0.1.2. By the end
 > you will have a fully typed, schema-aware, OT-capable, CRDT-ready plugin that
 > works with every `muse` CLI command immediately — no core changes needed.
 >
@@ -512,7 +512,7 @@ Add one line to `muse/plugins/registry.py`:
 from muse.plugins.my_domain.plugin import MyDomainPlugin
 
 _REGISTRY: dict[str, MuseDomainPlugin] = {
-    "music":     MidiPlugin(),
+    "midi":     MidiPlugin(),
     "my_domain": MyDomainPlugin(),   # ← add this
 }
 ```

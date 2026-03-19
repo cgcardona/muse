@@ -1,4 +1,4 @@
-"""MIDI dimension-aware merge for the Muse music plugin.
+"""MIDI dimension-aware merge for the Muse MIDI plugin.
 
 This module implements the multidimensional merge that makes Muse meaningfully
 different from git.  Git treats every file as an opaque byte sequence: any
@@ -98,6 +98,7 @@ Public API
 - :data:`DIM_ALIAS` — user-facing ``.museattributes`` name → internal bucket
 - :data:`NON_INDEPENDENT_DIMS` — dimensions that block others on conflict
 """
+
 from __future__ import annotations
 
 import hashlib

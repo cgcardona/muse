@@ -49,6 +49,7 @@ Flags:
 ``--json``
     Emit reservation details as JSON.
 """
+
 from __future__ import annotations
 
 import json

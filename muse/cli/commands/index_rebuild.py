@@ -33,6 +33,7 @@ Usage::
     muse index rebuild --index symbol_history
     muse index rebuild --index hash_occurrence
 """
+
 from __future__ import annotations
 
 import json

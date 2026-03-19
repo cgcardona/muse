@@ -5,6 +5,7 @@ single most-called internal primitive. Every subcommand uses it. Keeping
 the semantics clear (``None`` on miss, never raises) makes callers simpler
 and test isolation easier (``MUSE_REPO_ROOT`` env-var override).
 """
+
 from __future__ import annotations
 
 import logging

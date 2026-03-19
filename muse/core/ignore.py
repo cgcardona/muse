@@ -1,38 +1,72 @@
-"""Muse ignore — ``.museignore`` parser and workspace path filter.
+"""Muse ignore — ``.museignore`` TOML parser and workspace path filter.
 
-``.museignore`` uses the same syntax as ``.gitignore``:
+``.museignore`` uses TOML with two kinds of sections:
 
-- Lines beginning with ``#`` are comments and are ignored.
-- Blank lines are ignored.
+``[global]``
+    Patterns applied to every domain.  Evaluated first, in array order.
+
+``[domain.<name>]``
+    Patterns applied only when the active domain is *<name>*.  Appended
+    after global patterns and evaluated in array order.
+
+Pattern syntax (gitignore-compatible):
+
 - A trailing ``/`` marks a directory pattern; it is never matched against
   individual files (Muse VCS tracks files, not directories).
 - A leading ``/`` **anchors** the pattern to the repository root, so
   ``/tmp/*.mid`` matches only ``tmp/drums.mid`` and not ``cache/tmp/drums.mid``.
-- A leading ``!`` **negates** a pattern: a path that was previously matched by
-  an ignore rule is un-ignored if it matches a subsequent negation rule.
+- A leading ``!`` **negates** a pattern: a path previously matched by an ignore
+  rule is un-ignored when it matches a subsequent negation rule.
 - ``*`` matches any sequence of characters **except** a path separator (``/``).
 - ``**`` matches any sequence of characters **including** path separators.
 - All other characters are matched literally.
 
 Rule evaluation
 ---------------
-Rules are evaluated top-to-bottom.  The **last matching rule wins**.  This
-mirrors gitignore behaviour: a later ``!important.tmp`` overrides an earlier
-``*.tmp`` for that specific path.
+Patterns are evaluated in the order they appear (global first, then
+domain-specific).  The **last matching rule wins**, mirroring gitignore
+behaviour.  A later ``!important.tmp`` overrides an earlier ``*.tmp`` for
+that specific path.
 
 Public API
 ----------
-- :func:`load_patterns` — parse ``.museignore`` → ``list[str]``
-- :func:`is_ignored`    — test a relative POSIX path against a pattern list
+- :func:`load_ignore_config` — parse ``.museignore`` → :data:`MuseIgnoreConfig`
+- :func:`resolve_patterns`   — flatten config to ``list[str]`` for a domain
+- :func:`is_ignored`         — test a relative POSIX path against a pattern list
 """
+
 from __future__ import annotations
 
 import fnmatch
 import pathlib
+import tomllib
+from typing import TypedDict
+
+_FILENAME = ".museignore"
 
 
-def load_patterns(root: pathlib.Path) -> list[str]:
-    """Read ``.museignore`` from *root* and return the non-empty, non-comment lines.
+class DomainSection(TypedDict, total=False):
+    """Patterns for one ignore section (global or a named domain)."""
+
+    patterns: list[str]
+
+
+# ``global`` is a Python keyword, so we use the functional TypedDict form.
+MuseIgnoreConfig = TypedDict(
+    "MuseIgnoreConfig",
+    {
+        "global": DomainSection,
+        "domain": dict[str, DomainSection],
+    },
+    total=False,
+)
+
+
+def load_ignore_config(root: pathlib.Path) -> MuseIgnoreConfig:
+    """Read ``.museignore`` from *root* and return the parsed configuration.
+
+    Builds :data:`MuseIgnoreConfig` from the raw TOML dict using explicit
+    ``isinstance`` checks — no ``Any`` propagated into the return value.
 
     Args:
         root: Repository root directory (the directory that contains ``.muse/``
@@ -40,19 +74,84 @@ def load_patterns(root: pathlib.Path) -> list[str]:
               directly inside *root*.
 
     Returns:
-        A list of raw pattern strings in file order.  Blank lines and lines
-        starting with ``#`` are excluded.  Returns an empty list when
+        A :data:`MuseIgnoreConfig` mapping.  Both the ``"global"`` key and the
+        ``"domain"`` key are optional; use :func:`resolve_patterns` which
+        handles all missing-key cases.  Returns an empty mapping when
         ``.museignore`` is absent.
+
+    Raises:
+        ValueError: When ``.museignore`` exists but contains invalid TOML.
     """
-    ignore_file = root / ".museignore"
+    ignore_file = root / _FILENAME
     if not ignore_file.exists():
-        return []
-    patterns: list[str] = []
-    for line in ignore_file.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            patterns.append(stripped)
-    return patterns
+        return {}
+
+    raw_bytes = ignore_file.read_bytes()
+    try:
+        raw = tomllib.loads(raw_bytes.decode("utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f"{_FILENAME}: TOML parse error — {exc}") from exc
+
+    result: MuseIgnoreConfig = {}
+
+    # [global] section
+    global_raw = raw.get("global")
+    if isinstance(global_raw, dict):
+        global_section: DomainSection = {}
+        global_patterns_val = global_raw.get("patterns")
+        if isinstance(global_patterns_val, list):
+            global_section["patterns"] = [
+                p for p in global_patterns_val if isinstance(p, str)
+            ]
+        result["global"] = global_section
+
+    # [domain.*] sections — each key under [domain] is a domain name.
+    domain_raw = raw.get("domain")
+    if isinstance(domain_raw, dict):
+        domain_map: dict[str, DomainSection] = {}
+        for domain_name, domain_val in domain_raw.items():
+            if isinstance(domain_name, str) and isinstance(domain_val, dict):
+                section: DomainSection = {}
+                domain_patterns_val = domain_val.get("patterns")
+                if isinstance(domain_patterns_val, list):
+                    section["patterns"] = [
+                        p for p in domain_patterns_val if isinstance(p, str)
+                    ]
+                domain_map[domain_name] = section
+        result["domain"] = domain_map
+
+    return result
+
+
+def resolve_patterns(config: MuseIgnoreConfig, domain: str) -> list[str]:
+    """Flatten *config* into an ordered pattern list for *domain*.
+
+    Global patterns come first (in array order), followed by domain-specific
+    patterns.  Patterns declared under any other domain are never included.
+
+    Args:
+        config: Parsed ignore configuration from :func:`load_ignore_config`.
+        domain: The active domain name, e.g. ``"music"`` or ``"code"``.
+
+    Returns:
+        Ordered ``list[str]`` of raw glob pattern strings.  Returns an empty
+        list when *config* is empty or neither section contains patterns.
+    """
+    global_patterns: list[str] = []
+    if "global" in config:
+        global_section = config["global"]
+        if "patterns" in global_section:
+            global_patterns = global_section["patterns"]
+
+    domain_patterns: list[str] = []
+    if "domain" in config:
+        domain_map = config["domain"]
+        if domain in domain_map:
+            domain_section = domain_map[domain]
+            if "patterns" in domain_section:
+                domain_patterns = domain_section["patterns"]
+
+    return global_patterns + domain_patterns
 
 
 def is_ignored(rel_posix: str, patterns: list[str]) -> bool:
@@ -60,7 +159,7 @@ def is_ignored(rel_posix: str, patterns: list[str]) -> bool:
 
     Args:
         rel_posix: Workspace-relative POSIX path, e.g. ``"tracks/drums.mid"``.
-        patterns:  Pattern list returned by :func:`load_patterns`.
+        patterns:  Ordered pattern list from :func:`resolve_patterns`.
 
     Returns:
         ``True`` when the path is ignored, ``False`` otherwise.  An empty

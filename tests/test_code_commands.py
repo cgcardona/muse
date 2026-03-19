@@ -47,7 +47,6 @@ Call-Graph Tier
     muse find-symbol    [--name NAME] [--json]
     muse patch          ADDRESS FILE
 """
-from __future__ import annotations
 
 import json
 import pathlib
@@ -126,24 +125,24 @@ def code_repo(repo: pathlib.Path) -> pathlib.Path:
 
 class TestLineage:
     def test_lineage_exits_zero_on_existing_symbol(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["lineage", "billing.py::process_order"])
+        result = runner.invoke(cli, ["code", "lineage", "billing.py::process_order"])
         assert result.exit_code == 0, result.output
 
     def test_lineage_json_output(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["lineage", "--json", "billing.py::process_order"])
+        result = runner.invoke(cli, ["code", "lineage", "--json", "billing.py::process_order"])
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)
         assert isinstance(data, dict)
         assert "events" in data
 
     def test_lineage_missing_address_shows_message(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["lineage", "billing.py::nonexistent_func"])
+        result = runner.invoke(cli, ["code", "lineage", "billing.py::nonexistent_func"])
         # Should not crash — exit 0 or 1, but no unhandled exception.
         assert result.exit_code in (0, 1)
 
     def test_lineage_requires_repo(self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
-        result = runner.invoke(cli, ["lineage", "src/a.py::f"])
+        result = runner.invoke(cli, ["code", "lineage", "src/a.py::f"])
         assert result.exit_code != 0
 
 
@@ -154,11 +153,11 @@ class TestLineage:
 
 class TestApiSurface:
     def test_api_surface_exits_zero(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["api-surface"])
+        result = runner.invoke(cli, ["code", "api-surface"])
         assert result.exit_code == 0, result.output
 
     def test_api_surface_json(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["api-surface", "--json"])
+        result = runner.invoke(cli, ["code", "api-surface", "--json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert isinstance(data, dict)
@@ -166,11 +165,11 @@ class TestApiSurface:
     def test_api_surface_diff(self, code_repo: pathlib.Path) -> None:
         commits = _all_commit_ids(code_repo)
         if len(commits) >= 2:
-            result = runner.invoke(cli, ["api-surface", "--diff", commits[-2]])
+            result = runner.invoke(cli, ["code", "api-surface", "--diff", commits[-2]])
             assert result.exit_code == 0
 
     def test_api_surface_no_commits_handled(self, repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["api-surface"])
+        result = runner.invoke(cli, ["code", "api-surface"])
         assert result.exit_code in (0, 1)
 
 
@@ -181,15 +180,15 @@ class TestApiSurface:
 
 class TestCodemap:
     def test_codemap_exits_zero(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["codemap"])
+        result = runner.invoke(cli, ["code", "codemap"])
         assert result.exit_code == 0, result.output
 
     def test_codemap_top_flag(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["codemap", "--top", "3"])
+        result = runner.invoke(cli, ["code", "codemap", "--top", "3"])
         assert result.exit_code == 0
 
     def test_codemap_json(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["codemap", "--json"])
+        result = runner.invoke(cli, ["code", "codemap", "--json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert isinstance(data, dict)
@@ -202,19 +201,19 @@ class TestCodemap:
 
 class TestClones:
     def test_clones_exits_zero(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["clones"])
+        result = runner.invoke(cli, ["code", "clones"])
         assert result.exit_code == 0, result.output
 
     def test_clones_tier_exact(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["clones", "--tier", "exact"])
+        result = runner.invoke(cli, ["code", "clones", "--tier", "exact"])
         assert result.exit_code == 0
 
     def test_clones_tier_near(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["clones", "--tier", "near"])
+        result = runner.invoke(cli, ["code", "clones", "--tier", "near"])
         assert result.exit_code == 0
 
     def test_clones_json(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["clones", "--tier", "both", "--json"])
+        result = runner.invoke(cli, ["code", "clones", "--tier", "both", "--json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert isinstance(data, dict)
@@ -232,14 +231,14 @@ class TestCheckoutSymbol:
             pytest.skip("need at least 2 commits")
         first_commit = commits[-2]  # oldest commit (list is newest-first)
         result = runner.invoke(cli, [
-            "checkout-symbol", "--commit", first_commit, "--dry-run",
+            "code", "checkout-symbol", "--commit", first_commit, "--dry-run",
             "billing.py::Invoice.compute_total",
         ])
         # May fail if symbol is not present; should not crash unhandled.
         assert result.exit_code in (0, 1, 2)
 
     def test_checkout_symbol_missing_commit_flag_errors(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["checkout-symbol", "--dry-run", "billing.py::Invoice.compute_total"])
+        result = runner.invoke(cli, ["code", "checkout-symbol", "--dry-run", "billing.py::Invoice.compute_total"])
         assert result.exit_code != 0
 
 
@@ -255,7 +254,7 @@ class TestSemanticCherryPick:
             pytest.skip("need at least 2 commits")
         first_commit = commits[-2]
         result = runner.invoke(cli, [
-            "semantic-cherry-pick",
+            "code", "semantic-cherry-pick",
             "--from", first_commit,
             "--dry-run",
             "billing.py::Invoice.compute_total",
@@ -263,7 +262,7 @@ class TestSemanticCherryPick:
         assert result.exit_code in (0, 1)
 
     def test_missing_from_flag_errors(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["semantic-cherry-pick", "--dry-run", "billing.py::Invoice.compute_total"])
+        result = runner.invoke(cli, ["code", "semantic-cherry-pick", "--dry-run", "billing.py::Invoice.compute_total"])
         assert result.exit_code != 0
 
 
@@ -274,47 +273,47 @@ class TestSemanticCherryPick:
 
 class TestQueryV2:
     def test_query_kind_function(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["query", "kind=function"])
+        result = runner.invoke(cli, ["code", "query", "kind=function"])
         assert result.exit_code == 0, result.output
 
     def test_query_json_output(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["query", "--json", "kind=function"])
+        result = runner.invoke(cli, ["code", "query", "--json", "kind=function"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "schema_version" in data
         assert data["schema_version"] == 2
 
     def test_query_or_predicate(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["query", "kind=function", "OR", "kind=method"])
+        result = runner.invoke(cli, ["code", "query", "kind=function", "OR", "kind=method"])
         assert result.exit_code == 0
 
     def test_query_not_predicate(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["query", "NOT", "kind=import"])
+        result = runner.invoke(cli, ["code", "query", "NOT", "kind=import"])
         assert result.exit_code == 0
 
     def test_query_all_commits(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["query", "--all-commits", "kind=function"])
+        result = runner.invoke(cli, ["code", "query", "--all-commits", "kind=function"])
         assert result.exit_code == 0
 
     def test_query_name_contains(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["query", "name~=total"])
+        result = runner.invoke(cli, ["code", "query", "name~=total"])
         assert result.exit_code == 0
         # Should find compute_invoice_total.
         assert "total" in result.output.lower()
 
     def test_query_no_predicate_matches_all(self, code_repo: pathlib.Path) -> None:
         # query with kind=class to match everything of a known type.
-        result = runner.invoke(cli, ["query", "kind=class"])
+        result = runner.invoke(cli, ["code", "query", "kind=class"])
         assert result.exit_code == 0
         assert "Invoice" in result.output
 
     def test_query_lineno_gt(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["query", "lineno_gt=1"])
+        result = runner.invoke(cli, ["code", "query", "lineno_gt=1"])
         assert result.exit_code == 0
 
     def test_query_no_repo_errors(self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
-        result = runner.invoke(cli, ["query", "kind=function"])
+        result = runner.invoke(cli, ["code", "query", "kind=function"])
         assert result.exit_code != 0
 
 
@@ -325,11 +324,11 @@ class TestQueryV2:
 
 class TestQueryHistory:
     def test_query_history_exits_zero(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["query-history", "kind=function"])
+        result = runner.invoke(cli, ["code", "query-history", "kind=function"])
         assert result.exit_code == 0, result.output
 
     def test_query_history_json(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["query-history", "--json", "kind=function"])
+        result = runner.invoke(cli, ["code", "query-history", "--json", "kind=function"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "schema_version" in data
@@ -337,11 +336,11 @@ class TestQueryHistory:
         assert "results" in data
 
     def test_query_history_with_from_to(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["query-history", "--from", "HEAD", "kind=function"])
+        result = runner.invoke(cli, ["code", "query-history", "--from", "HEAD", "kind=function"])
         assert result.exit_code == 0
 
     def test_query_history_tracks_change_count(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["query-history", "--json", "kind=method"])
+        result = runner.invoke(cli, ["code", "query-history", "--json", "kind=method"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         for entry in data.get("results", []):
@@ -356,36 +355,36 @@ class TestQueryHistory:
 
 class TestIndexCommands:
     def test_index_status_exits_zero(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["index", "status"])
+        result = runner.invoke(cli, ["code", "index", "status"])
         assert result.exit_code == 0, result.output
 
     def test_index_status_reports_absent(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["index", "status"])
+        result = runner.invoke(cli, ["code", "index", "status"])
         # Indexes have not been built yet.
         assert "absent" in result.output.lower() or result.exit_code == 0
 
     def test_index_rebuild_all(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["index", "rebuild"])
+        result = runner.invoke(cli, ["code", "index", "rebuild"])
         assert result.exit_code == 0, result.output
 
     def test_index_rebuild_creates_index_files(self, code_repo: pathlib.Path) -> None:
-        runner.invoke(cli, ["index", "rebuild"])
+        runner.invoke(cli, ["code", "index", "rebuild"])
         idx_dir = code_repo / ".muse" / "indices"
         assert idx_dir.exists()
 
     def test_index_status_after_rebuild_shows_entries(self, code_repo: pathlib.Path) -> None:
-        runner.invoke(cli, ["index", "rebuild"])
-        result = runner.invoke(cli, ["index", "status"])
+        runner.invoke(cli, ["code", "index", "rebuild"])
+        result = runner.invoke(cli, ["code", "index", "status"])
         assert result.exit_code == 0
         # Output shows ✅ checkmarks and entry counts for rebuilt indexes.
         assert "entries" in result.output.lower() or "✅" in result.output
 
     def test_index_rebuild_symbol_history_only(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["index", "rebuild", "--index", "symbol_history"])
+        result = runner.invoke(cli, ["code", "index", "rebuild", "--index", "symbol_history"])
         assert result.exit_code == 0
 
     def test_index_rebuild_hash_occurrence_only(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["index", "rebuild", "--index", "hash_occurrence"])
+        result = runner.invoke(cli, ["code", "index", "rebuild", "--index", "hash_occurrence"])
         assert result.exit_code == 0
 
 
@@ -400,7 +399,7 @@ class TestDetectRefactorV2:
         if len(commits) < 2:
             pytest.skip("need at least 2 commits")
         result = runner.invoke(cli, [
-            "detect-refactor",
+            "code", "detect-refactor",
             "--from", commits[-2],
             "--to", commits[-1],
             "--json",
@@ -416,7 +415,7 @@ class TestDetectRefactorV2:
         if len(commits) < 2:
             pytest.skip("need at least 2 commits")
         result = runner.invoke(cli, [
-            "detect-refactor",
+            "code", "detect-refactor",
             "--from", commits[-2],
             "--to", commits[-1],
             "--json",
@@ -436,12 +435,12 @@ class TestDetectRefactorV2:
 class TestReserve:
     def test_reserve_exits_zero(self, code_repo: pathlib.Path) -> None:
         result = runner.invoke(cli, [
-            "reserve", "billing.py::process_order", "--run-id", "agent-test"
+            "coord", "reserve", "billing.py::process_order", "--run-id", "agent-test"
         ])
         assert result.exit_code == 0, result.output
 
     def test_reserve_creates_coordination_file(self, code_repo: pathlib.Path) -> None:
-        runner.invoke(cli, ["reserve", "billing.py::process_order", "--run-id", "r1"])
+        runner.invoke(cli, ["coord", "reserve", "billing.py::process_order", "--run-id", "r1"])
         coord_dir = code_repo / ".muse" / "coordination" / "reservations"
         assert coord_dir.exists()
         files = list(coord_dir.glob("*.json"))
@@ -449,7 +448,7 @@ class TestReserve:
 
     def test_reserve_json_output(self, code_repo: pathlib.Path) -> None:
         result = runner.invoke(cli, [
-            "reserve", "--run-id", "r2", "--json", "billing.py::process_order",
+            "coord", "reserve", "--run-id", "r2", "--json", "billing.py::process_order",
         ])
         assert result.exit_code == 0
         data = json.loads(result.output)
@@ -457,7 +456,7 @@ class TestReserve:
 
     def test_reserve_multiple_addresses(self, code_repo: pathlib.Path) -> None:
         result = runner.invoke(cli, [
-            "reserve", "--run-id", "r3",
+            "coord", "reserve", "--run-id", "r3",
             "billing.py::process_order",
             "billing.py::Invoice.apply_discount",
         ])
@@ -465,14 +464,14 @@ class TestReserve:
 
     def test_reserve_with_operation(self, code_repo: pathlib.Path) -> None:
         result = runner.invoke(cli, [
-            "reserve", "--run-id", "r4", "--op", "rename",
+            "coord", "reserve", "--run-id", "r4", "--op", "rename",
             "billing.py::process_order",
         ])
         assert result.exit_code == 0
 
     def test_reserve_conflict_warning(self, code_repo: pathlib.Path) -> None:
-        runner.invoke(cli, ["reserve", "--run-id", "a1", "billing.py::process_order"])
-        result = runner.invoke(cli, ["reserve", "--run-id", "a2", "billing.py::process_order"])
+        runner.invoke(cli, ["coord", "reserve", "--run-id", "a1", "billing.py::process_order"])
+        result = runner.invoke(cli, ["coord", "reserve", "--run-id", "a2", "billing.py::process_order"])
         # Should warn but not fail.
         assert result.exit_code == 0
         assert "conflict" in result.output.lower() or "already" in result.output.lower() or "reserved" in result.output.lower()
@@ -486,20 +485,20 @@ class TestReserve:
 class TestIntent:
     def test_intent_exits_zero(self, code_repo: pathlib.Path) -> None:
         result = runner.invoke(cli, [
-            "intent", "--op", "rename", "--detail", "rename to process_invoice",
+            "coord", "intent", "--op", "rename", "--detail", "rename to process_invoice",
             "billing.py::process_order",
         ])
         assert result.exit_code == 0, result.output
 
     def test_intent_creates_file(self, code_repo: pathlib.Path) -> None:
-        runner.invoke(cli, ["intent", "--op", "modify", "billing.py::Invoice"])
+        runner.invoke(cli, ["coord", "intent", "--op", "modify", "billing.py::Invoice"])
         idir = code_repo / ".muse" / "coordination" / "intents"
         assert idir.exists()
         assert len(list(idir.glob("*.json"))) >= 1
 
     def test_intent_json_output(self, code_repo: pathlib.Path) -> None:
         result = runner.invoke(cli, [
-            "intent", "--op", "modify", "--json", "billing.py::Invoice",
+            "coord", "intent", "--op", "modify", "--json", "billing.py::Invoice",
         ])
         assert result.exit_code == 0
         data = json.loads(result.output)
@@ -513,19 +512,19 @@ class TestIntent:
 
 class TestForecast:
     def test_forecast_exits_zero_no_reservations(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["forecast"])
+        result = runner.invoke(cli, ["coord", "forecast"])
         assert result.exit_code == 0, result.output
 
     def test_forecast_json_no_reservations(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["forecast", "--json"])
+        result = runner.invoke(cli, ["coord", "forecast", "--json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "conflicts" in data
 
     def test_forecast_detects_address_overlap(self, code_repo: pathlib.Path) -> None:
-        runner.invoke(cli, ["reserve", "--run-id", "a1", "billing.py::Invoice.apply_discount"])
-        runner.invoke(cli, ["reserve", "--run-id", "a2", "billing.py::Invoice.apply_discount"])
-        result = runner.invoke(cli, ["forecast", "--json"])
+        runner.invoke(cli, ["coord", "reserve", "--run-id", "a1", "billing.py::Invoice.apply_discount"])
+        runner.invoke(cli, ["coord", "reserve", "--run-id", "a2", "billing.py::Invoice.apply_discount"])
+        result = runner.invoke(cli, ["coord", "forecast", "--json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         types = [c.get("conflict_type") for c in data.get("conflicts", [])]
@@ -539,17 +538,17 @@ class TestForecast:
 
 class TestPlanMerge:
     def test_plan_merge_same_commit_no_conflicts(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["plan-merge", "HEAD", "HEAD"])
+        result = runner.invoke(cli, ["coord", "plan-merge", "HEAD", "HEAD"])
         assert result.exit_code == 0, result.output
 
     def test_plan_merge_json(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["plan-merge", "--json", "HEAD", "HEAD"])
+        result = runner.invoke(cli, ["coord", "plan-merge", "--json", "HEAD", "HEAD"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "conflicts" in data or isinstance(data, dict)
 
     def test_plan_merge_requires_two_args(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["plan-merge", "--json", "HEAD"])
+        result = runner.invoke(cli, ["coord", "plan-merge", "--json", "HEAD"])
         assert result.exit_code != 0
 
 
@@ -560,22 +559,22 @@ class TestPlanMerge:
 
 class TestShard:
     def test_shard_exits_zero(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["shard", "--agents", "2"])
+        result = runner.invoke(cli, ["coord", "shard", "--agents", "2"])
         assert result.exit_code == 0, result.output
 
     def test_shard_json(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["shard", "--agents", "2", "--json"])
+        result = runner.invoke(cli, ["coord", "shard", "--agents", "2", "--json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "shards" in data
 
     def test_shard_n_equals_1(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["shard", "--agents", "1"])
+        result = runner.invoke(cli, ["coord", "shard", "--agents", "1"])
         assert result.exit_code == 0
 
     def test_shard_large_n(self, code_repo: pathlib.Path) -> None:
         # N larger than symbol count still works (produces fewer shards).
-        result = runner.invoke(cli, ["shard", "--agents", "100"])
+        result = runner.invoke(cli, ["coord", "shard", "--agents", "100"])
         assert result.exit_code == 0
 
 
@@ -586,11 +585,11 @@ class TestShard:
 
 class TestReconcile:
     def test_reconcile_exits_zero(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["reconcile"])
+        result = runner.invoke(cli, ["coord", "reconcile"])
         assert result.exit_code == 0, result.output
 
     def test_reconcile_json(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["reconcile", "--json"])
+        result = runner.invoke(cli, ["coord", "reconcile", "--json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert isinstance(data, dict)
@@ -603,11 +602,11 @@ class TestReconcile:
 
 class TestBreakage:
     def test_breakage_exits_zero_clean_tree(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["breakage"])
+        result = runner.invoke(cli, ["code", "breakage"])
         assert result.exit_code == 0, result.output
 
     def test_breakage_json(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["breakage", "--json"])
+        result = runner.invoke(cli, ["code", "breakage", "--json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         # breakage JSON has "issues" list and error count.
@@ -615,12 +614,12 @@ class TestBreakage:
         assert isinstance(data["issues"], list)
 
     def test_breakage_language_filter(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["breakage", "--language", "Python"])
+        result = runner.invoke(cli, ["code", "breakage", "--language", "Python"])
         assert result.exit_code == 0
 
     def test_breakage_no_repo_errors(self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
-        result = runner.invoke(cli, ["breakage"])
+        result = runner.invoke(cli, ["code", "breakage"])
         assert result.exit_code != 0
 
 
@@ -631,14 +630,14 @@ class TestBreakage:
 
 class TestInvariants:
     def test_invariants_creates_toml_if_absent(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["invariants"])
+        result = runner.invoke(cli, ["code", "invariants"])
         toml_path = code_repo / ".muse" / "invariants.toml"
         assert result.exit_code == 0 or toml_path.exists()
 
     def test_invariants_json_with_empty_rules(self, code_repo: pathlib.Path) -> None:
         # Create empty invariants.toml
         (code_repo / ".muse" / "invariants.toml").write_text("# No rules\n")
-        result = runner.invoke(cli, ["invariants", "--json"])
+        result = runner.invoke(cli, ["code", "invariants", "--json"])
         assert result.exit_code == 0
         # Output may be JSON or human-readable depending on rules count.
         output = result.output.strip()
@@ -655,7 +654,7 @@ class TestInvariants:
             type = "no_cycles"
             name = "no import cycles"
         """))
-        result = runner.invoke(cli, ["invariants"])
+        result = runner.invoke(cli, ["code", "invariants"])
         assert result.exit_code == 0
 
     def test_invariants_forbidden_dependency_rule(self, code_repo: pathlib.Path) -> None:
@@ -666,7 +665,7 @@ class TestInvariants:
             source_pattern = "billing.py"
             forbidden_pattern = "utils.py"
         """))
-        result = runner.invoke(cli, ["invariants"])
+        result = runner.invoke(cli, ["code", "invariants"])
         assert result.exit_code == 0
 
     def test_invariants_required_test_rule(self, code_repo: pathlib.Path) -> None:
@@ -677,13 +676,13 @@ class TestInvariants:
             source_pattern = "billing.py"
             test_pattern = "test_billing.py"
         """))
-        result = runner.invoke(cli, ["invariants"])
+        result = runner.invoke(cli, ["code", "invariants"])
         # May pass or fail depending on whether test_billing.py exists; should not crash.
         assert result.exit_code in (0, 1)
 
     def test_invariants_commit_flag(self, code_repo: pathlib.Path) -> None:
         (code_repo / ".muse" / "invariants.toml").write_text("# empty\n")
-        result = runner.invoke(cli, ["invariants", "--commit", "HEAD"])
+        result = runner.invoke(cli, ["code", "invariants", "--commit", "HEAD"])
         assert result.exit_code == 0
 
 
@@ -727,17 +726,17 @@ class TestSemVerInCommit:
 
 class TestImpact:
     def test_impact_exits_zero(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["impact", "--", "billing.py::Invoice.compute_invoice_total"])
+        result = runner.invoke(cli, ["code", "impact", "--", "billing.py::Invoice.compute_invoice_total"])
         assert result.exit_code == 0, result.output
 
     def test_impact_json(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["impact", "--json", "billing.py::Invoice.apply_discount"])
+        result = runner.invoke(cli, ["code", "impact", "--json", "billing.py::Invoice.apply_discount"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "callers" in data or "blast_radius" in data or isinstance(data, dict)
 
     def test_impact_nonexistent_symbol_handled(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["impact", "--", "billing.py::nonexistent"])
+        result = runner.invoke(cli, ["code", "impact", "--", "billing.py::nonexistent"])
         assert result.exit_code in (0, 1)
 
 
@@ -748,21 +747,21 @@ class TestImpact:
 
 class TestDead:
     def test_dead_exits_zero(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["dead"])
+        result = runner.invoke(cli, ["code", "dead"])
         assert result.exit_code == 0, result.output
 
     def test_dead_json(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["dead", "--json"])
+        result = runner.invoke(cli, ["code", "dead", "--json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "candidates" in data or isinstance(data, dict)
 
     def test_dead_kind_filter(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["dead", "--kind", "function"])
+        result = runner.invoke(cli, ["code", "dead", "--kind", "function"])
         assert result.exit_code == 0
 
     def test_dead_exclude_tests(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["dead", "--exclude-tests"])
+        result = runner.invoke(cli, ["code", "dead", "--exclude-tests"])
         assert result.exit_code == 0
 
 
@@ -773,17 +772,17 @@ class TestDead:
 
 class TestCoverage:
     def test_coverage_exits_zero(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["coverage", "--", "billing.py::Invoice"])
+        result = runner.invoke(cli, ["code", "coverage", "--", "billing.py::Invoice"])
         assert result.exit_code == 0, result.output
 
     def test_coverage_json(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["coverage", "--json", "billing.py::Invoice"])
+        result = runner.invoke(cli, ["code", "coverage", "--json", "billing.py::Invoice"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "methods" in data or "coverage_pct" in data or isinstance(data, dict)
 
     def test_coverage_nonexistent_class_handled(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["coverage", "--", "billing.py::NonExistent"])
+        result = runner.invoke(cli, ["code", "coverage", "--", "billing.py::NonExistent"])
         assert result.exit_code in (0, 1)
 
 
@@ -794,21 +793,21 @@ class TestCoverage:
 
 class TestDeps:
     def test_deps_file_mode(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["deps", "--", "billing.py"])
+        result = runner.invoke(cli, ["code", "deps", "--", "billing.py"])
         assert result.exit_code == 0, result.output
 
     def test_deps_reverse(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["deps", "--reverse", "billing.py"])
+        result = runner.invoke(cli, ["code", "deps", "--reverse", "billing.py"])
         assert result.exit_code == 0
 
     def test_deps_json(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["deps", "--json", "billing.py"])
+        result = runner.invoke(cli, ["code", "deps", "--json", "billing.py"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert isinstance(data, dict)
 
     def test_deps_symbol_mode(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["deps", "--", "billing.py::Invoice.compute_invoice_total"])
+        result = runner.invoke(cli, ["code", "deps", "--", "billing.py::Invoice.compute_invoice_total"])
         assert result.exit_code in (0, 1)  # May be empty but shouldn't crash.
 
 
@@ -819,27 +818,27 @@ class TestDeps:
 
 class TestFindSymbol:
     def test_find_by_name(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["find-symbol", "--name", "process_order"])
+        result = runner.invoke(cli, ["code", "find-symbol", "--name", "process_order"])
         assert result.exit_code == 0, result.output
 
     def test_find_by_name_json(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["find-symbol", "--name", "Invoice", "--json"])
+        result = runner.invoke(cli, ["code", "find-symbol", "--name", "Invoice", "--json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert isinstance(data, list) or isinstance(data, dict)
 
     def test_find_by_kind(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["find-symbol", "--kind", "class"])
+        result = runner.invoke(cli, ["code", "find-symbol", "--kind", "class"])
         assert result.exit_code == 0
         # find-symbol searches structured deltas in commit history.
         assert result.output is not None
 
     def test_find_nonexistent_name_empty(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["find-symbol", "--name", "totally_nonexistent_xyzzy"])
+        result = runner.invoke(cli, ["code", "find-symbol", "--name", "totally_nonexistent_xyzzy"])
         assert result.exit_code == 0
 
     def test_find_requires_at_least_one_flag(self, code_repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["find-symbol"])
+        result = runner.invoke(cli, ["code", "find-symbol"])
         assert result.exit_code in (0, 1)
 
 
@@ -858,7 +857,7 @@ class TestPatch:
         impl_file.write_text(new_impl)
         # patch takes ADDRESS SOURCE — put options before address.
         result = runner.invoke(cli, [
-            "patch", "--dry-run", "--", "billing.py::send_email", str(impl_file),
+            "code", "patch", "--dry-run", "--", "billing.py::send_email", str(impl_file),
         ])
         assert result.exit_code in (0, 1, 2)
 
@@ -867,7 +866,7 @@ class TestPatch:
         bad_file = code_repo / "muse-work" / "bad.py"
         bad_file.write_text(bad_impl)
         result = runner.invoke(cli, [
-            "patch", "--", "billing.py::send_email", str(bad_file),
+            "code", "patch", "--", "billing.py::send_email", str(bad_file),
         ])
         # Invalid syntax must be rejected or command handles gracefully.
         assert result.exit_code in (0, 1, 2)

@@ -7,7 +7,6 @@ Covers:
 - revert reuses parent snapshot_id (no re-scan)
 - cherry-pick uses merged_manifest directly (no re-scan)
 """
-from __future__ import annotations
 
 import pathlib
 

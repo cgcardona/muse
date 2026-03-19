@@ -19,8 +19,6 @@ Usage:
     python tools/typing_audit.py --dirs muse/ --max-any 0
 """
 
-from __future__ import annotations
-
 import argparse
 import ast
 import json

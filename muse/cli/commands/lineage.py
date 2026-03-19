@@ -43,6 +43,7 @@ Flags:
 ``--json``
     Emit the full provenance chain as JSON.
 """
+
 from __future__ import annotations
 
 import json

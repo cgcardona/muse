@@ -4,7 +4,6 @@ Extended to cover the structured (operation-level) merge path via
 :func:`~muse.core.op_transform.merge_structured` and the
 :class:`~muse.domain.StructuredMergePlugin` integration.
 """
-from __future__ import annotations
 
 import datetime
 import json
@@ -247,7 +246,7 @@ def _op_key_tuple(op: DomainOp) -> tuple[str, ...]:
 class TestStructuredMergePluginProtocol:
     """Verify MidiPlugin satisfies the StructuredMergePlugin protocol."""
 
-    def test_music_plugin_isinstance_structured_merge_plugin(self) -> None:
+    def test_midi_plugin_isinstance_structured_merge_plugin(self) -> None:
         plugin = MidiPlugin()
         assert isinstance(plugin, StructuredMergePlugin)
 

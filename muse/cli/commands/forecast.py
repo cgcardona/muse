@@ -52,6 +52,7 @@ Flags:
 ``--json``
     Emit the full forecast as JSON.
 """
+
 from __future__ import annotations
 
 import json

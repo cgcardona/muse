@@ -29,6 +29,7 @@ Public API
 - :class:`RGA` — the array itself.
 """
 
+
 from __future__ import annotations
 
 import logging

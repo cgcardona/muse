@@ -27,7 +27,6 @@ Why these three?
   Transformation: two concurrent edits, transformed and applied, must converge.
   A single counterexample would break real-time collaboration.
 """
-from __future__ import annotations
 
 from typing import TYPE_CHECKING
 

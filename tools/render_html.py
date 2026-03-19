@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""Muse Tour de Force — HTML renderer.
+"""Muse Demo — HTML renderer.
 
-Takes the structured TourData dict produced by tour_de_force.py and renders
+Takes the structured DemoData dict produced by demo.py and renders
 a self-contained, shareable HTML file with an interactive D3 commit DAG,
 operation log, architecture diagram, and animated replay.
 
 Stand-alone usage
 -----------------
-    python tools/render_html.py artifacts/tour_de_force.json
-    python tools/render_html.py artifacts/tour_de_force.json --out custom.html
+    python tools/render_html.py artifacts/demo.json
+    python tools/render_html.py artifacts/demo.json --out custom.html
 """
-from __future__ import annotations
 
 import json
 import pathlib
@@ -77,16 +76,16 @@ _ARCH_HTML = """\
   <div class="arch-connector"><div class="connector-line"></div><div class="connector-arrow">▼</div></div>
   <div class="arch-row plugins-row">
     <div class="arch-box plugin active">
-      <div class="box-title">MusicPlugin</div>
-      <div class="box-sub">reference impl<br>MIDI · notes · CC · pitch</div>
+      <div class="box-title">MidiPlugin</div>
+      <div class="box-sub">shipped · 21 dims<br>notes · CC · tempo · structure</div>
+    </div>
+    <div class="arch-box plugin active">
+      <div class="box-title">CodePlugin</div>
+      <div class="box-sub">shipped · symbol OT<br>11 languages · tree-sitter AST</div>
     </div>
     <div class="arch-box plugin planned">
       <div class="box-title">GenomicsPlugin</div>
       <div class="box-sub">planned<br>sequences · variants</div>
-    </div>
-    <div class="arch-box plugin planned">
-      <div class="box-title">SpacetimePlugin</div>
-      <div class="box-sub">planned<br>3D fields · time-slices</div>
     </div>
     <div class="arch-box plugin planned">
       <div class="box-title">YourPlugin</div>
@@ -1695,8 +1694,8 @@ def render(tour: dict, output_path: pathlib.Path) -> None:
         gen_str = gen_raw[:19]
 
     html = _HTML_TEMPLATE
-    html = html.replace("{{VERSION}}",      str(meta.get("muse_version", "0.1.1")))
-    html = html.replace("{{DOMAIN}}",       str(meta.get("domain", "music")))
+    html = html.replace("{{VERSION}}",      str(meta.get("muse_version", "0.1.2")))
+    html = html.replace("{{DOMAIN}}",       str(meta.get("domain", "midi")))
     html = html.replace("{{ELAPSED}}",      str(meta.get("elapsed_s", "?")))
     html = html.replace("{{GENERATED_AT}}", gen_str)
     html = html.replace("{{COMMITS}}",      str(stats.get("commits", 0)))
@@ -1719,8 +1718,8 @@ def render(tour: dict, output_path: pathlib.Path) -> None:
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Render tour_de_force.json → HTML")
-    parser.add_argument("json_file", help="Path to tour_de_force.json")
+    parser = argparse.ArgumentParser(description="Render demo.json → HTML")
+    parser.add_argument("json_file", help="Path to demo.json")
     parser.add_argument("--out", default=None, help="Output HTML path")
     args = parser.parse_args()
 

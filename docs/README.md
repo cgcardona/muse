@@ -1,6 +1,6 @@
 # Muse Documentation
 
-> **Version:** v0.1.1 · [Project README](../README.md) · [Source](../muse/)
+> **Version:** v0.1.2 · [Project README](../README.md) · [Source](../muse/)
 
 This directory contains the complete documentation for Muse — a domain-agnostic version control system for multidimensional state.
 
@@ -11,6 +11,7 @@ This directory contains the complete documentation for Muse — a domain-agnosti
 | I want to… | Start here |
 |-------------|-----------|
 | Understand the full architecture | [Architecture Reference](architecture/muse-vcs.md) |
+| Browse the CLI command tiers | [CLI Tiers Reference](reference/cli-tiers.md) |
 | Build a new domain plugin | [Plugin Authoring Guide](guide/plugin-authoring-guide.md) |
 | Learn CRDT semantics | [CRDT Reference](guide/crdt-reference.md) |
 | See an end-to-end walkthrough | [E2E Demo](architecture/muse-e2e-demo.md) |
@@ -19,7 +20,7 @@ This directory contains the complete documentation for Muse — a domain-agnosti
 | Look up a named type | [Type Contracts](reference/type-contracts.md) |
 | Configure merge strategies | [`.museattributes` Reference](reference/muse-attributes.md) |
 | Exclude files from snapshots | [`.museignore` Reference](reference/museignore.md) |
-| Watch the demo narration | [Tour de Force Script](demo/tour-de-force-script.md) |
+| Watch the demo narration | [Demo Script](demo/demo-script.md) |
 
 ---
 
@@ -54,6 +55,9 @@ docs/
 │   └── muse-variation-spec.md    — variation semantics for the MIDI domain
 │
 ├── reference/
+│   ├── cli-tiers.md              — three-tier CLI architecture: Tier 1 plumbing
+│   │                               (JSON, pipeable), Tier 2 porcelain (core VCS),
+│   │                               Tier 3 semantic (midi/code/coord namespaces)
 │   ├── type-contracts.md         — single source of truth for every named type:
 │   │                               TypedDicts, dataclasses, Protocols, Enums,
 │   │                               and TypeAliases with Mermaid diagrams
@@ -64,7 +68,7 @@ docs/
 │                                   dotfile exclusion rules
 │
 └── demo/
-    └── tour-de-force-script.md   — narration script for the video demo covering
+    └── demo-script.md            — narration script for the video demo covering
                                     all nine acts: core VCS through CRDT semantics
                                     and the live domain dashboard
 ```
@@ -78,7 +82,8 @@ Muse separates the **VCS engine** (domain-agnostic) from **domain plugins** (dom
 ```
 ┌─────────────────────────────────────────────┐
 │                  muse CLI                   │
-│          (15 commands, Typer-based)         │
+│  Tier 1: plumbing  ·  Tier 2: porcelain    │
+│  Tier 3: midi / code / coord domains        │
 └──────────────────────┬──────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────┐
@@ -122,7 +127,7 @@ Two optional protocol extensions enable richer merge semantics:
 4. Register in `muse/plugins/registry.py`
 5. Run `muse init --domain <your_domain>` in a project directory
 
-All 15 `muse` CLI commands work immediately. See the [Plugin Authoring Guide](guide/plugin-authoring-guide.md) for the full walkthrough.
+All Tier 2 core VCS commands work immediately for the new domain. Tier 3 semantic commands live in the new `muse/<domain> …` sub-namespace. See the [Plugin Authoring Guide](guide/plugin-authoring-guide.md) for the full walkthrough.
 
 ---
 

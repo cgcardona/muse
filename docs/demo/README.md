@@ -8,7 +8,7 @@ Choose a domain to see Muse's full power:
 
 ---
 
-## [Music Tour de Force →](tour-de-force-music.md)
+## [MIDI Demo →](demo-midi.md)
 
 **9 new commands — version control that understands music.**
 
@@ -19,15 +19,15 @@ at the note level — changes to non-overlapping notes never conflict.
 
 | Command | One-line description |
 |---------|---------------------|
-| `muse notes` | Every note in a MIDI track as musical notation — pitch, beat, duration, velocity |
-| `muse note-log` | Note-level commit history — which notes were added/removed in each commit |
-| `muse note-blame` | Which commit introduced the notes in bar N? One answer, per bar. |
-| `muse harmony` | Chord analysis and key detection from note content |
-| `muse piano-roll` | ASCII piano roll visualization — pitch vs time, bar lines included |
-| `muse note-hotspots` | Bar-level churn leaderboard — which bars change most across commits |
-| `muse velocity-profile` | Dynamic range, RMS, and velocity histogram; per-bar mode |
-| `muse transpose` | Transpose all notes in a track by N semitones (agent command) |
-| `muse mix` | Combine notes from two tracks into one output track (agent command) |
+| `muse midi notes` | Every note in a MIDI track as musical notation — pitch, beat, duration, velocity |
+| `muse midi note-log` | Note-level commit history — which notes were added/removed in each commit |
+| `muse midi note-blame` | Which commit introduced the notes in bar N? One answer, per bar. |
+| `muse midi harmony` | Chord analysis and key detection from note content |
+| `muse midi piano-roll` | ASCII piano roll visualization — pitch vs time, bar lines included |
+| `muse midi hotspots` | Bar-level churn leaderboard — which bars change most across commits |
+| `muse midi velocity-profile` | Dynamic range, RMS, and velocity histogram; per-bar mode |
+| `muse midi transpose` | Transpose all notes in a track by N semitones (agent command) |
+| `muse midi mix` | Combine notes from two tracks into one output track (agent command) |
 
 Plus the core VCS operations with musical semantics:
 `muse diff` shows "C4 added at beat 3.5" · `muse merge` resolves conflicts
@@ -36,7 +36,7 @@ displays note-level changes in musical notation.
 
 ---
 
-## [Code Tour de Force →](tour-de-force-code.md)
+## [Code Demo →](demo-code.md)
 
 **12 commands that are strictly impossible in Git.**
 
@@ -46,18 +46,18 @@ Every function has a stable identity hash that survives renames and moves.
 
 | Command | One-line description |
 |---------|---------------------|
-| `muse symbols` | Every function, class, and method in the snapshot — extracted from real ASTs |
-| `muse grep` | Search the symbol graph by name, kind, or language — no false positives |
-| `muse query` | Predicate DSL: `kind=function language=Go name~=handle hash=a3f2c9` |
-| `muse languages` | Language + symbol-type breakdown across the whole repo |
-| `muse blame` | Which commit last touched this exact function? One answer. |
-| `muse symbol-log` | Full history of one symbol — renames and moves included |
-| `muse detect-refactor` | Classify semantic operations: rename / move / signature / impl |
-| `muse hotspots` | Symbol churn leaderboard — which functions change most? |
-| `muse stable` | Symbol stability leaderboard — your bedrock, safe to build on |
-| `muse coupling` | File co-change analysis — semantic hidden dependencies |
-| `muse compare` | Deep semantic diff between any two historical snapshots |
-| `muse patch` | Surgical per-symbol modification — the agent interface |
+| `muse code symbols` | Every function, class, and method in the snapshot — extracted from real ASTs |
+| `muse code grep` | Search the symbol graph by name, kind, or language — no false positives |
+| `muse code query` | Predicate DSL: `kind=function language=Go name~=handle hash=a3f2c9` |
+| `muse code languages` | Language + symbol-type breakdown across the whole repo |
+| `muse code blame` | Which commit last touched this exact function? One answer. |
+| `muse code symbol-log` | Full history of one symbol — renames and moves included |
+| `muse code detect-refactor` | Classify semantic operations: rename / move / signature / impl |
+| `muse code hotspots` | Symbol churn leaderboard — which functions change most? |
+| `muse code stable` | Symbol stability leaderboard — your bedrock, safe to build on |
+| `muse code coupling` | File co-change analysis — semantic hidden dependencies |
+| `muse code compare` | Deep semantic diff between any two historical snapshots |
+| `muse code patch` | Surgical per-symbol modification — the agent interface |
 
 **Supported languages:** Python, TypeScript, JavaScript, Go, Rust, Java, C, C++, C#, Ruby, Kotlin
 
@@ -74,7 +74,7 @@ Structured delta                ← typed DomainOp tree (insert / delete / repla
 Commit graph                    ← parent chain with structured deltas on every node
 ```
 
-The **music plugin** adds:
+The **MIDI plugin** adds:
 
 ```
 Note event model      ← NoteKey (pitch, velocity, start_tick, duration_ticks, channel)
@@ -110,4 +110,4 @@ commit history.
 
 ---
 
-*Muse v2 · Python 3.11 · `tree-sitter` for code · `mido` for music*
+*Muse v0.1.2 · Python 3.14 · `tree-sitter` for code · `mido` for MIDI*

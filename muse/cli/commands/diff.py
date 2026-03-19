@@ -1,4 +1,5 @@
 """muse diff — compare working tree against HEAD, or compare two commits."""
+
 from __future__ import annotations
 
 import json

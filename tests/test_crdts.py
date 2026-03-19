@@ -18,8 +18,6 @@ Additionally, :func:`~muse.core.merge_engine.crdt_join_snapshots` is tested
 for the integration path through the merge engine.
 """
 
-from __future__ import annotations
-
 import pathlib
 
 import pytest
@@ -539,7 +537,7 @@ class TestGCounter:
 class TestCRDTMergeEngineIntegration:
     """Tests for :func:`~muse.core.merge_engine.crdt_join_snapshots`.
 
-    Since there is no production CRDTPlugin implementation yet (the music plugin
+    Since there is no production CRDTPlugin implementation yet (the MIDI plugin
     is still three-way mode), we create a minimal stub that satisfies the
     CRDTPlugin protocol.
     """

@@ -1,4 +1,5 @@
 """muse cherry-pick — apply a specific commit's changes on top of HEAD."""
+
 from __future__ import annotations
 
 import datetime

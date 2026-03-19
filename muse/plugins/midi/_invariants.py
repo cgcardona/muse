@@ -1,4 +1,4 @@
-"""Musical invariants engine for the Muse music plugin.
+"""Musical invariants engine for the Muse MIDI plugin.
 
 Invariants are semantic rules that a MIDI track must satisfy.  They are
 evaluated at commit time, merge time, or on-demand via ``muse music-check``.
@@ -78,12 +78,14 @@ Public API
 - :func:`load_invariant_rules` — load from TOML file with defaults fallback.
 - :func:`run_invariants`       — evaluate all rules against a commit.
 """
+
 from __future__ import annotations
 
 import logging
 import pathlib
 from typing import Literal, TypedDict
 
+from muse.core.invariants import BaseReport, BaseViolation, make_report
 from muse.core.object_store import read_object
 from muse.core.store import get_commit_snapshot_manifest
 from muse.plugins.midi._query import NoteInfo, key_signature_guess, notes_by_bar
@@ -558,3 +560,32 @@ def run_invariants(
         has_errors=has_errors,
         has_warnings=has_warnings,
     )
+
+
+class MidiChecker:
+    """Satisfies :class:`~muse.core.invariants.InvariantChecker` for the MIDI domain.
+
+    Wraps :func:`run_invariants` so that the generic ``muse check`` command
+    can dispatch to the MIDI checker without knowing MIDI internals.
+    """
+
+    def check(
+        self,
+        repo_root: pathlib.Path,
+        commit_id: str,
+        *,
+        rules_file: pathlib.Path | None = None,
+    ) -> BaseReport:
+        """Run MIDI invariant checks against *commit_id* and return a :class:`~muse.core.invariants.BaseReport`."""
+        rules = load_invariant_rules(rules_file)
+        midi_report = run_invariants(repo_root, commit_id, rules)
+        base_violations: list[BaseViolation] = [
+            BaseViolation(
+                rule_name=v["rule_name"],
+                severity=v["severity"],
+                address=v["track"],
+                description=v["description"],
+            )
+            for v in midi_report["violations"]
+        ]
+        return make_report(commit_id, "midi", base_violations, midi_report["rules_checked"])

@@ -32,6 +32,7 @@ Public API
 - :class:`TreeNode` — labeled ordered tree node (frozen dataclass).
 - :func:`diff` — ``TreeNode`` × ``TreeNode`` → ``StructuredDelta``.
 """
+
 from __future__ import annotations
 
 import logging

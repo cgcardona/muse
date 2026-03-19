@@ -30,6 +30,7 @@ Output (default — no flags)::
 
 --new <name> scaffolds a new domain plugin directory.
 """
+
 from __future__ import annotations
 
 import json

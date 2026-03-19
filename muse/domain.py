@@ -4,7 +4,7 @@ Muse provides the DAG engine, content-addressed object store, branching,
 lineage walking, topological log graph, and merge base finder. A domain plugin
 implements these six interfaces and Muse does the rest.
 
-The music plugin (``muse.plugins.midi``) is the reference implementation.
+The MIDI plugin (``muse.plugins.midi``) is the reference implementation.
 Every other domain — scientific simulation, genomics, 3D spatial design,
 spacetime — is a new plugin.
 
@@ -42,6 +42,7 @@ The core engine detects ``CRDTPlugin`` via ``isinstance`` at merge time.
 ``DomainSchema.merge_mode == "crdt"`` signals that the CRDT path should be
 taken.
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -297,7 +298,6 @@ SemVerBump = Literal["major", "minor", "patch", "none"]
 ``none``   No semantic change (formatting, whitespace, metadata only).
 """
 
-
 class StructuredDelta(TypedDict, total=False):
     """Rich, composable delta between two domain snapshots.
 
@@ -416,7 +416,7 @@ def infer_sem_ver_bump(delta: "StructuredDelta") -> tuple[SemVerBump, list[str]]
 # ---------------------------------------------------------------------------
 
 #: Live state is either an already-snapshotted manifest dict or a workdir path.
-#: The music plugin accepts both: a Path (for CLI commit/status) and a
+#: The MIDI plugin accepts both: a Path (for CLI commit/status) and a
 #: SnapshotManifest dict (for in-memory merge and diff operations).
 type LiveState = SnapshotManifest | pathlib.Path
 
@@ -541,8 +541,11 @@ class MuseDomainPlugin(Protocol):
         **``.museignore`` contract** — when *live_state* is a
         ``pathlib.Path`` (the ``muse-work/`` directory), domain plugin
         implementations **must** honour ``.museignore`` by calling
-        :func:`muse.core.ignore.load_patterns` on the repository root and
-        filtering out paths matched by :func:`muse.core.ignore.is_ignored`.
+        :func:`muse.core.ignore.load_ignore_config` on the repository root,
+        then :func:`muse.core.ignore.resolve_patterns` with the active domain
+        name, and finally filtering paths with :func:`muse.core.ignore.is_ignored`.
+        Domain-specific patterns (``[domain.<name>]`` sections) are applied
+        only when the active domain matches.
         """
         ...
 

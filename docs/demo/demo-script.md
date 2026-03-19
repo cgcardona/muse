@@ -1,6 +1,6 @@
-# Muse Tour de Force — Video Narration Script (v0.1.1)
+# Muse Demo — Video Narration Script (v0.1.2)
 
-> **Format:** YouTube walkthrough of the Tour de Force interactive demo.
+> **Format:** YouTube walkthrough of the interactive Muse demo.
 > Open `artifacts/demo.html` before recording. Click **Play Tour**
 > and let the demo advance step by step while you narrate. Timestamps are
 > approximate at 1.2 s/step; adjust to your natural pace.
@@ -8,7 +8,7 @@
 > **Tone:** conversational, curious, a little excited — like showing a friend
 > something you built that you genuinely believe in.
 >
-> **What's new in v0.1.1:** After the original 5 acts, we now have **4 additional
+> **What's new in v0.1.2:** After the original 5 acts, we now have **4 additional
 > acts** covering Typed Delta Algebra, Domain Schema & Diff Algorithms,
 > Operation-Level OT Merge, CRDT Convergent Writes, and the live Domain Dashboard.
 > The original 41 steps are unchanged — new acts continue from step 42.
@@ -78,7 +78,7 @@ every single dimension lights up on this first commit. Melodic, rhythmic,
 harmonic, dynamic, structural — all five. Because this is the root: we're
 establishing the baseline state for every dimension simultaneously.
 
-Under the hood, Muse called `MusicPlugin.snapshot()` — which walked the
+Under the hood, Muse called `MidiPlugin.snapshot()` — which walked the
 working directory, hashed every MIDI file with SHA-256, and returned a
 content-addressed manifest. That manifest is what got committed to the DAG.
 
@@ -239,7 +239,7 @@ and try to figure out what "their" version of a binary MIDI file even means.
 Good luck.
 
 In Muse, the merge engine already knows *which dimensions* conflicted.
-It ran `MusicPlugin.merge()` with `repo_root` set, which:
+It ran `MidiPlugin.merge()` with `repo_root` set, which:
 
 1. Loaded `.museattributes` to check for strategy rules
 2. Called `merge_midi_dimensions()` on `shared-state.mid`
@@ -674,7 +674,7 @@ when you have more concurrent writes than humans can handle.
 
 *(Back to camera or full screen)*
 
-So that's Muse v0.1.1.
+So that's Muse v0.1.2.
 
 We started with the foundation — a domain-agnostic VCS where conflicts are
 defined by dimension, not by file. That's still the core. But we've now built
@@ -731,7 +731,7 @@ always clean. OT is right for human-paced editing; CRDT is right for
 machine-speed concurrent writes.
 
 **"Is this production-ready?"**
-v0.1.1 is solid: strict typing, 697 passing tests, CI, four semantic layers
+v0.1.2 is solid: strict typing, 697 passing tests, CI, four semantic layers
 fully implemented. Not production for a studio yet — but the architecture is
 sound and the hard parts (content-addressed storage, OT, CRDT) are working.
 
@@ -756,4 +756,4 @@ by chunked object storage in the roadmap.
 | 23:00 | Act 7 — Domain Schema & muse domains dashboard |
 | 27:00 | Act 8 — Operation-level OT Merge |
 | 31:00 | Act 9 — CRDT Convergent Writes |
-| 36:00 | Outro — Muse v0.1.1 and what's next |
+| 36:00 | Outro — Muse v0.1.2 and what's next |

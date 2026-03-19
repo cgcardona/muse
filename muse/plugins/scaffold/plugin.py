@@ -27,6 +27,7 @@ Protocol capabilities implemented here
 - OT merge: ``StructuredMergePlugin`` (optional — remove if not needed)
 - CRDT: ``CRDTPlugin`` (optional — remove if not needed)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -83,7 +84,8 @@ class ScaffoldPlugin:
         """Capture the current working tree as a content-addressed manifest.
 
         Walk every domain file under ``live_state`` and hash its raw bytes with
-        SHA-256. Returns a ``SnapshotManifest`` with ``files`` and ``domain``.
+        SHA-256.  Paths matched by ``.museignore`` are excluded before hashing.
+        Returns a ``SnapshotManifest`` with ``files`` and ``domain``.
 
         Args:
             live_state: Either a ``pathlib.Path`` pointing to the working tree
@@ -92,13 +94,28 @@ class ScaffoldPlugin:
         Returns:
             A ``SnapshotManifest`` mapping workspace-relative POSIX paths to
             their SHA-256 content digests.
+
+        Note:
+            ``.museignore`` contract — ``.museignore`` lives in the repository
+            root (the parent of ``muse-work/``).  Global patterns and patterns
+            under ``[domain.<name>]`` matching this plugin's domain are applied.
         """
         if isinstance(live_state, pathlib.Path):
+            from muse.core.ignore import is_ignored, load_ignore_config, resolve_patterns
+
+            workdir = live_state
+            repo_root = workdir.parent
+            patterns = resolve_patterns(load_ignore_config(repo_root), _DOMAIN_NAME)
             files: dict[str, str] = {}
-            for p in sorted(live_state.rglob(_FILE_GLOB)):
+            for p in sorted(workdir.rglob(_FILE_GLOB)):
+                if not p.is_file():
+                    continue
+                rel = p.relative_to(workdir).as_posix()
+                if is_ignored(rel, patterns):
+                    continue
                 raw = p.read_bytes()
                 sha = hashlib.sha256(raw).hexdigest()
-                files[str(p.relative_to(live_state))] = sha
+                files[rel] = sha
             return SnapshotManifest(files=files, domain=_DOMAIN_NAME)
 
         # SnapshotManifest dict path — used by merge / diff in memory

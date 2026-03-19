@@ -1,16 +1,15 @@
-"""Tests for muse.plugins.midi._crdt_notes — NotePosition, RGANoteEntry, MusicRGA.
+"""Tests for muse.plugins.midi._crdt_notes — NotePosition, RGANoteEntry, MidiRGA.
 
 Verifies all three CRDT laws:
   1. Commutativity: merge(a, b) == merge(b, a)
   2. Associativity: merge(merge(a, b), c) == merge(a, merge(b, c))
   3. Idempotency:   merge(a, a) == a
 """
-from __future__ import annotations
 
 import pytest
 
 from muse.plugins.midi._crdt_notes import (
-    MusicRGA,
+    MidiRGA,
     NotePosition,
     RGANoteEntry,
     _pitch_to_voice_lane,
@@ -76,20 +75,20 @@ class TestPitchToVoiceLane:
 
 
 # ---------------------------------------------------------------------------
-# MusicRGA — basic insert / delete
+# MidiRGA — basic insert / delete
 # ---------------------------------------------------------------------------
 
 
-class TestMusicRGAInsertDelete:
+class TestMidiRGAInsertDelete:
     def test_single_insert_visible(self) -> None:
-        seq = MusicRGA("agent-a")
+        seq = MidiRGA("agent-a")
         seq.insert(_key(60))
         notes = seq.to_sequence()
         assert len(notes) == 1
         assert notes[0]["pitch"] == 60
 
     def test_multiple_inserts_ordered_by_position(self) -> None:
-        seq = MusicRGA("agent-a")
+        seq = MidiRGA("agent-a")
         # Insert soprano (pitch 72 = lane 3) before bass (pitch 36 = lane 0)
         # at the same beat — bass should appear first in output.
         seq.insert(_key(pitch=72, start_tick=0))
@@ -99,18 +98,18 @@ class TestMusicRGAInsertDelete:
         assert notes[1]["pitch"] == 72   # soprano second
 
     def test_delete_removes_note(self) -> None:
-        seq = MusicRGA("agent-a")
+        seq = MidiRGA("agent-a")
         entry = seq.insert(_key(60))
         seq.delete(entry["op_id"])
         assert seq.to_sequence() == []
 
     def test_delete_nonexistent_raises(self) -> None:
-        seq = MusicRGA("agent-a")
+        seq = MidiRGA("agent-a")
         with pytest.raises(KeyError):
             seq.delete("nonexistent-op-id")
 
     def test_tombstoned_entries_counted(self) -> None:
-        seq = MusicRGA("agent-a")
+        seq = MidiRGA("agent-a")
         e = seq.insert(_key(60))
         seq.delete(e["op_id"])
         assert seq.entry_count() == 1
@@ -122,11 +121,11 @@ class TestMusicRGAInsertDelete:
 # ---------------------------------------------------------------------------
 
 
-class TestMusicRGACRDTLaws:
-    def _make_replicas(self) -> tuple[MusicRGA, MusicRGA, MusicRGA]:
-        a = MusicRGA("agent-a")
-        b = MusicRGA("agent-b")
-        c = MusicRGA("agent-c")
+class TestMidiRGACRDTLaws:
+    def _make_replicas(self) -> tuple[MidiRGA, MidiRGA, MidiRGA]:
+        a = MidiRGA("agent-a")
+        b = MidiRGA("agent-b")
+        c = MidiRGA("agent-c")
 
         a.insert(_key(60, start_tick=0))
         a.insert(_key(64, start_tick=480))
@@ -145,34 +144,34 @@ class TestMusicRGACRDTLaws:
 
     def test_commutativity(self) -> None:
         a, b, _ = self._make_replicas()
-        ab = MusicRGA.merge(a, b)
-        ba = MusicRGA.merge(b, a)
+        ab = MidiRGA.merge(a, b)
+        ba = MidiRGA.merge(b, a)
         assert ab.to_sequence() == ba.to_sequence()
 
     def test_associativity(self) -> None:
         a, b, c = self._make_replicas()
-        ab_c = MusicRGA.merge(MusicRGA.merge(a, b), c)
-        a_bc = MusicRGA.merge(a, MusicRGA.merge(b, c))
+        ab_c = MidiRGA.merge(MidiRGA.merge(a, b), c)
+        a_bc = MidiRGA.merge(a, MidiRGA.merge(b, c))
         assert ab_c.to_sequence() == a_bc.to_sequence()
 
     def test_idempotency(self) -> None:
         a, _, _ = self._make_replicas()
-        aa = MusicRGA.merge(a, a)
+        aa = MidiRGA.merge(a, a)
         assert aa.to_sequence() == a.to_sequence()
 
     def test_merge_contains_all_inserts(self) -> None:
-        a = MusicRGA("agent-a")
-        b = MusicRGA("agent-b")
+        a = MidiRGA("agent-a")
+        b = MidiRGA("agent-b")
         for i in range(5):
             a.insert(_key(60 + i, start_tick=i * 480))
         for i in range(5):
             b.insert(_key(72 + i, start_tick=i * 480))
-        merged = MusicRGA.merge(a, b)
+        merged = MidiRGA.merge(a, b)
         assert merged.live_count() == 10
 
     def test_tombstone_wins_in_merge(self) -> None:
-        a = MusicRGA("agent-a")
-        b = MusicRGA("agent-b")
+        a = MidiRGA("agent-a")
+        b = MidiRGA("agent-b")
 
         entry = a.insert(_key(60))
         # Share the insert with b.
@@ -180,7 +179,7 @@ class TestMusicRGACRDTLaws:
         # b deletes the shared note; a does not.
         b.delete(entry["op_id"])
 
-        merged = MusicRGA.merge(a, b)
+        merged = MidiRGA.merge(a, b)
         # Tombstone wins — note should be absent in merged result.
         assert merged.live_count() == 0
 
@@ -192,12 +191,12 @@ class TestMusicRGACRDTLaws:
 
 class TestToDomainOps:
     def test_empty_base_and_live_produces_no_ops(self) -> None:
-        seq = MusicRGA("agent-a")
+        seq = MidiRGA("agent-a")
         ops = seq.to_domain_ops([])
         assert ops == []
 
     def test_added_notes_produce_insert_ops(self) -> None:
-        seq = MusicRGA("agent-a")
+        seq = MidiRGA("agent-a")
         seq.insert(_key(60))
         seq.insert(_key(64))
         ops = seq.to_domain_ops([])
@@ -206,7 +205,7 @@ class TestToDomainOps:
 
     def test_removed_notes_produce_delete_ops(self) -> None:
         base_notes = [_key(60), _key(64)]
-        seq = MusicRGA("agent-a")
+        seq = MidiRGA("agent-a")
         # Add only the first note back.
         seq.insert(_key(60))
         ops = seq.to_domain_ops(base_notes)
@@ -215,13 +214,13 @@ class TestToDomainOps:
 
     def test_unchanged_notes_produce_no_ops(self) -> None:
         note = _key(60)
-        seq = MusicRGA("agent-a")
+        seq = MidiRGA("agent-a")
         seq.insert(note)
         ops = seq.to_domain_ops([note])
         assert ops == []
 
     def test_voice_ordering_preserved_in_sequence(self) -> None:
-        seq = MusicRGA("agent-a")
+        seq = MidiRGA("agent-a")
         # Insert in reverse voice order; output should be ordered bass→soprano.
         seq.insert(_key(pitch=84, start_tick=0))  # soprano
         seq.insert(_key(pitch=60, start_tick=0))  # alto

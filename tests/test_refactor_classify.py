@@ -25,7 +25,6 @@ RefactorClassification
     - confidence is rounded to 3 decimal places
     - evidence list is preserved
 """
-from __future__ import annotations
 
 import hashlib
 

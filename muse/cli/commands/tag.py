@@ -16,6 +16,7 @@ Tag conventions::
     tempo:*       — tempo annotation (tempo:120bpm)
     ref:*         — reference track (ref:beatles)
 """
+
 from __future__ import annotations
 
 import json

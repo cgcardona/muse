@@ -5,7 +5,6 @@ command runs, and that the command's output matches the plugin's semantics.
 These tests use unittest.mock.patch to intercept plugin calls and also
 perform end-to-end output assertions.
 """
-from __future__ import annotations
 
 import pathlib
 from unittest.mock import MagicMock, patch

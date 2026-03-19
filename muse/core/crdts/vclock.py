@@ -33,7 +33,6 @@ class VClockDict(TypedDict, total=False):
     and deserialise with :meth:`VectorClock.from_dict`.
     """
 
-
 class VectorClock:
     """Causal clock for distributed agent writes.
 

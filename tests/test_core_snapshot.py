@@ -1,5 +1,4 @@
 """Tests for muse.core.snapshot — content-addressed snapshot computation."""
-from __future__ import annotations
 
 import pathlib
 

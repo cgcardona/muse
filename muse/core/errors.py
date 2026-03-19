@@ -1,4 +1,5 @@
 """Exit-code contract and exception types for the Muse CLI."""
+
 from __future__ import annotations
 
 import enum

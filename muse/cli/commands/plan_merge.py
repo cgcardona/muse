@@ -59,6 +59,7 @@ Flags:
 ``--json``
     Emit the full plan as JSON.
 """
+
 from __future__ import annotations
 
 import json

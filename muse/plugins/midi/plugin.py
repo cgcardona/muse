@@ -50,6 +50,7 @@ When ``repo_root`` is available, MIDI files are loaded from the object store
 and diffed at note level. Without it, modified ``.mid`` files fall back to
 ``ReplaceOp``.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -125,10 +126,10 @@ class MidiPlugin:
         excluded regardless of ``.museignore``.
         """
         if isinstance(live_state, pathlib.Path):
-            from muse.core.ignore import is_ignored, load_patterns
+            from muse.core.ignore import is_ignored, load_ignore_config, resolve_patterns
             workdir = live_state
             repo_root = workdir.parent
-            patterns = load_patterns(repo_root)
+            patterns = resolve_patterns(load_ignore_config(repo_root), _DOMAIN_TAG)
             files: dict[str, str] = {}
             for file_path in sorted(workdir.rglob("*")):
                 if not file_path.is_file():

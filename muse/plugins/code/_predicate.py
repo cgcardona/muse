@@ -46,11 +46,12 @@ dependencies, no regex-based hacks.  All parsing errors raise
 ``PredicateError`` with a human-readable message including the position
 in the input string.
 """
+
 from __future__ import annotations
 
 import re
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from muse.plugins.code._query import language_of
 from muse.plugins.code.ast_parser import SymbolRecord
@@ -63,7 +64,6 @@ Predicate = Callable[[str, SymbolRecord], bool]
 
 class PredicateError(ValueError):
     """Raised when a predicate string cannot be parsed or evaluated."""
-
 
 # ---------------------------------------------------------------------------
 # Tokeniser

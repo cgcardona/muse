@@ -49,7 +49,7 @@ The entire system operates at a single fixed level of abstraction: **the file-pa
 | `muse show <commit>` | "tracks/drums.mid modified" | "bar 12: C4 quarter inserted; velocity 80→90" |
 | Every new domain plugin | Must implement its own merge engine | Gets LCS/tree-edit/numerical for free from core |
 
-The music plugin works around this by implementing MIDI dimension-merge inside the plugin. But that means every new domain has to re-invent sub-file merge from scratch, in isolation, with no shared vocabulary or algorithm library. At thousands of domains and millions of agents, that's impossible.
+The MIDI plugin works around this by implementing MIDI dimension-merge inside the plugin. But that means every new domain has to re-invent sub-file merge from scratch, in isolation, with no shared vocabulary or algorithm library. At thousands of domains and millions of agents, that's impossible.
 
 ---
 
@@ -244,7 +244,7 @@ class MergeResult:
 
 ### 3.6 Updated Music Plugin
 
-The music plugin's `diff` method must now return a `StructuredDelta`. File-level ops are the minimum bar. The MIDI dimension merge already has the machinery to go deeper — it should produce `PatchOp` entries for modified `.mid` files:
+The MIDI plugin's `diff` method must now return a `StructuredDelta`. File-level ops are the minimum bar. The MIDI dimension merge already has the machinery to go deeper — it should produce `PatchOp` entries for modified `.mid` files:
 
 ```python
 def diff(self, base: StateSnapshot, target: StateSnapshot) -> StateDelta:
@@ -319,11 +319,11 @@ test_move_op_round_trips_json
 test_replace_op_round_trips_json
 test_patch_op_with_child_delta_round_trips_json
 test_structured_delta_satisfies_state_delta_type
-test_music_plugin_diff_returns_structured_delta
-test_music_plugin_diff_file_add_produces_insert_op
-test_music_plugin_diff_file_remove_produces_delete_op
-test_music_plugin_diff_file_modify_produces_replace_op
-test_music_plugin_diff_midi_modify_produces_patch_op_with_child_ops
+test_midi_plugin_diff_returns_structured_delta
+test_midi_plugin_diff_file_add_produces_insert_op
+test_midi_plugin_diff_file_remove_produces_delete_op
+test_midi_plugin_diff_file_modify_produces_replace_op
+test_midi_plugin_diff_midi_modify_produces_patch_op_with_child_ops
 test_drift_report_delta_is_structured_delta
 test_muse_show_displays_structured_summary
 test_muse_diff_displays_per_op_lines
@@ -353,7 +353,7 @@ test_midi_diff_summary_string_is_human_readable
 | `muse/cli/commands/diff.py` | Display structured diff output. |
 | `tests/test_structured_delta.py` | **New.** All Phase 1 tests. |
 | `tests/test_midi_diff.py` | **New.** MIDI diff algorithm tests. |
-| `tests/test_music_plugin.py` | Update to assert `StructuredDelta` return type. |
+| `tests/test_midi_plugin.py` | Update to assert `StructuredDelta` return type. |
 
 ---
 
@@ -501,7 +501,7 @@ def schema(self) -> DomainSchema:
 ```python
 def schema(self) -> DomainSchema:
     return DomainSchema(
-        domain="music",
+        domain="midi",
         description="MIDI and audio file versioning with note-level diff",
         top_level=SetSchema(
             kind="set",
@@ -752,11 +752,11 @@ test_dispatch_map_schema_recurses
 **New test file: `tests/test_domain_schema.py`**
 
 ```
-test_music_plugin_schema_returns_domain_schema
-test_music_plugin_schema_has_four_dimensions
-test_music_plugin_schema_melodic_dimension_is_sequence
-test_music_plugin_schema_structural_dimension_is_tree
-test_music_plugin_schema_dynamic_dimension_is_tensor
+test_midi_plugin_schema_returns_domain_schema
+test_midi_plugin_schema_has_four_dimensions
+test_midi_plugin_schema_melodic_dimension_is_sequence
+test_midi_plugin_schema_structural_dimension_is_tree
+test_midi_plugin_schema_dynamic_dimension_is_tensor
 test_schema_round_trips_json
 test_schema_version_is_1
 test_plugin_registry_schema_lookup
@@ -1382,7 +1382,7 @@ Phase 3 is the hardest. The OT transform correctness for all op-pair combination
 **Phase 4 done when:**
 - [ ] All five CRDT types pass the three lattice laws (property tests via `hypothesis`)
 - [ ] `VectorClock` correctly identifies concurrent vs. causally-ordered events
-- [ ] A music plugin in CRDT mode never produces a `MergeResult.conflicts` entry
+- [ ] A MIDI plugin in CRDT mode never produces a `MergeResult.conflicts` entry
 - [ ] The core merge engine's CRDT path is exercised by integration tests
 - [ ] `CRDTPlugin` protocol is verified by a `runtime_checkable` assertion
 

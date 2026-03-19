@@ -25,7 +25,6 @@ transitive_callers(start_name, reverse, max_depth)
     - max_depth limits traversal.
     - Return type is dict[int, list[str]] — depth-keyed.
 """
-from __future__ import annotations
 
 import hashlib
 import pathlib

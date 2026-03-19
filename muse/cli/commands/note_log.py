@@ -25,6 +25,7 @@ Output::
       +  B4  vel=75  @beat=10.00 dur=1.00  ch 0
       ...
 """
+
 from __future__ import annotations
 
 import json

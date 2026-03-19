@@ -28,7 +28,6 @@ CommitRecord with sem_ver_bump
 SemVerBump Literal values
     - Only "major", "minor", "patch", "none" are valid.
 """
-from __future__ import annotations
 
 from dataclasses import fields
 

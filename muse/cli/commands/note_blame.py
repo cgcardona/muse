@@ -22,6 +22,7 @@ Output::
       2 notes in bar 4 introduced by:
       cb4afaed  2026-03-16  alice  "Add chord arpeggiation in bar 4"
 """
+
 from __future__ import annotations
 
 import json

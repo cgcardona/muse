@@ -8,7 +8,6 @@ Covers:
 - DriftReport.delta is a StructuredDelta.
 - muse show and muse diff display structured output.
 """
-from __future__ import annotations
 
 import json
 import pathlib
