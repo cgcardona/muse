@@ -313,12 +313,12 @@ const KIND_COLOR   = { class:'#a78bfa', method:'#2dd4bf', function:'#60a5fa' };
 // COMMIT DATA
 // ═══════════════════════════════════════════════════════════════
 const COMMITS = [
-  { idx:0, sha:'a1b2c3d4', msg:'Foundation: Router + model skeleton',  agent:0, branch:'main',        parents:[],    cx:140, cy:270 },
-  { idx:1, sha:'b2c3d4e5', msg:'Auth: JWT validation + hashing',        agent:1, branch:'feat/auth',   parents:[0],   cx:50,  cy:180 },
-  { idx:2, sha:'c3d4e5f6', msg:'Router: dispatch + middleware',         agent:2, branch:'feat/router', parents:[0],   cx:140, cy:180 },
-  { idx:3, sha:'d4e5f6a7', msg:'DB: connection pool + cache layer',     agent:3, branch:'feat/db',     parents:[0],   cx:230, cy:180 },
-  { idx:4, sha:'e5f6a7b8', msg:'Merge: auth + router + db  [0 conflicts]', agent:-1, branch:'main',   parents:[1,2,3],cx:140, cy:90  },
-  { idx:5, sha:'f6a7b8c9', msg:'Cleanup: dead code removed',            agent:4, branch:'main',        parents:[4],   cx:140, cy:30  },
+  { idx:0, sha:'a1b2c3d4', msg:'Foundation: Router + model skeleton',      agent:0,  branch:'main',        parents:[],      cx:140, cy:30  },
+  { idx:1, sha:'b2c3d4e5', msg:'Auth: JWT validation + hashing',            agent:1,  branch:'feat/auth',   parents:[0],     cx:50,  cy:120 },
+  { idx:2, sha:'c3d4e5f6', msg:'Router: dispatch + middleware',             agent:2,  branch:'feat/router', parents:[0],     cx:140, cy:120 },
+  { idx:3, sha:'d4e5f6a7', msg:'DB: connection pool + cache layer',         agent:3,  branch:'feat/db',     parents:[0],     cx:230, cy:120 },
+  { idx:4, sha:'e5f6a7b8', msg:'Merge: auth + router + db  [0 conflicts]', agent:-1, branch:'main',        parents:[1,2,3], cx:140, cy:210 },
+  { idx:5, sha:'f6a7b8c9', msg:'Cleanup: dead code removed',                agent:4,  branch:'main',        parents:[4],     cx:140, cy:270 },
 ];
 
 // Symbols visible at each commit (branch-aware snapshots)
