@@ -1,6 +1,6 @@
 # Muse Documentation
 
-> **Version:** v0.1.1 · [Project README](../README.md) · [Source](../muse/)
+> **Version:** v0.1.2 · [Project README](../README.md) · [Source](../muse/)
 
 This directory contains the complete documentation for Muse — a domain-agnostic version control system for multidimensional state.
 
