@@ -984,5 +984,5 @@ InferredRefactor = Literal["extract", "inline", "split", "merge", "none"]
 - [Plugin Authoring Guide](plugin-authoring-guide.md) — implementing `MuseDomainPlugin`
 - [Type Contracts](type-contracts.md) — strict typing rules and enforcement
 - [CRDT Reference](crdt-reference.md) — CRDT and OT merge primitives
-- [Tour de Force — Code](../demo/tour-de-force-code.md) — full narrative walkthrough of all code commands
-- [Tour de Force — Music](../demo/tour-de-force-music.md) — MIDI domain reference demo
+- [Demo — Code](../demo/demo-code.md) — full narrative walkthrough of all code commands
+- [Demo — MIDI](../demo/demo-midi.md) — MIDI domain reference demo

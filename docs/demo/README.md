@@ -8,7 +8,7 @@ Choose a domain to see Muse's full power:
 
 ---
 
-## [Music Tour de Force →](tour-de-force-music.md)
+## [MIDI Demo →](demo-midi.md)
 
 **9 new commands — version control that understands music.**
 
@@ -36,7 +36,7 @@ displays note-level changes in musical notation.
 
 ---
 
-## [Code Tour de Force →](tour-de-force-code.md)
+## [Code Demo →](demo-code.md)
 
 **12 commands that are strictly impossible in Git.**
 
@@ -110,4 +110,4 @@ commit history.
 
 ---
 
-*Muse v2 · Python 3.11 · `tree-sitter` for code · `mido` for music*
+*Muse v0.1.2 · Python 3.13 · `tree-sitter` for code · `mido` for MIDI*
