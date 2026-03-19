@@ -51,10 +51,10 @@ muse/
                        branch, checkout, merge, reset, revert, cherry_pick, stash, tag)
     models.py        → re-exports store types for backward-import compatibility
     config.py        → .muse/config.toml read/write helpers
-    midi_parser.py   → MIDI / MusicXML → NoteEvent (music domain utility, no external deps)
+    midi_parser.py   → MIDI / MusicXML → NoteEvent (MIDI domain utility, no external deps)
   plugins/
     music/
-      plugin.py      → MusicPlugin — the reference MuseDomainPlugin implementation
+      plugin.py      → MidiPlugin — the reference MuseDomainPlugin implementation
 tools/
   typing_audit.py    → regex + AST violation scanner; CI runs with --max-any 0
 tests/
@@ -62,7 +62,7 @@ tests/
   test_core_snapshot.py     → hashing, manifest building, workdir diff
   test_core_merge_engine.py → three-way merge, base-finding, conflict detection
   test_cli_workflow.py      → end-to-end CLI: init → commit → log → branch → merge → …
-  test_music_plugin.py      → MusicPlugin satisfies MuseDomainPlugin protocol
+  test_midi_plugin.py       → MidiPlugin satisfies MuseDomainPlugin protocol
 ```
 
 ### Layer rules (hard constraints)

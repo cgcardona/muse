@@ -1695,7 +1695,7 @@ def render(tour: dict, output_path: pathlib.Path) -> None:
 
     html = _HTML_TEMPLATE
     html = html.replace("{{VERSION}}",      str(meta.get("muse_version", "0.1.2")))
-    html = html.replace("{{DOMAIN}}",       str(meta.get("domain", "music")))
+    html = html.replace("{{DOMAIN}}",       str(meta.get("domain", "midi")))
     html = html.replace("{{ELAPSED}}",      str(meta.get("elapsed_s", "?")))
     html = html.replace("{{GENERATED_AT}}", gen_str)
     html = html.replace("{{COMMITS}}",      str(stats.get("commits", 0)))

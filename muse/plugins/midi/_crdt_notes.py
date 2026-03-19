@@ -1,4 +1,4 @@
-"""Voice-aware Music RGA — experimental CRDT for live MIDI note sequences.
+"""Voice-aware MIDI RGA — experimental CRDT for live MIDI note sequences.
 
 This module is a **research prototype** for the live collaboration foundation
 described in the Muse supercharge plan.  It is NOT wired into the production
@@ -36,7 +36,7 @@ coarse tessiture model:
     pitch ≥ 72   → 3 (soprano)
 
 Agents that perform explicit voice separation can override ``voice_lane``
-when calling :meth:`MusicRGA.insert`.
+when calling :meth:`MidiRGA.insert`.
 
 CRDT properties
 ---------------
@@ -50,7 +50,7 @@ test suite:
 Relationship to the commit DAG
 -------------------------------
 A live session accumulates :class:`RGANoteEntry` operations.  At commit time,
-:meth:`MusicRGA.to_domain_ops` translates the CRDT state into canonical Muse
+:meth:`MidiRGA.to_domain_ops` translates the CRDT state into canonical Muse
 :class:`~muse.domain.DomainOp` entries for storage in the commit record.
 The CRDT state itself is ephemeral — not stored in the object store.
 
@@ -58,7 +58,7 @@ Public API
 ----------
 - :class:`NotePosition`  — music-aware position key (NamedTuple).
 - :class:`RGANoteEntry`  — one element in the RGA (TypedDict).
-- :class:`MusicRGA`      — the voice-aware ordered note sequence CRDT.
+- :class:`MidiRGA`      — the voice-aware ordered note sequence CRDT.
 """
 
 import logging
@@ -124,7 +124,7 @@ def _pitch_to_voice_lane(pitch: int) -> int:
 
 
 class RGANoteEntry(TypedDict):
-    """One element in the :class:`MusicRGA` linked list.
+    """One element in the :class:`MidiRGA` linked list.
 
     ``op_id``       Unique insertion operation ID (UUID4).
     ``actor_id``    The agent or human that performed this insertion.
@@ -146,11 +146,11 @@ class RGANoteEntry(TypedDict):
 
 
 # ---------------------------------------------------------------------------
-# MusicRGA
+# MidiRGA
 # ---------------------------------------------------------------------------
 
 
-class MusicRGA:
+class MidiRGA:
     """Voice-aware Replicated Growable Array for live MIDI note sequences.
 
     Implements the standard RGA CRDT (Roh et al., 2011) with a music-aware
@@ -160,16 +160,16 @@ class MusicRGA:
 
     Usage::
 
-        seq = MusicRGA("agent-1")
+        seq = MidiRGA("agent-1")
         e1 = seq.insert(bass_note)
         e2 = seq.insert(soprano_note)
         seq.delete(e1["op_id"])
 
         # On another replica:
-        seq2 = MusicRGA("agent-2")
+        seq2 = MidiRGA("agent-2")
         e3 = seq2.insert(tenor_note)
 
-        merged = MusicRGA.merge(seq, seq2)
+        merged = MidiRGA.merge(seq, seq2)
         notes = merged.to_sequence()  # deterministic, voice-ordered
 
     Args:
@@ -230,7 +230,7 @@ class MusicRGA:
         )
         self._entries[op_id] = entry
         logger.debug(
-            "MusicRGA insert: actor=%r pitch=%d measure=%d voice=%d op=%s",
+            "MidiRGA insert: actor=%r pitch=%d measure=%d voice=%d op=%s",
             self._actor_id,
             note["pitch"],
             measure,
@@ -256,7 +256,7 @@ class MusicRGA:
             KeyError: When *op_id* is not found in this replica.
         """
         if op_id not in self._entries:
-            raise KeyError(f"op_id {op_id!r} not found in MusicRGA")
+            raise KeyError(f"op_id {op_id!r} not found in MidiRGA")
         entry = self._entries[op_id]
         self._entries[op_id] = RGANoteEntry(
             op_id=entry["op_id"],
@@ -299,8 +299,8 @@ class MusicRGA:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def merge(a: "MusicRGA", b: "MusicRGA") -> "MusicRGA":
-        """Return a new MusicRGA that is the join of replicas *a* and *b*.
+    def merge(a: "MidiRGA", b: "MidiRGA") -> "MidiRGA":
+        """Return a new MidiRGA that is the join of replicas *a* and *b*.
 
         The join is:
         - **Commutative**: ``merge(a, b).to_sequence() == merge(b, a).to_sequence()``
@@ -316,10 +316,10 @@ class MusicRGA:
             b: Second replica.
 
         Returns:
-            A new :class:`MusicRGA` containing the union of all entries from
+            A new :class:`MidiRGA` containing the union of all entries from
             both replicas with tombstone-wins conflict resolution.
         """
-        merged = MusicRGA(actor_id=f"merge({a._actor_id},{b._actor_id})")
+        merged = MidiRGA(actor_id=f"merge({a._actor_id},{b._actor_id})")
 
         all_op_ids = set(a._entries) | set(b._entries)
         for op_id in all_op_ids:
