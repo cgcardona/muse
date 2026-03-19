@@ -6,6 +6,15 @@ Core VCS commands::
     show        branch      checkout    merge       reset
     revert      stash       cherry-pick tag         domains
 
+Remote sync commands::
+
+    remote      Manage remote connections (add, remove, rename, list, get-url, set-url)
+    clone       Create a local copy of a remote Muse repository
+    fetch       Download commits/snapshots/objects from a remote (no merge)
+    pull        Fetch from a remote and merge into the current branch
+    push        Upload local commits/snapshots/objects to a remote
+    ls-remote   [plumbing] List branch refs on a remote without local state changes
+
 Music-domain semantic commands (impossible in Git)::
 
     notes            list every note in a MIDI track as musical notation
@@ -81,6 +90,7 @@ from muse.cli.commands import (
     checkout,
     checkout_symbol,
     check,
+    clone,
     clones,
     codemap,
     code_check,
@@ -94,6 +104,7 @@ from muse.cli.commands import (
     detect_refactor,
     diff,
     domains,
+    fetch,
     find_symbol,
     forecast,
     grep,
@@ -106,6 +117,7 @@ from muse.cli.commands import (
     languages,
     lineage,
     log,
+    ls_remote,
     merge,
     mix,
     midi_check,
@@ -117,9 +129,12 @@ from muse.cli.commands import (
     patch,
     piano_roll,
     plan_merge,
+    pull,
+    push,
     query,
     query_history,
     reconcile,
+    remote,
     reserve,
     reset,
     revert,
@@ -147,6 +162,14 @@ cli = typer.Typer(
 # Core VCS
 cli.add_typer(attributes.app,   name="attributes",  help="Display .museattributes merge-strategy rules.")
 cli.add_typer(init.app,         name="init",        help="Initialise a new Muse repository.")
+
+# Remote sync commands
+cli.add_typer(remote.app,       name="remote",      help="Manage remote repository connections (add, remove, rename, list).")
+cli.add_typer(clone.app,        name="clone",       help="Create a local copy of a remote Muse repository.")
+cli.add_typer(fetch.app,        name="fetch",       help="Download commits, snapshots, and objects from a remote.")
+cli.add_typer(pull.app,         name="pull",        help="Fetch from a remote and merge into the current branch.")
+cli.add_typer(push.app,         name="push",        help="Upload local commits, snapshots, and objects to a remote.")
+cli.add_typer(ls_remote.app,    name="ls-remote",   help="[plumbing] List references on a remote repository.")
 cli.add_typer(commit.app,       name="commit",      help="Record the current working tree as a new version.")
 cli.add_typer(status.app,       name="status",      help="Show working-tree drift against HEAD.")
 cli.add_typer(log.app,          name="log",         help="Display commit history.")

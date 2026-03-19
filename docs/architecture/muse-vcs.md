@@ -342,6 +342,65 @@ walkthrough covering Phases 1–4 with examples.
 
 ---
 
+## Remote Sync
+
+Muse supports synchronizing repositories with a remote host (e.g. MuseHub)
+through six commands built on a typed, swappable transport layer.
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `muse remote add <name> <url>` | Register a named remote connection |
+| `muse clone <url> [dir]` | Create a local copy of a remote repository |
+| `muse fetch [remote]` | Download commits/snapshots/objects (no merge) |
+| `muse pull [remote]` | Fetch + three-way merge into current branch |
+| `muse push [remote]` | Upload local commits/snapshots/objects |
+| `muse ls-remote [remote]` | List branch refs on a remote (plumbing) |
+
+### Transport Architecture
+
+```
+Muse CLI (client)                    MuseHub (server)
+─────────────────                    ────────────────
+MuseTransport Protocol
+ └─ HttpTransport (urllib, stdlib) ──HTTPS──► GET  {url}/refs
+                                              POST {url}/fetch
+                                              POST {url}/push
+```
+
+The `MuseTransport` Protocol in `muse/core/transport.py` is the seam between
+CLI commands and the HTTP implementation. Every command delegates to this
+Protocol, so MuseHub can upgrade to HTTP/2 or gRPC without touching command
+code — only `HttpTransport` changes.
+
+### PackBundle Wire Format
+
+The unit of exchange is a `PackBundle` (defined in `muse/core/pack.py`): a
+JSON object carrying commits, snapshots, and base64-encoded object blobs.
+`build_pack()` assembles a bundle from a set of local commit IDs;
+`apply_pack()` writes a received bundle into the local `.muse/` directory in
+dependency order (objects → snapshots → commits).
+
+```
+muse/core/pack.py
+ ├─ build_pack(root, commit_ids, *, have) → PackBundle
+ └─ apply_pack(root, bundle) → int  # count of new objects written
+```
+
+### Local State for Remotes
+
+```
+.muse/
+ config.toml                    [remotes.<name>] url + branch
+ remotes/<name>/<branch>        last-known remote commit ID (tracking head)
+```
+
+See `docs/reference/remotes.md` for the full reference including the MuseHub
+API contract, authentication, and tracking branch semantics.
+
+---
+
 ## Testing & Verification
 
 ```bash
