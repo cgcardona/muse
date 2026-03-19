@@ -20,7 +20,7 @@ MuseHub.
    - [muse fetch](#muse-fetch)
    - [muse pull](#muse-pull)
    - [muse push](#muse-push)
-   - [muse ls-remote](#muse-ls-remote)
+   - [muse plumbing ls-remote](#muse-plumbing-ls-remote)
 7. [Tracking Branches](#tracking-branches)
 8. [Token Lifecycle](#token-lifecycle)
 
@@ -36,7 +36,7 @@ muse fetch [remote]       # download new commits without merging
 muse pull [remote]        # fetch + three-way merge into current branch
 muse push [remote]        # upload local commits to the remote
 muse remote add <n> <url> # manage named remotes
-muse ls-remote [remote]   # list remote branches (plumbing)
+muse plumbing ls-remote [remote]   # list remote branches (Tier 1 plumbing)
 ```
 
 Remotes are named connections to a MuseHub repository URL. The default remote
@@ -391,13 +391,13 @@ muse push               # infers remote and branch from upstream config
 
 ---
 
-### muse ls-remote
+### muse plumbing ls-remote
 
 List branch references on a remote repository. **Plumbing command** — no local
 state is written.
 
 ```
-muse ls-remote [<remote-or-url>] [--json]
+muse plumbing ls-remote [<remote-or-url>] [--json]
 ```
 
 **Options:**
@@ -431,10 +431,10 @@ abc123def456...   main *
 **Examples:**
 
 ```bash
-muse ls-remote
-muse ls-remote upstream
-muse ls-remote https://hub.muse.io/repos/r1
-muse ls-remote origin --json
+muse plumbing ls-remote
+muse plumbing ls-remote upstream
+muse plumbing ls-remote https://hub.muse.io/repos/r1
+muse plumbing ls-remote --json origin
 ```
 
 ---
