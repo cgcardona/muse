@@ -47,6 +47,8 @@ dependencies, no regex-based hacks.  All parsing errors raise
 in the input string.
 """
 
+from __future__ import annotations
+
 import re
 import logging
 from collections.abc import Callable

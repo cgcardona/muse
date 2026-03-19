@@ -58,6 +58,8 @@ Supported field paths
 +---------------------+---------------------------------------------+
 """
 
+from __future__ import annotations
+
 import logging
 import pathlib
 import re

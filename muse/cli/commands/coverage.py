@@ -55,6 +55,8 @@ Flags:
     (shown by default; use ``--no-show-callers`` to suppress).
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import pathlib

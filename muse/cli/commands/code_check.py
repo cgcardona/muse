@@ -38,6 +38,8 @@ Usage::
     muse code-check --rules my_rules.toml
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import pathlib

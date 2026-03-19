@@ -81,13 +81,15 @@ The code domain schema declares five dimensions:
     Configuration and non-code files — ``SetSchema``.
 """
 
+from __future__ import annotations
+
 import hashlib
 import logging
 import pathlib
 
 from muse.core.attributes import load_attributes, resolve_strategy
 from muse.core.diff_algorithms import snapshot_diff
-from muse.core.ignore import is_ignored, load_patterns
+from muse.core.ignore import is_ignored, load_ignore_config, resolve_patterns
 from muse.core.object_store import read_object
 from muse.core.op_transform import merge_op_lists, ops_commute
 from muse.core.schema import (
@@ -182,7 +184,7 @@ class CodePlugin:
         workdir = live_state
         # .museignore lives in the repo root (parent of muse-work/).
         repo_root = workdir.parent
-        patterns = load_patterns(repo_root)
+        patterns = resolve_patterns(load_ignore_config(repo_root), _DOMAIN_NAME)
 
         files: dict[str, str] = {}
         for p in sorted(workdir.rglob("*")):

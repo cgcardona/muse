@@ -21,6 +21,8 @@ are not yet implemented; both fall back to the O(nm) LCS.
 as an optimisation without changing the public API.
 """
 
+from __future__ import annotations
+
 import logging
 from dataclasses import dataclass
 from typing import Literal

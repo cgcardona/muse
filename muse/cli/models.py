@@ -5,6 +5,8 @@ This module provides backward-compatible names for commands that import
 are plain dataclasses backed by JSON files, not SQLAlchemy ORM models.
 """
 
+from __future__ import annotations
+
 from muse.core.store import (
     CommitRecord as MuseCliCommit,
     SnapshotRecord as MuseCliSnapshot,

@@ -79,6 +79,8 @@ Public API
 - :func:`run_invariants`       — evaluate all rules against a commit.
 """
 
+from __future__ import annotations
+
 import logging
 import pathlib
 from typing import Literal, TypedDict

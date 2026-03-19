@@ -339,7 +339,7 @@ includes annotated examples for MIDI, code, and generic repositories.
 ## Related
 
 - `.muse/config.toml` — per-repository user, auth, remote, and domain configuration
-- `.museignore` — snapshot exclusion list (paths excluded from `muse commit`)
+- `.museignore` — snapshot exclusion rules (TOML; `[global]` + `[domain.<name>]` sections; paths excluded from `muse commit`)
 - `muse attributes` — CLI command to display current rules and `[meta]` domain
 - `docs/reference/type-contracts.md` — `AttributeRule`, `MuseAttributesFile`, `MergeResult` TypedDict definitions
 - `docs/reference/code-domain.md` — code domain schema and dimensions

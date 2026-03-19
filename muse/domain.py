@@ -43,6 +43,8 @@ The core engine detects ``CRDTPlugin`` via ``isinstance`` at merge time.
 taken.
 """
 
+from __future__ import annotations
+
 import pathlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, Protocol, TypedDict, runtime_checkable
@@ -539,8 +541,11 @@ class MuseDomainPlugin(Protocol):
         **``.museignore`` contract** — when *live_state* is a
         ``pathlib.Path`` (the ``muse-work/`` directory), domain plugin
         implementations **must** honour ``.museignore`` by calling
-        :func:`muse.core.ignore.load_patterns` on the repository root and
-        filtering out paths matched by :func:`muse.core.ignore.is_ignored`.
+        :func:`muse.core.ignore.load_ignore_config` on the repository root,
+        then :func:`muse.core.ignore.resolve_patterns` with the active domain
+        name, and finally filtering paths with :func:`muse.core.ignore.is_ignored`.
+        Domain-specific patterns (``[domain.<name>]`` sections) are applied
+        only when the active domain matches.
         """
         ...
 

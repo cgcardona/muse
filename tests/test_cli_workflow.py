@@ -47,6 +47,79 @@ class TestInit:
         assert result.exit_code == 0
         assert not (tmp_path / "muse-work").exists()
 
+    def test_creates_museignore(self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(cli, ["init"])
+        assert result.exit_code == 0
+        ignore_file = tmp_path / ".museignore"
+        assert ignore_file.exists(), ".museignore should be created by muse init"
+
+    def test_museignore_is_valid_toml(self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import tomllib
+
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(cli, ["init"])
+        ignore_file = tmp_path / ".museignore"
+        with ignore_file.open("rb") as fh:
+            config = tomllib.load(fh)
+        assert isinstance(config, dict), ".museignore must be valid TOML"
+
+    def test_museignore_has_global_section(self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import tomllib
+
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(cli, ["init"])
+        with (tmp_path / ".museignore").open("rb") as fh:
+            config = tomllib.load(fh)
+        assert "global" in config, ".museignore should have a [global] section"
+        assert isinstance(config["global"].get("patterns"), list)
+
+    def test_museignore_has_domain_section_for_midi(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import tomllib
+
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(cli, ["init", "--domain", "midi"])
+        with (tmp_path / ".museignore").open("rb") as fh:
+            config = tomllib.load(fh)
+        domain_map = config.get("domain", {})
+        assert "midi" in domain_map, "[domain.midi] section should be present for --domain midi"
+
+    def test_museignore_has_domain_section_for_code(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import tomllib
+
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(cli, ["init", "--domain", "code"])
+        with (tmp_path / ".museignore").open("rb") as fh:
+            config = tomllib.load(fh)
+        domain_map = config.get("domain", {})
+        assert "code" in domain_map, "[domain.code] section should be present for --domain code"
+
+    def test_museignore_not_overwritten_on_reinit(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(cli, ["init"])
+        custom = '[global]\npatterns = ["custom.txt"]\n'
+        (tmp_path / ".museignore").write_text(custom)
+        runner.invoke(cli, ["init", "--force"])
+        assert (tmp_path / ".museignore").read_text() == custom
+
+    def test_museignore_parseable_by_load_ignore_config(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from muse.core.ignore import load_ignore_config, resolve_patterns
+
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(cli, ["init", "--domain", "midi"])
+        config = load_ignore_config(tmp_path)
+        patterns = resolve_patterns(config, "midi")
+        assert isinstance(patterns, list)
+        assert len(patterns) > 0, "midi init should produce non-empty pattern list"
+
 
 class TestCommit:
     def test_commit_with_message(self, repo: pathlib.Path) -> None:

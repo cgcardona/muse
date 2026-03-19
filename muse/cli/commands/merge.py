@@ -9,6 +9,8 @@ Algorithm
    ``.muse/MERGE_STATE.json``, exit non-zero.
 """
 
+from __future__ import annotations
+
 import datetime
 import json
 import logging

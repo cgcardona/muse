@@ -24,6 +24,8 @@ Output::
     before that:   a3f2c9e1  2026-03-14  (created)
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import pathlib

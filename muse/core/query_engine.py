@@ -43,6 +43,8 @@ Public API
 - :func:`walk_history`  — traverse commits and collect matches.
 """
 
+from __future__ import annotations
+
 import logging
 import pathlib
 from collections.abc import Callable

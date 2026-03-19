@@ -7,6 +7,8 @@ by satisfying the :class:`InvariantChecker` protocol and wiring a CLI command.
 
 This module defines the **shared vocabulary** — TypedDicts and protocols that
 are domain-agnostic.  Domain-specific implementations (MIDI, code, genomics…)
+from __future__ import annotations
+
 import these types and add their own rule types and evaluators.
 
 Architecture

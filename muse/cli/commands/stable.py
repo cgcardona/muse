@@ -25,6 +25,8 @@ Output::
     These are your bedrock. High stability = safe to build on.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import pathlib
