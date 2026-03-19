@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Muse · MIDI Demo — Groove in Em</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tone@14.7.77/build/Tone.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07090f;--surface:#0d1118;--panel:#111724;--border:rgba(255,255,255,0.07);
+  --text:#e8eaf0;--muted:rgba(255,255,255,0.38);--accent:#33ddff;
+  --pink:#ff6b9d;--purple:#a855f7;--gold:#f59e0b;--green:#34d399;
+  --kick:#ef4444;--snare:#fb923c;--hat:#facc15;--crash:#fef9c3;
+  --bass:#a855f7;--epiano:#22d3ee;--lead:#f472b6;--brass:#34d399;--brassb:#86efac;
+  --main:#4f8ef7;--groove:#a855f7;--harmony:#22d3ee;--bra:#ef4444;--ens:#f59e0b;
+}
+html{font-size:14px;scroll-behavior:smooth;zoom:1.25}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;overflow-x:hidden}
+
+/* ── NAV ── */
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:60px;
+    background:rgba(13,17,24,0.92);border-bottom:1px solid var(--border);
+    position:sticky;top:0;z-index:50;backdrop-filter:blur(8px);gap:16px}
+.nav-logo{font-size:13px;font-family:'JetBrains Mono',monospace;color:var(--accent);
+          letter-spacing:.05em;text-decoration:none;white-space:nowrap;flex-shrink:0}
+.nav-center{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;min-width:0}
+.nav-title{font-size:14px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;
+           background:linear-gradient(135deg,#fff 40%,var(--accent) 100%);
+           -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.nav-meta{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
+.nav-meta-text{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;white-space:nowrap}
+.nav-tag{font-size:9px;font-family:'JetBrains Mono',monospace;padding:1px 6px;
+         border-radius:20px;background:rgba(255,255,255,0.06);border:1px solid var(--border);
+         color:var(--muted);white-space:nowrap}
+.nav-tag.on{color:var(--accent);background:rgba(51,221,255,.08);border-color:rgba(51,221,255,.2)}
+.nav-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.nav-badge{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent);
+           background:rgba(51,221,255,.1);border:1px solid rgba(51,221,255,.2);
+           padding:2px 8px;border-radius:20px}
+
+/* ── MAIN GRID ── */
+.main-grid{display:grid;grid-template-columns:320px 1fr;gap:12px;padding:0 14px 14px;
+           max-width:1400px;margin:0 auto}
+@media(max-width:900px){.main-grid{grid-template-columns:1fr}}
+
+/* ── PANELS ── */
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.panel-hd{display:flex;align-items:center;justify-content:space-between;
+          padding:9px 14px;border-bottom:1px solid var(--border);
+          font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:.05em}
+.panel-hd span{color:var(--text);font-size:12px}
+
+/* ── DAG ── */
+#dag-wrap{padding:10px 0 6px}
+#dag-svg{display:block;width:100%;overflow:visible}
+#dag-branch-badge{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--accent);
+                  background:rgba(51,221,255,.1);border:1px solid rgba(51,221,255,.15);
+                  padding:1px 6px;border-radius:12px}
+
+/* ── ACT BADGE ── */
+.act-badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;
+           font-family:'JetBrains Mono',monospace;color:var(--muted)}
+.act-dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+
+/* ── COMMAND LOG ── */
+#cmd-terminal{margin:10px;background:#060a12;border:1px solid var(--border);
+              border-radius:6px;padding:10px;overflow:auto;word-break:break-word}
+.term-dots{display:flex;gap:4px;margin-bottom:8px}
+.term-dot{width:9px;height:9px;border-radius:50%}
+.t-red{background:#ff5f57}.t-yel{background:#febc2e}.t-grn{background:#28c840}
+#cmd-prompt{font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.6;color:#c4c9d4}
+.cmd-line{color:var(--accent)}
+.cmd-ok{color:var(--green)}
+.cmd-warn{color:var(--gold)}
+.cmd-err{color:var(--kick)}
+.cmd-cursor{display:inline-block;width:6px;height:13px;background:var(--accent);
+            animation:blink .9s step-end infinite;vertical-align:middle}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── DAW TRACK VIEW ── */
+.daw-wrap{position:relative;overflow-x:auto;overflow-y:hidden}
+#daw-svg{display:block}
+/* ── SCRUB BAR ── */
+.scrub-bar{display:flex;align-items:center;gap:8px;padding:7px 12px;
+           border-bottom:1px solid var(--border);background:rgba(255,255,255,0.02)}
+.scrub-btn{background:rgba(255,255,255,0.07);border:1px solid var(--border);color:var(--text);
+           font-size:11px;font-family:'JetBrains Mono',monospace;padding:3px 9px;
+           border-radius:5px;cursor:pointer;line-height:1;transition:background .15s,border-color .15s}
+.scrub-btn:hover{background:rgba(255,255,255,0.14);border-color:rgba(255,255,255,0.25)}
+.scrub-divider{width:1px;height:24px;background:var(--border);margin:0 4px;flex-shrink:0}
+.daw-time-label{font-family:'JetBrains Mono',monospace;font-size:9px;fill:var(--muted)}
+.daw-track-label{font-family:'JetBrains Mono',monospace;font-size:9px;fill:var(--muted);text-anchor:end}
+.playhead-line{stroke:rgba(255,255,255,0.8);stroke-width:1.5;pointer-events:none}
+
+/* ── CONTROLS ── */
+.ctrl-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;
+          background:var(--surface);border-top:1px solid var(--border);
+          border-bottom:1px solid var(--border);flex-wrap:wrap}
+.ctrl-group{display:flex;align-items:center;gap:6px}
+.ctrl-btn{width:36px;height:36px;border-radius:50%;border:1px solid var(--border);
+          background:rgba(255,255,255,.05);color:var(--text);cursor:pointer;
+          display:flex;align-items:center;justify-content:center;font-size:13px;
+          transition:all .15s}
+.ctrl-btn:hover{background:rgba(255,255,255,.1);border-color:var(--accent)}
+.ctrl-btn:disabled{opacity:.3;cursor:not-allowed}
+.ctrl-play{width:44px;height:44px;border-radius:50%;border:none;
+           background:var(--accent);color:#000;cursor:pointer;font-size:15px;
+           display:flex;align-items:center;justify-content:center;
+           transition:all .15s;box-shadow:0 0 16px rgba(51,221,255,.3)}
+.ctrl-play:hover{transform:scale(1.08)}
+.ctrl-play.playing{background:var(--pink);box-shadow:0 0 20px rgba(255,107,157,.4)}
+.ctrl-info{font-family:'JetBrains Mono',monospace;font-size:11px}
+.ctrl-time{color:var(--accent);min-width:40px}
+.ctrl-sha{color:var(--muted);font-size:10px}
+.ctrl-msg{font-size:11px;color:var(--text);flex:1;min-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.audio-status{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace}
+.audio-status.ready{color:var(--green)}
+.audio-status.loading{color:var(--gold)}
+
+/* ── 21-DIM PANEL ── */
+.dim-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:10px 12px;max-height:280px;overflow-y:auto}
+.dim-row{display:flex;align-items:center;gap:5px;padding:3px 5px;border-radius:4px;
+         transition:background .2s;cursor:default;min-width:0}
+.dim-row:hover{background:rgba(255,255,255,.04)}
+.dim-row.active{background:rgba(255,255,255,.02)}
+.dim-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.15);flex-shrink:0;transition:all .3s}
+.dim-name{font-size:9.5px;font-family:'JetBrains Mono',monospace;color:var(--muted);
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;transition:color .3s}
+.dim-row.active .dim-name{color:var(--text)}
+.dim-bar-wrap{width:32px;height:4px;background:rgba(255,255,255,.07);border-radius:2px;flex-shrink:0}
+.dim-bar{height:100%;width:0;border-radius:2px;transition:width .4s,background .3s}
+.dim-group-label{grid-column:1/-1;font-size:9px;font-family:'JetBrains Mono',monospace;
+                 color:rgba(255,255,255,.2);text-transform:uppercase;letter-spacing:.08em;
+                 padding:5px 5px 2px;border-top:1px solid var(--border);margin-top:4px}
+.dim-group-label:first-child{border-top:none;margin-top:0}
+
+/* ── HEATMAP ── */
+#heatmap-wrap{padding:12px 14px;overflow-x:auto}
+#heatmap-svg{display:block}
+
+/* ── CLI REFERENCE ── */
+.cli-section{max-width:1400px;margin:0 auto;padding:0 14px 40px}
+.cli-section h2{font-size:16px;font-weight:600;margin-bottom:14px;color:var(--accent)}
+.cli-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
+.cli-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+.cli-cmd{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent);margin-bottom:4px}
+.cli-desc{font-size:12px;color:var(--muted);margin-bottom:6px}
+.cli-flags{display:flex;flex-direction:column;gap:2px}
+.cli-flag{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,.4)}
+.cli-flag span{color:var(--text)}
+
+/* ── INIT OVERLAY removed — demo auto-initialises on load ── */
+
+/* ── BRANCH LEGEND ── */
+.branch-legend{display:flex;flex-wrap:wrap;gap:10px;padding:6px 14px 10px}
+.bl-item{display:flex;align-items:center;gap:5px;font-size:10px;
+         font-family:'JetBrains Mono',monospace;color:var(--muted)}
+.bl-dot{width:9px;height:9px;border-radius:50%}
+.bl-item.active .bl-dot{box-shadow:0 0 6px currentColor}
+.bl-item.active span{color:var(--text)}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:3px}
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="nav-logo">muse / midi-demo</a>
+  <div class="nav-center">
+    <span class="nav-title">Groove in Em · Muse VCS</span>
+    <div class="nav-meta">
+      <span class="nav-meta-text">5 acts · 13 commits · 4 branches · 21 dims</span>
+      <span class="nav-tag on">drums</span>
+      <span class="nav-tag on">bass</span>
+      <span class="nav-tag on">e.piano</span>
+      <span class="nav-tag on">lead</span>
+      <span class="nav-tag on">brass</span>
+      <span class="nav-tag">96 BPM</span>
+      <span class="nav-tag">Em</span>
+    </div>
+  </div>
+  <div class="nav-right">
+    <span class="nav-badge">v0.1.2</span>
+  </div>
+</nav>
+
+<!-- CONTROLS: commit navigation only -->
+<div class="ctrl-bar">
+  <div class="ctrl-group">
+    <button class="ctrl-btn" id="btn-first" title="First commit">⏫</button>
+    <button class="ctrl-btn" id="btn-prev"  title="Previous commit">▲</button>
+    <button class="ctrl-btn" id="btn-next"  title="Next commit">▼</button>
+    <button class="ctrl-btn" id="btn-last"  title="Last commit">⏬</button>
+  </div>
+  <div class="ctrl-group ctrl-info">
+    <span class="ctrl-sha" id="sha-display">a0f4d2e1</span>
+  </div>
+  <div class="ctrl-msg" id="msg-display">muse init --domain midi</div>
+  <span class="audio-status" id="audio-status">○ click ▶ to load audio</span>
+</div>
+
+<!-- MAIN GRID -->
+<div class="main-grid">
+
+  <!-- LEFT COLUMN -->
+  <div style="display:flex;flex-direction:column;gap:12px">
+
+    <!-- DAG -->
+    <div class="panel">
+      <div class="panel-hd">
+        <span>COMMIT DAG</span>
+        <span id="dag-branch-badge" class="nav-badge" style="border-color:rgba(79,142,247,.3);color:#4f8ef7">main</span>
+      </div>
+      <div class="branch-legend" id="branch-legend"></div>
+      <div id="dag-wrap"><svg id="dag-svg"></svg></div>
+    </div>
+
+  </div><!-- /left -->
+
+  <!-- RIGHT COLUMN -->
+  <div style="display:flex;flex-direction:column;gap:12px">
+
+    <!-- DAW + COMMAND LOG (side by side) -->
+    <div style="display:flex;gap:12px;align-items:stretch">
+
+      <!-- DAW TRACK VIEW -->
+      <div class="panel" style="flex:0 0 720px">
+        <div class="panel-hd"><span>DAW TRACK VIEW</span><span id="daw-commit-label">commit 0/12</span></div>
+        <div class="scrub-bar">
+          <button class="ctrl-play" id="btn-play" title="Play / Pause">▶</button>
+          <div class="scrub-divider"></div>
+          <button class="scrub-btn" id="scrub-start" title="Return to start">&#x23EE;</button>
+          <button class="scrub-btn" id="scrub-back"  title="Back 1 bar">&#x25C4;&#x25C4;</button>
+          <button class="scrub-btn" id="scrub-fwd"   title="Forward 1 bar">&#x25BA;&#x25BA;</button>
+          <button class="scrub-btn" id="scrub-end"   title="Jump to end">&#x23ED;</button>
+          <span class="ctrl-time" id="time-display">0:00</span>
+        </div>
+        <div class="daw-wrap">
+          <svg id="daw-svg"></svg>
+        </div>
+      </div>
+
+      <!-- COMMAND LOG -->
+      <div class="panel" style="flex:1;min-width:0;display:flex;flex-direction:column">
+        <div class="panel-hd"><span>COMMAND LOG</span><span id="act-label">Act 0</span></div>
+        <div id="cmd-terminal" style="flex:1">
+          <div class="term-dots">
+            <div class="term-dot t-red"></div>
+            <div class="term-dot t-yel"></div>
+            <div class="term-dot t-grn"></div>
+          </div>
+          <div id="cmd-prompt"><span class="cmd-cursor"></span></div>
+        </div>
+      </div>
+
+    </div><!-- /daw+cmdlog row -->
+
+    <!-- HEATMAP + 21-DIM (side by side) -->
+    <div style="display:flex;gap:12px;align-items:stretch">
+
+      <!-- HEATMAP -->
+      <div class="panel" style="flex:0 0 720px">
+        <div class="panel-hd"><span>DIMENSION ACTIVITY HEATMAP</span><span style="color:var(--muted);font-size:10px">commits × 21 dimensions</span></div>
+        <div id="heatmap-wrap"><svg id="heatmap-svg"></svg></div>
+      </div>
+
+      <!-- 21-DIM PANEL -->
+      <div class="panel" style="flex:1;min-width:0">
+        <div class="panel-hd"><span>21 MIDI DIMENSIONS</span><span id="dim-active-count">0 active</span></div>
+        <div class="dim-grid" id="dim-list"></div>
+      </div>
+
+    </div><!-- /heatmap+dim row -->
+
+  </div><!-- /right -->
+</div><!-- /main-grid -->
+
+<!-- CLI REFERENCE -->
+<div class="cli-section">
+  <h2>MIDI Plugin — Command Reference</h2>
+  <div class="cli-grid" id="cli-grid"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════════════
+const BPM = 96;
+const BEAT = 60 / BPM;
+const BAR  = 4 * BEAT;
+const TOTAL_SECS = 8 * BAR;
+
+const COMMITS = [{"sha":"a0f4d2e1","branch":"main","label":"muse init\\n--domain midi","cmd":"muse init --domain midi","output":"\u2713 Initialized Muse repository\n  domain: midi  |  .muse/ created","act":0,"notes":[],"dimAct":{"time_signatures":2,"key_signatures":2,"tempo_map":2,"markers":2,"track_structure":1},"parents":[],"conflict":false,"resolved":false},{"sha":"1b3c8f02","branch":"main","label":"Foundation\\n4/4 \u00b7 96 BPM \u00b7 Em","cmd":"muse commit -m 'Foundation: 4/4, 96 BPM, Em key'","output":"\u2713 [main 1b3c8f02] Foundation: 4/4, 96 BPM, Em key\n  1 file changed \u2014 .museattributes, time_sig, key_sig, markers","act":1,"notes":[],"dimAct":{"time_signatures":2,"key_signatures":2,"tempo_map":2,"markers":2,"track_structure":1,"program_change":1},"parents":["a0f4d2e1"],"conflict":false,"resolved":false},{"sha":"2d9e1a47","branch":"main","label":"Foundation\\nkick + snare groove","cmd":"muse commit -m 'Foundation: kick+snare groove pattern'","output":"\u2713 [main 2d9e1a47] Foundation: kick+snare groove pattern\n  notes dim active  |  cc_volume","act":1,"notes":[[36,110,0.0,0.08,"kick"],[36,100,1.25,0.08,"kick"],[36,110,2.5,0.08,"kick"],[36,100,3.75,0.08,"kick"],[36,110,5.0,0.08,"kick"],[36,100,6.25,0.08,"kick"],[36,110,7.5,0.08,"kick"],[36,100,8.75,0.08,"kick"],[36,110,10.0,0.08,"kick"],[36,100,11.25,0.08,"kick"],[36,110,12.5,0.08,"kick"],[36,100,13.75,0.08,"kick"],[36,110,15.0,0.08,"kick"],[36,100,16.25,0.08,"kick"],[36,110,17.5,0.08,"kick"],[36,100,18.75,0.08,"kick"],[38,95,0.625,0.1,"snare"],[38,90,1.875,0.1,"snare"],[38,95,3.125,0.1,"snare"],[38,90,4.375,0.1,"snare"],[38,95,5.625,0.1,"snare"],[38,90,6.875,0.1,"snare"],[38,95,8.125,0.1,"snare"],[38,90,9.375,0.1,"snare"],[38,95,10.625,0.1,"snare"],[38,90,11.875,0.1,"snare"],[38,95,13.125,0.1,"snare"],[38,90,14.375,0.1,"snare"],[38,95,15.625,0.1,"snare"],[38,90,16.875,0.1,"snare"],[38,95,18.125,0.1,"snare"],[38,90,19.375,0.1,"snare"]],"dimAct":{"time_signatures":2,"key_signatures":2,"tempo_map":2,"markers":2,"track_structure":1,"notes":2,"cc_volume":2,"cc_pan":1},"parents":["1b3c8f02"],"conflict":false,"resolved":false},{"sha":"3f0b5c8d","branch":"feat/groove","label":"Groove\\nfull drum kit + bass","cmd":"muse commit -m 'Groove: hi-hat 16ths, ghost snares, bass root motion'","output":"\u2713 [feat/groove 3f0b5c8d] Groove: hi-hat 16ths, ghost snares, bass root motion\n  notes, program_change, cc_portamento, cc_pan","act":2,"notes":[[36,110,0.0,0.08,"kick"],[36,100,1.25,0.08,"kick"],[36,110,2.5,0.08,"kick"],[36,100,3.75,0.08,"kick"],[36,110,5.0,0.08,"kick"],[36,100,6.25,0.08,"kick"],[36,110,7.5,0.08,"kick"],[36,100,8.75,0.08,"kick"],[36,110,10.0,0.08,"kick"],[36,100,11.25,0.08,"kick"],[36,110,12.5,0.08,"kick"],[36,100,13.75,0.08,"kick"],[36,110,15.0,0.08,"kick"],[36,100,16.25,0.08,"kick"],[36,110,17.5,0.08,"kick"],[36,100,18.75,0.08,"kick"],[36,78,4.53125,0.07,"kick"],[36,78,9.53125,0.07,"kick"],[36,78,14.53125,0.07,"kick"],[36,78,19.53125,0.07,"kick"],[38,95,0.625,0.1,"snare"],[38,90,1.875,0.1,"snare"],[38,95,3.125,0.1,"snare"],[38,90,4.375,0.1,"snare"],[38,95,5.625,0.1,"snare"],[38,90,6.875,0.1,"snare"],[38,95,8.125,0.1,"snare"],[38,90,9.375,0.1,"snare"],[38,95,10.625,0.1,"snare"],[38,90,11.875,0.1,"snare"],[38,95,13.125,0.1,"snare"],[38,90,14.375,0.1,"snare"],[38,95,15.625,0.1,"snare"],[38,90,16.875,0.1,"snare"],[38,95,18.125,0.1,"snare"],[38,90,19.375,0.1,"snare"],[42,75,0.0,0.06,"hat_c"],[42,45,0.15625,0.06,"hat_c"],[42,60,0.3125,0.06,"hat_c"],[42,45,0.46875,0.06,"hat_c"],[42,75,0.625,0.06,"hat_c"],[42,45,0.78125,0.06,"hat_c"],[42,60,0.9375,0.06,"hat_c"],[42,45,1.09375,0.06,"hat_c"],[42,75,1.25,0.06,"hat_c"],[42,45,1.40625,0.06,"hat_c"],[42,60,1.5625,0.06,"hat_c"],[42,45,1.71875,0.06,"hat_c"],[42,75,1.875,0.06,"hat_c"],[42,45,2.03125,0.06,"hat_c"],[42,45,2.34375,0.06,"hat_c"],[42,75,2.5,0.06,"hat_c"],[42,45,2.65625,0.06,"hat_c"],[42,60,2.8125,0.06,"hat_c"],[42,45,2.96875,0.06,"hat_c"],[42,75,3.125,0.06,"hat_c"],[42,45,3.28125,0.06,"hat_c"],[42,60,3.4375,0.06,"hat_c"],[42,45,3.59375,0.06,"hat_c"],[42,75,3.75,0.06,"hat_c"],[42,45,3.90625,0.06,"hat_c"],[42,60,4.0625,0.06,"hat_c"],[42,45,4.21875,0.06,"hat_c"],[42,75,4.375,0.06,"hat_c"],[42,45,4.53125,0.06,"hat_c"],[42,45,4.84375,0.06,"hat_c"],[42,75,5.0,0.06,"hat_c"],[42,45,5.15625,0.06,"hat_c"],[42,60,5.3125,0.06,"hat_c"],[42,45,5.46875,0.06,"hat_c"],[42,75,5.625,0.06,"hat_c"],[42,45,5.78125,0.06,"hat_c"],[42,60,5.9375,0.06,"hat_c"],[42,45,6.09375,0.06,"hat_c"],[42,75,6.25,0.06,"hat_c"],[42,45,6.40625,0.06,"hat_c"],[42,60,6.5625,0.06,"hat_c"],[42,45,6.71875,0.06,"hat_c"],[42,75,6.875,0.06,"hat_c"],[42,45,7.03125,0.06,"hat_c"],[42,45,7.34375,0.06,"hat_c"],[42,75,7.5,0.06,"hat_c"],[42,45,7.65625,0.06,"hat_c"],[42,60,7.8125,0.06,"hat_c"],[42,45,7.96875,0.06,"hat_c"],[42,75,8.125,0.06,"hat_c"],[42,45,8.28125,0.06,"hat_c"],[42,60,8.4375,0.06,"hat_c"],[42,45,8.59375,0.06,"hat_c"],[42,75,8.75,0.06,"hat_c"],[42,45,8.90625,0.06,"hat_c"],[42,60,9.0625,0.06,"hat_c"],[42,45,9.21875,0.06,"hat_c"],[42,75,9.375,0.06,"hat_c"],[42,45,9.53125,0.06,"hat_c"],[42,45,9.84375,0.06,"hat_c"],[42,75,10.0,0.06,"hat_c"],[42,45,10.15625,0.06,"hat_c"],[42,60,10.3125,0.06,"hat_c"],[42,45,10.46875,0.06,"hat_c"],[42,75,10.625,0.06,"hat_c"],[42,45,10.78125,0.06,"hat_c"],[42,60,10.9375,0.06,"hat_c"],[42,45,11.09375,0.06,"hat_c"],[42,75,11.25,0.06,"hat_c"],[42,45,11.40625,0.06,"hat_c"],[42,60,11.5625,0.06,"hat_c"],[42,45,11.71875,0.06,"hat_c"],[42,75,11.875,0.06,"hat_c"],[42,45,12.03125,0.06,"hat_c"],[42,45,12.34375,0.06,"hat_c"],[42,75,12.5,0.06,"hat_c"],[42,45,12.65625,0.06,"hat_c"],[42,60,12.8125,0.06,"hat_c"],[42,45,12.96875,0.06,"hat_c"],[42,75,13.125,0.06,"hat_c"],[42,45,13.28125,0.06,"hat_c"],[42,60,13.4375,0.06,"hat_c"],[42,45,13.59375,0.06,"hat_c"],[42,75,13.75,0.06,"hat_c"],[42,45,13.90625,0.06,"hat_c"],[42,60,14.0625,0.06,"hat_c"],[42,45,14.21875,0.06,"hat_c"],[42,75,14.375,0.06,"hat_c"],[42,45,14.53125,0.06,"hat_c"],[42,45,14.84375,0.06,"hat_c"],[42,75,15.0,0.06,"hat_c"],[42,45,15.15625,0.06,"hat_c"],[42,60,15.3125,0.06,"hat_c"],[42,45,15.46875,0.06,"hat_c"],[42,75,15.625,0.06,"hat_c"],[42,45,15.78125,0.06,"hat_c"],[42,60,15.9375,0.06,"hat_c"],[42,45,16.09375,0.06,"hat_c"],[42,75,16.25,0.06,"hat_c"],[42,45,16.40625,0.06,"hat_c"],[42,60,16.5625,0.06,"hat_c"],[42,45,16.71875,0.06,"hat_c"],[42,75,16.875,0.06,"hat_c"],[42,45,17.03125,0.06,"hat_c"],[42,45,17.34375,0.06,"hat_c"],[42,75,17.5,0.06,"hat_c"],[42,45,17.65625,0.06,"hat_c"],[42,60,17.8125,0.06,"hat_c"],[42,45,17.96875,0.06,"hat_c"],[42,75,18.125,0.06,"hat_c"],[42,45,18.28125,0.06,"hat_c"],[42,60,18.4375,0.06,"hat_c"],[42,45,18.59375,0.06,"hat_c"],[42,75,18.75,0.06,"hat_c"],[42,45,18.90625,0.06,"hat_c"],[42,60,19.0625,0.06,"hat_c"],[42,45,19.21875,0.06,"hat_c"],[42,75,19.375,0.06,"hat_c"],[42,45,19.53125,0.06,"hat_c"],[42,45,19.84375,0.06,"hat_c"],[46,72,2.1875,0.2,"hat_o"],[46,72,4.6875,0.2,"hat_o"],[46,72,7.1875,0.2,"hat_o"],[46,72,9.6875,0.2,"hat_o"],[46,72,12.1875,0.2,"hat_o"],[46,72,14.6875,0.2,"hat_o"],[46,72,17.1875,0.2,"hat_o"],[46,72,19.6875,0.2,"hat_o"],[38,22,0.3125,0.04,"ghost"],[38,22,0.9375,0.04,"ghost"],[38,22,1.5625,0.04,"ghost"],[38,22,2.1875,0.04,"ghost"],[38,22,2.8125,0.04,"ghost"],[38,22,3.4375,0.04,"ghost"],[38,22,4.0625,0.04,"ghost"],[38,22,4.6875,0.04,"ghost"],[38,22,5.3125,0.04,"ghost"],[38,22,5.9375,0.04,"ghost"],[38,22,6.5625,0.04,"ghost"],[38,22,7.1875,0.04,"ghost"],[38,22,7.8125,0.04,"ghost"],[38,22,8.4375,0.04,"ghost"],[38,22,9.0625,0.04,"ghost"],[38,22,9.6875,0.04,"ghost"],[38,22,10.3125,0.04,"ghost"],[38,22,10.9375,0.04,"ghost"],[38,22,11.5625,0.04,"ghost"],[38,22,12.1875,0.04,"ghost"],[38,22,12.8125,0.04,"ghost"],[38,22,13.4375,0.04,"ghost"],[38,22,14.0625,0.04,"ghost"],[38,22,14.6875,0.04,"ghost"],[38,22,15.3125,0.04,"ghost"],[38,22,15.9375,0.04,"ghost"],[38,22,16.5625,0.04,"ghost"],[38,22,17.1875,0.04,"ghost"],[38,22,17.8125,0.04,"ghost"],[38,22,18.4375,0.04,"ghost"],[38,22,19.0625,0.04,"ghost"],[38,22,19.6875,0.04,"ghost"],[49,100,0.0,1.0,"crash"],[40,95,0.0,0.625,"bass"],[43,85,0.625,0.3125,"bass"],[45,80,0.9375,0.15625,"bass"],[47,90,1.09375,1.40625,"bass"],[40,95,2.5,0.78125,"bass"],[43,85,3.28125,0.3125,"bass"],[45,85,3.59375,0.46875,"bass"],[47,80,4.0625,0.3125,"bass"],[50,80,4.375,0.625,"bass"],[45,90,5.0,0.625,"bass"],[48,80,5.625,0.3125,"bass"],[47,85,5.9375,1.09375,"bass"],[45,75,7.03125,0.46875,"bass"],[47,90,7.5,0.625,"bass"],[50,85,8.125,0.3125,"bass"],[45,80,8.4375,0.625,"bass"],[40,95,9.0625,0.9375,"bass"],[40,95,10.0,0.625,"bass"],[43,85,10.625,0.3125,"bass"],[45,80,10.9375,0.15625,"bass"],[47,90,11.09375,1.40625,"bass"],[40,95,12.5,0.78125,"bass"],[43,85,13.28125,0.3125,"bass"],[45,85,13.59375,0.46875,"bass"],[47,80,14.0625,0.3125,"bass"],[50,80,14.375,0.625,"bass"],[45,90,15.0,0.625,"bass"],[48,80,15.625,0.3125,"bass"],[47,85,15.9375,1.09375,"bass"],[45,75,17.03125,0.46875,"bass"],[47,90,17.5,0.625,"bass"],[50,85,18.125,0.3125,"bass"],[45,80,18.4375,0.625,"bass"],[40,95,19.0625,0.9375,"bass"]],"dimAct":{"time_signatures":2,"key_signatures":2,"tempo_map":2,"markers":2,"track_structure":1,"notes":3,"cc_volume":2,"cc_pan":1,"program_change":2,"cc_portamento":2,"cc_reverb":1,"cc_expression":1,"cc_other":1},"parents":["2d9e1a47"],"conflict":false,"resolved":false},{"sha":"4a2c7e91","branch":"feat/groove","label":"Groove\\nbass expression + reverb","cmd":"muse commit -m 'Groove: bass portamento slides, CC reverb tail'","output":"\u2713 [feat/groove 4a2c7e91] Groove: bass portamento slides, CC reverb tail\n  cc_portamento, cc_reverb, cc_expression active","act":2,"notes":[[36,110,0.0,0.08,"kick"],[36,100,1.25,0.08,"kick"],[36,110,2.5,0.08,"kick"],[36,100,3.75,0.08,"kick"],[36,110,5.0,0.08,"kick"],[36,100,6.25,0.08,"kick"],[36,110,7.5,0.08,"kick"],[36,100,8.75,0.08,"kick"],[36,110,10.0,0.08,"kick"],[36,100,11.25,0.08,"kick"],[36,110,12.5,0.08,"kick"],[36,100,13.75,0.08,"kick"],[36,110,15.0,0.08,"kick"],[36,100,16.25,0.08,"kick"],[36,110,17.5,0.08,"kick"],[36,100,18.75,0.08,"kick"],[36,78,4.53125,0.07,"kick"],[36,78,9.53125,0.07,"kick"],[36,78,14.53125,0.07,"kick"],[36,78,19.53125,0.07,"kick"],[38,95,0.625,0.1,"snare"],[38,90,1.875,0.1,"snare"],[38,95,3.125,0.1,"snare"],[38,90,4.375,0.1,"snare"],[38,95,5.625,0.1,"snare"],[38,90,6.875,0.1,"snare"],[38,95,8.125,0.1,"snare"],[38,90,9.375,0.1,"snare"],[38,95,10.625,0.1,"snare"],[38,90,11.875,0.1,"snare"],[38,95,13.125,0.1,"snare"],[38,90,14.375,0.1,"snare"],[38,95,15.625,0.1,"snare"],[38,90,16.875,0.1,"snare"],[38,95,18.125,0.1,"snare"],[38,90,19.375,0.1,"snare"],[42,75,0.0,0.06,"hat_c"],[42,45,0.15625,0.06,"hat_c"],[42,60,0.3125,0.06,"hat_c"],[42,45,0.46875,0.06,"hat_c"],[42,75,0.625,0.06,"hat_c"],[42,45,0.78125,0.06,"hat_c"],[42,60,0.9375,0.06,"hat_c"],[42,45,1.09375,0.06,"hat_c"],[42,75,1.25,0.06,"hat_c"],[42,45,1.40625,0.06,"hat_c"],[42,60,1.5625,0.06,"hat_c"],[42,45,1.71875,0.06,"hat_c"],[42,75,1.875,0.06,"hat_c"],[42,45,2.03125,0.06,"hat_c"],[42,45,2.34375,0.06,"hat_c"],[42,75,2.5,0.06,"hat_c"],[42,45,2.65625,0.06,"hat_c"],[42,60,2.8125,0.06,"hat_c"],[42,45,2.96875,0.06,"hat_c"],[42,75,3.125,0.06,"hat_c"],[42,45,3.28125,0.06,"hat_c"],[42,60,3.4375,0.06,"hat_c"],[42,45,3.59375,0.06,"hat_c"],[42,75,3.75,0.06,"hat_c"],[42,45,3.90625,0.06,"hat_c"],[42,60,4.0625,0.06,"hat_c"],[42,45,4.21875,0.06,"hat_c"],[42,75,4.375,0.06,"hat_c"],[42,45,4.53125,0.06,"hat_c"],[42,45,4.84375,0.06,"hat_c"],[42,75,5.0,0.06,"hat_c"],[42,45,5.15625,0.06,"hat_c"],[42,60,5.3125,0.06,"hat_c"],[42,45,5.46875,0.06,"hat_c"],[42,75,5.625,0.06,"hat_c"],[42,45,5.78125,0.06,"hat_c"],[42,60,5.9375,0.06,"hat_c"],[42,45,6.09375,0.06,"hat_c"],[42,75,6.25,0.06,"hat_c"],[42,45,6.40625,0.06,"hat_c"],[42,60,6.5625,0.06,"hat_c"],[42,45,6.71875,0.06,"hat_c"],[42,75,6.875,0.06,"hat_c"],[42,45,7.03125,0.06,"hat_c"],[42,45,7.34375,0.06,"hat_c"],[42,75,7.5,0.06,"hat_c"],[42,45,7.65625,0.06,"hat_c"],[42,60,7.8125,0.06,"hat_c"],[42,45,7.96875,0.06,"hat_c"],[42,75,8.125,0.06,"hat_c"],[42,45,8.28125,0.06,"hat_c"],[42,60,8.4375,0.06,"hat_c"],[42,45,8.59375,0.06,"hat_c"],[42,75,8.75,0.06,"hat_c"],[42,45,8.90625,0.06,"hat_c"],[42,60,9.0625,0.06,"hat_c"],[42,45,9.21875,0.06,"hat_c"],[42,75,9.375,0.06,"hat_c"],[42,45,9.53125,0.06,"hat_c"],[42,45,9.84375,0.06,"hat_c"],[42,75,10.0,0.06,"hat_c"],[42,45,10.15625,0.06,"hat_c"],[42,60,10.3125,0.06,"hat_c"],[42,45,10.46875,0.06,"hat_c"],[42,75,10.625,0.06,"hat_c"],[42,45,10.78125,0.06,"hat_c"],[42,60,10.9375,0.06,"hat_c"],[42,45,11.09375,0.06,"hat_c"],[42,75,11.25,0.06,"hat_c"],[42,45,11.40625,0.06,"hat_c"],[42,60,11.5625,0.06,"hat_c"],[42,45,11.71875,0.06,"hat_c"],[42,75,11.875,0.06,"hat_c"],[42,45,12.03125,0.06,"hat_c"],[42,45,12.34375,0.06,"hat_c"],[42,75,12.5,0.06,"hat_c"],[42,45,12.65625,0.06,"hat_c"],[42,60,12.8125,0.06,"hat_c"],[42,45,12.96875,0.06,"hat_c"],[42,75,13.125,0.06,"hat_c"],[42,45,13.28125,0.06,"hat_c"],[42,60,13.4375,0.06,"hat_c"],[42,45,13.59375,0.06,"hat_c"],[42,75,13.75,0.06,"hat_c"],[42,45,13.90625,0.06,"hat_c"],[42,60,14.0625,0.06,"hat_c"],[42,45,14.21875,0.06,"hat_c"],[42,75,14.375,0.06,"hat_c"],[42,45,14.53125,0.06,"hat_c"],[42,45,14.84375,0.06,"hat_c"],[42,75,15.0,0.06,"hat_c"],[42,45,15.15625,0.06,"hat_c"],[42,60,15.3125,0.06,"hat_c"],[42,45,15.46875,0.06,"hat_c"],[42,75,15.625,0.06,"hat_c"],[42,45,15.78125,0.06,"hat_c"],[42,60,15.9375,0.06,"hat_c"],[42,45,16.09375,0.06,"hat_c"],[42,75,16.25,0.06,"hat_c"],[42,45,16.40625,0.06,"hat_c"],[42,60,16.5625,0.06,"hat_c"],[42,45,16.71875,0.06,"hat_c"],[42,75,16.875,0.06,"hat_c"],[42,45,17.03125,0.06,"hat_c"],[42,45,17.34375,0.06,"hat_c"],[42,75,17.5,0.06,"hat_c"],[42,45,17.65625,0.06,"hat_c"],[42,60,17.8125,0.06,"hat_c"],[42,45,17.96875,0.06,"hat_c"],[42,75,18.125,0.06,"hat_c"],[42,45,18.28125,0.06,"hat_c"],[42,60,18.4375,0.06,"hat_c"],[42,45,18.59375,0.06,"hat_c"],[42,75,18.75,0.06,"hat_c"],[42,45,18.90625,0.06,"hat_c"],[42,60,19.0625,0.06,"hat_c"],[42,45,19.21875,0.06,"hat_c"],[42,75,19.375,0.06,"hat_c"],[42,45,19.53125,0.06,"hat_c"],[42,45,19.84375,0.06,"hat_c"],[46,72,2.1875,0.2,"hat_o"],[46,72,4.6875,0.2,"hat_o"],[46,72,7.1875,0.2,"hat_o"],[46,72,9.6875,0.2,"hat_o"],[46,72,12.1875,0.2,"hat_o"],[46,72,14.6875,0.2,"hat_o"],[46,72,17.1875,0.2,"hat_o"],[46,72,19.6875,0.2,"hat_o"],[38,22,0.3125,0.04,"ghost"],[38,22,0.9375,0.04,"ghost"],[38,22,1.5625,0.04,"ghost"],[38,22,2.1875,0.04,"ghost"],[38,22,2.8125,0.04,"ghost"],[38,22,3.4375,0.04,"ghost"],[38,22,4.0625,0.04,"ghost"],[38,22,4.6875,0.04,"ghost"],[38,22,5.3125,0.04,"ghost"],[38,22,5.9375,0.04,"ghost"],[38,22,6.5625,0.04,"ghost"],[38,22,7.1875,0.04,"ghost"],[38,22,7.8125,0.04,"ghost"],[38,22,8.4375,0.04,"ghost"],[38,22,9.0625,0.04,"ghost"],[38,22,9.6875,0.04,"ghost"],[38,22,10.3125,0.04,"ghost"],[38,22,10.9375,0.04,"ghost"],[38,22,11.5625,0.04,"ghost"],[38,22,12.1875,0.04,"ghost"],[38,22,12.8125,0.04,"ghost"],[38,22,13.4375,0.04,"ghost"],[38,22,14.0625,0.04,"ghost"],[38,22,14.6875,0.04,"ghost"],[38,22,15.3125,0.04,"ghost"],[38,22,15.9375,0.04,"ghost"],[38,22,16.5625,0.04,"ghost"],[38,22,17.1875,0.04,"ghost"],[38,22,17.8125,0.04,"ghost"],[38,22,18.4375,0.04,"ghost"],[38,22,19.0625,0.04,"ghost"],[38,22,19.6875,0.04,"ghost"],[49,100,0.0,1.0,"crash"],[40,95,0.0,0.625,"bass"],[43,85,0.625,0.3125,"bass"],[45,80,0.9375,0.15625,"bass"],[47,90,1.09375,1.40625,"bass"],[40,95,2.5,0.78125,"bass"],[43,85,3.28125,0.3125,"bass"],[45,85,3.59375,0.46875,"bass"],[47,80,4.0625,0.3125,"bass"],[50,80,4.375,0.625,"bass"],[45,90,5.0,0.625,"bass"],[48,80,5.625,0.3125,"bass"],[47,85,5.9375,1.09375,"bass"],[45,75,7.03125,0.46875,"bass"],[47,90,7.5,0.625,"bass"],[50,85,8.125,0.3125,"bass"],[45,80,8.4375,0.625,"bass"],[40,95,9.0625,0.9375,"bass"],[40,95,10.0,0.625,"bass"],[43,85,10.625,0.3125,"bass"],[45,80,10.9375,0.15625,"bass"],[47,90,11.09375,1.40625,"bass"],[40,95,12.5,0.78125,"bass"],[43,85,13.28125,0.3125,"bass"],[45,85,13.59375,0.46875,"bass"],[47,80,14.0625,0.3125,"bass"],[50,80,14.375,0.625,"bass"],[45,90,15.0,0.625,"bass"],[48,80,15.625,0.3125,"bass"],[47,85,15.9375,1.09375,"bass"],[45,75,17.03125,0.46875,"bass"],[47,90,17.5,0.625,"bass"],[50,85,18.125,0.3125,"bass"],[45,80,18.4375,0.625,"bass"],[40,95,19.0625,0.9375,"bass"]],"dimAct":{"time_signatures":2,"key_signatures":2,"tempo_map":2,"markers":2,"track_structure":1,"notes":3,"cc_volume":2,"cc_pan":1,"program_change":2,"cc_portamento":2,"cc_reverb":1,"cc_expression":1,"cc_other":1},"parents":["3f0b5c8d"],"conflict":false,"resolved":false},{"sha":"5e8d3b14","branch":"feat/harmony","label":"Harmony\\nEm7\u2192Am9\u2192Bm7\u2192Cmaj7","cmd":"muse commit -m 'Harmony: Em7 chord voicings, CC sustain + chorus'","output":"\u2713 [feat/harmony 5e8d3b14] Harmony: Em7 chord voicings, CC sustain + chorus\n  notes, cc_sustain, cc_chorus, cc_soft_pedal","act":2,"notes":[[36,110,0.0,0.08,"kick"],[36,100,1.25,0.08,"kick"],[36,110,2.5,0.08,"kick"],[36,100,3.75,0.08,"kick"],[36,110,5.0,0.08,"kick"],[36,100,6.25,0.08,"kick"],[36,110,7.5,0.08,"kick"],[36,100,8.75,0.08,"kick"],[36,110,10.0,0.08,"kick"],[36,100,11.25,0.08,"kick"],[36,110,12.5,0.08,"kick"],[36,100,13.75,0.08,"kick"],[36,110,15.0,0.08,"kick"],[36,100,16.25,0.08,"kick"],[36,110,17.5,0.08,"kick"],[36,100,18.75,0.08,"kick"],[36,78,4.53125,0.07,"kick"],[36,78,9.53125,0.07,"kick"],[36,78,14.53125,0.07,"kick"],[36,78,19.53125,0.07,"kick"],[38,95,0.625,0.1,"snare"],[38,90,1.875,0.1,"snare"],[38,95,3.125,0.1,"snare"],[38,90,4.375,0.1,"snare"],[38,95,5.625,0.1,"snare"],[38,90,6.875,0.1,"snare"],[38,95,8.125,0.1,"snare"],[38,90,9.375,0.1,"snare"],[38,95,10.625,0.1,"snare"],[38,90,11.875,0.1,"snare"],[38,95,13.125,0.1,"snare"],[38,90,14.375,0.1,"snare"],[38,95,15.625,0.1,"snare"],[38,90,16.875,0.1,"snare"],[38,95,18.125,0.1,"snare"],[38,90,19.375,0.1,"snare"],[42,75,0.0,0.06,"hat_c"],[42,45,0.15625,0.06,"hat_c"],[42,60,0.3125,0.06,"hat_c"],[42,45,0.46875,0.06,"hat_c"],[42,75,0.625,0.06,"hat_c"],[42,45,0.78125,0.06,"hat_c"],[42,60,0.9375,0.06,"hat_c"],[42,45,1.09375,0.06,"hat_c"],[42,75,1.25,0.06,"hat_c"],[42,45,1.40625,0.06,"hat_c"],[42,60,1.5625,0.06,"hat_c"],[42,45,1.71875,0.06,"hat_c"],[42,75,1.875,0.06,"hat_c"],[42,45,2.03125,0.06,"hat_c"],[42,45,2.34375,0.06,"hat_c"],[42,75,2.5,0.06,"hat_c"],[42,45,2.65625,0.06,"hat_c"],[42,60,2.8125,0.06,"hat_c"],[42,45,2.96875,0.06,"hat_c"],[42,75,3.125,0.06,"hat_c"],[42,45,3.28125,0.06,"hat_c"],[42,60,3.4375,0.06,"hat_c"],[42,45,3.59375,0.06,"hat_c"],[42,75,3.75,0.06,"hat_c"],[42,45,3.90625,0.06,"hat_c"],[42,60,4.0625,0.06,"hat_c"],[42,45,4.21875,0.06,"hat_c"],[42,75,4.375,0.06,"hat_c"],[42,45,4.53125,0.06,"hat_c"],[42,45,4.84375,0.06,"hat_c"],[42,75,5.0,0.06,"hat_c"],[42,45,5.15625,0.06,"hat_c"],[42,60,5.3125,0.06,"hat_c"],[42,45,5.46875,0.06,"hat_c"],[42,75,5.625,0.06,"hat_c"],[42,45,5.78125,0.06,"hat_c"],[42,60,5.9375,0.06,"hat_c"],[42,45,6.09375,0.06,"hat_c"],[42,75,6.25,0.06,"hat_c"],[42,45,6.40625,0.06,"hat_c"],[42,60,6.5625,0.06,"hat_c"],[42,45,6.71875,0.06,"hat_c"],[42,75,6.875,0.06,"hat_c"],[42,45,7.03125,0.06,"hat_c"],[42,45,7.34375,0.06,"hat_c"],[42,75,7.5,0.06,"hat_c"],[42,45,7.65625,0.06,"hat_c"],[42,60,7.8125,0.06,"hat_c"],[42,45,7.96875,0.06,"hat_c"],[42,75,8.125,0.06,"hat_c"],[42,45,8.28125,0.06,"hat_c"],[42,60,8.4375,0.06,"hat_c"],[42,45,8.59375,0.06,"hat_c"],[42,75,8.75,0.06,"hat_c"],[42,45,8.90625,0.06,"hat_c"],[42,60,9.0625,0.06,"hat_c"],[42,45,9.21875,0.06,"hat_c"],[42,75,9.375,0.06,"hat_c"],[42,45,9.53125,0.06,"hat_c"],[42,45,9.84375,0.06,"hat_c"],[42,75,10.0,0.06,"hat_c"],[42,45,10.15625,0.06,"hat_c"],[42,60,10.3125,0.06,"hat_c"],[42,45,10.46875,0.06,"hat_c"],[42,75,10.625,0.06,"hat_c"],[42,45,10.78125,0.06,"hat_c"],[42,60,10.9375,0.06,"hat_c"],[42,45,11.09375,0.06,"hat_c"],[42,75,11.25,0.06,"hat_c"],[42,45,11.40625,0.06,"hat_c"],[42,60,11.5625,0.06,"hat_c"],[42,45,11.71875,0.06,"hat_c"],[42,75,11.875,0.06,"hat_c"],[42,45,12.03125,0.06,"hat_c"],[42,45,12.34375,0.06,"hat_c"],[42,75,12.5,0.06,"hat_c"],[42,45,12.65625,0.06,"hat_c"],[42,60,12.8125,0.06,"hat_c"],[42,45,12.96875,0.06,"hat_c"],[42,75,13.125,0.06,"hat_c"],[42,45,13.28125,0.06,"hat_c"],[42,60,13.4375,0.06,"hat_c"],[42,45,13.59375,0.06,"hat_c"],[42,75,13.75,0.06,"hat_c"],[42,45,13.90625,0.06,"hat_c"],[42,60,14.0625,0.06,"hat_c"],[42,45,14.21875,0.06,"hat_c"],[42,75,14.375,0.06,"hat_c"],[42,45,14.53125,0.06,"hat_c"],[42,45,14.84375,0.06,"hat_c"],[42,75,15.0,0.06,"hat_c"],[42,45,15.15625,0.06,"hat_c"],[42,60,15.3125,0.06,"hat_c"],[42,45,15.46875,0.06,"hat_c"],[42,75,15.625,0.06,"hat_c"],[42,45,15.78125,0.06,"hat_c"],[42,60,15.9375,0.06,"hat_c"],[42,45,16.09375,0.06,"hat_c"],[42,75,16.25,0.06,"hat_c"],[42,45,16.40625,0.06,"hat_c"],[42,60,16.5625,0.06,"hat_c"],[42,45,16.71875,0.06,"hat_c"],[42,75,16.875,0.06,"hat_c"],[42,45,17.03125,0.06,"hat_c"],[42,45,17.34375,0.06,"hat_c"],[42,75,17.5,0.06,"hat_c"],[42,45,17.65625,0.06,"hat_c"],[42,60,17.8125,0.06,"hat_c"],[42,45,17.96875,0.06,"hat_c"],[42,75,18.125,0.06,"hat_c"],[42,45,18.28125,0.06,"hat_c"],[42,60,18.4375,0.06,"hat_c"],[42,45,18.59375,0.06,"hat_c"],[42,75,18.75,0.06,"hat_c"],[42,45,18.90625,0.06,"hat_c"],[42,60,19.0625,0.06,"hat_c"],[42,45,19.21875,0.06,"hat_c"],[42,75,19.375,0.06,"hat_c"],[42,45,19.53125,0.06,"hat_c"],[42,45,19.84375,0.06,"hat_c"],[46,72,2.1875,0.2,"hat_o"],[46,72,4.6875,0.2,"hat_o"],[46,72,7.1875,0.2,"hat_o"],[46,72,9.6875,0.2,"hat_o"],[46,72,12.1875,0.2,"hat_o"],[46,72,14.6875,0.2,"hat_o"],[46,72,17.1875,0.2,"hat_o"],[46,72,19.6875,0.2,"hat_o"],[38,22,0.3125,0.04,"ghost"],[38,22,0.9375,0.04,"ghost"],[38,22,1.5625,0.04,"ghost"],[38,22,2.1875,0.04,"ghost"],[38,22,2.8125,0.04,"ghost"],[38,22,3.4375,0.04,"ghost"],[38,22,4.0625,0.04,"ghost"],[38,22,4.6875,0.04,"ghost"],[38,22,5.3125,0.04,"ghost"],[38,22,5.9375,0.04,"ghost"],[38,22,6.5625,0.04,"ghost"],[38,22,7.1875,0.04,"ghost"],[38,22,7.8125,0.04,"ghost"],[38,22,8.4375,0.04,"ghost"],[38,22,9.0625,0.04,"ghost"],[38,22,9.6875,0.04,"ghost"],[38,22,10.3125,0.04,"ghost"],[38,22,10.9375,0.04,"ghost"],[38,22,11.5625,0.04,"ghost"],[38,22,12.1875,0.04,"ghost"],[38,22,12.8125,0.04,"ghost"],[38,22,13.4375,0.04,"ghost"],[38,22,14.0625,0.04,"ghost"],[38,22,14.6875,0.04,"ghost"],[38,22,15.3125,0.04,"ghost"],[38,22,15.9375,0.04,"ghost"],[38,22,16.5625,0.04,"ghost"],[38,22,17.1875,0.04,"ghost"],[38,22,17.8125,0.04,"ghost"],[38,22,18.4375,0.04,"ghost"],[38,22,19.0625,0.04,"ghost"],[38,22,19.6875,0.04,"ghost"],[49,100,0.0,1.0,"crash"],[52,94,0.0,0.21875,"epiano"],[55,91,0.0,0.21875,"epiano"],[59,88,0.0,0.21875,"epiano"],[62,85,0.0,0.21875,"epiano"],[52,79,0.9375,0.3125,"epiano"],[55,76,0.9375,0.3125,"epiano"],[59,73,0.9375,0.3125,"epiano"],[62,70,0.9375,0.3125,"epiano"],[52,89,1.25,0.21875,"epiano"],[55,86,1.25,0.21875,"epiano"],[59,83,1.25,0.21875,"epiano"],[62,80,1.25,0.21875,"epiano"],[52,81,2.1875,0.625,"epiano"],[55,78,2.1875,0.625,"epiano"],[59,75,2.1875,0.625,"epiano"],[62,72,2.1875,0.625,"epiano"],[57,94,2.5,0.21875,"epiano"],[60,91,2.5,0.21875,"epiano"],[64,88,2.5,0.21875,"epiano"],[67,85,2.5,0.21875,"epiano"],[57,79,3.4375,0.3125,"epiano"],[60,76,3.4375,0.3125,"epiano"],[64,73,3.4375,0.3125,"epiano"],[67,70,3.4375,0.3125,"epiano"],[57,89,3.75,0.21875,"epiano"],[60,86,3.75,0.21875,"epiano"],[64,83,3.75,0.21875,"epiano"],[67,80,3.75,0.21875,"epiano"],[57,81,4.6875,0.625,"epiano"],[60,78,4.6875,0.625,"epiano"],[64,75,4.6875,0.625,"epiano"],[67,72,4.6875,0.625,"epiano"],[59,94,5.0,0.21875,"epiano"],[62,91,5.0,0.21875,"epiano"],[66,88,5.0,0.21875,"epiano"],[69,85,5.0,0.21875,"epiano"],[59,79,5.9375,0.3125,"epiano"],[62,76,5.9375,0.3125,"epiano"],[66,73,5.9375,0.3125,"epiano"],[69,70,5.9375,0.3125,"epiano"],[59,89,6.25,0.21875,"epiano"],[62,86,6.25,0.21875,"epiano"],[66,83,6.25,0.21875,"epiano"],[69,80,6.25,0.21875,"epiano"],[59,81,7.1875,0.625,"epiano"],[62,78,7.1875,0.625,"epiano"],[66,75,7.1875,0.625,"epiano"],[69,72,7.1875,0.625,"epiano"],[60,94,7.5,0.21875,"epiano"],[64,91,7.5,0.21875,"epiano"],[67,88,7.5,0.21875,"epiano"],[71,85,7.5,0.21875,"epiano"],[60,79,8.4375,0.3125,"epiano"],[64,76,8.4375,0.3125,"epiano"],[67,73,8.4375,0.3125,"epiano"],[71,70,8.4375,0.3125,"epiano"],[60,89,8.75,0.21875,"epiano"],[64,86,8.75,0.21875,"epiano"],[67,83,8.75,0.21875,"epiano"],[71,80,8.75,0.21875,"epiano"],[60,81,9.6875,0.625,"epiano"],[64,78,9.6875,0.625,"epiano"],[67,75,9.6875,0.625,"epiano"],[71,72,9.6875,0.625,"epiano"],[52,94,10.0,0.21875,"epiano"],[55,91,10.0,0.21875,"epiano"],[59,88,10.0,0.21875,"epiano"],[62,85,10.0,0.21875,"epiano"],[52,79,10.9375,0.3125,"epiano"],[55,76,10.9375,0.3125,"epiano"],[59,73,10.9375,0.3125,"epiano"],[62,70,10.9375,0.3125,"epiano"],[52,89,11.25,0.21875,"epiano"],[55,86,11.25,0.21875,"epiano"],[59,83,11.25,0.21875,"epiano"],[62,80,11.25,0.21875,"epiano"],[52,81,12.1875,0.625,"epiano"],[55,78,12.1875,0.625,"epiano"],[59,75,12.1875,0.625,"epiano"],[62,72,12.1875,0.625,"epiano"],[57,94,12.5,0.21875,"epiano"],[60,91,12.5,0.21875,"epiano"],[64,88,12.5,0.21875,"epiano"],[67,85,12.5,0.21875,"epiano"],[57,79,13.4375,0.3125,"epiano"],[60,76,13.4375,0.3125,"epiano"],[64,73,13.4375,0.3125,"epiano"],[67,70,13.4375,0.3125,"epiano"],[57,89,13.75,0.21875,"epiano"],[60,86,13.75,0.21875,"epiano"],[64,83,13.75,0.21875,"epiano"],[67,80,13.75,0.21875,"epiano"],[57,81,14.6875,0.625,"epiano"],[60,78,14.6875,0.625,"epiano"],[64,75,14.6875,0.625,"epiano"],[67,72,14.6875,0.625,"epiano"],[59,94,15.0,0.21875,"epiano"],[62,91,15.0,0.21875,"epiano"],[66,88,15.0,0.21875,"epiano"],[69,85,15.0,0.21875,"epiano"],[59,79,15.9375,0.3125,"epiano"],[62,76,15.9375,0.3125,"epiano"],[66,73,15.9375,0.3125,"epiano"],[69,70,15.9375,0.3125,"epiano"],[59,89,16.25,0.21875,"epiano"],[62,86,16.25,0.21875,"epiano"],[66,83,16.25,0.21875,"epiano"],[69,80,16.25,0.21875,"epiano"],[59,81,17.1875,0.625,"epiano"],[62,78,17.1875,0.625,"epiano"],[66,75,17.1875,0.625,"epiano"],[69,72,17.1875,0.625,"epiano"],[60,94,17.5,0.21875,"epiano"],[64,91,17.5,0.21875,"epiano"],[67,88,17.5,0.21875,"epiano"],[71,85,17.5,0.21875,"epiano"],[60,79,18.4375,0.3125,"epiano"],[64,76,18.4375,0.3125,"epiano"],[67,73,18.4375,0.3125,"epiano"],[71,70,18.4375,0.3125,"epiano"],[60,89,18.75,0.21875,"epiano"],[64,86,18.75,0.21875,"epiano"],[67,83,18.75,0.21875,"epiano"],[71,80,18.75,0.21875,"epiano"],[60,81,19.6875,0.625,"epiano"],[64,78,19.6875,0.625,"epiano"],[67,75,19.6875,0.625,"epiano"],[71,72,19.6875,0.625,"epiano"]],"dimAct":{"time_signatures":2,"key_signatures":2,"tempo_map":2,"markers":2,"track_structure":1,"notes":3,"cc_volume":2,"cc_pan":1,"program_change":2,"cc_sustain":2,"cc_chorus":1,"cc_soft_pedal":1,"cc_sostenuto":1},"parents":["2d9e1a47"],"conflict":false,"resolved":false},{"sha":"6c1f9a52","branch":"feat/harmony","label":"Melody\\nE pentatonic + pitch bends","cmd":"muse commit -m 'Melody: E pentatonic lead, pitch_bend, channel_pressure'","output":"\u2713 [feat/harmony 6c1f9a52] Melody: E pentatonic lead, pitch_bend, channel_pressure\n  pitch_bend, cc_modulation, channel_pressure, poly_pressure","act":2,"notes":[[36,110,0.0,0.08,"kick"],[36,100,1.25,0.08,"kick"],[36,110,2.5,0.08,"kick"],[36,100,3.75,0.08,"kick"],[36,110,5.0,0.08,"kick"],[36,100,6.25,0.08,"kick"],[36,110,7.5,0.08,"kick"],[36,100,8.75,0.08,"kick"],[36,110,10.0,0.08,"kick"],[36,100,11.25,0.08,"kick"],[36,110,12.5,0.08,"kick"],[36,100,13.75,0.08,"kick"],[36,110,15.0,0.08,"kick"],[36,100,16.25,0.08,"kick"],[36,110,17.5,0.08,"kick"],[36,100,18.75,0.08,"kick"],[36,78,4.53125,0.07,"kick"],[36,78,9.53125,0.07,"kick"],[36,78,14.53125,0.07,"kick"],[36,78,19.53125,0.07,"kick"],[38,95,0.625,0.1,"snare"],[38,90,1.875,0.1,"snare"],[38,95,3.125,0.1,"snare"],[38,90,4.375,0.1,"snare"],[38,95,5.625,0.1,"snare"],[38,90,6.875,0.1,"snare"],[38,95,8.125,0.1,"snare"],[38,90,9.375,0.1,"snare"],[38,95,10.625,0.1,"snare"],[38,90,11.875,0.1,"snare"],[38,95,13.125,0.1,"snare"],[38,90,14.375,0.1,"snare"],[38,95,15.625,0.1,"snare"],[38,90,16.875,0.1,"snare"],[38,95,18.125,0.1,"snare"],[38,90,19.375,0.1,"snare"],[42,75,0.0,0.06,"hat_c"],[42,45,0.15625,0.06,"hat_c"],[42,60,0.3125,0.06,"hat_c"],[42,45,0.46875,0.06,"hat_c"],[42,75,0.625,0.06,"hat_c"],[42,45,0.78125,0.06,"hat_c"],[42,60,0.9375,0.06,"hat_c"],[42,45,1.09375,0.06,"hat_c"],[42,75,1.25,0.06,"hat_c"],[42,45,1.40625,0.06,"hat_c"],[42,60,1.5625,0.06,"hat_c"],[42,45,1.71875,0.06,"hat_c"],[42,75,1.875,0.06,"hat_c"],[42,45,2.03125,0.06,"hat_c"],[42,45,2.34375,0.06,"hat_c"],[42,75,2.5,0.06,"hat_c"],[42,45,2.65625,0.06,"hat_c"],[42,60,2.8125,0.06,"hat_c"],[42,45,2.96875,0.06,"hat_c"],[42,75,3.125,0.06,"hat_c"],[42,45,3.28125,0.06,"hat_c"],[42,60,3.4375,0.06,"hat_c"],[42,45,3.59375,0.06,"hat_c"],[42,75,3.75,0.06,"hat_c"],[42,45,3.90625,0.06,"hat_c"],[42,60,4.0625,0.06,"hat_c"],[42,45,4.21875,0.06,"hat_c"],[42,75,4.375,0.06,"hat_c"],[42,45,4.53125,0.06,"hat_c"],[42,45,4.84375,0.06,"hat_c"],[42,75,5.0,0.06,"hat_c"],[42,45,5.15625,0.06,"hat_c"],[42,60,5.3125,0.06,"hat_c"],[42,45,5.46875,0.06,"hat_c"],[42,75,5.625,0.06,"hat_c"],[42,45,5.78125,0.06,"hat_c"],[42,60,5.9375,0.06,"hat_c"],[42,45,6.09375,0.06,"hat_c"],[42,75,6.25,0.06,"hat_c"],[42,45,6.40625,0.06,"hat_c"],[42,60,6.5625,0.06,"hat_c"],[42,45,6.71875,0.06,"hat_c"],[42,75,6.875,0.06,"hat_c"],[42,45,7.03125,0.06,"hat_c"],[42,45,7.34375,0.06,"hat_c"],[42,75,7.5,0.06,"hat_c"],[42,45,7.65625,0.06,"hat_c"],[42,60,7.8125,0.06,"hat_c"],[42,45,7.96875,0.06,"hat_c"],[42,75,8.125,0.06,"hat_c"],[42,45,8.28125,0.06,"hat_c"],[42,60,8.4375,0.06,"hat_c"],[42,45,8.59375,0.06,"hat_c"],[42,75,8.75,0.06,"hat_c"],[42,45,8.90625,0.06,"hat_c"],[42,60,9.0625,0.06,"hat_c"],[42,45,9.21875,0.06,"hat_c"],[42,75,9.375,0.06,"hat_c"],[42,45,9.53125,0.06,"hat_c"],[42,45,9.84375,0.06,"hat_c"],[42,75,10.0,0.06,"hat_c"],[42,45,10.15625,0.06,"hat_c"],[42,60,10.3125,0.06,"hat_c"],[42,45,10.46875,0.06,"hat_c"],[42,75,10.625,0.06,"hat_c"],[42,45,10.78125,0.06,"hat_c"],[42,60,10.9375,0.06,"hat_c"],[42,45,11.09375,0.06,"hat_c"],[42,75,11.25,0.06,"hat_c"],[42,45,11.40625,0.06,"hat_c"],[42,60,11.5625,0.06,"hat_c"],[42,45,11.71875,0.06,"hat_c"],[42,75,11.875,0.06,"hat_c"],[42,45,12.03125,0.06,"hat_c"],[42,45,12.34375,0.06,"hat_c"],[42,75,12.5,0.06,"hat_c"],[42,45,12.65625,0.06,"hat_c"],[42,60,12.8125,0.06,"hat_c"],[42,45,12.96875,0.06,"hat_c"],[42,75,13.125,0.06,"hat_c"],[42,45,13.28125,0.06,"hat_c"],[42,60,13.4375,0.06,"hat_c"],[42,45,13.59375,0.06,"hat_c"],[42,75,13.75,0.06,"hat_c"],[42,45,13.90625,0.06,"hat_c"],[42,60,14.0625,0.06,"hat_c"],[42,45,14.21875,0.06,"hat_c"],[42,75,14.375,0.06,"hat_c"],[42,45,14.53125,0.06,"hat_c"],[42,45,14.84375,0.06,"hat_c"],[42,75,15.0,0.06,"hat_c"],[42,45,15.15625,0.06,"hat_c"],[42,60,15.3125,0.06,"hat_c"],[42,45,15.46875,0.06,"hat_c"],[42,75,15.625,0.06,"hat_c"],[42,45,15.78125,0.06,"hat_c"],[42,60,15.9375,0.06,"hat_c"],[42,45,16.09375,0.06,"hat_c"],[42,75,16.25,0.06,"hat_c"],[42,45,16.40625,0.06,"hat_c"],[42,60,16.5625,0.06,"hat_c"],[42,45,16.71875,0.06,"hat_c"],[42,75,16.875,0.06,"hat_c"],[42,45,17.03125,0.06,"hat_c"],[42,45,17.34375,0.06,"hat_c"],[42,75,17.5,0.06,"hat_c"],[42,45,17.65625,0.06,"hat_c"],[42,60,17.8125,0.06,"hat_c"],[42,45,17.96875,0.06,"hat_c"],[42,75,18.125,0.06,"hat_c"],[42,45,18.28125,0.06,"hat_c"],[42,60,18.4375,0.06,"hat_c"],[42,45,18.59375,0.06,"hat_c"],[42,75,18.75,0.06,"hat_c"],[42,45,18.90625,0.06,"hat_c"],[42,60,19.0625,0.06,"hat_c"],[42,45,19.21875,0.06,"hat_c"],[42,75,19.375,0.06,"hat_c"],[42,45,19.53125,0.06,"hat_c"],[42,45,19.84375,0.06,"hat_c"],[46,72,2.1875,0.2,"hat_o"],[46,72,4.6875,0.2,"hat_o"],[46,72,7.1875,0.2,"hat_o"],[46,72,9.6875,0.2,"hat_o"],[46,72,12.1875,0.2,"hat_o"],[46,72,14.6875,0.2,"hat_o"],[46,72,17.1875,0.2,"hat_o"],[46,72,19.6875,0.2,"hat_o"],[38,22,0.3125,0.04,"ghost"],[38,22,0.9375,0.04,"ghost"],[38,22,1.5625,0.04,"ghost"],[38,22,2.1875,0.04,"ghost"],[38,22,2.8125,0.04,"ghost"],[38,22,3.4375,0.04,"ghost"],[38,22,4.0625,0.04,"ghost"],[38,22,4.6875,0.04,"ghost"],[38,22,5.3125,0.04,"ghost"],[38,22,5.9375,0.04,"ghost"],[38,22,6.5625,0.04,"ghost"],[38,22,7.1875,0.04,"ghost"],[38,22,7.8125,0.04,"ghost"],[38,22,8.4375,0.04,"ghost"],[38,22,9.0625,0.04,"ghost"],[38,22,9.6875,0.04,"ghost"],[38,22,10.3125,0.04,"ghost"],[38,22,10.9375,0.04,"ghost"],[38,22,11.5625,0.04,"ghost"],[38,22,12.1875,0.04,"ghost"],[38,22,12.8125,0.04,"ghost"],[38,22,13.4375,0.04,"ghost"],[38,22,14.0625,0.04,"ghost"],[38,22,14.6875,0.04,"ghost"],[38,22,15.3125,0.04,"ghost"],[38,22,15.9375,0.04,"ghost"],[38,22,16.5625,0.04,"ghost"],[38,22,17.1875,0.04,"ghost"],[38,22,17.8125,0.04,"ghost"],[38,22,18.4375,0.04,"ghost"],[38,22,19.0625,0.04,"ghost"],[38,22,19.6875,0.04,"ghost"],[49,100,0.0,1.0,"crash"],[52,94,0.0,0.21875,"epiano"],[55,91,0.0,0.21875,"epiano"],[59,88,0.0,0.21875,"epiano"],[62,85,0.0,0.21875,"epiano"],[52,79,0.9375,0.3125,"epiano"],[55,76,0.9375,0.3125,"epiano"],[59,73,0.9375,0.3125,"epiano"],[62,70,0.9375,0.3125,"epiano"],[52,89,1.25,0.21875,"epiano"],[55,86,1.25,0.21875,"epiano"],[59,83,1.25,0.21875,"epiano"],[62,80,1.25,0.21875,"epiano"],[52,81,2.1875,0.625,"epiano"],[55,78,2.1875,0.625,"epiano"],[59,75,2.1875,0.625,"epiano"],[62,72,2.1875,0.625,"epiano"],[57,94,2.5,0.21875,"epiano"],[60,91,2.5,0.21875,"epiano"],[64,88,2.5,0.21875,"epiano"],[67,85,2.5,0.21875,"epiano"],[57,79,3.4375,0.3125,"epiano"],[60,76,3.4375,0.3125,"epiano"],[64,73,3.4375,0.3125,"epiano"],[67,70,3.4375,0.3125,"epiano"],[57,89,3.75,0.21875,"epiano"],[60,86,3.75,0.21875,"epiano"],[64,83,3.75,0.21875,"epiano"],[67,80,3.75,0.21875,"epiano"],[57,81,4.6875,0.625,"epiano"],[60,78,4.6875,0.625,"epiano"],[64,75,4.6875,0.625,"epiano"],[67,72,4.6875,0.625,"epiano"],[59,94,5.0,0.21875,"epiano"],[62,91,5.0,0.21875,"epiano"],[66,88,5.0,0.21875,"epiano"],[69,85,5.0,0.21875,"epiano"],[59,79,5.9375,0.3125,"epiano"],[62,76,5.9375,0.3125,"epiano"],[66,73,5.9375,0.3125,"epiano"],[69,70,5.9375,0.3125,"epiano"],[59,89,6.25,0.21875,"epiano"],[62,86,6.25,0.21875,"epiano"],[66,83,6.25,0.21875,"epiano"],[69,80,6.25,0.21875,"epiano"],[59,81,7.1875,0.625,"epiano"],[62,78,7.1875,0.625,"epiano"],[66,75,7.1875,0.625,"epiano"],[69,72,7.1875,0.625,"epiano"],[60,94,7.5,0.21875,"epiano"],[64,91,7.5,0.21875,"epiano"],[67,88,7.5,0.21875,"epiano"],[71,85,7.5,0.21875,"epiano"],[60,79,8.4375,0.3125,"epiano"],[64,76,8.4375,0.3125,"epiano"],[67,73,8.4375,0.3125,"epiano"],[71,70,8.4375,0.3125,"epiano"],[60,89,8.75,0.21875,"epiano"],[64,86,8.75,0.21875,"epiano"],[67,83,8.75,0.21875,"epiano"],[71,80,8.75,0.21875,"epiano"],[60,81,9.6875,0.625,"epiano"],[64,78,9.6875,0.625,"epiano"],[67,75,9.6875,0.625,"epiano"],[71,72,9.6875,0.625,"epiano"],[52,94,10.0,0.21875,"epiano"],[55,91,10.0,0.21875,"epiano"],[59,88,10.0,0.21875,"epiano"],[62,85,10.0,0.21875,"epiano"],[52,79,10.9375,0.3125,"epiano"],[55,76,10.9375,0.3125,"epiano"],[59,73,10.9375,0.3125,"epiano"],[62,70,10.9375,0.3125,"epiano"],[52,89,11.25,0.21875,"epiano"],[55,86,11.25,0.21875,"epiano"],[59,83,11.25,0.21875,"epiano"],[62,80,11.25,0.21875,"epiano"],[52,81,12.1875,0.625,"epiano"],[55,78,12.1875,0.625,"epiano"],[59,75,12.1875,0.625,"epiano"],[62,72,12.1875,0.625,"epiano"],[57,94,12.5,0.21875,"epiano"],[60,91,12.5,0.21875,"epiano"],[64,88,12.5,0.21875,"epiano"],[67,85,12.5,0.21875,"epiano"],[57,79,13.4375,0.3125,"epiano"],[60,76,13.4375,0.3125,"epiano"],[64,73,13.4375,0.3125,"epiano"],[67,70,13.4375,0.3125,"epiano"],[57,89,13.75,0.21875,"epiano"],[60,86,13.75,0.21875,"epiano"],[64,83,13.75,0.21875,"epiano"],[67,80,13.75,0.21875,"epiano"],[57,81,14.6875,0.625,"epiano"],[60,78,14.6875,0.625,"epiano"],[64,75,14.6875,0.625,"epiano"],[67,72,14.6875,0.625,"epiano"],[59,94,15.0,0.21875,"epiano"],[62,91,15.0,0.21875,"epiano"],[66,88,15.0,0.21875,"epiano"],[69,85,15.0,0.21875,"epiano"],[59,79,15.9375,0.3125,"epiano"],[62,76,15.9375,0.3125,"epiano"],[66,73,15.9375,0.3125,"epiano"],[69,70,15.9375,0.3125,"epiano"],[59,89,16.25,0.21875,"epiano"],[62,86,16.25,0.21875,"epiano"],[66,83,16.25,0.21875,"epiano"],[69,80,16.25,0.21875,"epiano"],[59,81,17.1875,0.625,"epiano"],[62,78,17.1875,0.625,"epiano"],[66,75,17.1875,0.625,"epiano"],[69,72,17.1875,0.625,"epiano"],[60,94,17.5,0.21875,"epiano"],[64,91,17.5,0.21875,"epiano"],[67,88,17.5,0.21875,"epiano"],[71,85,17.5,0.21875,"epiano"],[60,79,18.4375,0.3125,"epiano"],[64,76,18.4375,0.3125,"epiano"],[67,73,18.4375,0.3125,"epiano"],[71,70,18.4375,0.3125,"epiano"],[60,89,18.75,0.21875,"epiano"],[64,86,18.75,0.21875,"epiano"],[67,83,18.75,0.21875,"epiano"],[71,80,18.75,0.21875,"epiano"],[60,81,19.6875,0.625,"epiano"],[64,78,19.6875,0.625,"epiano"],[67,75,19.6875,0.625,"epiano"],[71,72,19.6875,0.625,"epiano"],[69,85,0.0,0.3125,"lead"],[71,80,0.3125,0.15625,"lead"],[74,82,0.46875,0.15625,"lead"],[74,88,0.625,0.3125,"lead"],[71,78,0.9375,0.3125,"lead"],[71,80,1.25,0.25,"lead"],[69,75,1.5625,0.3125,"lead"],[67,82,1.875,0.625,"lead"],[64,75,2.5,0.3125,"lead"],[67,78,2.8125,0.3125,"lead"],[69,88,3.125,0.625,"lead"],[71,82,3.75,0.3125,"lead"],[74,80,4.0625,0.15625,"lead"],[76,85,4.21875,0.15625,"lead"],[76,92,4.375,0.625,"lead"],[74,85,5.0,0.3125,"lead"],[71,80,5.3125,0.3125,"lead"],[69,78,5.625,0.3125,"lead"],[67,75,5.9375,0.3125,"lead"],[64,80,6.25,0.625,"lead"],[67,82,6.875,0.625,"lead"],[69,80,7.5,0.3125,"lead"],[71,82,7.8125,0.3125,"lead"],[74,88,8.125,0.625,"lead"],[71,80,8.75,0.3125,"lead"],[69,78,9.0625,0.3125,"lead"],[64,92,9.375,0.9375,"lead"],[69,85,10.0,0.3125,"lead"],[71,80,10.3125,0.15625,"lead"],[74,82,10.46875,0.15625,"lead"],[74,88,10.625,0.3125,"lead"],[71,78,10.9375,0.3125,"lead"],[71,80,11.25,0.25,"lead"],[69,75,11.5625,0.3125,"lead"],[67,82,11.875,0.625,"lead"],[64,75,12.5,0.3125,"lead"],[67,78,12.8125,0.3125,"lead"],[69,88,13.125,0.625,"lead"],[71,82,13.75,0.3125,"lead"],[74,80,14.0625,0.15625,"lead"],[76,85,14.21875,0.15625,"lead"],[76,92,14.375,0.625,"lead"],[74,85,15.0,0.3125,"lead"],[71,80,15.3125,0.3125,"lead"],[69,78,15.625,0.3125,"lead"],[67,75,15.9375,0.3125,"lead"],[64,80,16.25,0.625,"lead"],[67,82,16.875,0.625,"lead"],[69,80,17.5,0.3125,"lead"],[71,82,17.8125,0.3125,"lead"],[74,88,18.125,0.625,"lead"],[71,80,18.75,0.3125,"lead"],[69,78,19.0625,0.3125,"lead"],[64,92,19.375,0.9375,"lead"]],"dimAct":{"time_signatures":2,"key_signatures":2,"tempo_map":2,"markers":2,"track_structure":1,"notes":3,"cc_volume":2,"cc_pan":1,"program_change":2,"cc_sustain":2,"cc_chorus":1,"cc_soft_pedal":1,"cc_sostenuto":1,"pitch_bend":3,"cc_modulation":2,"channel_pressure":2,"poly_pressure":1},"parents":["5e8d3b14"],"conflict":false,"resolved":false},{"sha":"7b4e2d85","branch":"main","label":"MERGE\\nfeat/groove + feat/harmony","cmd":"muse merge feat/groove feat/harmony","output":"\u2713 Merged 'feat/groove' into 'main' \u2014 0 conflicts\n\u2713 Merged 'feat/harmony' into 'main' \u2014 0 conflicts\n  Full rhythm + harmony stack active","act":3,"notes":[[36,110,0.0,0.08,"kick"],[36,100,1.25,0.08,"kick"],[36,110,2.5,0.08,"kick"],[36,100,3.75,0.08,"kick"],[36,110,5.0,0.08,"kick"],[36,100,6.25,0.08,"kick"],[36,110,7.5,0.08,"kick"],[36,100,8.75,0.08,"kick"],[36,110,10.0,0.08,"kick"],[36,100,11.25,0.08,"kick"],[36,110,12.5,0.08,"kick"],[36,100,13.75,0.08,"kick"],[36,110,15.0,0.08,"kick"],[36,100,16.25,0.08,"kick"],[36,110,17.5,0.08,"kick"],[36,100,18.75,0.08,"kick"],[36,78,4.53125,0.07,"kick"],[36,78,9.53125,0.07,"kick"],[36,78,14.53125,0.07,"kick"],[36,78,19.53125,0.07,"kick"],[38,95,0.625,0.1,"snare"],[38,90,1.875,0.1,"snare"],[38,95,3.125,0.1,"snare"],[38,90,4.375,0.1,"snare"],[38,95,5.625,0.1,"snare"],[38,90,6.875,0.1,"snare"],[38,95,8.125,0.1,"snare"],[38,90,9.375,0.1,"snare"],[38,95,10.625,0.1,"snare"],[38,90,11.875,0.1,"snare"],[38,95,13.125,0.1,"snare"],[38,90,14.375,0.1,"snare"],[38,95,15.625,0.1,"snare"],[38,90,16.875,0.1,"snare"],[38,95,18.125,0.1,"snare"],[38,90,19.375,0.1,"snare"],[42,75,0.0,0.06,"hat_c"],[42,45,0.15625,0.06,"hat_c"],[42,60,0.3125,0.06,"hat_c"],[42,45,0.46875,0.06,"hat_c"],[42,75,0.625,0.06,"hat_c"],[42,45,0.78125,0.06,"hat_c"],[42,60,0.9375,0.06,"hat_c"],[42,45,1.09375,0.06,"hat_c"],[42,75,1.25,0.06,"hat_c"],[42,45,1.40625,0.06,"hat_c"],[42,60,1.5625,0.06,"hat_c"],[42,45,1.71875,0.06,"hat_c"],[42,75,1.875,0.06,"hat_c"],[42,45,2.03125,0.06,"hat_c"],[42,45,2.34375,0.06,"hat_c"],[42,75,2.5,0.06,"hat_c"],[42,45,2.65625,0.06,"hat_c"],[42,60,2.8125,0.06,"hat_c"],[42,45,2.96875,0.06,"hat_c"],[42,75,3.125,0.06,"hat_c"],[42,45,3.28125,0.06,"hat_c"],[42,60,3.4375,0.06,"hat_c"],[42,45,3.59375,0.06,"hat_c"],[42,75,3.75,0.06,"hat_c"],[42,45,3.90625,0.06,"hat_c"],[42,60,4.0625,0.06,"hat_c"],[42,45,4.21875,0.06,"hat_c"],[42,75,4.375,0.06,"hat_c"],[42,45,4.53125,0.06,"hat_c"],[42,45,4.84375,0.06,"hat_c"],[42,75,5.0,0.06,"hat_c"],[42,45,5.15625,0.06,"hat_c"],[42,60,5.3125,0.06,"hat_c"],[42,45,5.46875,0.06,"hat_c"],[42,75,5.625,0.06,"hat_c"],[42,45,5.78125,0.06,"hat_c"],[42,60,5.9375,0.06,"hat_c"],[42,45,6.09375,0.06,"hat_c"],[42,75,6.25,0.06,"hat_c"],[42,45,6.40625,0.06,"hat_c"],[42,60,6.5625,0.06,"hat_c"],[42,45,6.71875,0.06,"hat_c"],[42,75,6.875,0.06,"hat_c"],[42,45,7.03125,0.06,"hat_c"],[42,45,7.34375,0.06,"hat_c"],[42,75,7.5,0.06,"hat_c"],[42,45,7.65625,0.06,"hat_c"],[42,60,7.8125,0.06,"hat_c"],[42,45,7.96875,0.06,"hat_c"],[42,75,8.125,0.06,"hat_c"],[42,45,8.28125,0.06,"hat_c"],[42,60,8.4375,0.06,"hat_c"],[42,45,8.59375,0.06,"hat_c"],[42,75,8.75,0.06,"hat_c"],[42,45,8.90625,0.06,"hat_c"],[42,60,9.0625,0.06,"hat_c"],[42,45,9.21875,0.06,"hat_c"],[42,75,9.375,0.06,"hat_c"],[42,45,9.53125,0.06,"hat_c"],[42,45,9.84375,0.06,"hat_c"],[42,75,10.0,0.06,"hat_c"],[42,45,10.15625,0.06,"hat_c"],[42,60,10.3125,0.06,"hat_c"],[42,45,10.46875,0.06,"hat_c"],[42,75,10.625,0.06,"hat_c"],[42,45,10.78125,0.06,"hat_c"],[42,60,10.9375,0.06,"hat_c"],[42,45,11.09375,0.06,"hat_c"],[42,75,11.25,0.06,"hat_c"],[42,45,11.40625,0.06,"hat_c"],[42,60,11.5625,0.06,"hat_c"],[42,45,11.71875,0.06,"hat_c"],[42,75,11.875,0.06,"hat_c"],[42,45,12.03125,0.06,"hat_c"],[42,45,12.34375,0.06,"hat_c"],[42,75,12.5,0.06,"hat_c"],[42,45,12.65625,0.06,"hat_c"],[42,60,12.8125,0.06,"hat_c"],[42,45,12.96875,0.06,"hat_c"],[42,75,13.125,0.06,"hat_c"],[42,45,13.28125,0.06,"hat_c"],[42,60,13.4375,0.06,"hat_c"],[42,45,13.59375,0.06,"hat_c"],[42,75,13.75,0.06,"hat_c"],[42,45,13.90625,0.06,"hat_c"],[42,60,14.0625,0.06,"hat_c"],[42,45,14.21875,0.06,"hat_c"],[42,75,14.375,0.06,"hat_c"],[42,45,14.53125,0.06,"hat_c"],[42,45,14.84375,0.06,"hat_c"],[42,75,15.0,0.06,"hat_c"],[42,45,15.15625,0.06,"hat_c"],[42,60,15.3125,0.06,"hat_c"],[42,45,15.46875,0.06,"hat_c"],[42,75,15.625,0.06,"hat_c"],[42,45,15.78125,0.06,"hat_c"],[42,60,15.9375,0.06,"hat_c"],[42,45,16.09375,0.06,"hat_c"],[42,75,16.25,0.06,"hat_c"],[42,45,16.40625,0.06,"hat_c"],[42,60,16.5625,0.06,"hat_c"],[42,45,16.71875,0.06,"hat_c"],[42,75,16.875,0.06,"hat_c"],[42,45,17.03125,0.06,"hat_c"],[42,45,17.34375,0.06,"hat_c"],[42,75,17.5,0.06,"hat_c"],[42,45,17.65625,0.06,"hat_c"],[42,60,17.8125,0.06,"hat_c"],[42,45,17.96875,0.06,"hat_c"],[42,75,18.125,0.06,"hat_c"],[42,45,18.28125,0.06,"hat_c"],[42,60,18.4375,0.06,"hat_c"],[42,45,18.59375,0.06,"hat_c"],[42,75,18.75,0.06,"hat_c"],[42,45,18.90625,0.06,"hat_c"],[42,60,19.0625,0.06,"hat_c"],[42,45,19.21875,0.06,"hat_c"],[42,75,19.375,0.06,"hat_c"],[42,45,19.53125,0.06,"hat_c"],[42,45,19.84375,0.06,"hat_c"],[46,72,2.1875,0.2,"hat_o"],[46,72,4.6875,0.2,"hat_o"],[46,72,7.1875,0.2,"hat_o"],[46,72,9.6875,0.2,"hat_o"],[46,72,12.1875,0.2,"hat_o"],[46,72,14.6875,0.2,"hat_o"],[46,72,17.1875,0.2,"hat_o"],[46,72,19.6875,0.2,"hat_o"],[38,22,0.3125,0.04,"ghost"],[38,22,0.9375,0.04,"ghost"],[38,22,1.5625,0.04,"ghost"],[38,22,2.1875,0.04,"ghost"],[38,22,2.8125,0.04,"ghost"],[38,22,3.4375,0.04,"ghost"],[38,22,4.0625,0.04,"ghost"],[38,22,4.6875,0.04,"ghost"],[38,22,5.3125,0.04,"ghost"],[38,22,5.9375,0.04,"ghost"],[38,22,6.5625,0.04,"ghost"],[38,22,7.1875,0.04,"ghost"],[38,22,7.8125,0.04,"ghost"],[38,22,8.4375,0.04,"ghost"],[38,22,9.0625,0.04,"ghost"],[38,22,9.6875,0.04,"ghost"],[38,22,10.3125,0.04,"ghost"],[38,22,10.9375,0.04,"ghost"],[38,22,11.5625,0.04,"ghost"],[38,22,12.1875,0.04,"ghost"],[38,22,12.8125,0.04,"ghost"],[38,22,13.4375,0.04,"ghost"],[38,22,14.0625,0.04,"ghost"],[38,22,14.6875,0.04,"ghost"],[38,22,15.3125,0.04,"ghost"],[38,22,15.9375,0.04,"ghost"],[38,22,16.5625,0.04,"ghost"],[38,22,17.1875,0.04,"ghost"],[38,22,17.8125,0.04,"ghost"],[38,22,18.4375,0.04,"ghost"],[38,22,19.0625,0.04,"ghost"],[38,22,19.6875,0.04,"ghost"],[49,100,0.0,1.0,"crash"],[40,95,0.0,0.625,"bass"],[43,85,0.625,0.3125,"bass"],[45,80,0.9375,0.15625,"bass"],[47,90,1.09375,1.40625,"bass"],[40,95,2.5,0.78125,"bass"],[43,85,3.28125,0.3125,"bass"],[45,85,3.59375,0.46875,"bass"],[47,80,4.0625,0.3125,"bass"],[50,80,4.375,0.625,"bass"],[45,90,5.0,0.625,"bass"],[48,80,5.625,0.3125,"bass"],[47,85,5.9375,1.09375,"bass"],[45,75,7.03125,0.46875,"bass"],[47,90,7.5,0.625,"bass"],[50,85,8.125,0.3125,"bass"],[45,80,8.4375,0.625,"bass"],[40,95,9.0625,0.9375,"bass"],[40,95,10.0,0.625,"bass"],[43,85,10.625,0.3125,"bass"],[45,80,10.9375,0.15625,"bass"],[47,90,11.09375,1.40625,"bass"],[40,95,12.5,0.78125,"bass"],[43,85,13.28125,0.3125,"bass"],[45,85,13.59375,0.46875,"bass"],[47,80,14.0625,0.3125,"bass"],[50,80,14.375,0.625,"bass"],[45,90,15.0,0.625,"bass"],[48,80,15.625,0.3125,"bass"],[47,85,15.9375,1.09375,"bass"],[45,75,17.03125,0.46875,"bass"],[47,90,17.5,0.625,"bass"],[50,85,18.125,0.3125,"bass"],[45,80,18.4375,0.625,"bass"],[40,95,19.0625,0.9375,"bass"],[52,94,0.0,0.21875,"epiano"],[55,91,0.0,0.21875,"epiano"],[59,88,0.0,0.21875,"epiano"],[62,85,0.0,0.21875,"epiano"],[52,79,0.9375,0.3125,"epiano"],[55,76,0.9375,0.3125,"epiano"],[59,73,0.9375,0.3125,"epiano"],[62,70,0.9375,0.3125,"epiano"],[52,89,1.25,0.21875,"epiano"],[55,86,1.25,0.21875,"epiano"],[59,83,1.25,0.21875,"epiano"],[62,80,1.25,0.21875,"epiano"],[52,81,2.1875,0.625,"epiano"],[55,78,2.1875,0.625,"epiano"],[59,75,2.1875,0.625,"epiano"],[62,72,2.1875,0.625,"epiano"],[57,94,2.5,0.21875,"epiano"],[60,91,2.5,0.21875,"epiano"],[64,88,2.5,0.21875,"epiano"],[67,85,2.5,0.21875,"epiano"],[57,79,3.4375,0.3125,"epiano"],[60,76,3.4375,0.3125,"epiano"],[64,73,3.4375,0.3125,"epiano"],[67,70,3.4375,0.3125,"epiano"],[57,89,3.75,0.21875,"epiano"],[60,86,3.75,0.21875,"epiano"],[64,83,3.75,0.21875,"epiano"],[67,80,3.75,0.21875,"epiano"],[57,81,4.6875,0.625,"epiano"],[60,78,4.6875,0.625,"epiano"],[64,75,4.6875,0.625,"epiano"],[67,72,4.6875,0.625,"epiano"],[59,94,5.0,0.21875,"epiano"],[62,91,5.0,0.21875,"epiano"],[66,88,5.0,0.21875,"epiano"],[69,85,5.0,0.21875,"epiano"],[59,79,5.9375,0.3125,"epiano"],[62,76,5.9375,0.3125,"epiano"],[66,73,5.9375,0.3125,"epiano"],[69,70,5.9375,0.3125,"epiano"],[59,89,6.25,0.21875,"epiano"],[62,86,6.25,0.21875,"epiano"],[66,83,6.25,0.21875,"epiano"],[69,80,6.25,0.21875,"epiano"],[59,81,7.1875,0.625,"epiano"],[62,78,7.1875,0.625,"epiano"],[66,75,7.1875,0.625,"epiano"],[69,72,7.1875,0.625,"epiano"],[60,94,7.5,0.21875,"epiano"],[64,91,7.5,0.21875,"epiano"],[67,88,7.5,0.21875,"epiano"],[71,85,7.5,0.21875,"epiano"],[60,79,8.4375,0.3125,"epiano"],[64,76,8.4375,0.3125,"epiano"],[67,73,8.4375,0.3125,"epiano"],[71,70,8.4375,0.3125,"epiano"],[60,89,8.75,0.21875,"epiano"],[64,86,8.75,0.21875,"epiano"],[67,83,8.75,0.21875,"epiano"],[71,80,8.75,0.21875,"epiano"],[60,81,9.6875,0.625,"epiano"],[64,78,9.6875,0.625,"epiano"],[67,75,9.6875,0.625,"epiano"],[71,72,9.6875,0.625,"epiano"],[52,94,10.0,0.21875,"epiano"],[55,91,10.0,0.21875,"epiano"],[59,88,10.0,0.21875,"epiano"],[62,85,10.0,0.21875,"epiano"],[52,79,10.9375,0.3125,"epiano"],[55,76,10.9375,0.3125,"epiano"],[59,73,10.9375,0.3125,"epiano"],[62,70,10.9375,0.3125,"epiano"],[52,89,11.25,0.21875,"epiano"],[55,86,11.25,0.21875,"epiano"],[59,83,11.25,0.21875,"epiano"],[62,80,11.25,0.21875,"epiano"],[52,81,12.1875,0.625,"epiano"],[55,78,12.1875,0.625,"epiano"],[59,75,12.1875,0.625,"epiano"],[62,72,12.1875,0.625,"epiano"],[57,94,12.5,0.21875,"epiano"],[60,91,12.5,0.21875,"epiano"],[64,88,12.5,0.21875,"epiano"],[67,85,12.5,0.21875,"epiano"],[57,79,13.4375,0.3125,"epiano"],[60,76,13.4375,0.3125,"epiano"],[64,73,13.4375,0.3125,"epiano"],[67,70,13.4375,0.3125,"epiano"],[57,89,13.75,0.21875,"epiano"],[60,86,13.75,0.21875,"epiano"],[64,83,13.75,0.21875,"epiano"],[67,80,13.75,0.21875,"epiano"],[57,81,14.6875,0.625,"epiano"],[60,78,14.6875,0.625,"epiano"],[64,75,14.6875,0.625,"epiano"],[67,72,14.6875,0.625,"epiano"],[59,94,15.0,0.21875,"epiano"],[62,91,15.0,0.21875,"epiano"],[66,88,15.0,0.21875,"epiano"],[69,85,15.0,0.21875,"epiano"],[59,79,15.9375,0.3125,"epiano"],[62,76,15.9375,0.3125,"epiano"],[66,73,15.9375,0.3125,"epiano"],[69,70,15.9375,0.3125,"epiano"],[59,89,16.25,0.21875,"epiano"],[62,86,16.25,0.21875,"epiano"],[66,83,16.25,0.21875,"epiano"],[69,80,16.25,0.21875,"epiano"],[59,81,17.1875,0.625,"epiano"],[62,78,17.1875,0.625,"epiano"],[66,75,17.1875,0.625,"epiano"],[69,72,17.1875,0.625,"epiano"],[60,94,17.5,0.21875,"epiano"],[64,91,17.5,0.21875,"epiano"],[67,88,17.5,0.21875,"epiano"],[71,85,17.5,0.21875,"epiano"],[60,79,18.4375,0.3125,"epiano"],[64,76,18.4375,0.3125,"epiano"],[67,73,18.4375,0.3125,"epiano"],[71,70,18.4375,0.3125,"epiano"],[60,89,18.75,0.21875,"epiano"],[64,86,18.75,0.21875,"epiano"],[67,83,18.75,0.21875,"epiano"],[71,80,18.75,0.21875,"epiano"],[60,81,19.6875,0.625,"epiano"],[64,78,19.6875,0.625,"epiano"],[67,75,19.6875,0.625,"epiano"],[71,72,19.6875,0.625,"epiano"],[69,85,0.0,0.3125,"lead"],[71,80,0.3125,0.15625,"lead"],[74,82,0.46875,0.15625,"lead"],[74,88,0.625,0.3125,"lead"],[71,78,0.9375,0.3125,"lead"],[71,80,1.25,0.25,"lead"],[69,75,1.5625,0.3125,"lead"],[67,82,1.875,0.625,"lead"],[64,75,2.5,0.3125,"lead"],[67,78,2.8125,0.3125,"lead"],[69,88,3.125,0.625,"lead"],[71,82,3.75,0.3125,"lead"],[74,80,4.0625,0.15625,"lead"],[76,85,4.21875,0.15625,"lead"],[76,92,4.375,0.625,"lead"],[74,85,5.0,0.3125,"lead"],[71,80,5.3125,0.3125,"lead"],[69,78,5.625,0.3125,"lead"],[67,75,5.9375,0.3125,"lead"],[64,80,6.25,0.625,"lead"],[67,82,6.875,0.625,"lead"],[69,80,7.5,0.3125,"lead"],[71,82,7.8125,0.3125,"lead"],[74,88,8.125,0.625,"lead"],[71,80,8.75,0.3125,"lead"],[69,78,9.0625,0.3125,"lead"],[64,92,9.375,0.9375,"lead"],[69,85,10.0,0.3125,"lead"],[71,80,10.3125,0.15625,"lead"],[74,82,10.46875,0.15625,"lead"],[74,88,10.625,0.3125,"lead"],[71,78,10.9375,0.3125,"lead"],[71,80,11.25,0.25,"lead"],[69,75,11.5625,0.3125,"lead"],[67,82,11.875,0.625,"lead"],[64,75,12.5,0.3125,"lead"],[67,78,12.8125,0.3125,"lead"],[69,88,13.125,0.625,"lead"],[71,82,13.75,0.3125,"lead"],[74,80,14.0625,0.15625,"lead"],[76,85,14.21875,0.15625,"lead"],[76,92,14.375,0.625,"lead"],[74,85,15.0,0.3125,"lead"],[71,80,15.3125,0.3125,"lead"],[69,78,15.625,0.3125,"lead"],[67,75,15.9375,0.3125,"lead"],[64,80,16.25,0.625,"lead"],[67,82,16.875,0.625,"lead"],[69,80,17.5,0.3125,"lead"],[71,82,17.8125,0.3125,"lead"],[74,88,18.125,0.625,"lead"],[71,80,18.75,0.3125,"lead"],[69,78,19.0625,0.3125,"lead"],[64,92,19.375,0.9375,"lead"]],"dimAct":{"time_signatures":2,"key_signatures":2,"tempo_map":2,"markers":2,"track_structure":1,"notes":4,"cc_volume":2,"cc_pan":1,"program_change":3,"cc_portamento":2,"cc_reverb":1,"cc_expression":1,"cc_other":1,"cc_sustain":2,"cc_chorus":1,"cc_soft_pedal":1,"cc_sostenuto":1,"pitch_bend":3,"cc_modulation":2,"channel_pressure":2,"poly_pressure":1},"parents":["4a2c7e91","6c1f9a52"],"conflict":false,"resolved":false},{"sha":"8d7f1c36","branch":"conflict/brass-a","label":"Brass A\\nstaccato stabs","cmd":"muse commit -m 'Brass A: punchy stabs, CC expression bus'","output":"\u2713 [conflict/brass-a 8d7f1c36] Brass A: punchy stabs, CC expression bus\n  brass track  |  cc_expression elevated","act":4,"notes":[[36,110,0.0,0.08,"kick"],[36,100,1.25,0.08,"kick"],[36,110,2.5,0.08,"kick"],[36,100,3.75,0.08,"kick"],[36,110,5.0,0.08,"kick"],[36,100,6.25,0.08,"kick"],[36,110,7.5,0.08,"kick"],[36,100,8.75,0.08,"kick"],[36,110,10.0,0.08,"kick"],[36,100,11.25,0.08,"kick"],[36,110,12.5,0.08,"kick"],[36,100,13.75,0.08,"kick"],[36,110,15.0,0.08,"kick"],[36,100,16.25,0.08,"kick"],[36,110,17.5,0.08,"kick"],[36,100,18.75,0.08,"kick"],[36,78,4.53125,0.07,"kick"],[36,78,9.53125,0.07,"kick"],[36,78,14.53125,0.07,"kick"],[36,78,19.53125,0.07,"kick"],[38,95,0.625,0.1,"snare"],[38,90,1.875,0.1,"snare"],[38,95,3.125,0.1,"snare"],[38,90,4.375,0.1,"snare"],[38,95,5.625,0.1,"snare"],[38,90,6.875,0.1,"snare"],[38,95,8.125,0.1,"snare"],[38,90,9.375,0.1,"snare"],[38,95,10.625,0.1,"snare"],[38,90,11.875,0.1,"snare"],[38,95,13.125,0.1,"snare"],[38,90,14.375,0.1,"snare"],[38,95,15.625,0.1,"snare"],[38,90,16.875,0.1,"snare"],[38,95,18.125,0.1,"snare"],[38,90,19.375,0.1,"snare"],[42,75,0.0,0.06,"hat_c"],[42,45,0.15625,0.06,"hat_c"],[42,60,0.3125,0.06,"hat_c"],[42,45,0.46875,0.06,"hat_c"],[42,75,0.625,0.06,"hat_c"],[42,45,0.78125,0.06,"hat_c"],[42,60,0.9375,0.06,"hat_c"],[42,45,1.09375,0.06,"hat_c"],[42,75,1.25,0.06,"hat_c"],[42,45,1.40625,0.06,"hat_c"],[42,60,1.5625,0.06,"hat_c"],[42,45,1.71875,0.06,"hat_c"],[42,75,1.875,0.06,"hat_c"],[42,45,2.03125,0.06,"hat_c"],[42,45,2.34375,0.06,"hat_c"],[42,75,2.5,0.06,"hat_c"],[42,45,2.65625,0.06,"hat_c"],[42,60,2.8125,0.06,"hat_c"],[42,45,2.96875,0.06,"hat_c"],[42,75,3.125,0.06,"hat_c"],[42,45,3.28125,0.06,"hat_c"],[42,60,3.4375,0.06,"hat_c"],[42,45,3.59375,0.06,"hat_c"],[42,75,3.75,0.06,"hat_c"],[42,45,3.90625,0.06,"hat_c"],[42,60,4.0625,0.06,"hat_c"],[42,45,4.21875,0.06,"hat_c"],[42,75,4.375,0.06,"hat_c"],[42,45,4.53125,0.06,"hat_c"],[42,45,4.84375,0.06,"hat_c"],[42,75,5.0,0.06,"hat_c"],[42,45,5.15625,0.06,"hat_c"],[42,60,5.3125,0.06,"hat_c"],[42,45,5.46875,0.06,"hat_c"],[42,75,5.625,0.06,"hat_c"],[42,45,5.78125,0.06,"hat_c"],[42,60,5.9375,0.06,"hat_c"],[42,45,6.09375,0.06,"hat_c"],[42,75,6.25,0.06,"hat_c"],[42,45,6.40625,0.06,"hat_c"],[42,60,6.5625,0.06,"hat_c"],[42,45,6.71875,0.06,"hat_c"],[42,75,6.875,0.06,"hat_c"],[42,45,7.03125,0.06,"hat_c"],[42,45,7.34375,0.06,"hat_c"],[42,75,7.5,0.06,"hat_c"],[42,45,7.65625,0.06,"hat_c"],[42,60,7.8125,0.06,"hat_c"],[42,45,7.96875,0.06,"hat_c"],[42,75,8.125,0.06,"hat_c"],[42,45,8.28125,0.06,"hat_c"],[42,60,8.4375,0.06,"hat_c"],[42,45,8.59375,0.06,"hat_c"],[42,75,8.75,0.06,"hat_c"],[42,45,8.90625,0.06,"hat_c"],[42,60,9.0625,0.06,"hat_c"],[42,45,9.21875,0.06,"hat_c"],[42,75,9.375,0.06,"hat_c"],[42,45,9.53125,0.06,"hat_c"],[42,45,9.84375,0.06,"hat_c"],[42,75,10.0,0.06,"hat_c"],[42,45,10.15625,0.06,"hat_c"],[42,60,10.3125,0.06,"hat_c"],[42,45,10.46875,0.06,"hat_c"],[42,75,10.625,0.06,"hat_c"],[42,45,10.78125,0.06,"hat_c"],[42,60,10.9375,0.06,"hat_c"],[42,45,11.09375,0.06,"hat_c"],[42,75,11.25,0.06,"hat_c"],[42,45,11.40625,0.06,"hat_c"],[42,60,11.5625,0.06,"hat_c"],[42,45,11.71875,0.06,"hat_c"],[42,75,11.875,0.06,"hat_c"],[42,45,12.03125,0.06,"hat_c"],[42,45,12.34375,0.06,"hat_c"],[42,75,12.5,0.06,"hat_c"],[42,45,12.65625,0.06,"hat_c"],[42,60,12.8125,0.06,"hat_c"],[42,45,12.96875,0.06,"hat_c"],[42,75,13.125,0.06,"hat_c"],[42,45,13.28125,0.06,"hat_c"],[42,60,13.4375,0.06,"hat_c"],[42,45,13.59375,0.06,"hat_c"],[42,75,13.75,0.06,"hat_c"],[42,45,13.90625,0.06,"hat_c"],[42,60,14.0625,0.06,"hat_c"],[42,45,14.21875,0.06,"hat_c"],[42,75,14.375,0.06,"hat_c"],[42,45,14.53125,0.06,"hat_c"],[42,45,14.84375,0.06,"hat_c"],[42,75,15.0,0.06,"hat_c"],[42,45,15.15625,0.06,"hat_c"],[42,60,15.3125,0.06,"hat_c"],[42,45,15.46875,0.06,"hat_c"],[42,75,15.625,0.06,"hat_c"],[42,45,15.78125,0.06,"hat_c"],[42,60,15.9375,0.06,"hat_c"],[42,45,16.09375,0.06,"hat_c"],[42,75,16.25,0.06,"hat_c"],[42,45,16.40625,0.06,"hat_c"],[42,60,16.5625,0.06,"hat_c"],[42,45,16.71875,0.06,"hat_c"],[42,75,16.875,0.06,"hat_c"],[42,45,17.03125,0.06,"hat_c"],[42,45,17.34375,0.06,"hat_c"],[42,75,17.5,0.06,"hat_c"],[42,45,17.65625,0.06,"hat_c"],[42,60,17.8125,0.06,"hat_c"],[42,45,17.96875,0.06,"hat_c"],[42,75,18.125,0.06,"hat_c"],[42,45,18.28125,0.06,"hat_c"],[42,60,18.4375,0.06,"hat_c"],[42,45,18.59375,0.06,"hat_c"],[42,75,18.75,0.06,"hat_c"],[42,45,18.90625,0.06,"hat_c"],[42,60,19.0625,0.06,"hat_c"],[42,45,19.21875,0.06,"hat_c"],[42,75,19.375,0.06,"hat_c"],[42,45,19.53125,0.06,"hat_c"],[42,45,19.84375,0.06,"hat_c"],[46,72,2.1875,0.2,"hat_o"],[46,72,4.6875,0.2,"hat_o"],[46,72,7.1875,0.2,"hat_o"],[46,72,9.6875,0.2,"hat_o"],[46,72,12.1875,0.2,"hat_o"],[46,72,14.6875,0.2,"hat_o"],[46,72,17.1875,0.2,"hat_o"],[46,72,19.6875,0.2,"hat_o"],[38,22,0.3125,0.04,"ghost"],[38,22,0.9375,0.04,"ghost"],[38,22,1.5625,0.04,"ghost"],[38,22,2.1875,0.04,"ghost"],[38,22,2.8125,0.04,"ghost"],[38,22,3.4375,0.04,"ghost"],[38,22,4.0625,0.04,"ghost"],[38,22,4.6875,0.04,"ghost"],[38,22,5.3125,0.04,"ghost"],[38,22,5.9375,0.04,"ghost"],[38,22,6.5625,0.04,"ghost"],[38,22,7.1875,0.04,"ghost"],[38,22,7.8125,0.04,"ghost"],[38,22,8.4375,0.04,"ghost"],[38,22,9.0625,0.04,"ghost"],[38,22,9.6875,0.04,"ghost"],[38,22,10.3125,0.04,"ghost"],[38,22,10.9375,0.04,"ghost"],[38,22,11.5625,0.04,"ghost"],[38,22,12.1875,0.04,"ghost"],[38,22,12.8125,0.04,"ghost"],[38,22,13.4375,0.04,"ghost"],[38,22,14.0625,0.04,"ghost"],[38,22,14.6875,0.04,"ghost"],[38,22,15.3125,0.04,"ghost"],[38,22,15.9375,0.04,"ghost"],[38,22,16.5625,0.04,"ghost"],[38,22,17.1875,0.04,"ghost"],[38,22,17.8125,0.04,"ghost"],[38,22,18.4375,0.04,"ghost"],[38,22,19.0625,0.04,"ghost"],[38,22,19.6875,0.04,"ghost"],[49,100,0.0,1.0,"crash"],[40,95,0.0,0.625,"bass"],[43,85,0.625,0.3125,"bass"],[45,80,0.9375,0.15625,"bass"],[47,90,1.09375,1.40625,"bass"],[40,95,2.5,0.78125,"bass"],[43,85,3.28125,0.3125,"bass"],[45,85,3.59375,0.46875,"bass"],[47,80,4.0625,0.3125,"bass"],[50,80,4.375,0.625,"bass"],[45,90,5.0,0.625,"bass"],[48,80,5.625,0.3125,"bass"],[47,85,5.9375,1.09375,"bass"],[45,75,7.03125,0.46875,"bass"],[47,90,7.5,0.625,"bass"],[50,85,8.125,0.3125,"bass"],[45,80,8.4375,0.625,"bass"],[40,95,9.0625,0.9375,"bass"],[40,95,10.0,0.625,"bass"],[43,85,10.625,0.3125,"bass"],[45,80,10.9375,0.15625,"bass"],[47,90,11.09375,1.40625,"bass"],[40,95,12.5,0.78125,"bass"],[43,85,13.28125,0.3125,"bass"],[45,85,13.59375,0.46875,"bass"],[47,80,14.0625,0.3125,"bass"],[50,80,14.375,0.625,"bass"],[45,90,15.0,0.625,"bass"],[48,80,15.625,0.3125,"bass"],[47,85,15.9375,1.09375,"bass"],[45,75,17.03125,0.46875,"bass"],[47,90,17.5,0.625,"bass"],[50,85,18.125,0.3125,"bass"],[45,80,18.4375,0.625,"bass"],[40,95,19.0625,0.9375,"bass"],[52,94,0.0,0.21875,"epiano"],[55,91,0.0,0.21875,"epiano"],[59,88,0.0,0.21875,"epiano"],[62,85,0.0,0.21875,"epiano"],[52,79,0.9375,0.3125,"epiano"],[55,76,0.9375,0.3125,"epiano"],[59,73,0.9375,0.3125,"epiano"],[62,70,0.9375,0.3125,"epiano"],[52,89,1.25,0.21875,"epiano"],[55,86,1.25,0.21875,"epiano"],[59,83,1.25,0.21875,"epiano"],[62,80,1.25,0.21875,"epiano"],[52,81,2.1875,0.625,"epiano"],[55,78,2.1875,0.625,"epiano"],[59,75,2.1875,0.625,"epiano"],[62,72,2.1875,0.625,"epiano"],[57,94,2.5,0.21875,"epiano"],[60,91,2.5,0.21875,"epiano"],[64,88,2.5,0.21875,"epiano"],[67,85,2.5,0.21875,"epiano"],[57,79,3.4375,0.3125,"epiano"],[60,76,3.4375,0.3125,"epiano"],[64,73,3.4375,0.3125,"epiano"],[67,70,3.4375,0.3125,"epiano"],[57,89,3.75,0.21875,"epiano"],[60,86,3.75,0.21875,"epiano"],[64,83,3.75,0.21875,"epiano"],[67,80,3.75,0.21875,"epiano"],[57,81,4.6875,0.625,"epiano"],[60,78,4.6875,0.625,"epiano"],[64,75,4.6875,0.625,"epiano"],[67,72,4.6875,0.625,"epiano"],[59,94,5.0,0.21875,"epiano"],[62,91,5.0,0.21875,"epiano"],[66,88,5.0,0.21875,"epiano"],[69,85,5.0,0.21875,"epiano"],[59,79,5.9375,0.3125,"epiano"],[62,76,5.9375,0.3125,"epiano"],[66,73,5.9375,0.3125,"epiano"],[69,70,5.9375,0.3125,"epiano"],[59,89,6.25,0.21875,"epiano"],[62,86,6.25,0.21875,"epiano"],[66,83,6.25,0.21875,"epiano"],[69,80,6.25,0.21875,"epiano"],[59,81,7.1875,0.625,"epiano"],[62,78,7.1875,0.625,"epiano"],[66,75,7.1875,0.625,"epiano"],[69,72,7.1875,0.625,"epiano"],[60,94,7.5,0.21875,"epiano"],[64,91,7.5,0.21875,"epiano"],[67,88,7.5,0.21875,"epiano"],[71,85,7.5,0.21875,"epiano"],[60,79,8.4375,0.3125,"epiano"],[64,76,8.4375,0.3125,"epiano"],[67,73,8.4375,0.3125,"epiano"],[71,70,8.4375,0.3125,"epiano"],[60,89,8.75,0.21875,"epiano"],[64,86,8.75,0.21875,"epiano"],[67,83,8.75,0.21875,"epiano"],[71,80,8.75,0.21875,"epiano"],[60,81,9.6875,0.625,"epiano"],[64,78,9.6875,0.625,"epiano"],[67,75,9.6875,0.625,"epiano"],[71,72,9.6875,0.625,"epiano"],[52,94,10.0,0.21875,"epiano"],[55,91,10.0,0.21875,"epiano"],[59,88,10.0,0.21875,"epiano"],[62,85,10.0,0.21875,"epiano"],[52,79,10.9375,0.3125,"epiano"],[55,76,10.9375,0.3125,"epiano"],[59,73,10.9375,0.3125,"epiano"],[62,70,10.9375,0.3125,"epiano"],[52,89,11.25,0.21875,"epiano"],[55,86,11.25,0.21875,"epiano"],[59,83,11.25,0.21875,"epiano"],[62,80,11.25,0.21875,"epiano"],[52,81,12.1875,0.625,"epiano"],[55,78,12.1875,0.625,"epiano"],[59,75,12.1875,0.625,"epiano"],[62,72,12.1875,0.625,"epiano"],[57,94,12.5,0.21875,"epiano"],[60,91,12.5,0.21875,"epiano"],[64,88,12.5,0.21875,"epiano"],[67,85,12.5,0.21875,"epiano"],[57,79,13.4375,0.3125,"epiano"],[60,76,13.4375,0.3125,"epiano"],[64,73,13.4375,0.3125,"epiano"],[67,70,13.4375,0.3125,"epiano"],[57,89,13.75,0.21875,"epiano"],[60,86,13.75,0.21875,"epiano"],[64,83,13.75,0.21875,"epiano"],[67,80,13.75,0.21875,"epiano"],[57,81,14.6875,0.625,"epiano"],[60,78,14.6875,0.625,"epiano"],[64,75,14.6875,0.625,"epiano"],[67,72,14.6875,0.625,"epiano"],[59,94,15.0,0.21875,"epiano"],[62,91,15.0,0.21875,"epiano"],[66,88,15.0,0.21875,"epiano"],[69,85,15.0,0.21875,"epiano"],[59,79,15.9375,0.3125,"epiano"],[62,76,15.9375,0.3125,"epiano"],[66,73,15.9375,0.3125,"epiano"],[69,70,15.9375,0.3125,"epiano"],[59,89,16.25,0.21875,"epiano"],[62,86,16.25,0.21875,"epiano"],[66,83,16.25,0.21875,"epiano"],[69,80,16.25,0.21875,"epiano"],[59,81,17.1875,0.625,"epiano"],[62,78,17.1875,0.625,"epiano"],[66,75,17.1875,0.625,"epiano"],[69,72,17.1875,0.625,"epiano"],[60,94,17.5,0.21875,"epiano"],[64,91,17.5,0.21875,"epiano"],[67,88,17.5,0.21875,"epiano"],[71,85,17.5,0.21875,"epiano"],[60,79,18.4375,0.3125,"epiano"],[64,76,18.4375,0.3125,"epiano"],[67,73,18.4375,0.3125,"epiano"],[71,70,18.4375,0.3125,"epiano"],[60,89,18.75,0.21875,"epiano"],[64,86,18.75,0.21875,"epiano"],[67,83,18.75,0.21875,"epiano"],[71,80,18.75,0.21875,"epiano"],[60,81,19.6875,0.625,"epiano"],[64,78,19.6875,0.625,"epiano"],[67,75,19.6875,0.625,"epiano"],[71,72,19.6875,0.625,"epiano"],[69,85,0.0,0.3125,"lead"],[71,80,0.3125,0.15625,"lead"],[74,82,0.46875,0.15625,"lead"],[74,88,0.625,0.3125,"lead"],[71,78,0.9375,0.3125,"lead"],[71,80,1.25,0.25,"lead"],[69,75,1.5625,0.3125,"lead"],[67,82,1.875,0.625,"lead"],[64,75,2.5,0.3125,"lead"],[67,78,2.8125,0.3125,"lead"],[69,88,3.125,0.625,"lead"],[71,82,3.75,0.3125,"lead"],[74,80,4.0625,0.15625,"lead"],[76,85,4.21875,0.15625,"lead"],[76,92,4.375,0.625,"lead"],[74,85,5.0,0.3125,"lead"],[71,80,5.3125,0.3125,"lead"],[69,78,5.625,0.3125,"lead"],[67,75,5.9375,0.3125,"lead"],[64,80,6.25,0.625,"lead"],[67,82,6.875,0.625,"lead"],[69,80,7.5,0.3125,"lead"],[71,82,7.8125,0.3125,"lead"],[74,88,8.125,0.625,"lead"],[71,80,8.75,0.3125,"lead"],[69,78,9.0625,0.3125,"lead"],[64,92,9.375,0.9375,"lead"],[69,85,10.0,0.3125,"lead"],[71,80,10.3125,0.15625,"lead"],[74,82,10.46875,0.15625,"lead"],[74,88,10.625,0.3125,"lead"],[71,78,10.9375,0.3125,"lead"],[71,80,11.25,0.25,"lead"],[69,75,11.5625,0.3125,"lead"],[67,82,11.875,0.625,"lead"],[64,75,12.5,0.3125,"lead"],[67,78,12.8125,0.3125,"lead"],[69,88,13.125,0.625,"lead"],[71,82,13.75,0.3125,"lead"],[74,80,14.0625,0.15625,"lead"],[76,85,14.21875,0.15625,"lead"],[76,92,14.375,0.625,"lead"],[74,85,15.0,0.3125,"lead"],[71,80,15.3125,0.3125,"lead"],[69,78,15.625,0.3125,"lead"],[67,75,15.9375,0.3125,"lead"],[64,80,16.25,0.625,"lead"],[67,82,16.875,0.625,"lead"],[69,80,17.5,0.3125,"lead"],[71,82,17.8125,0.3125,"lead"],[74,88,18.125,0.625,"lead"],[71,80,18.75,0.3125,"lead"],[69,78,19.0625,0.3125,"lead"],[64,92,19.375,0.9375,"lead"],[55,95,0.3125,0.17188,"brass"],[59,95,0.3125,0.17188,"brass"],[62,95,0.3125,0.17188,"brass"],[55,95,0.9375,0.17188,"brass"],[59,95,0.9375,0.17188,"brass"],[62,95,0.9375,0.17188,"brass"],[55,95,1.5625,0.17188,"brass"],[59,95,1.5625,0.17188,"brass"],[62,95,1.5625,0.17188,"brass"],[55,95,2.1875,0.17188,"brass"],[59,95,2.1875,0.17188,"brass"],[62,95,2.1875,0.17188,"brass"],[55,95,2.8125,0.17188,"brass"],[59,95,2.8125,0.17188,"brass"],[62,95,2.8125,0.17188,"brass"],[55,95,3.4375,0.17188,"brass"],[59,95,3.4375,0.17188,"brass"],[62,95,3.4375,0.17188,"brass"],[55,95,4.0625,0.17188,"brass"],[59,95,4.0625,0.17188,"brass"],[62,95,4.0625,0.17188,"brass"],[55,95,4.6875,0.17188,"brass"],[59,95,4.6875,0.17188,"brass"],[62,95,4.6875,0.17188,"brass"],[55,95,5.3125,0.17188,"brass"],[59,95,5.3125,0.17188,"brass"],[62,95,5.3125,0.17188,"brass"],[55,95,5.9375,0.17188,"brass"],[59,95,5.9375,0.17188,"brass"],[62,95,5.9375,0.17188,"brass"],[55,95,6.5625,0.17188,"brass"],[59,95,6.5625,0.17188,"brass"],[62,95,6.5625,0.17188,"brass"],[55,95,7.1875,0.17188,"brass"],[59,95,7.1875,0.17188,"brass"],[62,95,7.1875,0.17188,"brass"],[55,95,7.8125,0.17188,"brass"],[59,95,7.8125,0.17188,"brass"],[62,95,7.8125,0.17188,"brass"],[55,95,8.4375,0.17188,"brass"],[59,95,8.4375,0.17188,"brass"],[62,95,8.4375,0.17188,"brass"],[55,95,9.0625,0.17188,"brass"],[59,95,9.0625,0.17188,"brass"],[62,95,9.0625,0.17188,"brass"],[55,95,9.6875,0.17188,"brass"],[59,95,9.6875,0.17188,"brass"],[62,95,9.6875,0.17188,"brass"],[55,95,10.3125,0.17188,"brass"],[59,95,10.3125,0.17188,"brass"],[62,95,10.3125,0.17188,"brass"],[55,95,10.9375,0.17188,"brass"],[59,95,10.9375,0.17188,"brass"],[62,95,10.9375,0.17188,"brass"],[55,95,11.5625,0.17188,"brass"],[59,95,11.5625,0.17188,"brass"],[62,95,11.5625,0.17188,"brass"],[55,95,12.1875,0.17188,"brass"],[59,95,12.1875,0.17188,"brass"],[62,95,12.1875,0.17188,"brass"],[55,95,12.8125,0.17188,"brass"],[59,95,12.8125,0.17188,"brass"],[62,95,12.8125,0.17188,"brass"],[55,95,13.4375,0.17188,"brass"],[59,95,13.4375,0.17188,"brass"],[62,95,13.4375,0.17188,"brass"],[55,95,14.0625,0.17188,"brass"],[59,95,14.0625,0.17188,"brass"],[62,95,14.0625,0.17188,"brass"],[55,95,14.6875,0.17188,"brass"],[59,95,14.6875,0.17188,"brass"],[62,95,14.6875,0.17188,"brass"],[55,95,15.3125,0.17188,"brass"],[59,95,15.3125,0.17188,"brass"],[62,95,15.3125,0.17188,"brass"],[55,95,15.9375,0.17188,"brass"],[59,95,15.9375,0.17188,"brass"],[62,95,15.9375,0.17188,"brass"],[55,95,16.5625,0.17188,"brass"],[59,95,16.5625,0.17188,"brass"],[62,95,16.5625,0.17188,"brass"],[55,95,17.1875,0.17188,"brass"],[59,95,17.1875,0.17188,"brass"],[62,95,17.1875,0.17188,"brass"],[55,95,17.8125,0.17188,"brass"],[59,95,17.8125,0.17188,"brass"],[62,95,17.8125,0.17188,"brass"],[55,95,18.4375,0.17188,"brass"],[59,95,18.4375,0.17188,"brass"],[62,95,18.4375,0.17188,"brass"],[55,95,19.0625,0.17188,"brass"],[59,95,19.0625,0.17188,"brass"],[62,95,19.0625,0.17188,"brass"],[55,95,19.6875,0.17188,"brass"],[59,95,19.6875,0.17188,"brass"],[62,95,19.6875,0.17188,"brass"]],"dimAct":{"time_signatures":2,"key_signatures":2,"tempo_map":2,"markers":2,"track_structure":1,"notes":4,"cc_volume":2,"cc_pan":1,"program_change":3,"cc_portamento":2,"cc_reverb":1,"cc_expression":3,"cc_other":1,"cc_sustain":2,"cc_chorus":1,"cc_soft_pedal":1,"cc_sostenuto":1,"pitch_bend":3,"cc_modulation":2,"channel_pressure":2,"poly_pressure":1},"parents":["7b4e2d85"],"conflict":false,"resolved":false},{"sha":"9e0a4b27","branch":"conflict/ensemble","label":"Ensemble\\nlegato pads","cmd":"muse commit -m 'Ensemble: legato pads, CC reverb swell'","output":"\u2713 [conflict/ensemble 9e0a4b27] Ensemble: legato pads, CC reverb swell\n  brassb track  |  cc_reverb elevated (CONFLICT INCOMING)","act":4,"notes":[[36,110,0.0,0.08,"kick"],[36,100,1.25,0.08,"kick"],[36,110,2.5,0.08,"kick"],[36,100,3.75,0.08,"kick"],[36,110,5.0,0.08,"kick"],[36,100,6.25,0.08,"kick"],[36,110,7.5,0.08,"kick"],[36,100,8.75,0.08,"kick"],[36,110,10.0,0.08,"kick"],[36,100,11.25,0.08,"kick"],[36,110,12.5,0.08,"kick"],[36,100,13.75,0.08,"kick"],[36,110,15.0,0.08,"kick"],[36,100,16.25,0.08,"kick"],[36,110,17.5,0.08,"kick"],[36,100,18.75,0.08,"kick"],[36,78,4.53125,0.07,"kick"],[36,78,9.53125,0.07,"kick"],[36,78,14.53125,0.07,"kick"],[36,78,19.53125,0.07,"kick"],[38,95,0.625,0.1,"snare"],[38,90,1.875,0.1,"snare"],[38,95,3.125,0.1,"snare"],[38,90,4.375,0.1,"snare"],[38,95,5.625,0.1,"snare"],[38,90,6.875,0.1,"snare"],[38,95,8.125,0.1,"snare"],[38,90,9.375,0.1,"snare"],[38,95,10.625,0.1,"snare"],[38,90,11.875,0.1,"snare"],[38,95,13.125,0.1,"snare"],[38,90,14.375,0.1,"snare"],[38,95,15.625,0.1,"snare"],[38,90,16.875,0.1,"snare"],[38,95,18.125,0.1,"snare"],[38,90,19.375,0.1,"snare"],[42,75,0.0,0.06,"hat_c"],[42,45,0.15625,0.06,"hat_c"],[42,60,0.3125,0.06,"hat_c"],[42,45,0.46875,0.06,"hat_c"],[42,75,0.625,0.06,"hat_c"],[42,45,0.78125,0.06,"hat_c"],[42,60,0.9375,0.06,"hat_c"],[42,45,1.09375,0.06,"hat_c"],[42,75,1.25,0.06,"hat_c"],[42,45,1.40625,0.06,"hat_c"],[42,60,1.5625,0.06,"hat_c"],[42,45,1.71875,0.06,"hat_c"],[42,75,1.875,0.06,"hat_c"],[42,45,2.03125,0.06,"hat_c"],[42,45,2.34375,0.06,"hat_c"],[42,75,2.5,0.06,"hat_c"],[42,45,2.65625,0.06,"hat_c"],[42,60,2.8125,0.06,"hat_c"],[42,45,2.96875,0.06,"hat_c"],[42,75,3.125,0.06,"hat_c"],[42,45,3.28125,0.06,"hat_c"],[42,60,3.4375,0.06,"hat_c"],[42,45,3.59375,0.06,"hat_c"],[42,75,3.75,0.06,"hat_c"],[42,45,3.90625,0.06,"hat_c"],[42,60,4.0625,0.06,"hat_c"],[42,45,4.21875,0.06,"hat_c"],[42,75,4.375,0.06,"hat_c"],[42,45,4.53125,0.06,"hat_c"],[42,45,4.84375,0.06,"hat_c"],[42,75,5.0,0.06,"hat_c"],[42,45,5.15625,0.06,"hat_c"],[42,60,5.3125,0.06,"hat_c"],[42,45,5.46875,0.06,"hat_c"],[42,75,5.625,0.06,"hat_c"],[42,45,5.78125,0.06,"hat_c"],[42,60,5.9375,0.06,"hat_c"],[42,45,6.09375,0.06,"hat_c"],[42,75,6.25,0.06,"hat_c"],[42,45,6.40625,0.06,"hat_c"],[42,60,6.5625,0.06,"hat_c"],[42,45,6.71875,0.06,"hat_c"],[42,75,6.875,0.06,"hat_c"],[42,45,7.03125,0.06,"hat_c"],[42,45,7.34375,0.06,"hat_c"],[42,75,7.5,0.06,"hat_c"],[42,45,7.65625,0.06,"hat_c"],[42,60,7.8125,0.06,"hat_c"],[42,45,7.96875,0.06,"hat_c"],[42,75,8.125,0.06,"hat_c"],[42,45,8.28125,0.06,"hat_c"],[42,60,8.4375,0.06,"hat_c"],[42,45,8.59375,0.06,"hat_c"],[42,75,8.75,0.06,"hat_c"],[42,45,8.90625,0.06,"hat_c"],[42,60,9.0625,0.06,"hat_c"],[42,45,9.21875,0.06,"hat_c"],[42,75,9.375,0.06,"hat_c"],[42,45,9.53125,0.06,"hat_c"],[42,45,9.84375,0.06,"hat_c"],[42,75,10.0,0.06,"hat_c"],[42,45,10.15625,0.06,"hat_c"],[42,60,10.3125,0.06,"hat_c"],[42,45,10.46875,0.06,"hat_c"],[42,75,10.625,0.06,"hat_c"],[42,45,10.78125,0.06,"hat_c"],[42,60,10.9375,0.06,"hat_c"],[42,45,11.09375,0.06,"hat_c"],[42,75,11.25,0.06,"hat_c"],[42,45,11.40625,0.06,"hat_c"],[42,60,11.5625,0.06,"hat_c"],[42,45,11.71875,0.06,"hat_c"],[42,75,11.875,0.06,"hat_c"],[42,45,12.03125,0.06,"hat_c"],[42,45,12.34375,0.06,"hat_c"],[42,75,12.5,0.06,"hat_c"],[42,45,12.65625,0.06,"hat_c"],[42,60,12.8125,0.06,"hat_c"],[42,45,12.96875,0.06,"hat_c"],[42,75,13.125,0.06,"hat_c"],[42,45,13.28125,0.06,"hat_c"],[42,60,13.4375,0.06,"hat_c"],[42,45,13.59375,0.06,"hat_c"],[42,75,13.75,0.06,"hat_c"],[42,45,13.90625,0.06,"hat_c"],[42,60,14.0625,0.06,"hat_c"],[42,45,14.21875,0.06,"hat_c"],[42,75,14.375,0.06,"hat_c"],[42,45,14.53125,0.06,"hat_c"],[42,45,14.84375,0.06,"hat_c"],[42,75,15.0,0.06,"hat_c"],[42,45,15.15625,0.06,"hat_c"],[42,60,15.3125,0.06,"hat_c"],[42,45,15.46875,0.06,"hat_c"],[42,75,15.625,0.06,"hat_c"],[42,45,15.78125,0.06,"hat_c"],[42,60,15.9375,0.06,"hat_c"],[42,45,16.09375,0.06,"hat_c"],[42,75,16.25,0.06,"hat_c"],[42,45,16.40625,0.06,"hat_c"],[42,60,16.5625,0.06,"hat_c"],[42,45,16.71875,0.06,"hat_c"],[42,75,16.875,0.06,"hat_c"],[42,45,17.03125,0.06,"hat_c"],[42,45,17.34375,0.06,"hat_c"],[42,75,17.5,0.06,"hat_c"],[42,45,17.65625,0.06,"hat_c"],[42,60,17.8125,0.06,"hat_c"],[42,45,17.96875,0.06,"hat_c"],[42,75,18.125,0.06,"hat_c"],[42,45,18.28125,0.06,"hat_c"],[42,60,18.4375,0.06,"hat_c"],[42,45,18.59375,0.06,"hat_c"],[42,75,18.75,0.06,"hat_c"],[42,45,18.90625,0.06,"hat_c"],[42,60,19.0625,0.06,"hat_c"],[42,45,19.21875,0.06,"hat_c"],[42,75,19.375,0.06,"hat_c"],[42,45,19.53125,0.06,"hat_c"],[42,45,19.84375,0.06,"hat_c"],[46,72,2.1875,0.2,"hat_o"],[46,72,4.6875,0.2,"hat_o"],[46,72,7.1875,0.2,"hat_o"],[46,72,9.6875,0.2,"hat_o"],[46,72,12.1875,0.2,"hat_o"],[46,72,14.6875,0.2,"hat_o"],[46,72,17.1875,0.2,"hat_o"],[46,72,19.6875,0.2,"hat_o"],[38,22,0.3125,0.04,"ghost"],[38,22,0.9375,0.04,"ghost"],[38,22,1.5625,0.04,"ghost"],[38,22,2.1875,0.04,"ghost"],[38,22,2.8125,0.04,"ghost"],[38,22,3.4375,0.04,"ghost"],[38,22,4.0625,0.04,"ghost"],[38,22,4.6875,0.04,"ghost"],[38,22,5.3125,0.04,"ghost"],[38,22,5.9375,0.04,"ghost"],[38,22,6.5625,0.04,"ghost"],[38,22,7.1875,0.04,"ghost"],[38,22,7.8125,0.04,"ghost"],[38,22,8.4375,0.04,"ghost"],[38,22,9.0625,0.04,"ghost"],[38,22,9.6875,0.04,"ghost"],[38,22,10.3125,0.04,"ghost"],[38,22,10.9375,0.04,"ghost"],[38,22,11.5625,0.04,"ghost"],[38,22,12.1875,0.04,"ghost"],[38,22,12.8125,0.04,"ghost"],[38,22,13.4375,0.04,"ghost"],[38,22,14.0625,0.04,"ghost"],[38,22,14.6875,0.04,"ghost"],[38,22,15.3125,0.04,"ghost"],[38,22,15.9375,0.04,"ghost"],[38,22,16.5625,0.04,"ghost"],[38,22,17.1875,0.04,"ghost"],[38,22,17.8125,0.04,"ghost"],[38,22,18.4375,0.04,"ghost"],[38,22,19.0625,0.04,"ghost"],[38,22,19.6875,0.04,"ghost"],[49,100,0.0,1.0,"crash"],[40,95,0.0,0.625,"bass"],[43,85,0.625,0.3125,"bass"],[45,80,0.9375,0.15625,"bass"],[47,90,1.09375,1.40625,"bass"],[40,95,2.5,0.78125,"bass"],[43,85,3.28125,0.3125,"bass"],[45,85,3.59375,0.46875,"bass"],[47,80,4.0625,0.3125,"bass"],[50,80,4.375,0.625,"bass"],[45,90,5.0,0.625,"bass"],[48,80,5.625,0.3125,"bass"],[47,85,5.9375,1.09375,"bass"],[45,75,7.03125,0.46875,"bass"],[47,90,7.5,0.625,"bass"],[50,85,8.125,0.3125,"bass"],[45,80,8.4375,0.625,"bass"],[40,95,9.0625,0.9375,"bass"],[40,95,10.0,0.625,"bass"],[43,85,10.625,0.3125,"bass"],[45,80,10.9375,0.15625,"bass"],[47,90,11.09375,1.40625,"bass"],[40,95,12.5,0.78125,"bass"],[43,85,13.28125,0.3125,"bass"],[45,85,13.59375,0.46875,"bass"],[47,80,14.0625,0.3125,"bass"],[50,80,14.375,0.625,"bass"],[45,90,15.0,0.625,"bass"],[48,80,15.625,0.3125,"bass"],[47,85,15.9375,1.09375,"bass"],[45,75,17.03125,0.46875,"bass"],[47,90,17.5,0.625,"bass"],[50,85,18.125,0.3125,"bass"],[45,80,18.4375,0.625,"bass"],[40,95,19.0625,0.9375,"bass"],[52,94,0.0,0.21875,"epiano"],[55,91,0.0,0.21875,"epiano"],[59,88,0.0,0.21875,"epiano"],[62,85,0.0,0.21875,"epiano"],[52,79,0.9375,0.3125,"epiano"],[55,76,0.9375,0.3125,"epiano"],[59,73,0.9375,0.3125,"epiano"],[62,70,0.9375,0.3125,"epiano"],[52,89,1.25,0.21875,"epiano"],[55,86,1.25,0.21875,"epiano"],[59,83,1.25,0.21875,"epiano"],[62,80,1.25,0.21875,"epiano"],[52,81,2.1875,0.625,"epiano"],[55,78,2.1875,0.625,"epiano"],[59,75,2.1875,0.625,"epiano"],[62,72,2.1875,0.625,"epiano"],[57,94,2.5,0.21875,"epiano"],[60,91,2.5,0.21875,"epiano"],[64,88,2.5,0.21875,"epiano"],[67,85,2.5,0.21875,"epiano"],[57,79,3.4375,0.3125,"epiano"],[60,76,3.4375,0.3125,"epiano"],[64,73,3.4375,0.3125,"epiano"],[67,70,3.4375,0.3125,"epiano"],[57,89,3.75,0.21875,"epiano"],[60,86,3.75,0.21875,"epiano"],[64,83,3.75,0.21875,"epiano"],[67,80,3.75,0.21875,"epiano"],[57,81,4.6875,0.625,"epiano"],[60,78,4.6875,0.625,"epiano"],[64,75,4.6875,0.625,"epiano"],[67,72,4.6875,0.625,"epiano"],[59,94,5.0,0.21875,"epiano"],[62,91,5.0,0.21875,"epiano"],[66,88,5.0,0.21875,"epiano"],[69,85,5.0,0.21875,"epiano"],[59,79,5.9375,0.3125,"epiano"],[62,76,5.9375,0.3125,"epiano"],[66,73,5.9375,0.3125,"epiano"],[69,70,5.9375,0.3125,"epiano"],[59,89,6.25,0.21875,"epiano"],[62,86,6.25,0.21875,"epiano"],[66,83,6.25,0.21875,"epiano"],[69,80,6.25,0.21875,"epiano"],[59,81,7.1875,0.625,"epiano"],[62,78,7.1875,0.625,"epiano"],[66,75,7.1875,0.625,"epiano"],[69,72,7.1875,0.625,"epiano"],[60,94,7.5,0.21875,"epiano"],[64,91,7.5,0.21875,"epiano"],[67,88,7.5,0.21875,"epiano"],[71,85,7.5,0.21875,"epiano"],[60,79,8.4375,0.3125,"epiano"],[64,76,8.4375,0.3125,"epiano"],[67,73,8.4375,0.3125,"epiano"],[71,70,8.4375,0.3125,"epiano"],[60,89,8.75,0.21875,"epiano"],[64,86,8.75,0.21875,"epiano"],[67,83,8.75,0.21875,"epiano"],[71,80,8.75,0.21875,"epiano"],[60,81,9.6875,0.625,"epiano"],[64,78,9.6875,0.625,"epiano"],[67,75,9.6875,0.625,"epiano"],[71,72,9.6875,0.625,"epiano"],[52,94,10.0,0.21875,"epiano"],[55,91,10.0,0.21875,"epiano"],[59,88,10.0,0.21875,"epiano"],[62,85,10.0,0.21875,"epiano"],[52,79,10.9375,0.3125,"epiano"],[55,76,10.9375,0.3125,"epiano"],[59,73,10.9375,0.3125,"epiano"],[62,70,10.9375,0.3125,"epiano"],[52,89,11.25,0.21875,"epiano"],[55,86,11.25,0.21875,"epiano"],[59,83,11.25,0.21875,"epiano"],[62,80,11.25,0.21875,"epiano"],[52,81,12.1875,0.625,"epiano"],[55,78,12.1875,0.625,"epiano"],[59,75,12.1875,0.625,"epiano"],[62,72,12.1875,0.625,"epiano"],[57,94,12.5,0.21875,"epiano"],[60,91,12.5,0.21875,"epiano"],[64,88,12.5,0.21875,"epiano"],[67,85,12.5,0.21875,"epiano"],[57,79,13.4375,0.3125,"epiano"],[60,76,13.4375,0.3125,"epiano"],[64,73,13.4375,0.3125,"epiano"],[67,70,13.4375,0.3125,"epiano"],[57,89,13.75,0.21875,"epiano"],[60,86,13.75,0.21875,"epiano"],[64,83,13.75,0.21875,"epiano"],[67,80,13.75,0.21875,"epiano"],[57,81,14.6875,0.625,"epiano"],[60,78,14.6875,0.625,"epiano"],[64,75,14.6875,0.625,"epiano"],[67,72,14.6875,0.625,"epiano"],[59,94,15.0,0.21875,"epiano"],[62,91,15.0,0.21875,"epiano"],[66,88,15.0,0.21875,"epiano"],[69,85,15.0,0.21875,"epiano"],[59,79,15.9375,0.3125,"epiano"],[62,76,15.9375,0.3125,"epiano"],[66,73,15.9375,0.3125,"epiano"],[69,70,15.9375,0.3125,"epiano"],[59,89,16.25,0.21875,"epiano"],[62,86,16.25,0.21875,"epiano"],[66,83,16.25,0.21875,"epiano"],[69,80,16.25,0.21875,"epiano"],[59,81,17.1875,0.625,"epiano"],[62,78,17.1875,0.625,"epiano"],[66,75,17.1875,0.625,"epiano"],[69,72,17.1875,0.625,"epiano"],[60,94,17.5,0.21875,"epiano"],[64,91,17.5,0.21875,"epiano"],[67,88,17.5,0.21875,"epiano"],[71,85,17.5,0.21875,"epiano"],[60,79,18.4375,0.3125,"epiano"],[64,76,18.4375,0.3125,"epiano"],[67,73,18.4375,0.3125,"epiano"],[71,70,18.4375,0.3125,"epiano"],[60,89,18.75,0.21875,"epiano"],[64,86,18.75,0.21875,"epiano"],[67,83,18.75,0.21875,"epiano"],[71,80,18.75,0.21875,"epiano"],[60,81,19.6875,0.625,"epiano"],[64,78,19.6875,0.625,"epiano"],[67,75,19.6875,0.625,"epiano"],[71,72,19.6875,0.625,"epiano"],[69,85,0.0,0.3125,"lead"],[71,80,0.3125,0.15625,"lead"],[74,82,0.46875,0.15625,"lead"],[74,88,0.625,0.3125,"lead"],[71,78,0.9375,0.3125,"lead"],[71,80,1.25,0.25,"lead"],[69,75,1.5625,0.3125,"lead"],[67,82,1.875,0.625,"lead"],[64,75,2.5,0.3125,"lead"],[67,78,2.8125,0.3125,"lead"],[69,88,3.125,0.625,"lead"],[71,82,3.75,0.3125,"lead"],[74,80,4.0625,0.15625,"lead"],[76,85,4.21875,0.15625,"lead"],[76,92,4.375,0.625,"lead"],[74,85,5.0,0.3125,"lead"],[71,80,5.3125,0.3125,"lead"],[69,78,5.625,0.3125,"lead"],[67,75,5.9375,0.3125,"lead"],[64,80,6.25,0.625,"lead"],[67,82,6.875,0.625,"lead"],[69,80,7.5,0.3125,"lead"],[71,82,7.8125,0.3125,"lead"],[74,88,8.125,0.625,"lead"],[71,80,8.75,0.3125,"lead"],[69,78,9.0625,0.3125,"lead"],[64,92,9.375,0.9375,"lead"],[69,85,10.0,0.3125,"lead"],[71,80,10.3125,0.15625,"lead"],[74,82,10.46875,0.15625,"lead"],[74,88,10.625,0.3125,"lead"],[71,78,10.9375,0.3125,"lead"],[71,80,11.25,0.25,"lead"],[69,75,11.5625,0.3125,"lead"],[67,82,11.875,0.625,"lead"],[64,75,12.5,0.3125,"lead"],[67,78,12.8125,0.3125,"lead"],[69,88,13.125,0.625,"lead"],[71,82,13.75,0.3125,"lead"],[74,80,14.0625,0.15625,"lead"],[76,85,14.21875,0.15625,"lead"],[76,92,14.375,0.625,"lead"],[74,85,15.0,0.3125,"lead"],[71,80,15.3125,0.3125,"lead"],[69,78,15.625,0.3125,"lead"],[67,75,15.9375,0.3125,"lead"],[64,80,16.25,0.625,"lead"],[67,82,16.875,0.625,"lead"],[69,80,17.5,0.3125,"lead"],[71,82,17.8125,0.3125,"lead"],[74,88,18.125,0.625,"lead"],[71,80,18.75,0.3125,"lead"],[69,78,19.0625,0.3125,"lead"],[64,92,19.375,0.9375,"lead"],[52,70,0.0,2.25,"brassb"],[64,55,1.25,1.25,"brassb"],[55,70,0.0,2.25,"brassb"],[67,55,1.25,1.25,"brassb"],[59,70,0.0,2.25,"brassb"],[71,55,1.25,1.25,"brassb"],[64,70,0.0,2.25,"brassb"],[76,55,1.25,1.25,"brassb"],[67,70,0.0,2.25,"brassb"],[79,55,1.25,1.25,"brassb"],[52,70,2.5,2.25,"brassb"],[64,55,3.75,1.25,"brassb"],[55,70,2.5,2.25,"brassb"],[67,55,3.75,1.25,"brassb"],[59,70,2.5,2.25,"brassb"],[71,55,3.75,1.25,"brassb"],[64,70,2.5,2.25,"brassb"],[76,55,3.75,1.25,"brassb"],[67,70,2.5,2.25,"brassb"],[79,55,3.75,1.25,"brassb"],[52,70,5.0,2.25,"brassb"],[64,55,6.25,1.25,"brassb"],[55,70,5.0,2.25,"brassb"],[67,55,6.25,1.25,"brassb"],[59,70,5.0,2.25,"brassb"],[71,55,6.25,1.25,"brassb"],[64,70,5.0,2.25,"brassb"],[76,55,6.25,1.25,"brassb"],[67,70,5.0,2.25,"brassb"],[79,55,6.25,1.25,"brassb"],[52,70,7.5,2.25,"brassb"],[64,55,8.75,1.25,"brassb"],[55,70,7.5,2.25,"brassb"],[67,55,8.75,1.25,"brassb"],[59,70,7.5,2.25,"brassb"],[71,55,8.75,1.25,"brassb"],[64,70,7.5,2.25,"brassb"],[76,55,8.75,1.25,"brassb"],[67,70,7.5,2.25,"brassb"],[79,55,8.75,1.25,"brassb"],[52,70,10.0,2.25,"brassb"],[64,55,11.25,1.25,"brassb"],[55,70,10.0,2.25,"brassb"],[67,55,11.25,1.25,"brassb"],[59,70,10.0,2.25,"brassb"],[71,55,11.25,1.25,"brassb"],[64,70,10.0,2.25,"brassb"],[76,55,11.25,1.25,"brassb"],[67,70,10.0,2.25,"brassb"],[79,55,11.25,1.25,"brassb"],[52,70,12.5,2.25,"brassb"],[64,55,13.75,1.25,"brassb"],[55,70,12.5,2.25,"brassb"],[67,55,13.75,1.25,"brassb"],[59,70,12.5,2.25,"brassb"],[71,55,13.75,1.25,"brassb"],[64,70,12.5,2.25,"brassb"],[76,55,13.75,1.25,"brassb"],[67,70,12.5,2.25,"brassb"],[79,55,13.75,1.25,"brassb"],[52,70,15.0,2.25,"brassb"],[64,55,16.25,1.25,"brassb"],[55,70,15.0,2.25,"brassb"],[67,55,16.25,1.25,"brassb"],[59,70,15.0,2.25,"brassb"],[71,55,16.25,1.25,"brassb"],[64,70,15.0,2.25,"brassb"],[76,55,16.25,1.25,"brassb"],[67,70,15.0,2.25,"brassb"],[79,55,16.25,1.25,"brassb"],[52,70,17.5,2.25,"brassb"],[64,55,18.75,1.25,"brassb"],[55,70,17.5,2.25,"brassb"],[67,55,18.75,1.25,"brassb"],[59,70,17.5,2.25,"brassb"],[71,55,18.75,1.25,"brassb"],[64,70,17.5,2.25,"brassb"],[76,55,18.75,1.25,"brassb"],[67,70,17.5,2.25,"brassb"],[79,55,18.75,1.25,"brassb"]],"dimAct":{"time_signatures":2,"key_signatures":2,"tempo_map":2,"markers":2,"track_structure":1,"notes":4,"cc_volume":2,"cc_pan":1,"program_change":3,"cc_portamento":2,"cc_reverb":3,"cc_expression":1,"cc_other":1,"cc_sustain":2,"cc_chorus":2,"cc_soft_pedal":1,"cc_sostenuto":1,"pitch_bend":3,"cc_modulation":2,"channel_pressure":2,"poly_pressure":1},"parents":["7b4e2d85"],"conflict":false,"resolved":false},{"sha":"a1b5c8d9","branch":"main","label":"MERGE\\nconflict/brass-a \u2192 main","cmd":"muse merge conflict/brass-a","output":"\u2713 Merged 'conflict/brass-a' into 'main' \u2014 0 conflicts\n  stab brass layer integrated","act":4,"notes":[[36,110,0.0,0.08,"kick"],[36,100,1.25,0.08,"kick"],[36,110,2.5,0.08,"kick"],[36,100,3.75,0.08,"kick"],[36,110,5.0,0.08,"kick"],[36,100,6.25,0.08,"kick"],[36,110,7.5,0.08,"kick"],[36,100,8.75,0.08,"kick"],[36,110,10.0,0.08,"kick"],[36,100,11.25,0.08,"kick"],[36,110,12.5,0.08,"kick"],[36,100,13.75,0.08,"kick"],[36,110,15.0,0.08,"kick"],[36,100,16.25,0.08,"kick"],[36,110,17.5,0.08,"kick"],[36,100,18.75,0.08,"kick"],[36,78,4.53125,0.07,"kick"],[36,78,9.53125,0.07,"kick"],[36,78,14.53125,0.07,"kick"],[36,78,19.53125,0.07,"kick"],[38,95,0.625,0.1,"snare"],[38,90,1.875,0.1,"snare"],[38,95,3.125,0.1,"snare"],[38,90,4.375,0.1,"snare"],[38,95,5.625,0.1,"snare"],[38,90,6.875,0.1,"snare"],[38,95,8.125,0.1,"snare"],[38,90,9.375,0.1,"snare"],[38,95,10.625,0.1,"snare"],[38,90,11.875,0.1,"snare"],[38,95,13.125,0.1,"snare"],[38,90,14.375,0.1,"snare"],[38,95,15.625,0.1,"snare"],[38,90,16.875,0.1,"snare"],[38,95,18.125,0.1,"snare"],[38,90,19.375,0.1,"snare"],[42,75,0.0,0.06,"hat_c"],[42,45,0.15625,0.06,"hat_c"],[42,60,0.3125,0.06,"hat_c"],[42,45,0.46875,0.06,"hat_c"],[42,75,0.625,0.06,"hat_c"],[42,45,0.78125,0.06,"hat_c"],[42,60,0.9375,0.06,"hat_c"],[42,45,1.09375,0.06,"hat_c"],[42,75,1.25,0.06,"hat_c"],[42,45,1.40625,0.06,"hat_c"],[42,60,1.5625,0.06,"hat_c"],[42,45,1.71875,0.06,"hat_c"],[42,75,1.875,0.06,"hat_c"],[42,45,2.03125,0.06,"hat_c"],[42,45,2.34375,0.06,"hat_c"],[42,75,2.5,0.06,"hat_c"],[42,45,2.65625,0.06,"hat_c"],[42,60,2.8125,0.06,"hat_c"],[42,45,2.96875,0.06,"hat_c"],[42,75,3.125,0.06,"hat_c"],[42,45,3.28125,0.06,"hat_c"],[42,60,3.4375,0.06,"hat_c"],[42,45,3.59375,0.06,"hat_c"],[42,75,3.75,0.06,"hat_c"],[42,45,3.90625,0.06,"hat_c"],[42,60,4.0625,0.06,"hat_c"],[42,45,4.21875,0.06,"hat_c"],[42,75,4.375,0.06,"hat_c"],[42,45,4.53125,0.06,"hat_c"],[42,45,4.84375,0.06,"hat_c"],[42,75,5.0,0.06,"hat_c"],[42,45,5.15625,0.06,"hat_c"],[42,60,5.3125,0.06,"hat_c"],[42,45,5.46875,0.06,"hat_c"],[42,75,5.625,0.06,"hat_c"],[42,45,5.78125,0.06,"hat_c"],[42,60,5.9375,0.06,"hat_c"],[42,45,6.09375,0.06,"hat_c"],[42,75,6.25,0.06,"hat_c"],[42,45,6.40625,0.06,"hat_c"],[42,60,6.5625,0.06,"hat_c"],[42,45,6.71875,0.06,"hat_c"],[42,75,6.875,0.06,"hat_c"],[42,45,7.03125,0.06,"hat_c"],[42,45,7.34375,0.06,"hat_c"],[42,75,7.5,0.06,"hat_c"],[42,45,7.65625,0.06,"hat_c"],[42,60,7.8125,0.06,"hat_c"],[42,45,7.96875,0.06,"hat_c"],[42,75,8.125,0.06,"hat_c"],[42,45,8.28125,0.06,"hat_c"],[42,60,8.4375,0.06,"hat_c"],[42,45,8.59375,0.06,"hat_c"],[42,75,8.75,0.06,"hat_c"],[42,45,8.90625,0.06,"hat_c"],[42,60,9.0625,0.06,"hat_c"],[42,45,9.21875,0.06,"hat_c"],[42,75,9.375,0.06,"hat_c"],[42,45,9.53125,0.06,"hat_c"],[42,45,9.84375,0.06,"hat_c"],[42,75,10.0,0.06,"hat_c"],[42,45,10.15625,0.06,"hat_c"],[42,60,10.3125,0.06,"hat_c"],[42,45,10.46875,0.06,"hat_c"],[42,75,10.625,0.06,"hat_c"],[42,45,10.78125,0.06,"hat_c"],[42,60,10.9375,0.06,"hat_c"],[42,45,11.09375,0.06,"hat_c"],[42,75,11.25,0.06,"hat_c"],[42,45,11.40625,0.06,"hat_c"],[42,60,11.5625,0.06,"hat_c"],[42,45,11.71875,0.06,"hat_c"],[42,75,11.875,0.06,"hat_c"],[42,45,12.03125,0.06,"hat_c"],[42,45,12.34375,0.06,"hat_c"],[42,75,12.5,0.06,"hat_c"],[42,45,12.65625,0.06,"hat_c"],[42,60,12.8125,0.06,"hat_c"],[42,45,12.96875,0.06,"hat_c"],[42,75,13.125,0.06,"hat_c"],[42,45,13.28125,0.06,"hat_c"],[42,60,13.4375,0.06,"hat_c"],[42,45,13.59375,0.06,"hat_c"],[42,75,13.75,0.06,"hat_c"],[42,45,13.90625,0.06,"hat_c"],[42,60,14.0625,0.06,"hat_c"],[42,45,14.21875,0.06,"hat_c"],[42,75,14.375,0.06,"hat_c"],[42,45,14.53125,0.06,"hat_c"],[42,45,14.84375,0.06,"hat_c"],[42,75,15.0,0.06,"hat_c"],[42,45,15.15625,0.06,"hat_c"],[42,60,15.3125,0.06,"hat_c"],[42,45,15.46875,0.06,"hat_c"],[42,75,15.625,0.06,"hat_c"],[42,45,15.78125,0.06,"hat_c"],[42,60,15.9375,0.06,"hat_c"],[42,45,16.09375,0.06,"hat_c"],[42,75,16.25,0.06,"hat_c"],[42,45,16.40625,0.06,"hat_c"],[42,60,16.5625,0.06,"hat_c"],[42,45,16.71875,0.06,"hat_c"],[42,75,16.875,0.06,"hat_c"],[42,45,17.03125,0.06,"hat_c"],[42,45,17.34375,0.06,"hat_c"],[42,75,17.5,0.06,"hat_c"],[42,45,17.65625,0.06,"hat_c"],[42,60,17.8125,0.06,"hat_c"],[42,45,17.96875,0.06,"hat_c"],[42,75,18.125,0.06,"hat_c"],[42,45,18.28125,0.06,"hat_c"],[42,60,18.4375,0.06,"hat_c"],[42,45,18.59375,0.06,"hat_c"],[42,75,18.75,0.06,"hat_c"],[42,45,18.90625,0.06,"hat_c"],[42,60,19.0625,0.06,"hat_c"],[42,45,19.21875,0.06,"hat_c"],[42,75,19.375,0.06,"hat_c"],[42,45,19.53125,0.06,"hat_c"],[42,45,19.84375,0.06,"hat_c"],[46,72,2.1875,0.2,"hat_o"],[46,72,4.6875,0.2,"hat_o"],[46,72,7.1875,0.2,"hat_o"],[46,72,9.6875,0.2,"hat_o"],[46,72,12.1875,0.2,"hat_o"],[46,72,14.6875,0.2,"hat_o"],[46,72,17.1875,0.2,"hat_o"],[46,72,19.6875,0.2,"hat_o"],[38,22,0.3125,0.04,"ghost"],[38,22,0.9375,0.04,"ghost"],[38,22,1.5625,0.04,"ghost"],[38,22,2.1875,0.04,"ghost"],[38,22,2.8125,0.04,"ghost"],[38,22,3.4375,0.04,"ghost"],[38,22,4.0625,0.04,"ghost"],[38,22,4.6875,0.04,"ghost"],[38,22,5.3125,0.04,"ghost"],[38,22,5.9375,0.04,"ghost"],[38,22,6.5625,0.04,"ghost"],[38,22,7.1875,0.04,"ghost"],[38,22,7.8125,0.04,"ghost"],[38,22,8.4375,0.04,"ghost"],[38,22,9.0625,0.04,"ghost"],[38,22,9.6875,0.04,"ghost"],[38,22,10.3125,0.04,"ghost"],[38,22,10.9375,0.04,"ghost"],[38,22,11.5625,0.04,"ghost"],[38,22,12.1875,0.04,"ghost"],[38,22,12.8125,0.04,"ghost"],[38,22,13.4375,0.04,"ghost"],[38,22,14.0625,0.04,"ghost"],[38,22,14.6875,0.04,"ghost"],[38,22,15.3125,0.04,"ghost"],[38,22,15.9375,0.04,"ghost"],[38,22,16.5625,0.04,"ghost"],[38,22,17.1875,0.04,"ghost"],[38,22,17.8125,0.04,"ghost"],[38,22,18.4375,0.04,"ghost"],[38,22,19.0625,0.04,"ghost"],[38,22,19.6875,0.04,"ghost"],[49,100,0.0,1.0,"crash"],[40,95,0.0,0.625,"bass"],[43,85,0.625,0.3125,"bass"],[45,80,0.9375,0.15625,"bass"],[47,90,1.09375,1.40625,"bass"],[40,95,2.5,0.78125,"bass"],[43,85,3.28125,0.3125,"bass"],[45,85,3.59375,0.46875,"bass"],[47,80,4.0625,0.3125,"bass"],[50,80,4.375,0.625,"bass"],[45,90,5.0,0.625,"bass"],[48,80,5.625,0.3125,"bass"],[47,85,5.9375,1.09375,"bass"],[45,75,7.03125,0.46875,"bass"],[47,90,7.5,0.625,"bass"],[50,85,8.125,0.3125,"bass"],[45,80,8.4375,0.625,"bass"],[40,95,9.0625,0.9375,"bass"],[40,95,10.0,0.625,"bass"],[43,85,10.625,0.3125,"bass"],[45,80,10.9375,0.15625,"bass"],[47,90,11.09375,1.40625,"bass"],[40,95,12.5,0.78125,"bass"],[43,85,13.28125,0.3125,"bass"],[45,85,13.59375,0.46875,"bass"],[47,80,14.0625,0.3125,"bass"],[50,80,14.375,0.625,"bass"],[45,90,15.0,0.625,"bass"],[48,80,15.625,0.3125,"bass"],[47,85,15.9375,1.09375,"bass"],[45,75,17.03125,0.46875,"bass"],[47,90,17.5,0.625,"bass"],[50,85,18.125,0.3125,"bass"],[45,80,18.4375,0.625,"bass"],[40,95,19.0625,0.9375,"bass"],[52,94,0.0,0.21875,"epiano"],[55,91,0.0,0.21875,"epiano"],[59,88,0.0,0.21875,"epiano"],[62,85,0.0,0.21875,"epiano"],[52,79,0.9375,0.3125,"epiano"],[55,76,0.9375,0.3125,"epiano"],[59,73,0.9375,0.3125,"epiano"],[62,70,0.9375,0.3125,"epiano"],[52,89,1.25,0.21875,"epiano"],[55,86,1.25,0.21875,"epiano"],[59,83,1.25,0.21875,"epiano"],[62,80,1.25,0.21875,"epiano"],[52,81,2.1875,0.625,"epiano"],[55,78,2.1875,0.625,"epiano"],[59,75,2.1875,0.625,"epiano"],[62,72,2.1875,0.625,"epiano"],[57,94,2.5,0.21875,"epiano"],[60,91,2.5,0.21875,"epiano"],[64,88,2.5,0.21875,"epiano"],[67,85,2.5,0.21875,"epiano"],[57,79,3.4375,0.3125,"epiano"],[60,76,3.4375,0.3125,"epiano"],[64,73,3.4375,0.3125,"epiano"],[67,70,3.4375,0.3125,"epiano"],[57,89,3.75,0.21875,"epiano"],[60,86,3.75,0.21875,"epiano"],[64,83,3.75,0.21875,"epiano"],[67,80,3.75,0.21875,"epiano"],[57,81,4.6875,0.625,"epiano"],[60,78,4.6875,0.625,"epiano"],[64,75,4.6875,0.625,"epiano"],[67,72,4.6875,0.625,"epiano"],[59,94,5.0,0.21875,"epiano"],[62,91,5.0,0.21875,"epiano"],[66,88,5.0,0.21875,"epiano"],[69,85,5.0,0.21875,"epiano"],[59,79,5.9375,0.3125,"epiano"],[62,76,5.9375,0.3125,"epiano"],[66,73,5.9375,0.3125,"epiano"],[69,70,5.9375,0.3125,"epiano"],[59,89,6.25,0.21875,"epiano"],[62,86,6.25,0.21875,"epiano"],[66,83,6.25,0.21875,"epiano"],[69,80,6.25,0.21875,"epiano"],[59,81,7.1875,0.625,"epiano"],[62,78,7.1875,0.625,"epiano"],[66,75,7.1875,0.625,"epiano"],[69,72,7.1875,0.625,"epiano"],[60,94,7.5,0.21875,"epiano"],[64,91,7.5,0.21875,"epiano"],[67,88,7.5,0.21875,"epiano"],[71,85,7.5,0.21875,"epiano"],[60,79,8.4375,0.3125,"epiano"],[64,76,8.4375,0.3125,"epiano"],[67,73,8.4375,0.3125,"epiano"],[71,70,8.4375,0.3125,"epiano"],[60,89,8.75,0.21875,"epiano"],[64,86,8.75,0.21875,"epiano"],[67,83,8.75,0.21875,"epiano"],[71,80,8.75,0.21875,"epiano"],[60,81,9.6875,0.625,"epiano"],[64,78,9.6875,0.625,"epiano"],[67,75,9.6875,0.625,"epiano"],[71,72,9.6875,0.625,"epiano"],[52,94,10.0,0.21875,"epiano"],[55,91,10.0,0.21875,"epiano"],[59,88,10.0,0.21875,"epiano"],[62,85,10.0,0.21875,"epiano"],[52,79,10.9375,0.3125,"epiano"],[55,76,10.9375,0.3125,"epiano"],[59,73,10.9375,0.3125,"epiano"],[62,70,10.9375,0.3125,"epiano"],[52,89,11.25,0.21875,"epiano"],[55,86,11.25,0.21875,"epiano"],[59,83,11.25,0.21875,"epiano"],[62,80,11.25,0.21875,"epiano"],[52,81,12.1875,0.625,"epiano"],[55,78,12.1875,0.625,"epiano"],[59,75,12.1875,0.625,"epiano"],[62,72,12.1875,0.625,"epiano"],[57,94,12.5,0.21875,"epiano"],[60,91,12.5,0.21875,"epiano"],[64,88,12.5,0.21875,"epiano"],[67,85,12.5,0.21875,"epiano"],[57,79,13.4375,0.3125,"epiano"],[60,76,13.4375,0.3125,"epiano"],[64,73,13.4375,0.3125,"epiano"],[67,70,13.4375,0.3125,"epiano"],[57,89,13.75,0.21875,"epiano"],[60,86,13.75,0.21875,"epiano"],[64,83,13.75,0.21875,"epiano"],[67,80,13.75,0.21875,"epiano"],[57,81,14.6875,0.625,"epiano"],[60,78,14.6875,0.625,"epiano"],[64,75,14.6875,0.625,"epiano"],[67,72,14.6875,0.625,"epiano"],[59,94,15.0,0.21875,"epiano"],[62,91,15.0,0.21875,"epiano"],[66,88,15.0,0.21875,"epiano"],[69,85,15.0,0.21875,"epiano"],[59,79,15.9375,0.3125,"epiano"],[62,76,15.9375,0.3125,"epiano"],[66,73,15.9375,0.3125,"epiano"],[69,70,15.9375,0.3125,"epiano"],[59,89,16.25,0.21875,"epiano"],[62,86,16.25,0.21875,"epiano"],[66,83,16.25,0.21875,"epiano"],[69,80,16.25,0.21875,"epiano"],[59,81,17.1875,0.625,"epiano"],[62,78,17.1875,0.625,"epiano"],[66,75,17.1875,0.625,"epiano"],[69,72,17.1875,0.625,"epiano"],[60,94,17.5,0.21875,"epiano"],[64,91,17.5,0.21875,"epiano"],[67,88,17.5,0.21875,"epiano"],[71,85,17.5,0.21875,"epiano"],[60,79,18.4375,0.3125,"epiano"],[64,76,18.4375,0.3125,"epiano"],[67,73,18.4375,0.3125,"epiano"],[71,70,18.4375,0.3125,"epiano"],[60,89,18.75,0.21875,"epiano"],[64,86,18.75,0.21875,"epiano"],[67,83,18.75,0.21875,"epiano"],[71,80,18.75,0.21875,"epiano"],[60,81,19.6875,0.625,"epiano"],[64,78,19.6875,0.625,"epiano"],[67,75,19.6875,0.625,"epiano"],[71,72,19.6875,0.625,"epiano"],[69,85,0.0,0.3125,"lead"],[71,80,0.3125,0.15625,"lead"],[74,82,0.46875,0.15625,"lead"],[74,88,0.625,0.3125,"lead"],[71,78,0.9375,0.3125,"lead"],[71,80,1.25,0.25,"lead"],[69,75,1.5625,0.3125,"lead"],[67,82,1.875,0.625,"lead"],[64,75,2.5,0.3125,"lead"],[67,78,2.8125,0.3125,"lead"],[69,88,3.125,0.625,"lead"],[71,82,3.75,0.3125,"lead"],[74,80,4.0625,0.15625,"lead"],[76,85,4.21875,0.15625,"lead"],[76,92,4.375,0.625,"lead"],[74,85,5.0,0.3125,"lead"],[71,80,5.3125,0.3125,"lead"],[69,78,5.625,0.3125,"lead"],[67,75,5.9375,0.3125,"lead"],[64,80,6.25,0.625,"lead"],[67,82,6.875,0.625,"lead"],[69,80,7.5,0.3125,"lead"],[71,82,7.8125,0.3125,"lead"],[74,88,8.125,0.625,"lead"],[71,80,8.75,0.3125,"lead"],[69,78,9.0625,0.3125,"lead"],[64,92,9.375,0.9375,"lead"],[69,85,10.0,0.3125,"lead"],[71,80,10.3125,0.15625,"lead"],[74,82,10.46875,0.15625,"lead"],[74,88,10.625,0.3125,"lead"],[71,78,10.9375,0.3125,"lead"],[71,80,11.25,0.25,"lead"],[69,75,11.5625,0.3125,"lead"],[67,82,11.875,0.625,"lead"],[64,75,12.5,0.3125,"lead"],[67,78,12.8125,0.3125,"lead"],[69,88,13.125,0.625,"lead"],[71,82,13.75,0.3125,"lead"],[74,80,14.0625,0.15625,"lead"],[76,85,14.21875,0.15625,"lead"],[76,92,14.375,0.625,"lead"],[74,85,15.0,0.3125,"lead"],[71,80,15.3125,0.3125,"lead"],[69,78,15.625,0.3125,"lead"],[67,75,15.9375,0.3125,"lead"],[64,80,16.25,0.625,"lead"],[67,82,16.875,0.625,"lead"],[69,80,17.5,0.3125,"lead"],[71,82,17.8125,0.3125,"lead"],[74,88,18.125,0.625,"lead"],[71,80,18.75,0.3125,"lead"],[69,78,19.0625,0.3125,"lead"],[64,92,19.375,0.9375,"lead"],[55,95,0.3125,0.17188,"brass"],[59,95,0.3125,0.17188,"brass"],[62,95,0.3125,0.17188,"brass"],[55,95,0.9375,0.17188,"brass"],[59,95,0.9375,0.17188,"brass"],[62,95,0.9375,0.17188,"brass"],[55,95,1.5625,0.17188,"brass"],[59,95,1.5625,0.17188,"brass"],[62,95,1.5625,0.17188,"brass"],[55,95,2.1875,0.17188,"brass"],[59,95,2.1875,0.17188,"brass"],[62,95,2.1875,0.17188,"brass"],[55,95,2.8125,0.17188,"brass"],[59,95,2.8125,0.17188,"brass"],[62,95,2.8125,0.17188,"brass"],[55,95,3.4375,0.17188,"brass"],[59,95,3.4375,0.17188,"brass"],[62,95,3.4375,0.17188,"brass"],[55,95,4.0625,0.17188,"brass"],[59,95,4.0625,0.17188,"brass"],[62,95,4.0625,0.17188,"brass"],[55,95,4.6875,0.17188,"brass"],[59,95,4.6875,0.17188,"brass"],[62,95,4.6875,0.17188,"brass"],[55,95,5.3125,0.17188,"brass"],[59,95,5.3125,0.17188,"brass"],[62,95,5.3125,0.17188,"brass"],[55,95,5.9375,0.17188,"brass"],[59,95,5.9375,0.17188,"brass"],[62,95,5.9375,0.17188,"brass"],[55,95,6.5625,0.17188,"brass"],[59,95,6.5625,0.17188,"brass"],[62,95,6.5625,0.17188,"brass"],[55,95,7.1875,0.17188,"brass"],[59,95,7.1875,0.17188,"brass"],[62,95,7.1875,0.17188,"brass"],[55,95,7.8125,0.17188,"brass"],[59,95,7.8125,0.17188,"brass"],[62,95,7.8125,0.17188,"brass"],[55,95,8.4375,0.17188,"brass"],[59,95,8.4375,0.17188,"brass"],[62,95,8.4375,0.17188,"brass"],[55,95,9.0625,0.17188,"brass"],[59,95,9.0625,0.17188,"brass"],[62,95,9.0625,0.17188,"brass"],[55,95,9.6875,0.17188,"brass"],[59,95,9.6875,0.17188,"brass"],[62,95,9.6875,0.17188,"brass"],[55,95,10.3125,0.17188,"brass"],[59,95,10.3125,0.17188,"brass"],[62,95,10.3125,0.17188,"brass"],[55,95,10.9375,0.17188,"brass"],[59,95,10.9375,0.17188,"brass"],[62,95,10.9375,0.17188,"brass"],[55,95,11.5625,0.17188,"brass"],[59,95,11.5625,0.17188,"brass"],[62,95,11.5625,0.17188,"brass"],[55,95,12.1875,0.17188,"brass"],[59,95,12.1875,0.17188,"brass"],[62,95,12.1875,0.17188,"brass"],[55,95,12.8125,0.17188,"brass"],[59,95,12.8125,0.17188,"brass"],[62,95,12.8125,0.17188,"brass"],[55,95,13.4375,0.17188,"brass"],[59,95,13.4375,0.17188,"brass"],[62,95,13.4375,0.17188,"brass"],[55,95,14.0625,0.17188,"brass"],[59,95,14.0625,0.17188,"brass"],[62,95,14.0625,0.17188,"brass"],[55,95,14.6875,0.17188,"brass"],[59,95,14.6875,0.17188,"brass"],[62,95,14.6875,0.17188,"brass"],[55,95,15.3125,0.17188,"brass"],[59,95,15.3125,0.17188,"brass"],[62,95,15.3125,0.17188,"brass"],[55,95,15.9375,0.17188,"brass"],[59,95,15.9375,0.17188,"brass"],[62,95,15.9375,0.17188,"brass"],[55,95,16.5625,0.17188,"brass"],[59,95,16.5625,0.17188,"brass"],[62,95,16.5625,0.17188,"brass"],[55,95,17.1875,0.17188,"brass"],[59,95,17.1875,0.17188,"brass"],[62,95,17.1875,0.17188,"brass"],[55,95,17.8125,0.17188,"brass"],[59,95,17.8125,0.17188,"brass"],[62,95,17.8125,0.17188,"brass"],[55,95,18.4375,0.17188,"brass"],[59,95,18.4375,0.17188,"brass"],[62,95,18.4375,0.17188,"brass"],[55,95,19.0625,0.17188,"brass"],[59,95,19.0625,0.17188,"brass"],[62,95,19.0625,0.17188,"brass"],[55,95,19.6875,0.17188,"brass"],[59,95,19.6875,0.17188,"brass"],[62,95,19.6875,0.17188,"brass"]],"dimAct":{"time_signatures":2,"key_signatures":2,"tempo_map":2,"markers":2,"track_structure":1,"notes":4,"cc_volume":2,"cc_pan":1,"program_change":3,"cc_portamento":2,"cc_reverb":1,"cc_expression":3,"cc_other":1,"cc_sustain":2,"cc_chorus":1,"cc_soft_pedal":1,"cc_sostenuto":1,"pitch_bend":3,"cc_modulation":2,"channel_pressure":2,"poly_pressure":1},"parents":["7b4e2d85","8d7f1c36"],"conflict":false,"resolved":false},{"sha":"b2c6d9e0","branch":"main","label":"\u26a0 CONFLICT\\ncc_reverb dimension","cmd":"muse merge conflict/ensemble","output":"\u26a0  CONFLICT detected in dimension: cc_reverb\n  conflict/brass-a:  cc_reverb = 45\n  conflict/ensemble: cc_reverb = 82\n  \u2192 muse resolve --strategy=auto cc_reverb","act":4,"notes":[[36,110,0.0,0.08,"kick"],[36,100,1.25,0.08,"kick"],[36,110,2.5,0.08,"kick"],[36,100,3.75,0.08,"kick"],[36,110,5.0,0.08,"kick"],[36,100,6.25,0.08,"kick"],[36,110,7.5,0.08,"kick"],[36,100,8.75,0.08,"kick"],[36,110,10.0,0.08,"kick"],[36,100,11.25,0.08,"kick"],[36,110,12.5,0.08,"kick"],[36,100,13.75,0.08,"kick"],[36,110,15.0,0.08,"kick"],[36,100,16.25,0.08,"kick"],[36,110,17.5,0.08,"kick"],[36,100,18.75,0.08,"kick"],[36,78,4.53125,0.07,"kick"],[36,78,9.53125,0.07,"kick"],[36,78,14.53125,0.07,"kick"],[36,78,19.53125,0.07,"kick"],[38,95,0.625,0.1,"snare"],[38,90,1.875,0.1,"snare"],[38,95,3.125,0.1,"snare"],[38,90,4.375,0.1,"snare"],[38,95,5.625,0.1,"snare"],[38,90,6.875,0.1,"snare"],[38,95,8.125,0.1,"snare"],[38,90,9.375,0.1,"snare"],[38,95,10.625,0.1,"snare"],[38,90,11.875,0.1,"snare"],[38,95,13.125,0.1,"snare"],[38,90,14.375,0.1,"snare"],[38,95,15.625,0.1,"snare"],[38,90,16.875,0.1,"snare"],[38,95,18.125,0.1,"snare"],[38,90,19.375,0.1,"snare"],[42,75,0.0,0.06,"hat_c"],[42,45,0.15625,0.06,"hat_c"],[42,60,0.3125,0.06,"hat_c"],[42,45,0.46875,0.06,"hat_c"],[42,75,0.625,0.06,"hat_c"],[42,45,0.78125,0.06,"hat_c"],[42,60,0.9375,0.06,"hat_c"],[42,45,1.09375,0.06,"hat_c"],[42,75,1.25,0.06,"hat_c"],[42,45,1.40625,0.06,"hat_c"],[42,60,1.5625,0.06,"hat_c"],[42,45,1.71875,0.06,"hat_c"],[42,75,1.875,0.06,"hat_c"],[42,45,2.03125,0.06,"hat_c"],[42,45,2.34375,0.06,"hat_c"],[42,75,2.5,0.06,"hat_c"],[42,45,2.65625,0.06,"hat_c"],[42,60,2.8125,0.06,"hat_c"],[42,45,2.96875,0.06,"hat_c"],[42,75,3.125,0.06,"hat_c"],[42,45,3.28125,0.06,"hat_c"],[42,60,3.4375,0.06,"hat_c"],[42,45,3.59375,0.06,"hat_c"],[42,75,3.75,0.06,"hat_c"],[42,45,3.90625,0.06,"hat_c"],[42,60,4.0625,0.06,"hat_c"],[42,45,4.21875,0.06,"hat_c"],[42,75,4.375,0.06,"hat_c"],[42,45,4.53125,0.06,"hat_c"],[42,45,4.84375,0.06,"hat_c"],[42,75,5.0,0.06,"hat_c"],[42,45,5.15625,0.06,"hat_c"],[42,60,5.3125,0.06,"hat_c"],[42,45,5.46875,0.06,"hat_c"],[42,75,5.625,0.06,"hat_c"],[42,45,5.78125,0.06,"hat_c"],[42,60,5.9375,0.06,"hat_c"],[42,45,6.09375,0.06,"hat_c"],[42,75,6.25,0.06,"hat_c"],[42,45,6.40625,0.06,"hat_c"],[42,60,6.5625,0.06,"hat_c"],[42,45,6.71875,0.06,"hat_c"],[42,75,6.875,0.06,"hat_c"],[42,45,7.03125,0.06,"hat_c"],[42,45,7.34375,0.06,"hat_c"],[42,75,7.5,0.06,"hat_c"],[42,45,7.65625,0.06,"hat_c"],[42,60,7.8125,0.06,"hat_c"],[42,45,7.96875,0.06,"hat_c"],[42,75,8.125,0.06,"hat_c"],[42,45,8.28125,0.06,"hat_c"],[42,60,8.4375,0.06,"hat_c"],[42,45,8.59375,0.06,"hat_c"],[42,75,8.75,0.06,"hat_c"],[42,45,8.90625,0.06,"hat_c"],[42,60,9.0625,0.06,"hat_c"],[42,45,9.21875,0.06,"hat_c"],[42,75,9.375,0.06,"hat_c"],[42,45,9.53125,0.06,"hat_c"],[42,45,9.84375,0.06,"hat_c"],[42,75,10.0,0.06,"hat_c"],[42,45,10.15625,0.06,"hat_c"],[42,60,10.3125,0.06,"hat_c"],[42,45,10.46875,0.06,"hat_c"],[42,75,10.625,0.06,"hat_c"],[42,45,10.78125,0.06,"hat_c"],[42,60,10.9375,0.06,"hat_c"],[42,45,11.09375,0.06,"hat_c"],[42,75,11.25,0.06,"hat_c"],[42,45,11.40625,0.06,"hat_c"],[42,60,11.5625,0.06,"hat_c"],[42,45,11.71875,0.06,"hat_c"],[42,75,11.875,0.06,"hat_c"],[42,45,12.03125,0.06,"hat_c"],[42,45,12.34375,0.06,"hat_c"],[42,75,12.5,0.06,"hat_c"],[42,45,12.65625,0.06,"hat_c"],[42,60,12.8125,0.06,"hat_c"],[42,45,12.96875,0.06,"hat_c"],[42,75,13.125,0.06,"hat_c"],[42,45,13.28125,0.06,"hat_c"],[42,60,13.4375,0.06,"hat_c"],[42,45,13.59375,0.06,"hat_c"],[42,75,13.75,0.06,"hat_c"],[42,45,13.90625,0.06,"hat_c"],[42,60,14.0625,0.06,"hat_c"],[42,45,14.21875,0.06,"hat_c"],[42,75,14.375,0.06,"hat_c"],[42,45,14.53125,0.06,"hat_c"],[42,45,14.84375,0.06,"hat_c"],[42,75,15.0,0.06,"hat_c"],[42,45,15.15625,0.06,"hat_c"],[42,60,15.3125,0.06,"hat_c"],[42,45,15.46875,0.06,"hat_c"],[42,75,15.625,0.06,"hat_c"],[42,45,15.78125,0.06,"hat_c"],[42,60,15.9375,0.06,"hat_c"],[42,45,16.09375,0.06,"hat_c"],[42,75,16.25,0.06,"hat_c"],[42,45,16.40625,0.06,"hat_c"],[42,60,16.5625,0.06,"hat_c"],[42,45,16.71875,0.06,"hat_c"],[42,75,16.875,0.06,"hat_c"],[42,45,17.03125,0.06,"hat_c"],[42,45,17.34375,0.06,"hat_c"],[42,75,17.5,0.06,"hat_c"],[42,45,17.65625,0.06,"hat_c"],[42,60,17.8125,0.06,"hat_c"],[42,45,17.96875,0.06,"hat_c"],[42,75,18.125,0.06,"hat_c"],[42,45,18.28125,0.06,"hat_c"],[42,60,18.4375,0.06,"hat_c"],[42,45,18.59375,0.06,"hat_c"],[42,75,18.75,0.06,"hat_c"],[42,45,18.90625,0.06,"hat_c"],[42,60,19.0625,0.06,"hat_c"],[42,45,19.21875,0.06,"hat_c"],[42,75,19.375,0.06,"hat_c"],[42,45,19.53125,0.06,"hat_c"],[42,45,19.84375,0.06,"hat_c"],[46,72,2.1875,0.2,"hat_o"],[46,72,4.6875,0.2,"hat_o"],[46,72,7.1875,0.2,"hat_o"],[46,72,9.6875,0.2,"hat_o"],[46,72,12.1875,0.2,"hat_o"],[46,72,14.6875,0.2,"hat_o"],[46,72,17.1875,0.2,"hat_o"],[46,72,19.6875,0.2,"hat_o"],[38,22,0.3125,0.04,"ghost"],[38,22,0.9375,0.04,"ghost"],[38,22,1.5625,0.04,"ghost"],[38,22,2.1875,0.04,"ghost"],[38,22,2.8125,0.04,"ghost"],[38,22,3.4375,0.04,"ghost"],[38,22,4.0625,0.04,"ghost"],[38,22,4.6875,0.04,"ghost"],[38,22,5.3125,0.04,"ghost"],[38,22,5.9375,0.04,"ghost"],[38,22,6.5625,0.04,"ghost"],[38,22,7.1875,0.04,"ghost"],[38,22,7.8125,0.04,"ghost"],[38,22,8.4375,0.04,"ghost"],[38,22,9.0625,0.04,"ghost"],[38,22,9.6875,0.04,"ghost"],[38,22,10.3125,0.04,"ghost"],[38,22,10.9375,0.04,"ghost"],[38,22,11.5625,0.04,"ghost"],[38,22,12.1875,0.04,"ghost"],[38,22,12.8125,0.04,"ghost"],[38,22,13.4375,0.04,"ghost"],[38,22,14.0625,0.04,"ghost"],[38,22,14.6875,0.04,"ghost"],[38,22,15.3125,0.04,"ghost"],[38,22,15.9375,0.04,"ghost"],[38,22,16.5625,0.04,"ghost"],[38,22,17.1875,0.04,"ghost"],[38,22,17.8125,0.04,"ghost"],[38,22,18.4375,0.04,"ghost"],[38,22,19.0625,0.04,"ghost"],[38,22,19.6875,0.04,"ghost"],[49,100,0.0,1.0,"crash"],[40,95,0.0,0.625,"bass"],[43,85,0.625,0.3125,"bass"],[45,80,0.9375,0.15625,"bass"],[47,90,1.09375,1.40625,"bass"],[40,95,2.5,0.78125,"bass"],[43,85,3.28125,0.3125,"bass"],[45,85,3.59375,0.46875,"bass"],[47,80,4.0625,0.3125,"bass"],[50,80,4.375,0.625,"bass"],[45,90,5.0,0.625,"bass"],[48,80,5.625,0.3125,"bass"],[47,85,5.9375,1.09375,"bass"],[45,75,7.03125,0.46875,"bass"],[47,90,7.5,0.625,"bass"],[50,85,8.125,0.3125,"bass"],[45,80,8.4375,0.625,"bass"],[40,95,9.0625,0.9375,"bass"],[40,95,10.0,0.625,"bass"],[43,85,10.625,0.3125,"bass"],[45,80,10.9375,0.15625,"bass"],[47,90,11.09375,1.40625,"bass"],[40,95,12.5,0.78125,"bass"],[43,85,13.28125,0.3125,"bass"],[45,85,13.59375,0.46875,"bass"],[47,80,14.0625,0.3125,"bass"],[50,80,14.375,0.625,"bass"],[45,90,15.0,0.625,"bass"],[48,80,15.625,0.3125,"bass"],[47,85,15.9375,1.09375,"bass"],[45,75,17.03125,0.46875,"bass"],[47,90,17.5,0.625,"bass"],[50,85,18.125,0.3125,"bass"],[45,80,18.4375,0.625,"bass"],[40,95,19.0625,0.9375,"bass"],[52,94,0.0,0.21875,"epiano"],[55,91,0.0,0.21875,"epiano"],[59,88,0.0,0.21875,"epiano"],[62,85,0.0,0.21875,"epiano"],[52,79,0.9375,0.3125,"epiano"],[55,76,0.9375,0.3125,"epiano"],[59,73,0.9375,0.3125,"epiano"],[62,70,0.9375,0.3125,"epiano"],[52,89,1.25,0.21875,"epiano"],[55,86,1.25,0.21875,"epiano"],[59,83,1.25,0.21875,"epiano"],[62,80,1.25,0.21875,"epiano"],[52,81,2.1875,0.625,"epiano"],[55,78,2.1875,0.625,"epiano"],[59,75,2.1875,0.625,"epiano"],[62,72,2.1875,0.625,"epiano"],[57,94,2.5,0.21875,"epiano"],[60,91,2.5,0.21875,"epiano"],[64,88,2.5,0.21875,"epiano"],[67,85,2.5,0.21875,"epiano"],[57,79,3.4375,0.3125,"epiano"],[60,76,3.4375,0.3125,"epiano"],[64,73,3.4375,0.3125,"epiano"],[67,70,3.4375,0.3125,"epiano"],[57,89,3.75,0.21875,"epiano"],[60,86,3.75,0.21875,"epiano"],[64,83,3.75,0.21875,"epiano"],[67,80,3.75,0.21875,"epiano"],[57,81,4.6875,0.625,"epiano"],[60,78,4.6875,0.625,"epiano"],[64,75,4.6875,0.625,"epiano"],[67,72,4.6875,0.625,"epiano"],[59,94,5.0,0.21875,"epiano"],[62,91,5.0,0.21875,"epiano"],[66,88,5.0,0.21875,"epiano"],[69,85,5.0,0.21875,"epiano"],[59,79,5.9375,0.3125,"epiano"],[62,76,5.9375,0.3125,"epiano"],[66,73,5.9375,0.3125,"epiano"],[69,70,5.9375,0.3125,"epiano"],[59,89,6.25,0.21875,"epiano"],[62,86,6.25,0.21875,"epiano"],[66,83,6.25,0.21875,"epiano"],[69,80,6.25,0.21875,"epiano"],[59,81,7.1875,0.625,"epiano"],[62,78,7.1875,0.625,"epiano"],[66,75,7.1875,0.625,"epiano"],[69,72,7.1875,0.625,"epiano"],[60,94,7.5,0.21875,"epiano"],[64,91,7.5,0.21875,"epiano"],[67,88,7.5,0.21875,"epiano"],[71,85,7.5,0.21875,"epiano"],[60,79,8.4375,0.3125,"epiano"],[64,76,8.4375,0.3125,"epiano"],[67,73,8.4375,0.3125,"epiano"],[71,70,8.4375,0.3125,"epiano"],[60,89,8.75,0.21875,"epiano"],[64,86,8.75,0.21875,"epiano"],[67,83,8.75,0.21875,"epiano"],[71,80,8.75,0.21875,"epiano"],[60,81,9.6875,0.625,"epiano"],[64,78,9.6875,0.625,"epiano"],[67,75,9.6875,0.625,"epiano"],[71,72,9.6875,0.625,"epiano"],[52,94,10.0,0.21875,"epiano"],[55,91,10.0,0.21875,"epiano"],[59,88,10.0,0.21875,"epiano"],[62,85,10.0,0.21875,"epiano"],[52,79,10.9375,0.3125,"epiano"],[55,76,10.9375,0.3125,"epiano"],[59,73,10.9375,0.3125,"epiano"],[62,70,10.9375,0.3125,"epiano"],[52,89,11.25,0.21875,"epiano"],[55,86,11.25,0.21875,"epiano"],[59,83,11.25,0.21875,"epiano"],[62,80,11.25,0.21875,"epiano"],[52,81,12.1875,0.625,"epiano"],[55,78,12.1875,0.625,"epiano"],[59,75,12.1875,0.625,"epiano"],[62,72,12.1875,0.625,"epiano"],[57,94,12.5,0.21875,"epiano"],[60,91,12.5,0.21875,"epiano"],[64,88,12.5,0.21875,"epiano"],[67,85,12.5,0.21875,"epiano"],[57,79,13.4375,0.3125,"epiano"],[60,76,13.4375,0.3125,"epiano"],[64,73,13.4375,0.3125,"epiano"],[67,70,13.4375,0.3125,"epiano"],[57,89,13.75,0.21875,"epiano"],[60,86,13.75,0.21875,"epiano"],[64,83,13.75,0.21875,"epiano"],[67,80,13.75,0.21875,"epiano"],[57,81,14.6875,0.625,"epiano"],[60,78,14.6875,0.625,"epiano"],[64,75,14.6875,0.625,"epiano"],[67,72,14.6875,0.625,"epiano"],[59,94,15.0,0.21875,"epiano"],[62,91,15.0,0.21875,"epiano"],[66,88,15.0,0.21875,"epiano"],[69,85,15.0,0.21875,"epiano"],[59,79,15.9375,0.3125,"epiano"],[62,76,15.9375,0.3125,"epiano"],[66,73,15.9375,0.3125,"epiano"],[69,70,15.9375,0.3125,"epiano"],[59,89,16.25,0.21875,"epiano"],[62,86,16.25,0.21875,"epiano"],[66,83,16.25,0.21875,"epiano"],[69,80,16.25,0.21875,"epiano"],[59,81,17.1875,0.625,"epiano"],[62,78,17.1875,0.625,"epiano"],[66,75,17.1875,0.625,"epiano"],[69,72,17.1875,0.625,"epiano"],[60,94,17.5,0.21875,"epiano"],[64,91,17.5,0.21875,"epiano"],[67,88,17.5,0.21875,"epiano"],[71,85,17.5,0.21875,"epiano"],[60,79,18.4375,0.3125,"epiano"],[64,76,18.4375,0.3125,"epiano"],[67,73,18.4375,0.3125,"epiano"],[71,70,18.4375,0.3125,"epiano"],[60,89,18.75,0.21875,"epiano"],[64,86,18.75,0.21875,"epiano"],[67,83,18.75,0.21875,"epiano"],[71,80,18.75,0.21875,"epiano"],[60,81,19.6875,0.625,"epiano"],[64,78,19.6875,0.625,"epiano"],[67,75,19.6875,0.625,"epiano"],[71,72,19.6875,0.625,"epiano"],[69,85,0.0,0.3125,"lead"],[71,80,0.3125,0.15625,"lead"],[74,82,0.46875,0.15625,"lead"],[74,88,0.625,0.3125,"lead"],[71,78,0.9375,0.3125,"lead"],[71,80,1.25,0.25,"lead"],[69,75,1.5625,0.3125,"lead"],[67,82,1.875,0.625,"lead"],[64,75,2.5,0.3125,"lead"],[67,78,2.8125,0.3125,"lead"],[69,88,3.125,0.625,"lead"],[71,82,3.75,0.3125,"lead"],[74,80,4.0625,0.15625,"lead"],[76,85,4.21875,0.15625,"lead"],[76,92,4.375,0.625,"lead"],[74,85,5.0,0.3125,"lead"],[71,80,5.3125,0.3125,"lead"],[69,78,5.625,0.3125,"lead"],[67,75,5.9375,0.3125,"lead"],[64,80,6.25,0.625,"lead"],[67,82,6.875,0.625,"lead"],[69,80,7.5,0.3125,"lead"],[71,82,7.8125,0.3125,"lead"],[74,88,8.125,0.625,"lead"],[71,80,8.75,0.3125,"lead"],[69,78,9.0625,0.3125,"lead"],[64,92,9.375,0.9375,"lead"],[69,85,10.0,0.3125,"lead"],[71,80,10.3125,0.15625,"lead"],[74,82,10.46875,0.15625,"lead"],[74,88,10.625,0.3125,"lead"],[71,78,10.9375,0.3125,"lead"],[71,80,11.25,0.25,"lead"],[69,75,11.5625,0.3125,"lead"],[67,82,11.875,0.625,"lead"],[64,75,12.5,0.3125,"lead"],[67,78,12.8125,0.3125,"lead"],[69,88,13.125,0.625,"lead"],[71,82,13.75,0.3125,"lead"],[74,80,14.0625,0.15625,"lead"],[76,85,14.21875,0.15625,"lead"],[76,92,14.375,0.625,"lead"],[74,85,15.0,0.3125,"lead"],[71,80,15.3125,0.3125,"lead"],[69,78,15.625,0.3125,"lead"],[67,75,15.9375,0.3125,"lead"],[64,80,16.25,0.625,"lead"],[67,82,16.875,0.625,"lead"],[69,80,17.5,0.3125,"lead"],[71,82,17.8125,0.3125,"lead"],[74,88,18.125,0.625,"lead"],[71,80,18.75,0.3125,"lead"],[69,78,19.0625,0.3125,"lead"],[64,92,19.375,0.9375,"lead"],[55,95,0.3125,0.17188,"brass"],[59,95,0.3125,0.17188,"brass"],[62,95,0.3125,0.17188,"brass"],[55,95,0.9375,0.17188,"brass"],[59,95,0.9375,0.17188,"brass"],[62,95,0.9375,0.17188,"brass"],[55,95,1.5625,0.17188,"brass"],[59,95,1.5625,0.17188,"brass"],[62,95,1.5625,0.17188,"brass"],[55,95,2.1875,0.17188,"brass"],[59,95,2.1875,0.17188,"brass"],[62,95,2.1875,0.17188,"brass"],[55,95,2.8125,0.17188,"brass"],[59,95,2.8125,0.17188,"brass"],[62,95,2.8125,0.17188,"brass"],[55,95,3.4375,0.17188,"brass"],[59,95,3.4375,0.17188,"brass"],[62,95,3.4375,0.17188,"brass"],[55,95,4.0625,0.17188,"brass"],[59,95,4.0625,0.17188,"brass"],[62,95,4.0625,0.17188,"brass"],[55,95,4.6875,0.17188,"brass"],[59,95,4.6875,0.17188,"brass"],[62,95,4.6875,0.17188,"brass"],[55,95,5.3125,0.17188,"brass"],[59,95,5.3125,0.17188,"brass"],[62,95,5.3125,0.17188,"brass"],[55,95,5.9375,0.17188,"brass"],[59,95,5.9375,0.17188,"brass"],[62,95,5.9375,0.17188,"brass"],[55,95,6.5625,0.17188,"brass"],[59,95,6.5625,0.17188,"brass"],[62,95,6.5625,0.17188,"brass"],[55,95,7.1875,0.17188,"brass"],[59,95,7.1875,0.17188,"brass"],[62,95,7.1875,0.17188,"brass"],[55,95,7.8125,0.17188,"brass"],[59,95,7.8125,0.17188,"brass"],[62,95,7.8125,0.17188,"brass"],[55,95,8.4375,0.17188,"brass"],[59,95,8.4375,0.17188,"brass"],[62,95,8.4375,0.17188,"brass"],[55,95,9.0625,0.17188,"brass"],[59,95,9.0625,0.17188,"brass"],[62,95,9.0625,0.17188,"brass"],[55,95,9.6875,0.17188,"brass"],[59,95,9.6875,0.17188,"brass"],[62,95,9.6875,0.17188,"brass"],[55,95,10.3125,0.17188,"brass"],[59,95,10.3125,0.17188,"brass"],[62,95,10.3125,0.17188,"brass"],[55,95,10.9375,0.17188,"brass"],[59,95,10.9375,0.17188,"brass"],[62,95,10.9375,0.17188,"brass"],[55,95,11.5625,0.17188,"brass"],[59,95,11.5625,0.17188,"brass"],[62,95,11.5625,0.17188,"brass"],[55,95,12.1875,0.17188,"brass"],[59,95,12.1875,0.17188,"brass"],[62,95,12.1875,0.17188,"brass"],[55,95,12.8125,0.17188,"brass"],[59,95,12.8125,0.17188,"brass"],[62,95,12.8125,0.17188,"brass"],[55,95,13.4375,0.17188,"brass"],[59,95,13.4375,0.17188,"brass"],[62,95,13.4375,0.17188,"brass"],[55,95,14.0625,0.17188,"brass"],[59,95,14.0625,0.17188,"brass"],[62,95,14.0625,0.17188,"brass"],[55,95,14.6875,0.17188,"brass"],[59,95,14.6875,0.17188,"brass"],[62,95,14.6875,0.17188,"brass"],[55,95,15.3125,0.17188,"brass"],[59,95,15.3125,0.17188,"brass"],[62,95,15.3125,0.17188,"brass"],[55,95,15.9375,0.17188,"brass"],[59,95,15.9375,0.17188,"brass"],[62,95,15.9375,0.17188,"brass"],[55,95,16.5625,0.17188,"brass"],[59,95,16.5625,0.17188,"brass"],[62,95,16.5625,0.17188,"brass"],[55,95,17.1875,0.17188,"brass"],[59,95,17.1875,0.17188,"brass"],[62,95,17.1875,0.17188,"brass"],[55,95,17.8125,0.17188,"brass"],[59,95,17.8125,0.17188,"brass"],[62,95,17.8125,0.17188,"brass"],[55,95,18.4375,0.17188,"brass"],[59,95,18.4375,0.17188,"brass"],[62,95,18.4375,0.17188,"brass"],[55,95,19.0625,0.17188,"brass"],[59,95,19.0625,0.17188,"brass"],[62,95,19.0625,0.17188,"brass"],[55,95,19.6875,0.17188,"brass"],[59,95,19.6875,0.17188,"brass"],[62,95,19.6875,0.17188,"brass"],[52,70,0.0,2.25,"brassb"],[64,55,1.25,1.25,"brassb"],[55,70,0.0,2.25,"brassb"],[67,55,1.25,1.25,"brassb"],[59,70,0.0,2.25,"brassb"],[71,55,1.25,1.25,"brassb"],[64,70,0.0,2.25,"brassb"],[76,55,1.25,1.25,"brassb"],[67,70,0.0,2.25,"brassb"],[79,55,1.25,1.25,"brassb"],[52,70,2.5,2.25,"brassb"],[64,55,3.75,1.25,"brassb"],[55,70,2.5,2.25,"brassb"],[67,55,3.75,1.25,"brassb"],[59,70,2.5,2.25,"brassb"],[71,55,3.75,1.25,"brassb"],[64,70,2.5,2.25,"brassb"],[76,55,3.75,1.25,"brassb"],[67,70,2.5,2.25,"brassb"],[79,55,3.75,1.25,"brassb"],[52,70,5.0,2.25,"brassb"],[64,55,6.25,1.25,"brassb"],[55,70,5.0,2.25,"brassb"],[67,55,6.25,1.25,"brassb"],[59,70,5.0,2.25,"brassb"],[71,55,6.25,1.25,"brassb"],[64,70,5.0,2.25,"brassb"],[76,55,6.25,1.25,"brassb"],[67,70,5.0,2.25,"brassb"],[79,55,6.25,1.25,"brassb"],[52,70,7.5,2.25,"brassb"],[64,55,8.75,1.25,"brassb"],[55,70,7.5,2.25,"brassb"],[67,55,8.75,1.25,"brassb"],[59,70,7.5,2.25,"brassb"],[71,55,8.75,1.25,"brassb"],[64,70,7.5,2.25,"brassb"],[76,55,8.75,1.25,"brassb"],[67,70,7.5,2.25,"brassb"],[79,55,8.75,1.25,"brassb"],[52,70,10.0,2.25,"brassb"],[64,55,11.25,1.25,"brassb"],[55,70,10.0,2.25,"brassb"],[67,55,11.25,1.25,"brassb"],[59,70,10.0,2.25,"brassb"],[71,55,11.25,1.25,"brassb"],[64,70,10.0,2.25,"brassb"],[76,55,11.25,1.25,"brassb"],[67,70,10.0,2.25,"brassb"],[79,55,11.25,1.25,"brassb"],[52,70,12.5,2.25,"brassb"],[64,55,13.75,1.25,"brassb"],[55,70,12.5,2.25,"brassb"],[67,55,13.75,1.25,"brassb"],[59,70,12.5,2.25,"brassb"],[71,55,13.75,1.25,"brassb"],[64,70,12.5,2.25,"brassb"],[76,55,13.75,1.25,"brassb"],[67,70,12.5,2.25,"brassb"],[79,55,13.75,1.25,"brassb"],[52,70,15.0,2.25,"brassb"],[64,55,16.25,1.25,"brassb"],[55,70,15.0,2.25,"brassb"],[67,55,16.25,1.25,"brassb"],[59,70,15.0,2.25,"brassb"],[71,55,16.25,1.25,"brassb"],[64,70,15.0,2.25,"brassb"],[76,55,16.25,1.25,"brassb"],[67,70,15.0,2.25,"brassb"],[79,55,16.25,1.25,"brassb"],[52,70,17.5,2.25,"brassb"],[64,55,18.75,1.25,"brassb"],[55,70,17.5,2.25,"brassb"],[67,55,18.75,1.25,"brassb"],[59,70,17.5,2.25,"brassb"],[71,55,18.75,1.25,"brassb"],[64,70,17.5,2.25,"brassb"],[76,55,18.75,1.25,"brassb"],[67,70,17.5,2.25,"brassb"],[79,55,18.75,1.25,"brassb"]],"dimAct":{"time_signatures":2,"key_signatures":2,"tempo_map":2,"markers":2,"track_structure":1,"notes":5,"cc_volume":2,"cc_pan":1,"program_change":4,"cc_portamento":2,"cc_reverb":3,"cc_expression":3,"cc_other":1,"cc_sustain":2,"cc_chorus":2,"cc_soft_pedal":1,"cc_sostenuto":1,"pitch_bend":3,"cc_modulation":2,"channel_pressure":2,"poly_pressure":1},"parents":["a1b5c8d9","9e0a4b27"],"conflict":true,"resolved":false},{"sha":"c3d7e0f1","branch":"main","label":"RESOLVED \u00b7 v1.0\\n21 dimensions active","cmd":"muse resolve --strategy=auto cc_reverb && muse tag add v1.0","output":"\u2713 Resolved cc_reverb \u2014 took max(45, 82) = 82\n\u2713 All 21 MIDI dimensions active\n\u2713 Tag 'v1.0' created \u2192 [main c3d7e0f1]","act":5,"notes":[[36,110,0.0,0.08,"kick"],[36,100,1.25,0.08,"kick"],[36,110,2.5,0.08,"kick"],[36,100,3.75,0.08,"kick"],[36,110,5.0,0.08,"kick"],[36,100,6.25,0.08,"kick"],[36,110,7.5,0.08,"kick"],[36,100,8.75,0.08,"kick"],[36,110,10.0,0.08,"kick"],[36,100,11.25,0.08,"kick"],[36,110,12.5,0.08,"kick"],[36,100,13.75,0.08,"kick"],[36,110,15.0,0.08,"kick"],[36,100,16.25,0.08,"kick"],[36,110,17.5,0.08,"kick"],[36,100,18.75,0.08,"kick"],[36,78,4.53125,0.07,"kick"],[36,78,9.53125,0.07,"kick"],[36,78,14.53125,0.07,"kick"],[36,78,19.53125,0.07,"kick"],[38,95,0.625,0.1,"snare"],[38,90,1.875,0.1,"snare"],[38,95,3.125,0.1,"snare"],[38,90,4.375,0.1,"snare"],[38,95,5.625,0.1,"snare"],[38,90,6.875,0.1,"snare"],[38,95,8.125,0.1,"snare"],[38,90,9.375,0.1,"snare"],[38,95,10.625,0.1,"snare"],[38,90,11.875,0.1,"snare"],[38,95,13.125,0.1,"snare"],[38,90,14.375,0.1,"snare"],[38,95,15.625,0.1,"snare"],[38,90,16.875,0.1,"snare"],[38,95,18.125,0.1,"snare"],[38,90,19.375,0.1,"snare"],[42,75,0.0,0.06,"hat_c"],[42,45,0.15625,0.06,"hat_c"],[42,60,0.3125,0.06,"hat_c"],[42,45,0.46875,0.06,"hat_c"],[42,75,0.625,0.06,"hat_c"],[42,45,0.78125,0.06,"hat_c"],[42,60,0.9375,0.06,"hat_c"],[42,45,1.09375,0.06,"hat_c"],[42,75,1.25,0.06,"hat_c"],[42,45,1.40625,0.06,"hat_c"],[42,60,1.5625,0.06,"hat_c"],[42,45,1.71875,0.06,"hat_c"],[42,75,1.875,0.06,"hat_c"],[42,45,2.03125,0.06,"hat_c"],[42,45,2.34375,0.06,"hat_c"],[42,75,2.5,0.06,"hat_c"],[42,45,2.65625,0.06,"hat_c"],[42,60,2.8125,0.06,"hat_c"],[42,45,2.96875,0.06,"hat_c"],[42,75,3.125,0.06,"hat_c"],[42,45,3.28125,0.06,"hat_c"],[42,60,3.4375,0.06,"hat_c"],[42,45,3.59375,0.06,"hat_c"],[42,75,3.75,0.06,"hat_c"],[42,45,3.90625,0.06,"hat_c"],[42,60,4.0625,0.06,"hat_c"],[42,45,4.21875,0.06,"hat_c"],[42,75,4.375,0.06,"hat_c"],[42,45,4.53125,0.06,"hat_c"],[42,45,4.84375,0.06,"hat_c"],[42,75,5.0,0.06,"hat_c"],[42,45,5.15625,0.06,"hat_c"],[42,60,5.3125,0.06,"hat_c"],[42,45,5.46875,0.06,"hat_c"],[42,75,5.625,0.06,"hat_c"],[42,45,5.78125,0.06,"hat_c"],[42,60,5.9375,0.06,"hat_c"],[42,45,6.09375,0.06,"hat_c"],[42,75,6.25,0.06,"hat_c"],[42,45,6.40625,0.06,"hat_c"],[42,60,6.5625,0.06,"hat_c"],[42,45,6.71875,0.06,"hat_c"],[42,75,6.875,0.06,"hat_c"],[42,45,7.03125,0.06,"hat_c"],[42,45,7.34375,0.06,"hat_c"],[42,75,7.5,0.06,"hat_c"],[42,45,7.65625,0.06,"hat_c"],[42,60,7.8125,0.06,"hat_c"],[42,45,7.96875,0.06,"hat_c"],[42,75,8.125,0.06,"hat_c"],[42,45,8.28125,0.06,"hat_c"],[42,60,8.4375,0.06,"hat_c"],[42,45,8.59375,0.06,"hat_c"],[42,75,8.75,0.06,"hat_c"],[42,45,8.90625,0.06,"hat_c"],[42,60,9.0625,0.06,"hat_c"],[42,45,9.21875,0.06,"hat_c"],[42,75,9.375,0.06,"hat_c"],[42,45,9.53125,0.06,"hat_c"],[42,45,9.84375,0.06,"hat_c"],[42,75,10.0,0.06,"hat_c"],[42,45,10.15625,0.06,"hat_c"],[42,60,10.3125,0.06,"hat_c"],[42,45,10.46875,0.06,"hat_c"],[42,75,10.625,0.06,"hat_c"],[42,45,10.78125,0.06,"hat_c"],[42,60,10.9375,0.06,"hat_c"],[42,45,11.09375,0.06,"hat_c"],[42,75,11.25,0.06,"hat_c"],[42,45,11.40625,0.06,"hat_c"],[42,60,11.5625,0.06,"hat_c"],[42,45,11.71875,0.06,"hat_c"],[42,75,11.875,0.06,"hat_c"],[42,45,12.03125,0.06,"hat_c"],[42,45,12.34375,0.06,"hat_c"],[42,75,12.5,0.06,"hat_c"],[42,45,12.65625,0.06,"hat_c"],[42,60,12.8125,0.06,"hat_c"],[42,45,12.96875,0.06,"hat_c"],[42,75,13.125,0.06,"hat_c"],[42,45,13.28125,0.06,"hat_c"],[42,60,13.4375,0.06,"hat_c"],[42,45,13.59375,0.06,"hat_c"],[42,75,13.75,0.06,"hat_c"],[42,45,13.90625,0.06,"hat_c"],[42,60,14.0625,0.06,"hat_c"],[42,45,14.21875,0.06,"hat_c"],[42,75,14.375,0.06,"hat_c"],[42,45,14.53125,0.06,"hat_c"],[42,45,14.84375,0.06,"hat_c"],[42,75,15.0,0.06,"hat_c"],[42,45,15.15625,0.06,"hat_c"],[42,60,15.3125,0.06,"hat_c"],[42,45,15.46875,0.06,"hat_c"],[42,75,15.625,0.06,"hat_c"],[42,45,15.78125,0.06,"hat_c"],[42,60,15.9375,0.06,"hat_c"],[42,45,16.09375,0.06,"hat_c"],[42,75,16.25,0.06,"hat_c"],[42,45,16.40625,0.06,"hat_c"],[42,60,16.5625,0.06,"hat_c"],[42,45,16.71875,0.06,"hat_c"],[42,75,16.875,0.06,"hat_c"],[42,45,17.03125,0.06,"hat_c"],[42,45,17.34375,0.06,"hat_c"],[42,75,17.5,0.06,"hat_c"],[42,45,17.65625,0.06,"hat_c"],[42,60,17.8125,0.06,"hat_c"],[42,45,17.96875,0.06,"hat_c"],[42,75,18.125,0.06,"hat_c"],[42,45,18.28125,0.06,"hat_c"],[42,60,18.4375,0.06,"hat_c"],[42,45,18.59375,0.06,"hat_c"],[42,75,18.75,0.06,"hat_c"],[42,45,18.90625,0.06,"hat_c"],[42,60,19.0625,0.06,"hat_c"],[42,45,19.21875,0.06,"hat_c"],[42,75,19.375,0.06,"hat_c"],[42,45,19.53125,0.06,"hat_c"],[42,45,19.84375,0.06,"hat_c"],[46,72,2.1875,0.2,"hat_o"],[46,72,4.6875,0.2,"hat_o"],[46,72,7.1875,0.2,"hat_o"],[46,72,9.6875,0.2,"hat_o"],[46,72,12.1875,0.2,"hat_o"],[46,72,14.6875,0.2,"hat_o"],[46,72,17.1875,0.2,"hat_o"],[46,72,19.6875,0.2,"hat_o"],[38,22,0.3125,0.04,"ghost"],[38,22,0.9375,0.04,"ghost"],[38,22,1.5625,0.04,"ghost"],[38,22,2.1875,0.04,"ghost"],[38,22,2.8125,0.04,"ghost"],[38,22,3.4375,0.04,"ghost"],[38,22,4.0625,0.04,"ghost"],[38,22,4.6875,0.04,"ghost"],[38,22,5.3125,0.04,"ghost"],[38,22,5.9375,0.04,"ghost"],[38,22,6.5625,0.04,"ghost"],[38,22,7.1875,0.04,"ghost"],[38,22,7.8125,0.04,"ghost"],[38,22,8.4375,0.04,"ghost"],[38,22,9.0625,0.04,"ghost"],[38,22,9.6875,0.04,"ghost"],[38,22,10.3125,0.04,"ghost"],[38,22,10.9375,0.04,"ghost"],[38,22,11.5625,0.04,"ghost"],[38,22,12.1875,0.04,"ghost"],[38,22,12.8125,0.04,"ghost"],[38,22,13.4375,0.04,"ghost"],[38,22,14.0625,0.04,"ghost"],[38,22,14.6875,0.04,"ghost"],[38,22,15.3125,0.04,"ghost"],[38,22,15.9375,0.04,"ghost"],[38,22,16.5625,0.04,"ghost"],[38,22,17.1875,0.04,"ghost"],[38,22,17.8125,0.04,"ghost"],[38,22,18.4375,0.04,"ghost"],[38,22,19.0625,0.04,"ghost"],[38,22,19.6875,0.04,"ghost"],[49,100,0.0,1.0,"crash"],[40,95,0.0,0.625,"bass"],[43,85,0.625,0.3125,"bass"],[45,80,0.9375,0.15625,"bass"],[47,90,1.09375,1.40625,"bass"],[40,95,2.5,0.78125,"bass"],[43,85,3.28125,0.3125,"bass"],[45,85,3.59375,0.46875,"bass"],[47,80,4.0625,0.3125,"bass"],[50,80,4.375,0.625,"bass"],[45,90,5.0,0.625,"bass"],[48,80,5.625,0.3125,"bass"],[47,85,5.9375,1.09375,"bass"],[45,75,7.03125,0.46875,"bass"],[47,90,7.5,0.625,"bass"],[50,85,8.125,0.3125,"bass"],[45,80,8.4375,0.625,"bass"],[40,95,9.0625,0.9375,"bass"],[40,95,10.0,0.625,"bass"],[43,85,10.625,0.3125,"bass"],[45,80,10.9375,0.15625,"bass"],[47,90,11.09375,1.40625,"bass"],[40,95,12.5,0.78125,"bass"],[43,85,13.28125,0.3125,"bass"],[45,85,13.59375,0.46875,"bass"],[47,80,14.0625,0.3125,"bass"],[50,80,14.375,0.625,"bass"],[45,90,15.0,0.625,"bass"],[48,80,15.625,0.3125,"bass"],[47,85,15.9375,1.09375,"bass"],[45,75,17.03125,0.46875,"bass"],[47,90,17.5,0.625,"bass"],[50,85,18.125,0.3125,"bass"],[45,80,18.4375,0.625,"bass"],[40,95,19.0625,0.9375,"bass"],[52,94,0.0,0.21875,"epiano"],[55,91,0.0,0.21875,"epiano"],[59,88,0.0,0.21875,"epiano"],[62,85,0.0,0.21875,"epiano"],[52,79,0.9375,0.3125,"epiano"],[55,76,0.9375,0.3125,"epiano"],[59,73,0.9375,0.3125,"epiano"],[62,70,0.9375,0.3125,"epiano"],[52,89,1.25,0.21875,"epiano"],[55,86,1.25,0.21875,"epiano"],[59,83,1.25,0.21875,"epiano"],[62,80,1.25,0.21875,"epiano"],[52,81,2.1875,0.625,"epiano"],[55,78,2.1875,0.625,"epiano"],[59,75,2.1875,0.625,"epiano"],[62,72,2.1875,0.625,"epiano"],[57,94,2.5,0.21875,"epiano"],[60,91,2.5,0.21875,"epiano"],[64,88,2.5,0.21875,"epiano"],[67,85,2.5,0.21875,"epiano"],[57,79,3.4375,0.3125,"epiano"],[60,76,3.4375,0.3125,"epiano"],[64,73,3.4375,0.3125,"epiano"],[67,70,3.4375,0.3125,"epiano"],[57,89,3.75,0.21875,"epiano"],[60,86,3.75,0.21875,"epiano"],[64,83,3.75,0.21875,"epiano"],[67,80,3.75,0.21875,"epiano"],[57,81,4.6875,0.625,"epiano"],[60,78,4.6875,0.625,"epiano"],[64,75,4.6875,0.625,"epiano"],[67,72,4.6875,0.625,"epiano"],[59,94,5.0,0.21875,"epiano"],[62,91,5.0,0.21875,"epiano"],[66,88,5.0,0.21875,"epiano"],[69,85,5.0,0.21875,"epiano"],[59,79,5.9375,0.3125,"epiano"],[62,76,5.9375,0.3125,"epiano"],[66,73,5.9375,0.3125,"epiano"],[69,70,5.9375,0.3125,"epiano"],[59,89,6.25,0.21875,"epiano"],[62,86,6.25,0.21875,"epiano"],[66,83,6.25,0.21875,"epiano"],[69,80,6.25,0.21875,"epiano"],[59,81,7.1875,0.625,"epiano"],[62,78,7.1875,0.625,"epiano"],[66,75,7.1875,0.625,"epiano"],[69,72,7.1875,0.625,"epiano"],[60,94,7.5,0.21875,"epiano"],[64,91,7.5,0.21875,"epiano"],[67,88,7.5,0.21875,"epiano"],[71,85,7.5,0.21875,"epiano"],[60,79,8.4375,0.3125,"epiano"],[64,76,8.4375,0.3125,"epiano"],[67,73,8.4375,0.3125,"epiano"],[71,70,8.4375,0.3125,"epiano"],[60,89,8.75,0.21875,"epiano"],[64,86,8.75,0.21875,"epiano"],[67,83,8.75,0.21875,"epiano"],[71,80,8.75,0.21875,"epiano"],[60,81,9.6875,0.625,"epiano"],[64,78,9.6875,0.625,"epiano"],[67,75,9.6875,0.625,"epiano"],[71,72,9.6875,0.625,"epiano"],[52,94,10.0,0.21875,"epiano"],[55,91,10.0,0.21875,"epiano"],[59,88,10.0,0.21875,"epiano"],[62,85,10.0,0.21875,"epiano"],[52,79,10.9375,0.3125,"epiano"],[55,76,10.9375,0.3125,"epiano"],[59,73,10.9375,0.3125,"epiano"],[62,70,10.9375,0.3125,"epiano"],[52,89,11.25,0.21875,"epiano"],[55,86,11.25,0.21875,"epiano"],[59,83,11.25,0.21875,"epiano"],[62,80,11.25,0.21875,"epiano"],[52,81,12.1875,0.625,"epiano"],[55,78,12.1875,0.625,"epiano"],[59,75,12.1875,0.625,"epiano"],[62,72,12.1875,0.625,"epiano"],[57,94,12.5,0.21875,"epiano"],[60,91,12.5,0.21875,"epiano"],[64,88,12.5,0.21875,"epiano"],[67,85,12.5,0.21875,"epiano"],[57,79,13.4375,0.3125,"epiano"],[60,76,13.4375,0.3125,"epiano"],[64,73,13.4375,0.3125,"epiano"],[67,70,13.4375,0.3125,"epiano"],[57,89,13.75,0.21875,"epiano"],[60,86,13.75,0.21875,"epiano"],[64,83,13.75,0.21875,"epiano"],[67,80,13.75,0.21875,"epiano"],[57,81,14.6875,0.625,"epiano"],[60,78,14.6875,0.625,"epiano"],[64,75,14.6875,0.625,"epiano"],[67,72,14.6875,0.625,"epiano"],[59,94,15.0,0.21875,"epiano"],[62,91,15.0,0.21875,"epiano"],[66,88,15.0,0.21875,"epiano"],[69,85,15.0,0.21875,"epiano"],[59,79,15.9375,0.3125,"epiano"],[62,76,15.9375,0.3125,"epiano"],[66,73,15.9375,0.3125,"epiano"],[69,70,15.9375,0.3125,"epiano"],[59,89,16.25,0.21875,"epiano"],[62,86,16.25,0.21875,"epiano"],[66,83,16.25,0.21875,"epiano"],[69,80,16.25,0.21875,"epiano"],[59,81,17.1875,0.625,"epiano"],[62,78,17.1875,0.625,"epiano"],[66,75,17.1875,0.625,"epiano"],[69,72,17.1875,0.625,"epiano"],[60,94,17.5,0.21875,"epiano"],[64,91,17.5,0.21875,"epiano"],[67,88,17.5,0.21875,"epiano"],[71,85,17.5,0.21875,"epiano"],[60,79,18.4375,0.3125,"epiano"],[64,76,18.4375,0.3125,"epiano"],[67,73,18.4375,0.3125,"epiano"],[71,70,18.4375,0.3125,"epiano"],[60,89,18.75,0.21875,"epiano"],[64,86,18.75,0.21875,"epiano"],[67,83,18.75,0.21875,"epiano"],[71,80,18.75,0.21875,"epiano"],[60,81,19.6875,0.625,"epiano"],[64,78,19.6875,0.625,"epiano"],[67,75,19.6875,0.625,"epiano"],[71,72,19.6875,0.625,"epiano"],[69,85,0.0,0.3125,"lead"],[71,80,0.3125,0.15625,"lead"],[74,82,0.46875,0.15625,"lead"],[74,88,0.625,0.3125,"lead"],[71,78,0.9375,0.3125,"lead"],[71,80,1.25,0.25,"lead"],[69,75,1.5625,0.3125,"lead"],[67,82,1.875,0.625,"lead"],[64,75,2.5,0.3125,"lead"],[67,78,2.8125,0.3125,"lead"],[69,88,3.125,0.625,"lead"],[71,82,3.75,0.3125,"lead"],[74,80,4.0625,0.15625,"lead"],[76,85,4.21875,0.15625,"lead"],[76,92,4.375,0.625,"lead"],[74,85,5.0,0.3125,"lead"],[71,80,5.3125,0.3125,"lead"],[69,78,5.625,0.3125,"lead"],[67,75,5.9375,0.3125,"lead"],[64,80,6.25,0.625,"lead"],[67,82,6.875,0.625,"lead"],[69,80,7.5,0.3125,"lead"],[71,82,7.8125,0.3125,"lead"],[74,88,8.125,0.625,"lead"],[71,80,8.75,0.3125,"lead"],[69,78,9.0625,0.3125,"lead"],[64,92,9.375,0.9375,"lead"],[69,85,10.0,0.3125,"lead"],[71,80,10.3125,0.15625,"lead"],[74,82,10.46875,0.15625,"lead"],[74,88,10.625,0.3125,"lead"],[71,78,10.9375,0.3125,"lead"],[71,80,11.25,0.25,"lead"],[69,75,11.5625,0.3125,"lead"],[67,82,11.875,0.625,"lead"],[64,75,12.5,0.3125,"lead"],[67,78,12.8125,0.3125,"lead"],[69,88,13.125,0.625,"lead"],[71,82,13.75,0.3125,"lead"],[74,80,14.0625,0.15625,"lead"],[76,85,14.21875,0.15625,"lead"],[76,92,14.375,0.625,"lead"],[74,85,15.0,0.3125,"lead"],[71,80,15.3125,0.3125,"lead"],[69,78,15.625,0.3125,"lead"],[67,75,15.9375,0.3125,"lead"],[64,80,16.25,0.625,"lead"],[67,82,16.875,0.625,"lead"],[69,80,17.5,0.3125,"lead"],[71,82,17.8125,0.3125,"lead"],[74,88,18.125,0.625,"lead"],[71,80,18.75,0.3125,"lead"],[69,78,19.0625,0.3125,"lead"],[64,92,19.375,0.9375,"lead"],[55,95,0.3125,0.17188,"brass"],[59,95,0.3125,0.17188,"brass"],[62,95,0.3125,0.17188,"brass"],[55,95,0.9375,0.17188,"brass"],[59,95,0.9375,0.17188,"brass"],[62,95,0.9375,0.17188,"brass"],[55,95,1.5625,0.17188,"brass"],[59,95,1.5625,0.17188,"brass"],[62,95,1.5625,0.17188,"brass"],[55,95,2.1875,0.17188,"brass"],[59,95,2.1875,0.17188,"brass"],[62,95,2.1875,0.17188,"brass"],[55,95,2.8125,0.17188,"brass"],[59,95,2.8125,0.17188,"brass"],[62,95,2.8125,0.17188,"brass"],[55,95,3.4375,0.17188,"brass"],[59,95,3.4375,0.17188,"brass"],[62,95,3.4375,0.17188,"brass"],[55,95,4.0625,0.17188,"brass"],[59,95,4.0625,0.17188,"brass"],[62,95,4.0625,0.17188,"brass"],[55,95,4.6875,0.17188,"brass"],[59,95,4.6875,0.17188,"brass"],[62,95,4.6875,0.17188,"brass"],[55,95,5.3125,0.17188,"brass"],[59,95,5.3125,0.17188,"brass"],[62,95,5.3125,0.17188,"brass"],[55,95,5.9375,0.17188,"brass"],[59,95,5.9375,0.17188,"brass"],[62,95,5.9375,0.17188,"brass"],[55,95,6.5625,0.17188,"brass"],[59,95,6.5625,0.17188,"brass"],[62,95,6.5625,0.17188,"brass"],[55,95,7.1875,0.17188,"brass"],[59,95,7.1875,0.17188,"brass"],[62,95,7.1875,0.17188,"brass"],[55,95,7.8125,0.17188,"brass"],[59,95,7.8125,0.17188,"brass"],[62,95,7.8125,0.17188,"brass"],[55,95,8.4375,0.17188,"brass"],[59,95,8.4375,0.17188,"brass"],[62,95,8.4375,0.17188,"brass"],[55,95,9.0625,0.17188,"brass"],[59,95,9.0625,0.17188,"brass"],[62,95,9.0625,0.17188,"brass"],[55,95,9.6875,0.17188,"brass"],[59,95,9.6875,0.17188,"brass"],[62,95,9.6875,0.17188,"brass"],[55,95,10.3125,0.17188,"brass"],[59,95,10.3125,0.17188,"brass"],[62,95,10.3125,0.17188,"brass"],[55,95,10.9375,0.17188,"brass"],[59,95,10.9375,0.17188,"brass"],[62,95,10.9375,0.17188,"brass"],[55,95,11.5625,0.17188,"brass"],[59,95,11.5625,0.17188,"brass"],[62,95,11.5625,0.17188,"brass"],[55,95,12.1875,0.17188,"brass"],[59,95,12.1875,0.17188,"brass"],[62,95,12.1875,0.17188,"brass"],[55,95,12.8125,0.17188,"brass"],[59,95,12.8125,0.17188,"brass"],[62,95,12.8125,0.17188,"brass"],[55,95,13.4375,0.17188,"brass"],[59,95,13.4375,0.17188,"brass"],[62,95,13.4375,0.17188,"brass"],[55,95,14.0625,0.17188,"brass"],[59,95,14.0625,0.17188,"brass"],[62,95,14.0625,0.17188,"brass"],[55,95,14.6875,0.17188,"brass"],[59,95,14.6875,0.17188,"brass"],[62,95,14.6875,0.17188,"brass"],[55,95,15.3125,0.17188,"brass"],[59,95,15.3125,0.17188,"brass"],[62,95,15.3125,0.17188,"brass"],[55,95,15.9375,0.17188,"brass"],[59,95,15.9375,0.17188,"brass"],[62,95,15.9375,0.17188,"brass"],[55,95,16.5625,0.17188,"brass"],[59,95,16.5625,0.17188,"brass"],[62,95,16.5625,0.17188,"brass"],[55,95,17.1875,0.17188,"brass"],[59,95,17.1875,0.17188,"brass"],[62,95,17.1875,0.17188,"brass"],[55,95,17.8125,0.17188,"brass"],[59,95,17.8125,0.17188,"brass"],[62,95,17.8125,0.17188,"brass"],[55,95,18.4375,0.17188,"brass"],[59,95,18.4375,0.17188,"brass"],[62,95,18.4375,0.17188,"brass"],[55,95,19.0625,0.17188,"brass"],[59,95,19.0625,0.17188,"brass"],[62,95,19.0625,0.17188,"brass"],[55,95,19.6875,0.17188,"brass"],[59,95,19.6875,0.17188,"brass"],[62,95,19.6875,0.17188,"brass"],[52,70,0.0,2.25,"brassb"],[64,55,1.25,1.25,"brassb"],[55,70,0.0,2.25,"brassb"],[67,55,1.25,1.25,"brassb"],[59,70,0.0,2.25,"brassb"],[71,55,1.25,1.25,"brassb"],[64,70,0.0,2.25,"brassb"],[76,55,1.25,1.25,"brassb"],[67,70,0.0,2.25,"brassb"],[79,55,1.25,1.25,"brassb"],[52,70,2.5,2.25,"brassb"],[64,55,3.75,1.25,"brassb"],[55,70,2.5,2.25,"brassb"],[67,55,3.75,1.25,"brassb"],[59,70,2.5,2.25,"brassb"],[71,55,3.75,1.25,"brassb"],[64,70,2.5,2.25,"brassb"],[76,55,3.75,1.25,"brassb"],[67,70,2.5,2.25,"brassb"],[79,55,3.75,1.25,"brassb"],[52,70,5.0,2.25,"brassb"],[64,55,6.25,1.25,"brassb"],[55,70,5.0,2.25,"brassb"],[67,55,6.25,1.25,"brassb"],[59,70,5.0,2.25,"brassb"],[71,55,6.25,1.25,"brassb"],[64,70,5.0,2.25,"brassb"],[76,55,6.25,1.25,"brassb"],[67,70,5.0,2.25,"brassb"],[79,55,6.25,1.25,"brassb"],[52,70,7.5,2.25,"brassb"],[64,55,8.75,1.25,"brassb"],[55,70,7.5,2.25,"brassb"],[67,55,8.75,1.25,"brassb"],[59,70,7.5,2.25,"brassb"],[71,55,8.75,1.25,"brassb"],[64,70,7.5,2.25,"brassb"],[76,55,8.75,1.25,"brassb"],[67,70,7.5,2.25,"brassb"],[79,55,8.75,1.25,"brassb"],[52,70,10.0,2.25,"brassb"],[64,55,11.25,1.25,"brassb"],[55,70,10.0,2.25,"brassb"],[67,55,11.25,1.25,"brassb"],[59,70,10.0,2.25,"brassb"],[71,55,11.25,1.25,"brassb"],[64,70,10.0,2.25,"brassb"],[76,55,11.25,1.25,"brassb"],[67,70,10.0,2.25,"brassb"],[79,55,11.25,1.25,"brassb"],[52,70,12.5,2.25,"brassb"],[64,55,13.75,1.25,"brassb"],[55,70,12.5,2.25,"brassb"],[67,55,13.75,1.25,"brassb"],[59,70,12.5,2.25,"brassb"],[71,55,13.75,1.25,"brassb"],[64,70,12.5,2.25,"brassb"],[76,55,13.75,1.25,"brassb"],[67,70,12.5,2.25,"brassb"],[79,55,13.75,1.25,"brassb"],[52,70,15.0,2.25,"brassb"],[64,55,16.25,1.25,"brassb"],[55,70,15.0,2.25,"brassb"],[67,55,16.25,1.25,"brassb"],[59,70,15.0,2.25,"brassb"],[71,55,16.25,1.25,"brassb"],[64,70,15.0,2.25,"brassb"],[76,55,16.25,1.25,"brassb"],[67,70,15.0,2.25,"brassb"],[79,55,16.25,1.25,"brassb"],[52,70,17.5,2.25,"brassb"],[64,55,18.75,1.25,"brassb"],[55,70,17.5,2.25,"brassb"],[67,55,18.75,1.25,"brassb"],[59,70,17.5,2.25,"brassb"],[71,55,18.75,1.25,"brassb"],[64,70,17.5,2.25,"brassb"],[76,55,18.75,1.25,"brassb"],[67,70,17.5,2.25,"brassb"],[79,55,18.75,1.25,"brassb"]],"dimAct":{"time_signatures":2,"key_signatures":2,"tempo_map":2,"markers":2,"track_structure":1,"notes":5,"cc_volume":2,"cc_pan":1,"program_change":4,"cc_portamento":2,"cc_reverb":3,"cc_expression":3,"cc_other":1,"cc_sustain":2,"cc_chorus":2,"cc_soft_pedal":1,"cc_sostenuto":1,"pitch_bend":3,"cc_modulation":2,"channel_pressure":2,"poly_pressure":1},"parents":["b2c6d9e0"],"conflict":false,"resolved":true}];
+
+const DIMS_21 = [
+  {id:'notes',         label:'notes',          group:'core', color:'#33ddff', desc:'Note-on/off events'},
+  {id:'pitch_bend',    label:'pitch_bend',     group:'expr', color:'#f472b6', desc:'Pitch wheel automation'},
+  {id:'channel_pressure',label:'channel_pressure',group:'expr',color:'#fb923c',desc:'Channel aftertouch'},
+  {id:'poly_pressure', label:'poly_pressure',  group:'expr', color:'#f97316', desc:'Per-note aftertouch'},
+  {id:'cc_modulation', label:'cc_modulation',  group:'cc',   color:'#a78bfa', desc:'CC 1 — vibrato/LFO'},
+  {id:'cc_volume',     label:'cc_volume',      group:'cc',   color:'#60a5fa', desc:'CC 7 — channel volume'},
+  {id:'cc_pan',        label:'cc_pan',         group:'cc',   color:'#34d399', desc:'CC 10 — stereo pan'},
+  {id:'cc_expression', label:'cc_expression',  group:'cc',   color:'#f59e0b', desc:'CC 11 — expression'},
+  {id:'cc_sustain',    label:'cc_sustain',     group:'cc',   color:'#22d3ee', desc:'CC 64 — sustain pedal'},
+  {id:'cc_portamento', label:'cc_portamento',  group:'cc',   color:'#a855f7', desc:'CC 65 — portamento on/off'},
+  {id:'cc_sostenuto',  label:'cc_sostenuto',   group:'cc',   color:'#818cf8', desc:'CC 66 — sostenuto pedal'},
+  {id:'cc_soft_pedal', label:'cc_soft_pedal',  group:'cc',   color:'#6ee7b7', desc:'CC 67 — soft pedal'},
+  {id:'cc_reverb',     label:'cc_reverb',      group:'fx',   color:'#c4b5fd', desc:'CC 91 — reverb send'},
+  {id:'cc_chorus',     label:'cc_chorus',      group:'fx',   color:'#93c5fd', desc:'CC 93 — chorus send'},
+  {id:'cc_other',      label:'cc_other',       group:'fx',   color:'#6b7280', desc:'Other CC controllers'},
+  {id:'program_change',label:'program_change', group:'meta', color:'#f9a825', desc:'Instrument program selection'},
+  {id:'tempo_map',     label:'tempo_map',      group:'meta', color:'#ef4444', desc:'BPM automation'},
+  {id:'time_signatures',label:'time_signatures',group:'meta',color:'#ec4899', desc:'Meter changes'},
+  {id:'key_signatures',label:'key_signatures', group:'meta', color:'#d946ef', desc:'Key / mode changes'},
+  {id:'markers',       label:'markers',        group:'meta', color:'#8b5cf6', desc:'Named timeline markers'},
+  {id:'track_structure',label:'track_structure',group:'meta',color:'#64748b', desc:'Track count & arrangement'},
+];
+
+const BRANCH_COLOR = {
+  'main':'#4f8ef7', 'feat/groove':'#a855f7',
+  'feat/harmony':'#22d3ee', 'conflict/brass-a':'#ef4444', 'conflict/ensemble':'#f59e0b'
+};
+
+const INSTR_COLOR = {
+  kick:'#ef4444', snare:'#fb923c', hat_c:'#facc15', hat_o:'#86efac',
+  ghost:'rgba(251,146,60,0.35)', crash:'#fef3c7',
+  bass:'#a855f7', epiano:'#22d3ee', lead:'#f472b6', brass:'#34d399', brassb:'#86efac'
+};
+
+const INSTR_LABEL = {
+  kick:'KICK', snare:'SNARE', hat_c:'HAT', hat_o:'HAT',
+  ghost:'GHOST', crash:'CRASH', bass:'BASS', epiano:'E.PIANO', lead:'LEAD',
+  brass:'BRASS A', brassb:'BRASS B'
+};
+
+const ACT_LABELS = ['Init', 'Foundation', 'Divergence', 'Clean Merge', 'Conflict', 'Resolution'];
+
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+const state = {
+  cur: 0,
+  isPlaying: false,
+  audioReady: false,
+  pausedAt: null,        // null = not paused, number = paused at this second
+  playStartWallClock: 0,
+  rafId: null,
+  seekPos: 0,            // where to start from on next fresh play
+};
+
+let instruments = {};
+let masterBus  = null;
+let masterGain = null;
+let _pauseStartWall = 0; // wall-clock time when pause was hit
+
+// ═══════════════════════════════════════════════════════════════
+// AUDIO ENGINE  (Tone.js · synthesized drums · sampler melodics)
+// Soundfonts: MusyngKite collection by gleitz (CC-licensed)
+// https://gleitz.github.io/midi-js-soundfonts/
+// ═══════════════════════════════════════════════════════════════
+async function initAudio() {
+  if (state.audioReady) return;
+  const statusEl = document.getElementById('audio-status');
+
+  statusEl.textContent = '◌ starting…';
+  statusEl.className = 'audio-status loading';
+
+  await Tone.start();
+
+  // Master chain: instruments → Compressor → Gain → Limiter → Out
+  const limiter    = new Tone.Limiter(-1).toDestination();
+  masterGain       = new Tone.Gain(1).connect(limiter);
+  const masterComp = new Tone.Compressor({threshold:-18,ratio:4,attack:0.003,release:0.25}).connect(masterGain);
+  masterBus = masterComp;
+
+  // Reverb sends
+  const roomRev = new Tone.Reverb({decay:1.8, wet:0.20}).connect(masterBus);
+  const hallRev = new Tone.Reverb({decay:3.5, wet:0.30}).connect(masterBus);
+
+  // ── Drums (synthesized — zero loading latency, sounds great) ──
+
+  const kick = new Tone.MembraneSynth({
+    pitchDecay:0.09, octaves:9,
+    envelope:{attack:0.001, decay:0.32, sustain:0, release:0.14},
+    volume:3
+  }).connect(masterBus);
+
+  const snare = new Tone.NoiseSynth({
+    noise:{type:'white'},
+    envelope:{attack:0.001, decay:0.16, sustain:0, release:0.07},
+    volume:-3
+  }).connect(masterBus);
+
+  const hat_c = new Tone.MetalSynth({
+    frequency:620, harmonicity:5.1, modulationIndex:32,
+    resonance:4200, octaves:1.5,
+    envelope:{attack:0.001, decay:0.025, release:0.01},
+    volume:-15
+  }).connect(masterBus);
+
+  const hat_o = new Tone.MetalSynth({
+    frequency:620, harmonicity:5.1, modulationIndex:32,
+    resonance:4200, octaves:1.5,
+    envelope:{attack:0.001, decay:0.24, release:0.10},
+    volume:-12
+  }).connect(masterBus);
+
+  const ghost = new Tone.NoiseSynth({
+    noise:{type:'white'},
+    envelope:{attack:0.001, decay:0.045, sustain:0, release:0.01},
+    volume:-19
+  }).connect(masterBus);
+
+  const crash = new Tone.MetalSynth({
+    frequency:290, harmonicity:5.1, modulationIndex:68,
+    resonance:4000, octaves:2.6,
+    envelope:{attack:0.001, decay:1.8, release:1.0},
+    volume:-9
+  }).connect(masterBus);
+
+  // ── Melodic instruments — MusyngKite sampler ──────────────────
+  const SF = 'https://gleitz.github.io/midi-js-soundfonts/MusyngKite';
+
+  // Electric bass finger (warm, plucked)
+  const bass = new Tone.Sampler({
+    urls: {
+      'E1':'E1.mp3','A1':'A1.mp3','D2':'D2.mp3',
+      'G2':'G2.mp3','C3':'C3.mp3','E3':'E3.mp3','A3':'A3.mp3'
+    },
+    baseUrl: `${SF}/electric_bass_finger-mp3/`,
+    release: 1.2, volume: 2
+  }).connect(masterBus);
+  bass.connect(roomRev);
+
+  // Electric piano 1 (Rhodes)
+  const epiano = new Tone.Sampler({
+    urls: {
+      'A2':'A2.mp3','C3':'C3.mp3','E3':'E3.mp3','G3':'G3.mp3',
+      'A3':'A3.mp3','C4':'C4.mp3','E4':'E4.mp3','G4':'G4.mp3',
+      'A4':'A4.mp3','C5':'C5.mp3'
+    },
+    baseUrl: `${SF}/electric_piano_1-mp3/`,
+    release: 1.8, volume: -2
+  }).connect(masterBus);
+  epiano.connect(roomRev);
+
+  // Lead synth — synthesis (supersaw; no great lead soundfonts exist)
+  const lead = new Tone.PolySynth(Tone.Synth, {
+    oscillator:{type:'fatsawtooth', spread:40, count:4},
+    envelope:{attack:0.03, decay:0.20, sustain:0.72, release:0.55},
+    volume:-6
+  }).connect(masterBus);
+  lead.connect(hallRev);
+
+  // Brass section (punchy staccato hits)
+  const brass = new Tone.Sampler({
+    urls: {
+      'C3':'C3.mp3','E3':'E3.mp3','G3':'G3.mp3',
+      'C4':'C4.mp3','E4':'E4.mp3','G4':'G4.mp3','C5':'C5.mp3'
+    },
+    baseUrl: `${SF}/brass_section-mp3/`,
+    release: 0.9, volume: -1
+  }).connect(masterBus);
+  brass.connect(roomRev);
+
+  // String ensemble (lush legato pads — was brassb)
+  const brassb = new Tone.Sampler({
+    urls: {
+      'C2':'C2.mp3','G2':'G2.mp3','C3':'C3.mp3',
+      'G3':'G3.mp3','C4':'C4.mp3','G4':'G4.mp3','C5':'C5.mp3'
+    },
+    baseUrl: `${SF}/string_ensemble_1-mp3/`,
+    release: 2.5, volume: -5
+  }).connect(masterBus);
+  brassb.connect(hallRev);
+
+  // Wait for sample buffers (10 s timeout so a slow CDN can't hang forever)
+  statusEl.textContent = '◌ loading samples…';
+  await Promise.race([
+    Tone.loaded(),
+    new Promise(resolve => setTimeout(resolve, 10000))
+  ]);
+
+  instruments = { kick, snare, hat_c, hat_o, ghost, crash, bass, epiano, lead, brass, brassb };
+
+  state.audioReady = true;
+  statusEl.textContent = '● audio ready';
+  statusEl.className = 'audio-status ready';
+}
+
+// ── Play helpers ────────────────────────────────────────────────
+
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2,'0')}`;
+}
+
+// Schedule all notes via Tone.Transport so Transport.stop()+cancel()
+// can cleanly abort them — fixes the "pause doesn't work" bug.
+function _scheduleNotes(notes, fromSec) {
+  Tone.getTransport().stop();
+  Tone.getTransport().cancel();
+
+  for (const [pitch, vel, startSec, durSec, instr] of notes) {
+    if (startSec < fromSec - 0.01) continue;
+    const tOffset = Math.max(0, startSec - fromSec);
+    const velN    = vel / 127;
+    const dur     = Math.max(0.02, durSec);
+
+    Tone.getTransport().schedule((time) => {
+      const syn = instruments[instr];
+      if (!syn) return;
+      try {
+        if (instr === 'kick')                           syn.triggerAttackRelease('C2', dur, time, velN);
+        else if (['snare','ghost'].includes(instr))     syn.triggerAttackRelease(dur, time, velN);
+        else if (['hat_c','hat_o','crash'].includes(instr)) syn.triggerAttackRelease(dur, time, velN);
+        else syn.triggerAttackRelease(Tone.Frequency(pitch,'midi').toNote(), dur, time, velN);
+      } catch(e) {}
+    }, tOffset);
+  }
+
+  Tone.getTransport().start();
+}
+
+// Shared animation ticker — updates time display and DAW playhead.
+// playStartWallClock is the wall-clock moment that corresponds to loopPos=0.
+function _startAnimLoop() {
+  if (state.rafId) cancelAnimationFrame(state.rafId);
+  const tick = () => {
+    const loopPos = (performance.now() - state.playStartWallClock) / 1000;
+    document.getElementById('time-display').textContent = fmtTime(loopPos);
+    DAW.setPlayhead(loopPos);
+    if (loopPos >= TOTAL_SECS + 0.5) { stopPlayback(); return; }
+    state.rafId = requestAnimationFrame(tick);
+  };
+  state.rafId = requestAnimationFrame(tick);
+}
+
+function stopPlayback() {
+  state.isPlaying = false;
+  state.pausedAt  = null;
+  state.seekPos   = 0;
+  if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
+  // Transport.cancel() removes all pending scheduled events — notes actually stop.
+  Tone.getTransport().stop();
+  Tone.getTransport().cancel();
+  document.getElementById('time-display').textContent = '0:00';
+  document.getElementById('btn-play').className = 'ctrl-play';
+  document.getElementById('btn-play').textContent = '▶';
+  DAW.setPlayhead(0);
+}
+
+function pausePlayback() {
+  if (!state.isPlaying) return;
+  _pauseStartWall = performance.now();
+  // Record loop position before pausing
+  state.pausedAt  = (performance.now() - state.playStartWallClock) / 1000;
+  state.isPlaying = false;
+  if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
+  // Transport.pause() holds pending events — they resume on Transport.start()
+  Tone.getTransport().pause();
+  document.getElementById('btn-play').className = 'ctrl-play';
+  document.getElementById('btn-play').textContent = '▶';
+}
+
+function resumePlayback() {
+  // Shift wall-clock origin forward by the time we were paused so the
+  // animation loop stays in sync with the Transport position.
+  state.playStartWallClock += performance.now() - _pauseStartWall;
+  state.isPlaying = true;
+  state.pausedAt  = null;
+  Tone.getTransport().start();   // resumes from exact pause point
+  document.getElementById('btn-play').className = 'ctrl-play playing';
+  document.getElementById('btn-play').textContent = '⏸';
+  _startAnimLoop();
+}
+
+function playNotes(notes, fromSec) {
+  const startAt = fromSec ?? 0;
+  state.isPlaying = true;
+  state.pausedAt  = null;
+  // Wall-clock offset: performance.now() when loopPos would be 0
+  state.playStartWallClock = performance.now() - startAt * 1000;
+
+  _scheduleNotes(notes, startAt);
+
+  document.getElementById('btn-play').className = 'ctrl-play playing';
+  document.getElementById('btn-play').textContent = '⏸';
+  _startAnimLoop();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// COMMIT NAVIGATION
+// ═══════════════════════════════════════════════════════════════
+function selectCommit(idx) {
+  const wasPlaying = state.isPlaying;
+  if (state.isPlaying) stopPlayback();
+
+  state.cur = Math.max(0, Math.min(COMMITS.length - 1, idx));
+  const commit = COMMITS[state.cur];
+
+  // Update UI elements
+  document.getElementById('sha-display').textContent = commit.sha.slice(0,8);
+  document.getElementById('msg-display').textContent = commit.cmd;
+  document.getElementById('act-label').textContent = `Act ${commit.act} · ${ACT_LABELS[commit.act] || ''}`;
+  document.getElementById('daw-commit-label').textContent = `commit ${state.cur + 1}/${COMMITS.length}`;
+
+  const bColor = BRANCH_COLOR[commit.branch] || '#fff';
+  const badge = document.getElementById('dag-branch-badge');
+  badge.textContent = commit.branch;
+  badge.style.color = bColor;
+  badge.style.borderColor = bColor + '40';
+  badge.style.background = bColor + '14';
+
+  DAG.select(state.cur);
+  DAW.render(commit);
+  DimPanel.update(commit);
+  CmdLog.show(commit);
+  if (window._heatmapSelectCol) window._heatmapSelectCol(state.cur);
+
+  if (wasPlaying && commit.notes.length) {
+    playNotes(commit.notes, 0);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DAG RENDERER
+// ═══════════════════════════════════════════════════════════════
+const DAG = (() => {
+  const W = 300, PADX = 30, PADY = 22, NODE_R = 11;
+
+  // Assign column per branch
+  const BRANCH_COL = {
+    'main':0, 'feat/groove':1, 'feat/harmony':2,
+    'conflict/brass-a':1, 'conflict/ensemble':2
+  };
+
+  const positions = COMMITS.map((c, i) => {
+    const col = BRANCH_COL[c.branch] ?? 0;
+    const ncols = 3;
+    const xStep = (W - 2*PADX) / (ncols - 0.5);
+    return { x: PADX + col * xStep, y: PADY + i * 34, c };
+  });
+
+  const H = PADY + (COMMITS.length - 1) * 34 + PADY + 10;
+  const svg = d3.select('#dag-svg').attr('width', W).attr('height', H);
+
+  // Gradient defs
+  const defs = svg.append('defs');
+  Object.entries(BRANCH_COLOR).forEach(([branch, color]) => {
+    const g = defs.append('radialGradient').attr('id', `glow-${branch.replace(/\W/g,'_')}`);
+    g.append('stop').attr('offset','0%').attr('stop-color', color).attr('stop-opacity', 0.4);
+    g.append('stop').attr('offset','100%').attr('stop-color', color).attr('stop-opacity', 0);
+  });
+
+  // Edges
+  COMMITS.forEach((c, i) => {
+    const p2 = positions[i];
+    (c.parents || []).forEach(psha => {
+      const pi = COMMITS.findIndex(x => x.sha === psha);
+      if (pi < 0) return;
+      const p1 = positions[pi];
+      if (p1.x === p2.x) {
+        svg.append('line')
+          .attr('x1', p1.x).attr('y1', p1.y)
+          .attr('x2', p2.x).attr('y2', p2.y - NODE_R - 1)
+          .attr('stroke', BRANCH_COLOR[c.branch] || '#666')
+          .attr('stroke-width', 1.5).attr('stroke-opacity', 0.4);
+      } else {
+        const my = (p1.y + p2.y) / 2;
+        const path = `M${p1.x},${p1.y} C${p1.x},${my} ${p2.x},${my} ${p2.x},${p2.y - NODE_R - 1}`;
+        svg.append('path').attr('d', path).attr('fill','none')
+          .attr('stroke', BRANCH_COLOR[c.branch] || '#666')
+          .attr('stroke-width', 1.5).attr('stroke-opacity', 0.3)
+          .attr('stroke-dasharray', '4,2');
+      }
+    });
+  });
+
+  // Nodes
+  const nodeGs = svg.selectAll('.dag-node').data(COMMITS).join('g')
+    .attr('class','dag-node')
+    .attr('transform',(_,i) => `translate(${positions[i].x},${positions[i].y})`)
+    .attr('cursor','pointer')
+    .on('click',(_,d) => selectCommit(COMMITS.indexOf(d)));
+
+  // Glow
+  nodeGs.append('circle').attr('r', NODE_R+7).attr('class','node-glow')
+    .attr('fill', d => `url(#glow-${d.branch.replace(/\W/g,'_')})`)
+    .attr('opacity', 0);
+
+  // Ring
+  nodeGs.append('circle').attr('r', NODE_R+3).attr('class','node-ring')
+    .attr('fill','none').attr('stroke', d => BRANCH_COLOR[d.branch]||'#fff')
+    .attr('stroke-width', 1.5).attr('opacity', 0);
+
+  // Main circle
+  nodeGs.append('circle').attr('r', NODE_R)
+    .attr('fill', d => d.conflict ? '#1a0505' : d.resolved ? '#011a0d' : '#0d1118')
+    .attr('stroke', d => BRANCH_COLOR[d.branch]||'#fff').attr('stroke-width', 1.8);
+
+  // Icon
+  nodeGs.append('text').attr('text-anchor','middle').attr('dy','0.38em')
+    .attr('font-size', 9).attr('fill', d => BRANCH_COLOR[d.branch]||'#fff')
+    .attr('font-family','JetBrains Mono, monospace')
+    .text(d => d.conflict ? '⚠' : d.resolved ? '✓' : d.sha.slice(0,4));
+
+  // Label
+  nodeGs.each(function(d, i) {
+    const g = d3.select(this);
+    const lines = d.label.split('\n');
+    lines.forEach((line, li) => {
+      g.append('text').attr('text-anchor','start')
+        .attr('x', NODE_R + 5).attr('y', (li - (lines.length-1)/2) * 11 + 1)
+        .attr('font-size', 8.5).attr('fill','rgba(255,255,255,0.45)')
+        .attr('font-family','JetBrains Mono, monospace').text(line);
+    });
+  });
+
+  function select(idx) {
+    svg.selectAll('.node-ring').attr('opacity', 0);
+    svg.selectAll('.node-glow').attr('opacity', 0);
+    const c = COMMITS[idx];
+    svg.selectAll('.dag-node').filter(d => d.sha === c.sha)
+      .select('.node-ring').attr('opacity', 1);
+    svg.selectAll('.dag-node').filter(d => d.sha === c.sha)
+      .select('.node-glow').attr('opacity', 1);
+  }
+
+  return { select };
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// DAW TRACK VIEW
+// ═══════════════════════════════════════════════════════════════
+const DAW = (() => {
+  const LABEL_W = 64;
+  const DRUM_TYPES = { crash:0, hat_o:1, hat_c:2, ghost:3, snare:4, kick:5 };
+
+  const TRACKS = [
+    { key:'drums',  label:'DRUMS',    instrs:['kick','snare','hat_c','hat_o','ghost','crash'], color:'#ef4444', h:62 },
+    { key:'bass',   label:'BASS',     instrs:['bass'],   color:'#a855f7', h:44, pMin:36, pMax:60 },
+    { key:'epiano', label:'E.PIANO',  instrs:['epiano'], color:'#22d3ee', h:52, pMin:50, pMax:74 },
+    { key:'lead',   label:'LEAD',     instrs:['lead'],   color:'#f472b6', h:44, pMin:62, pMax:78 },
+    { key:'brass',  label:'BRASS',    instrs:['brass','brassb'], color:'#34d399', h:44, pMin:50, pMax:78 },
+  ];
+
+  const GAP = 5;
+  const totalH = TRACKS.reduce((a,t) => a + t.h + GAP, 0) + 30; // +30 for time axis
+  const svgW = 720;
+
+  const svg = d3.select('#daw-svg').attr('width', svgW).attr('height', totalH);
+
+  const contentW = svgW - LABEL_W;
+  const xScale = d3.scaleLinear().domain([0, TOTAL_SECS]).range([LABEL_W, svgW - 8]);
+
+  // Time axis
+  const timeG = svg.append('g').attr('transform', `translate(0,${totalH - 24})`);
+  timeG.append('line').attr('x1', LABEL_W).attr('x2', svgW-8).attr('y1',0).attr('y2',0)
+    .attr('stroke','rgba(255,255,255,0.1)');
+  d3.range(0, TOTAL_SECS+1, BAR).forEach(sec => {
+    const x = xScale(sec);
+    timeG.append('line').attr('x1',x).attr('x2',x).attr('y1',0).attr('y2',5)
+      .attr('stroke','rgba(255,255,255,0.2)');
+    timeG.append('text').attr('x',x).attr('y',15)
+      .attr('class','daw-time-label').attr('text-anchor','middle')
+      .text(`${Math.round(sec)}s`);
+  });
+
+  // Bar lines (every beat)
+  d3.range(0, TOTAL_SECS, BEAT).forEach(sec => {
+    svg.append('line')
+      .attr('x1', xScale(sec)).attr('x2', xScale(sec))
+      .attr('y1', 0).attr('y2', totalH-24)
+      .attr('stroke', sec % BAR < 0.01 ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.025)')
+      .attr('stroke-width', sec % BAR < 0.01 ? 1 : 0.5);
+  });
+
+  // Track backgrounds
+  let yOff = 0;
+  TRACKS.forEach(track => {
+    svg.append('rect').attr('x', LABEL_W).attr('y', yOff).attr('width', contentW)
+      .attr('height', track.h).attr('fill','rgba(255,255,255,0.015)').attr('rx', 3);
+    svg.append('text').attr('x', LABEL_W - 6).attr('y', yOff + track.h/2 + 1)
+      .attr('class','daw-track-label').attr('dy','0.35em').text(track.label)
+      .attr('fill', track.color + '88');
+    // Separator
+    svg.append('line').attr('x1', 0).attr('x2', svgW)
+      .attr('y1', yOff + track.h + GAP/2).attr('y2', yOff + track.h + GAP/2)
+      .attr('stroke','rgba(255,255,255,0.04)');
+    yOff += track.h + GAP;
+  });
+
+  // Note groups (cleared on each render)
+  const notesG = svg.append('g').attr('class','notes-g');
+
+  // Playhead
+  const playheadG = svg.append('g');
+  const playheadLine = playheadG.append('line').attr('class','playhead-line')
+    .attr('x1', xScale(0)).attr('x2', xScale(0))
+    .attr('y1', 0).attr('y2', totalH - 26).attr('opacity', 0);
+
+  function setPlayhead(sec) {
+    const x = xScale(Math.min(sec, TOTAL_SECS));
+    playheadLine.attr('x1', x).attr('x2', x).attr('opacity', sec > 0 ? 0.8 : 0);
+  }
+
+  function render(commit) {
+    notesG.selectAll('*').remove();
+    const notes = commit.notes || [];
+    if (!notes.length) return;
+
+    const byInstr = {};
+    for (const [pitch, vel, startSec, durSec, instr] of notes) {
+      (byInstr[instr] = byInstr[instr] || []).push([pitch, vel, startSec, durSec]);
+    }
+
+    let yOff = 0;
+    TRACKS.forEach(track => {
+      const trackNotes = track.instrs.flatMap(k => (byInstr[k] || []).map(n => ({...n, instr:k})));
+      if (!trackNotes.length) { yOff += track.h + GAP; return; }
+
+      if (track.key === 'drums') {
+        const nRows = 6;
+        const rowH  = (track.h - 4) / nRows;
+        for (const nt of trackNotes) {
+          const row = DRUM_TYPES[nt.instr] ?? 2;
+          const y = yOff + 2 + row * rowH;
+          const x = xScale(nt[2]);
+          const w = Math.max(2, (xScale(nt[2] + nt[3]) - x) * 0.9);
+          notesG.append('rect').attr('x', x).attr('y', y).attr('width', w)
+            .attr('height', rowH - 1).attr('rx', 1)
+            .attr('fill', INSTR_COLOR[nt.instr] || '#fff')
+            .attr('opacity', nt.instr === 'ghost' ? 0.4 : 0.85);
+        }
+      } else {
+        const pMin = track.pMin || 36;
+        const pMax = track.pMax || 80;
+        for (const nt of trackNotes) {
+          const pitch = nt[0]; const vel = nt[1];
+          const frac  = (pitch - pMin) / (pMax - pMin);
+          const y     = yOff + track.h - 4 - frac * (track.h - 8);
+          const x     = xScale(nt[2]);
+          const w     = Math.max(3, (xScale(nt[2] + nt[3]) - x) * 0.9);
+          const alpha = 0.5 + (vel / 127) * 0.5;
+          notesG.append('rect').attr('x', x).attr('y', y - 3)
+            .attr('width', w).attr('height', 6).attr('rx', 2)
+            .attr('fill', INSTR_COLOR[nt.instr] || track.color)
+            .attr('opacity', alpha);
+        }
+      }
+
+      yOff += track.h + GAP;
+    });
+  }
+
+  return { render, setPlayhead };
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// 21-DIMENSION PANEL
+// ═══════════════════════════════════════════════════════════════
+const DimPanel = (() => {
+  const container = document.getElementById('dim-list');
+  const groups = ['core','expr','cc','fx','meta'];
+  const GL = {core:'Core',expr:'Expression',cc:'Controllers (CC)',fx:'Effects',meta:'Meta / Structure'};
+
+  groups.forEach(grp => {
+    const dims = DIMS_21.filter(d => d.group === grp);
+    if (!dims.length) return;
+    const lbl = document.createElement('div');
+    lbl.className = 'dim-group-label'; lbl.textContent = GL[grp];
+    container.appendChild(lbl);
+    dims.forEach(dim => {
+      const row = document.createElement('div');
+      row.className = 'dim-row'; row.id = `dr-${dim.id}`; row.title = dim.desc;
+      row.innerHTML = `<div class="dim-dot" id="dd-${dim.id}"></div>
+                       <div class="dim-name">${dim.label}</div>
+                       <div class="dim-bar-wrap"><div class="dim-bar" id="db-${dim.id}"></div></div>`;
+      container.appendChild(row);
+    });
+  });
+
+  function update(commit) {
+    const act = commit.dimAct || {};
+    let cnt = 0;
+    DIMS_21.forEach(dim => {
+      const level = act[dim.id] || 0;
+      const row = document.getElementById(`dr-${dim.id}`);
+      const dot = document.getElementById(`dd-${dim.id}`);
+      const bar = document.getElementById(`db-${dim.id}`);
+      if (!row) return;
+      if (level > 0) {
+        cnt++;
+        row.classList.add('active');
+        dot.style.background = dim.color; dot.style.boxShadow = `0 0 5px ${dim.color}`;
+        bar.style.background = dim.color; bar.style.width = `${Math.min(level*25,100)}%`;
+      } else {
+        row.classList.remove('active');
+        dot.style.background = 'rgba(255,255,255,0.12)'; dot.style.boxShadow = '';
+        bar.style.width = '0'; bar.style.background = '';
+      }
+    });
+    document.getElementById('dim-active-count').textContent = `${cnt} active`;
+  }
+
+  return { update };
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// COMMAND LOG
+// ═══════════════════════════════════════════════════════════════
+const CmdLog = (() => {
+  const prompt = document.getElementById('cmd-prompt');
+  let timer = null;
+
+  function show(commit) {
+    if (timer) clearTimeout(timer);
+    const lines = commit.output.split('\n');
+    const isWarn = commit.conflict;
+    const isOk   = commit.resolved;
+
+    let html = `<div class="cmd-line">$ ${commit.cmd}</div>`;
+    lines.forEach(line => {
+      const cls = line.startsWith('⚠') || line.includes('CONFLICT') ? 'cmd-warn'
+                : line.startsWith('✓') ? 'cmd-ok'
+                : line.startsWith('✗') ? 'cmd-err'
+                : '';
+      html += `<div class="${cls}">${line}</div>`;
+    });
+    prompt.innerHTML = html;
+  }
+
+  return { show };
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// HEATMAP
+// ═══════════════════════════════════════════════════════════════
+(function buildHeatmap() {
+  const cellW = 32, cellH = 10, padL = 88, padT = 10;
+  const nCols = COMMITS.length;
+  const nRows = DIMS_21.length;
+  const W = padL + nCols * cellW + 10;
+  const H = padT + nRows * cellH + 22;
+
+  const svg = d3.select('#heatmap-svg').attr('width', W).attr('height', H);
+
+  // Row labels
+  DIMS_21.forEach((dim, ri) => {
+    svg.append('text').attr('x', padL - 4).attr('y', padT + ri * cellH + cellH/2 + 1)
+      .attr('text-anchor','end').attr('dy','0.35em')
+      .attr('font-family','JetBrains Mono,monospace').attr('font-size', 7.5)
+      .attr('fill', dim.color + 'aa').text(dim.label);
+  });
+
+  // Col labels are built inside _heatmapSelectCol as a live selection
+
+  // Cells
+  const cells = svg.selectAll('.hm-cell')
+    .data(COMMITS.flatMap((c,ci) => DIMS_21.map((dim,ri) => ({ci,ri,dim,c,level:c.dimAct[dim.id]||0}))))
+    .join('rect').attr('class','hm-cell')
+    .attr('x', d => padL + d.ci * cellW + 1)
+    .attr('y', d => padT + d.ri * cellH + 1)
+    .attr('width', cellW - 2).attr('height', cellH - 2).attr('rx', 1)
+    .attr('fill', d => d.level > 0 ? d.dim.color : 'rgba(255,255,255,0.04)')
+    .attr('opacity', d => d.level > 0 ? Math.min(0.9, 0.25 + d.level * 0.22) : 1)
+    .attr('cursor','pointer')
+    .on('mouseover', function(evt, d) {
+      d3.select(this).attr('stroke', d.dim.color).attr('stroke-width', 1);
+    })
+    .on('mouseout', function() { d3.select(this).attr('stroke','none'); });
+
+  // SHA labels (kept in a selection so we can highlight the active one)
+  const shaLabels = svg.selectAll('.hm-sha')
+    .data(COMMITS)
+    .join('text').attr('class','hm-sha')
+    .attr('x', (c, ci) => padL + ci * cellW + cellW/2)
+    .attr('y', H - 6).attr('text-anchor','middle')
+    .attr('font-family','JetBrains Mono,monospace').attr('font-size', 7)
+    .attr('fill', (c) => BRANCH_COLOR[c.branch] + 'aa')
+    .text(c => c.sha.slice(0,4));
+
+  window._heatmapSelectCol = function(idx) {
+    const branchColor = BRANCH_COLOR[COMMITS[idx].branch] || '#fff';
+
+    // Dim inactive cells, restore active column to full brightness
+    cells.attr('opacity', d => {
+      const base = d.level > 0 ? Math.min(0.95, 0.3 + d.level * 0.22) : 0.06;
+      return d.ci === idx ? base : d.level > 0 ? base * 0.25 : 0.04;
+    });
+
+    // Remove previous highlight layers
+    svg.selectAll('.hm-col-hl').remove();
+
+    // Glow background fill behind active column
+    svg.insert('rect', '.hm-cell').attr('class','hm-col-hl hm-col-bg')
+      .attr('x', padL + idx * cellW - 1).attr('y', padT - 3)
+      .attr('width', cellW + 2).attr('height', nRows * cellH + 6).attr('rx', 3)
+      .attr('fill', branchColor).attr('opacity', 0.07);
+
+    // Border outline around active column
+    svg.append('rect').attr('class','hm-col-hl hm-col-border')
+      .attr('x', padL + idx * cellW - 1).attr('y', padT - 3)
+      .attr('width', cellW + 2).attr('height', nRows * cellH + 6).attr('rx', 3)
+      .attr('fill', 'none')
+      .attr('stroke', branchColor).attr('stroke-width', 1.5).attr('opacity', 0.7);
+
+    // Highlight the active SHA label
+    shaLabels
+      .attr('fill', (c, ci) => ci === idx ? branchColor : BRANCH_COLOR[c.branch] + '44')
+      .attr('font-weight', (c, ci) => ci === idx ? 'bold' : 'normal')
+      .attr('font-size', (c, ci) => ci === idx ? 8 : 7);
+  };
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// BRANCH LEGEND
+// ═══════════════════════════════════════════════════════════════
+(function buildLegend() {
+  const el = document.getElementById('branch-legend');
+  Object.entries(BRANCH_COLOR).forEach(([branch, color]) => {
+    const item = document.createElement('div');
+    item.className = 'bl-item';
+    item.innerHTML = `<div class="bl-dot" style="background:${color};box-shadow:0 0 5px ${color}"></div>
+                      <span>${branch}</span>`;
+    el.appendChild(item);
+  });
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// CLI REFERENCE
+// ═══════════════════════════════════════════════════════════════
+(function buildCLI() {
+  const commands = [
+    { cmd:'muse init --domain midi',
+      desc:'Initialize a Muse repository with the MIDI domain plugin.',
+      flags:['--domain <name>   specify domain plugin (midi, code, …)',
+             '--bare            create a bare repository'],
+      ret:'✓ .muse/ directory created with domain config' },
+    { cmd:'muse commit -m <msg>',
+      desc:'Snapshot current MIDI state and create a new commit.',
+      flags:['-m <message>      commit message',
+             '--domain <name>   override domain for this commit',
+             '--no-verify       skip pre-commit hooks'],
+      ret:'[<branch> <sha8>] <message>' },
+    { cmd:'muse status',
+      desc:'Show working directory status vs HEAD snapshot.',
+      flags:['--short           machine-readable one-line output',
+             '--porcelain       stable scripting format'],
+      ret:'Added/modified/removed files; clean or dirty state' },
+    { cmd:'muse diff [<sha>]',
+      desc:'Show 21-dimensional delta between working dir and a commit.',
+      flags:['--stat            summary only (file counts + dim counts)',
+             '--dim <name>      filter to one MIDI dimension',
+             '--commit <sha>    compare two commits'],
+      ret:'StructuredDelta per file: notes±, CC changes, bend curves' },
+    { cmd:'muse log [--oneline] [--stat]',
+      desc:'Show commit history with branch topology.',
+      flags:['--oneline         compact one-line format',
+             '--stat            include files + dimension summary',
+             '--graph           ASCII branch graph'],
+      ret:'Ordered commit list with SHA, message, branch, timestamp' },
+    { cmd:'muse branch -b <name>',
+      desc:'Create a new branch at the current HEAD.',
+      flags:['-b <name>         name of the new branch',
+             '--list            list all branches',
+             '-d <name>         delete a branch'],
+      ret:'✓ Branch <name> created at <sha8>' },
+    { cmd:'muse checkout <branch>',
+      desc:'Switch to a branch or restore a commit.',
+      flags:['<branch>          branch name or commit SHA',
+             '-b <name>         create and switch in one step'],
+      ret:'Switched to branch <name>; working dir restored' },
+    { cmd:'muse merge <branch> [<branch2>]',
+      desc:'Three-way MIDI merge using the 21-dim engine.',
+      flags:['<branch>          branch to merge into current',
+             '--strategy ours|theirs|auto   conflict resolution',
+             '--no-ff           always create a merge commit'],
+      ret:'✓ 0 conflicts — or — ⚠ CONFLICT in <dim> on <file>' },
+    { cmd:'muse resolve --strategy <strategy> <dim>',
+      desc:'Resolve a dimension conflict after a failed merge.',
+      flags:['--strategy ours|theirs|auto|manual   merge strategy',
+             '<dim>             MIDI dimension to resolve (e.g. cc_reverb)'],
+      ret:'✓ Resolved <dim> using <strategy>' },
+    { cmd:'muse stash / stash pop',
+      desc:'Park uncommitted changes and restore later.',
+      flags:['stash             save working dir to stash',
+             'stash pop         restore last stash',
+             'stash list        list all stash entries'],
+      ret:'✓ Stashed <N> changes / ✓ Popped stash@{0}' },
+    { cmd:'muse cherry-pick <sha>',
+      desc:'Apply a single commit from any branch.',
+      flags:['<sha>             commit ID to cherry-pick (full or short)',
+             '--no-commit       apply changes without committing'],
+      ret:'[<branch> <sha8>] cherry-pick of <src-sha>' },
+    { cmd:'muse tag add <name>',
+      desc:'Create a lightweight tag at the current HEAD.',
+      flags:['add <name>        create tag',
+             'list              list all tags',
+             'delete <name>     delete a tag'],
+      ret:'✓ Tag <name> → <sha8>' },
+  ];
+
+  const grid = document.getElementById('cli-grid');
+  commands.forEach(c => {
+    const card = document.createElement('div');
+    card.className = 'cli-card';
+    card.innerHTML = `<div class="cli-cmd">$ ${c.cmd}</div>
+      <div class="cli-desc">${c.desc}</div>
+      <div class="cli-flags">${c.flags.map(f => `<div class="cli-flag">${f.replace(/^(--?\S+)/,'<span>$1</span>')}</div>`).join('')}</div>
+      <div style="margin-top:6px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'JetBrains Mono',monospace">→ ${c.ret}</div>`;
+    grid.appendChild(card);
+  });
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// EVENT WIRING
+// ═══════════════════════════════════════════════════════════════
+// Audio auto-initialises on first user interaction (browser autoplay policy).
+// initAudio() is also called immediately — it succeeds silently on most
+// modern browsers that have seen any recent interaction on the page.
+document.addEventListener('DOMContentLoaded', () => { initAudio().catch(() => {}); });
+
+document.getElementById('btn-play').addEventListener('click', async () => {
+  if (!state.audioReady) await initAudio();
+
+  if (state.isPlaying) {
+    pausePlayback();
+  } else if (state.pausedAt !== null) {
+    resumePlayback();
+  } else {
+    playNotes(COMMITS[state.cur].notes, state.seekPos);
+  }
+});
+
+document.getElementById('btn-prev').addEventListener('click', () => selectCommit(state.cur - 1));
+document.getElementById('btn-next').addEventListener('click', () => selectCommit(state.cur + 1));
+document.getElementById('btn-first').addEventListener('click', () => selectCommit(0));
+document.getElementById('btn-last').addEventListener('click', () => selectCommit(COMMITS.length - 1));
+
+// ── PLAYHEAD SCRUB ──────────────────────────────────────────────
+function getPlayheadPos() {
+  if (state.isPlaying) return (performance.now() - state.playStartWallClock) / 1000;
+  if (state.pausedAt !== null) return state.pausedAt;
+  return state.seekPos;
+}
+
+function seekTo(sec) {
+  const target = Math.max(0, Math.min(TOTAL_SECS, sec));
+  if (state.isPlaying) {
+    // Reschedule live audio from the new position
+    playNotes(COMMITS[state.cur].notes, target);
+    return;
+  }
+  // Stopped or paused: cancel transport, exit paused state, park visual at target.
+  // _pauseStartWall is intentionally NOT used here — resumePlayback() would
+  // corrupt the timeline if called after a seek, so we fully exit paused mode.
+  Tone.getTransport().stop();
+  Tone.getTransport().cancel();
+  state.isPlaying = false;
+  state.pausedAt  = null;   // forces play button to call playNotes(), not resumePlayback()
+  state.seekPos   = target; // play button will start from here
+  DAW.setPlayhead(target);
+  document.getElementById('time-display').textContent = fmtTime(target);
+}
+
+document.getElementById('scrub-start').addEventListener('click', () => seekTo(0));
+document.getElementById('scrub-back').addEventListener('click',  () => seekTo(getPlayheadPos() - BAR));
+document.getElementById('scrub-fwd').addEventListener('click',   () => seekTo(getPlayheadPos() + BAR));
+document.getElementById('scrub-end').addEventListener('click',   () => seekTo(TOTAL_SECS));
+
+document.addEventListener('keydown', e => {
+  if (e.key === ' ')          { e.preventDefault(); document.getElementById('btn-play').click(); }
+  else if (e.key === 'ArrowRight') selectCommit(state.cur + 1);
+  else if (e.key === 'ArrowLeft')  selectCommit(state.cur - 1);
+});
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+selectCommit(0);
+if (window._heatmapSelectCol) window._heatmapSelectCol(0);
+</script>
+</body>
+</html>
