@@ -1872,7 +1872,8 @@ _HTML_TEMPLATE = """\
 
 <nav>
   <a class="nav-logo" href="#">muse</a>
-  <a class="nav-link" href="demo.html">Demo</a>
+  <a class="nav-link" href="demo.html">VCS Demo</a>
+  <a class="nav-link" href="midi-demo.html">🎹 MIDI Demo</a>
   <a class="nav-link" href="https://github.com/cgcardona/muse/blob/main/docs/guide/plugin-authoring-guide.md">Plugin Guide</a>
   <div class="nav-spacer"></div>
   <span class="nav-badge">v0.1.2</span>
@@ -1889,7 +1890,8 @@ _HTML_TEMPLATE = """\
   </p>
   <div class="hero-cta-row">
     <a class="btn-primary" href="#build">Build a Domain Plugin</a>
-    <a class="btn-outline" href="demo.html">Watch the Demo →</a>
+    <a class="btn-outline" href="demo.html">VCS Demo →</a>
+    <a class="btn-outline" href="midi-demo.html">🎹 Bach BWV 846 × 21 Dimensions</a>
   </div>
   <div class="domain-ticker">
     <div class="ticker-track">
