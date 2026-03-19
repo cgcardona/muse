@@ -16,7 +16,6 @@ Usage::
     muse check --json              # machine-readable JSON output
     muse check --rules my.toml    # custom rules file
 """
-from __future__ import annotations
 
 import json
 import logging

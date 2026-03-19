@@ -4,7 +4,6 @@ Covers every commutativity rule from the spec table, the OT transform function,
 and the full three-way ``merge_op_lists`` algorithm.  Each test is named after
 the specific behaviour it verifies so that a failure message is self-documenting.
 """
-from __future__ import annotations
 
 import pytest
 

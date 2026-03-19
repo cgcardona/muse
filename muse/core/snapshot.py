@@ -15,7 +15,6 @@ ID derivation contract (deterministic, no random/UUID components):
                     + "|" + committed_at_iso
                   ).hexdigest()
 """
-from __future__ import annotations
 
 import hashlib
 import pathlib

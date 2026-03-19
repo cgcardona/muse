@@ -42,7 +42,6 @@ All coordination records are write-once, never mutated.  Expiry is enforced
 by ``is_active()`` — expired records are ignored but not deleted (they provide
 a historical audit trail for the coordination session).
 """
-from __future__ import annotations
 
 import datetime
 import json

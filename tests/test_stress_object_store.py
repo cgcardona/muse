@@ -11,7 +11,6 @@ Exercises:
 - Content integrity: read(write(content)) == content.
 - Multiple distinct objects coexist without collision.
 """
-from __future__ import annotations
 
 import hashlib
 import os

@@ -1,5 +1,4 @@
 """Tests for the hierarchical code manifest in muse/plugins/code/manifest.py."""
-from __future__ import annotations
 
 import hashlib
 import pathlib

@@ -25,7 +25,6 @@ Public API
 - :class:`LWWRegister` — the register itself.
 """
 
-from __future__ import annotations
 
 import logging
 from typing import TypedDict

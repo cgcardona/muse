@@ -7,7 +7,6 @@ and commit-graph walking specific to MIDI tracks.
 Nothing here belongs in the public ``MidiPlugin`` API.  These are CLI-layer
 helpers — thin adapters over ``midi_diff.extract_notes`` and the core store.
 """
-from __future__ import annotations
 
 import logging
 import pathlib

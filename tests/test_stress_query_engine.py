@@ -9,7 +9,6 @@ Covers:
 - Query against large history (200 commits).
 - Branch-scoped queries.
 """
-from __future__ import annotations
 
 import datetime
 import pathlib

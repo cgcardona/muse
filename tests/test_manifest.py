@@ -1,5 +1,4 @@
 """Tests for muse.plugins.midi.manifest — BarChunk, TrackManifest, MusicManifest."""
-from __future__ import annotations
 
 import io
 import pathlib

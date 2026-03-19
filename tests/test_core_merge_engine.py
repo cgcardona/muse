@@ -4,7 +4,6 @@ Extended to cover the structured (operation-level) merge path via
 :func:`~muse.core.op_transform.merge_structured` and the
 :class:`~muse.domain.StructuredMergePlugin` integration.
 """
-from __future__ import annotations
 
 import datetime
 import json

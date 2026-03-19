@@ -79,7 +79,7 @@ class CRDTPlugin(MuseDomainPlugin, Protocol):
     def from_crdt_state(self, crdt: CRDTSnapshotManifest) -> StateSnapshot: ...
 ```
 
-The MIDI plugin — the reference implementation — implements all six interfaces and both optional extensions for MIDI state. Every other domain is a new plugin.
+The MIDI plugin — the reference implementation — implements all six interfaces and both optional extensions for MIDI state. The code plugin is the second shipped domain. Every other domain is a new plugin.
 
 ---
 
@@ -129,7 +129,10 @@ Run `muse --help` for the full command list.
 ## Domain Instantiations
 
 ### MIDI *(reference implementation)*
-MIDI state across all 21 fine-grained dimensions: notes, pitch bend, per-note polyphonic aftertouch, 11 named CC controllers, program changes, tempo map, time signatures, key signatures, section markers, and track structure. Typed delta algebra surfaces note-level inserts, deletes, and replaces in `muse show`. Three-way merge operates per-dimension — two agents editing sustain pedal and pitch bend simultaneously never produce a conflict. Stable entity identity tracks notes across edits. **Ships with full DAG, branching, OT merge, CRDT semantics, voice-aware RGA, music query DSL, invariant enforcement, and E2E tests.**
+MIDI state across all 21 fine-grained dimensions: notes, pitch bend, per-note polyphonic aftertouch, 11 named CC controllers, program changes, tempo map, time signatures, key signatures, section markers, and track structure. Typed delta algebra surfaces note-level inserts, deletes, and replaces in `muse show`. Three-way merge operates per-dimension — two agents editing sustain pedal and pitch bend simultaneously never produce a conflict. Stable entity identity tracks notes across edits. **Ships with full DAG, branching, OT merge, CRDT semantics, voice-aware RGA, MIDI query DSL, invariant enforcement, and E2E tests.**
+
+### Code *(second domain — shipped)*
+Source code as a graph of named symbols — functions, classes, methods — rather than a sequence of lines. Two commits that only reformat a file produce no structured delta. Renames and moves are detected via content-addressed symbol identity. Three-way merge operates at symbol granularity — two agents editing different functions in the same file auto-merge without conflict. Supports Python, TypeScript, JavaScript, Go, Rust, Java, C, C++, C#, Ruby, and Kotlin via `tree-sitter` ASTs. **Ships with symbol diff, code query DSL, semantic hotspots, coupling analysis, refactor detection, and `.museattributes` integration at both file and symbol level.**
 
 ### Scientific Simulation *(planned)*
 A climate model is a multidimensional state space: temperature, pressure, humidity, ocean current, ice coverage at every grid point. Commit a named checkpoint. Branch to explore a parameter variation. Merge two teams' adjustments against a common baseline run. Drift detection flags when a running simulation has diverged from its last committed checkpoint.
@@ -190,15 +193,16 @@ muse/
     object_store.py      — SHA-256 blob storage under .muse/objects/
     merge_engine.py      — three-way merge state machine + CRDT join entry point
     op_transform.py      — Operational Transformation for operation-level merge
+    query_engine.py      — domain-agnostic commit-history walker + evaluator protocol
     schema.py            — DomainSchema TypedDicts for algorithm selection
-    attributes.py        — .museattributes TOML parser and strategy resolver
+    attributes.py        — .museattributes TOML parser; six strategies, priority, comment
     errors.py            — exit codes and error primitives
     diff_algorithms/     — Myers LCS, tree-edit, numerical, set-ops diff library
     crdts/               — VectorClock, LWWRegister, ORSet, RGA, AWMap, GCounter
   plugins/
     registry.py          — maps domain names → MuseDomainPlugin instances
     midi/                — MIDI domain plugin (reference implementation)
-      plugin.py          — implements all six MuseDomainPlugin interfaces
+      plugin.py          — all six interfaces + StructuredMergePlugin + CRDTPlugin
       midi_diff.py       — note-level MIDI diff and reconstruction
       midi_merge.py      — 21-dimension MIDI merge engine
       entity.py          — stable note entity identity across edits
@@ -206,28 +210,38 @@ muse/
       _crdt_notes.py     — voice-aware RGA CRDT for note sequences
       _invariants.py     — MIDI invariant enforcement (polyphony, range, key, fifths)
       _midi_query.py     — MIDI query DSL for commit history exploration
+    code/                — code domain plugin (second shipped domain)
+      plugin.py          — all six interfaces + StructuredMergePlugin; symbol-level OT
+      ast_parser.py      — tree-sitter adapters for 11 languages
+      symbol_diff.py     — symbol-level diff and delta summary
+      _code_query.py     — code query DSL (symbol, file, language, kind, change)
+      _predicate.py      — predicate DSL parser for muse query
     scaffold/            — copy-paste template for new domain plugins
       plugin.py          — fully typed starter with TODO markers
   cli/
     app.py               — Typer application root
     config.py            — .muse/config.toml read/write helpers
-    commands/            — one file per subcommand (15 commands)
+    commands/            — one file per subcommand (init, commit, log, status, diff,
+                           show, branch, checkout, merge, reset, revert, cherry_pick,
+                           stash, tag, annotate, attributes, …)
 
 tests/
-  test_cli_*.py          — CLI integration tests (one per command group)
-  test_core_*.py         — core engine unit tests
-  test_crdts.py          — CRDT primitive lattice law and integration tests
-  test_op_transform.py   — Operational Transformation tests
-  test_diff_algorithms.py — diff algorithm library tests
-  test_music_plugin.py
+  test_cli_workflow.py       — end-to-end CLI lifecycle (init → commit → merge → tag)
+  test_core_*.py             — core engine unit tests (store, snapshot, merge, attributes)
+  test_crdts.py              — CRDT primitive lattice laws and integration tests
+  test_op_transform.py       — Operational Transformation tests
+  test_diff_algorithms.py    — diff algorithm library tests
+  test_music_plugin.py / test_midi_*.py — MIDI plugin tests
+  test_code_plugin_attributes.py        — .museattributes × CodePlugin integration
+  test_stress_*.py           — stress and adversarial tests for every major subsystem
   test_plugin_registry.py
 
 docs/
   architecture/          — architecture reference and E2E walkthrough
   guide/                 — plugin authoring guide and CRDT reference
   protocol/              — MuseDomainPlugin protocol spec and domain concepts
-  reference/             — type contracts, .museattributes format, .museignore
-  demo/                  — tour de force narration script
+  reference/             — type contracts, .museattributes, .museignore, code-domain
+  demo/                  — demo-midi.md, demo-code.md, demo-script.md
 ```
 
 ---
@@ -243,10 +257,10 @@ pip install -e ".[dev]"
 
 Core dependencies:
 
-- Python 3.13+
+- Python 3.14+
 - Typer (CLI)
-- mido (MIDI parsing, music plugin only)
-- toml
+- mido (MIDI parsing — MIDI plugin only)
+- tree-sitter + language grammars (AST parsing — code plugin only)
 
 No database required. Muse stores all state in the `.muse/` directory — objects, snapshots, commits, refs — exactly like Git stores state in `.git/`.
 
@@ -254,16 +268,17 @@ No database required. Muse stores all state in the `.muse/` directory — object
 
 ## Documentation
 
-- [Architecture](docs/architecture/muse-vcs.md) — full technical design and module map (v0.1.1)
+- [Architecture](docs/architecture/muse-vcs.md) — full technical design and module map
 - [Plugin Authoring Guide](docs/guide/plugin-authoring-guide.md) — step-by-step guide for building a new domain plugin
 - [CRDT Reference](docs/guide/crdt-reference.md) — CRDT primer and API reference for all six primitives
 - [E2E Walkthrough](docs/architecture/muse-e2e-demo.md) — step-by-step lifecycle from `init` to merge conflict
 - [Plugin Protocol](docs/protocol/muse-protocol.md) — language-agnostic `MuseDomainPlugin` specification
-- [Domain Concepts](docs/protocol/muse-domain-concepts.md) — universal terms, cross-domain patterns, and music-specific vocabulary
-- [Type Contracts](docs/reference/type-contracts.md) — named type definitions with Mermaid diagrams
-- [`.museattributes` Reference](docs/reference/muse-attributes.md) — per-repo merge strategy overrides (TOML format)
+- [Domain Concepts](docs/protocol/muse-domain-concepts.md) — universal terms, cross-domain patterns, and vocabulary
+- [Type Contracts](docs/reference/type-contracts.md) — every named type with field tables and Mermaid diagrams
+- [Code Domain](docs/reference/code-domain.md) — code plugin schema, dimensions, query DSL, and command reference
+- [`.museattributes` Reference](docs/reference/muse-attributes.md) — six merge strategies (`ours`, `theirs`, `union`, `base`, `auto`, `manual`), `priority` and `comment` fields, MIDI and code domain integration
 - [`.museignore` Reference](docs/reference/museignore.md) — snapshot exclusion rules
 
 ---
 
-*Built from the couch. March 2026.*
+*Muse v0.1.2 · Python 3.14 · Built from the couch. March 2026.*

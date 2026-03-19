@@ -15,7 +15,6 @@ Layout::
     .museattributes         — TOML merge strategy overrides (created in repo root)
     muse-work/              — working tree (absent for --bare repos)
 """
-from __future__ import annotations
 
 import datetime
 import json

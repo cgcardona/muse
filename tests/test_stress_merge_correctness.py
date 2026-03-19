@@ -11,7 +11,6 @@ Covers:
 - Corrupt MERGE_STATE.json is silently ignored (returns None).
 - apply_resolution raises FileNotFoundError for absent object.
 """
-from __future__ import annotations
 
 import json
 import pathlib

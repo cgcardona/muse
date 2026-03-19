@@ -46,7 +46,6 @@ Public API
 - :func:`build_entity_index` — build an :class:`EntityIndex` from entities.
 - :func:`write_entity_index` / :func:`read_entity_index` — I/O.
 """
-from __future__ import annotations
 
 import hashlib
 import json

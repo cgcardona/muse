@@ -28,7 +28,6 @@ years of production use.
 This module is the single source of truth for all local object I/O.
 The store is append-only: writing the same object twice is always a no-op.
 """
-from __future__ import annotations
 
 import logging
 import pathlib

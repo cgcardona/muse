@@ -1,5 +1,4 @@
 """Unit tests for muse.plugins.registry — resolve_plugin, read_domain, registered_domains."""
-from __future__ import annotations
 
 import json
 import pathlib

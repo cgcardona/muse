@@ -12,7 +12,6 @@ Named result types registered in ``docs/reference/type_contracts.md``:
 - ``MuseImportData``
 - ``NoteEvent``
 """
-from __future__ import annotations
 
 import copy
 import dataclasses

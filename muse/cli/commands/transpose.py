@@ -22,7 +22,6 @@ Output::
        Pitch range: C3–A5  (was A2–G5)
        Run `muse status` to review, then `muse commit`
 """
-from __future__ import annotations
 
 import json
 import logging

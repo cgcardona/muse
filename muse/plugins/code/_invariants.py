@@ -71,7 +71,6 @@ Public API
 - :func:`load_invariant_rules`  — load from TOML with built-in defaults.
 - :func:`run_invariants`        — top-level runner.
 """
-from __future__ import annotations
 
 import ast
 import logging

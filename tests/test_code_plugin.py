@@ -49,7 +49,6 @@ Drift
 Plugin registry
     - "code" is in the registered domain list.
 """
-from __future__ import annotations
 
 import hashlib
 import pathlib

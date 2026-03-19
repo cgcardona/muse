@@ -28,7 +28,6 @@ Output::
 
     Dynamic character: mf–f  (moderate-loud)
 """
-from __future__ import annotations
 
 import json
 import logging

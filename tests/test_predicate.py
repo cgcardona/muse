@@ -34,7 +34,6 @@ Predicate evaluation
     - hash / body_hash / signature_id prefix matching.
     - Case-insensitive string matching for =, ~=, ^=, $=, !=.
 """
-from __future__ import annotations
 
 import pytest
 

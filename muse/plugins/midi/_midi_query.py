@@ -57,7 +57,6 @@ Supported field paths
 | toolchain_id        | toolchain_id from commit provenance         |
 +---------------------+---------------------------------------------+
 """
-from __future__ import annotations
 
 import logging
 import pathlib

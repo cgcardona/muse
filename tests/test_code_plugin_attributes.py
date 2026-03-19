@@ -4,7 +4,6 @@ Verifies that every merge strategy (ours, theirs, base, union, manual, auto)
 is correctly honoured by CodePlugin.merge() and merge_ops() when a
 .museattributes file is present in the repo root.
 """
-from __future__ import annotations
 
 import pathlib
 

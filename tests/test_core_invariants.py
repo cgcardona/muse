@@ -1,5 +1,4 @@
 """Tests for the generic invariants engine in muse/core/invariants.py."""
-from __future__ import annotations
 
 import pathlib
 import tempfile

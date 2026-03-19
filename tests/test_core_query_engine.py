@@ -1,5 +1,4 @@
 """Tests for the generic query engine in muse/core/query_engine.py."""
-from __future__ import annotations
 
 import datetime
 import pathlib

@@ -5,7 +5,6 @@ Verifies all three CRDT laws:
   2. Associativity: merge(merge(a, b), c) == merge(a, merge(b, c))
   3. Idempotency:   merge(a, a) == a
 """
-from __future__ import annotations
 
 import pytest
 

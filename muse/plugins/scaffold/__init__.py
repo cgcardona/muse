@@ -6,4 +6,3 @@ to ``<YourDomain>Plugin``, and implement every method that currently raises
 
 See ``docs/guide/plugin-authoring-guide.md`` for a complete walkthrough.
 """
-from __future__ import annotations

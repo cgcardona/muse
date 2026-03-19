@@ -9,7 +9,6 @@ Covers:
 - snapshot_diff: file-level diffing via ScaffoldPlugin.
 - detect_moves: move detection from paired insert+delete.
 """
-from __future__ import annotations
 
 import hashlib
 import random

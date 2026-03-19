@@ -28,7 +28,6 @@ Public API
 - :class:`AWMap` — the map itself.
 """
 
-from __future__ import annotations
 
 import logging
 import uuid

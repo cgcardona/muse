@@ -110,4 +110,4 @@ commit history.
 
 ---
 
-*Muse v0.1.2 · Python 3.13 · `tree-sitter` for code · `mido` for MIDI*
+*Muse v0.1.2 · Python 3.14 · `tree-sitter` for code · `mido` for MIDI*

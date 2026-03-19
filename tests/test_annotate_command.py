@@ -1,5 +1,4 @@
 """Tests for muse annotate — CRDT-backed commit annotations."""
-from __future__ import annotations
 
 import datetime
 import pathlib

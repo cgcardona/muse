@@ -1,5 +1,4 @@
 """End-to-end CLI workflow tests — init, commit, log, status, branch, merge."""
-from __future__ import annotations
 
 import pathlib
 

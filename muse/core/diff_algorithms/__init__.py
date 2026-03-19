@@ -29,7 +29,6 @@ errors are caught at compile time rather than at runtime.
 :class:`TreeNode` is re-exported here for convenience; import it from this
 package rather than from the submodule.
 """
-from __future__ import annotations
 
 import logging
 from typing import Literal, TypedDict

@@ -20,7 +20,6 @@ Public API
 ----------
 - :func:`diff` — ``list[float]`` × ``list[float]`` → ``StructuredDelta``.
 """
-from __future__ import annotations
 
 import hashlib
 import logging

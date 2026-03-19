@@ -59,7 +59,6 @@ Implement :class:`LanguageAdapter` and append an instance to
 :data:`ADAPTERS`.  The adapter is selected by the file's suffix, with the
 first matching adapter taking priority.
 """
-from __future__ import annotations
 
 import ast
 import hashlib

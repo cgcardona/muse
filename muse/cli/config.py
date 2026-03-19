@@ -16,7 +16,6 @@ Token lifecycle (MVP):
 Security note: ``.muse/config.toml`` should be added to ``.gitignore`` to
 prevent the token from being committed to version control.
 """
-from __future__ import annotations
 
 import logging
 import pathlib

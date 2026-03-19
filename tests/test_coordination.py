@@ -25,7 +25,6 @@ Schema
     - created_at and expires_at are ISO 8601 strings.
     - operation field is None-able for reservations.
 """
-from __future__ import annotations
 
 import datetime
 import json
