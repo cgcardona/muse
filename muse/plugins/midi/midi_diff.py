@@ -1,4 +1,4 @@
-"""MIDI note-level diff for the Muse music plugin.
+"""MIDI note-level diff for the Muse MIDI plugin.
 
 Produces a ``StructuredDelta`` with note-level ``InsertOp`` and ``DeleteOp``
 entries from two MIDI byte strings. This is what lets ``muse show`` display

@@ -50,7 +50,7 @@ Usage::
     )
     log.append(entry)
 
-    delta = log.to_structured_delta("music")   # collapse for commit
+    delta = log.to_structured_delta("midi")   # collapse for commit
     ckpt = log.checkpoint(snapshot_id)         # crystallise
 """
 

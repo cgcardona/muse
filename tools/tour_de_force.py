@@ -485,7 +485,7 @@ def main() -> None:
 
     tour: TourData = TourData(
         meta=TourMeta(
-            domain="music",
+            domain="midi",
             muse_version="0.1.1",
             generated_at=datetime.now(timezone.utc).isoformat(),
             elapsed_s=f"{elapsed_total:.2f}",

@@ -288,11 +288,11 @@ def _load_domains() -> list[dict]:
         {
             "domain": "midi",
             "active": "true",
-            "capabilities": ["Typed Deltas", "Domain Schema", "OT Merge", "CRDT Primitives", "MusicRGA"],
+            "capabilities": ["Typed Deltas", "Domain Schema", "OT Merge", "CRDT Primitives", "MidiRGA"],
             "schema": {
                 "schema_version": "1",
                 "merge_mode": "three_way",
-                "description": "MIDI file versioning with 21-dimension structured merge — notes, CC, pitch bend, tempo, time signatures, and more. Each dimension merges independently. MusicRGA provides voice-aware CRDT ordering (bass→tenor→alto→soprano) for concurrent note edits.",
+                "description": "MIDI file versioning with 21-dimension structured merge — notes, CC, pitch bend, tempo, time signatures, and more. Each dimension merges independently. MidiRGA provides voice-aware CRDT ordering (bass→tenor→alto→soprano) for concurrent note edits.",
                 "dimensions": [
                     {"name": "notes",          "description": "Note-on/off events (pitch, velocity, channel, timing)"},
                     {"name": "control_change",  "description": "CC curves: modulation, sustain, expression, pan"},
@@ -415,7 +415,7 @@ def _icon(paths: str) -> str:
 
 _ICONS: dict[str, str] = {
     # Domains
-    "music":     _icon('<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'),
+    "midi":      _icon('<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'),
     "genomics":  _icon('<path d="M2 15c6.667-6 13.333 0 20-6"/><path d="M2 9c6.667 6 13.333 0 20 6"/><line x1="5.5" y1="11" x2="5.5" y2="13"/><line x1="18.5" y1="11" x2="18.5" y2="13"/>'),
     "cube":      _icon('<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>'),
     "trending":  _icon('<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>'),
@@ -660,7 +660,7 @@ def render(output_path: pathlib.Path) -> None:
 
     # Inject SVG icons into template placeholders
     _ICON_SLOTS: dict[str, str] = {
-        "MUSIC":     _ICONS["music"],
+        "MUSIC":     _ICONS["midi"],
         "GENOMICS":  _ICONS["genomics"],
         "CUBE":      _ICONS["cube"],
         "TRENDING":  _ICONS["trending"],
@@ -2139,7 +2139,7 @@ _HTML_TEMPLATE = """\
           <p class="cap-showcase-desc">
             Plugins implementing <strong>CRDTPlugin</strong> get six battle-tested
             convergent data structures. No coordination required between replicas.
-            The MIDI plugin extends RGA into <strong>MusicRGA</strong> &mdash; a
+            The MIDI plugin extends RGA into <strong>MidiRGA</strong> &mdash; a
             voice-aware variant that orders concurrent note insertions by voice lane
             (bass &rarr; tenor &rarr; alto &rarr; soprano) before falling back to
             op-id, preventing voice crossings without human intervention.

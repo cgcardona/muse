@@ -1,1 +1,1 @@
-"""Muse music domain plugin — reference implementation for MIDI state."""
+"""Muse MIDI domain plugin — reference implementation for MIDI state."""

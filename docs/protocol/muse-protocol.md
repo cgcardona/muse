@@ -278,7 +278,7 @@ Plugins MAY add additional top-level keys for domain-specific metadata:
 ```json
 {
   "files": { ... },
-  "domain": "music",
+  "domain": "midi",
   "tempo_bpm": 120,
   "key": "Am"
 }

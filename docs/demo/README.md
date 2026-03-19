@@ -74,7 +74,7 @@ Structured delta                ← typed DomainOp tree (insert / delete / repla
 Commit graph                    ← parent chain with structured deltas on every node
 ```
 
-The **music plugin** adds:
+The **MIDI plugin** adds:
 
 ```
 Note event model      ← NoteKey (pitch, velocity, start_tick, duration_ticks, channel)

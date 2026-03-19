@@ -12,7 +12,7 @@
 ## What a Variation Is
 
 A Variation is a **proposed musical change set awaiting human review** before
-being committed to the Muse DAG. It is the music plugin's implementation of the
+being committed to the Muse DAG. It is the MIDI plugin's implementation of the
 propose → review → commit pattern.
 
 ```

@@ -214,7 +214,7 @@ and content-addressable via SHA-256. Aliased as `StateSnapshot`.
 | Field | Type | Description |
 |-------|------|-------------|
 | `files` | `dict[str, str]` | Workspace-relative POSIX paths → SHA-256 content digests |
-| `domain` | `str` | Plugin identifier that produced this snapshot (e.g. `"music"`) |
+| `domain` | `str` | Plugin identifier that produced this snapshot (e.g. `"midi"`) |
 
 #### `StructuredDelta`
 
@@ -320,7 +320,7 @@ works as a module-load sanity check.
 | `apply` | `(delta: StateDelta, live_state: LiveState) -> LiveState` | Apply a delta to produce a new live state |
 | `schema` | `() -> DomainSchema` | Declare the structural shape of the domain's data (drives diff algorithm selection) |
 
-The music plugin (`muse.plugins.midi.plugin`) is the reference implementation.
+The MIDI plugin (`muse.plugins.midi.plugin`) is the reference implementation.
 Every other domain implements these six methods and registers itself as a plugin.
 
 ### Optional Protocol Extensions

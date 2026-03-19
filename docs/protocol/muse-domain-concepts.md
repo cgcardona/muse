@@ -2,7 +2,7 @@
 
 > Muse is domain-agnostic at the core. This document clarifies which terms
 > are universal VCS primitives, which are cross-domain patterns, and which
-> belong only to the music plugin.
+> belong only to the MIDI plugin.
 
 ---
 
@@ -41,7 +41,7 @@ generalize.
 
 ### Current meaning (MIDI domain)
 
-In the music plugin context — specifically the Stori DAW integration —
+In the MIDI plugin context — specifically the Stori DAW integration —
 a *Variation* is a **proposed change set awaiting human review** before being
 committed. The lifecycle is:
 
@@ -110,11 +110,11 @@ as `dict[str, str]` — no music-specific meaning is enforced.
 
 ## What Is and Is Not Music-Specific
 
-### Music-specific (stay in music plugin only)
+### MIDI-specific (stay in MIDI plugin only)
 
 - MIDI, notes, velocities, controller events (CC), pitch bends, aftertouch
 - DAW (Digital Audio Workstation) integration
-- Beat-based time (all time in the music plugin is measured in beats, not seconds)
+- Beat-based time (all time in the MIDI plugin is measured in beats, not seconds)
 - Groove analysis, swing, harmonic analysis, chord maps
 - The `muse groove-check`, `muse emotion-diff`, `muse harmony`, `muse dynamics`
   commands

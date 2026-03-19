@@ -1,4 +1,4 @@
-"""Musical invariants engine for the Muse music plugin.
+"""Musical invariants engine for the Muse MIDI plugin.
 
 Invariants are semantic rules that a MIDI track must satisfy.  They are
 evaluated at commit time, merge time, or on-demand via ``muse music-check``.
