@@ -6,10 +6,10 @@ The music query DSL allows agents and humans to search the Muse commit history
 for specific musical content without parsing MIDI bytes for every commit.
 
 ```bash
-muse midi-query "note.pitch_class == 'Eb' and bar == 12"
-muse midi-query "harmony.quality == 'dim' and bar == 8"
-muse midi-query "agent_id == 'counterpoint-bot'"
-muse midi-query "note.velocity > 80 and track == 'cello.mid'"
+muse midi query "note.pitch_class == 'Eb' and bar == 12"
+muse midi query "harmony.quality == 'dim' and bar == 8"
+muse midi query "agent_id == 'counterpoint-bot'"
+muse midi query "note.velocity > 80 and track == 'cello.mid'"
 ```
 
 ## Grammar (EBNF)
@@ -52,19 +52,19 @@ with MIDI pitch > 60.
 
 ```bash
 # All bars where Eb appears.
-muse midi-query "note.pitch_class == 'Eb'"
+muse midi query "note.pitch_class == 'Eb'"
 
 # Diminished chord in bar 8 specifically.
-muse midi-query "harmony.quality == 'dim' and bar == 8"
+muse midi query "harmony.quality == 'dim' and bar == 8"
 
 # High-velocity notes in the cello part authored by an agent.
-muse midi-query "note.velocity > 100 and track == 'cello.mid' and agent_id == 'melody-agent'"
+muse midi query "note.velocity > 100 and track == 'cello.mid' and agent_id == 'melody-agent'"
 
 # Notes outside a comfortable bass range.
-muse midi-query "note.pitch < 36 or note.pitch > 96" --track bass.mid
+muse midi query "note.pitch < 36 or note.pitch > 96" --track bass.mid
 
 # Everything from a particular AI model.
-muse midi-query "model_id == 'claude-4'"
+muse midi query "model_id == 'claude-4'"
 ```
 
 ## Architecture
@@ -84,7 +84,7 @@ the predicate.
 ## CLI flags
 
 ```
-muse midi-query QUERY
+muse midi query QUERY
   --track  PATH     Restrict to one MIDI file
   --from   COMMIT   Start commit (default: HEAD)
   --to     COMMIT   Stop before this commit
@@ -97,5 +97,5 @@ muse midi-query QUERY
 | File | Role |
 |------|------|
 | `muse/plugins/midi/_music_query.py` | Tokenizer, parser, evaluator, `run_query` |
-| `muse/cli/commands/music_query.py` | CLI command `muse midi-query` |
+| `muse/cli/commands/music_query.py` | CLI command `muse midi query` |
 | `tests/test_music_query.py` | Unit tests |

@@ -1,6 +1,6 @@
 # Muse VCS — Architecture Reference
 
-> **Version:** v0.1.1
+> **Version:** v0.1.2
 > **See also:** [Plugin Authoring Guide](../guide/plugin-authoring-guide.md) · [CRDT Reference](../guide/crdt-reference.md) · [E2E Walkthrough](muse-e2e-demo.md) · [Plugin Protocol](../protocol/muse-protocol.md) · [Domain Concepts](../protocol/muse-domain-concepts.md) · [Type Contracts](../reference/type-contracts.md)
 
 ---
@@ -103,7 +103,7 @@ muse/
       plugin.py             — copy-paste template for new domain plugins
   cli/
     app.py                  — Typer application root, command registration
-    commands/               — one file per subcommand (14 commands + domains)
+    commands/               — one file per Tier 2 command; plumbing/ for Tier 1
 ```
 
 ---
@@ -312,7 +312,30 @@ walkthrough covering Phases 1–4 with examples.
 
 ## CLI Command Reference
 
-### Core VCS (all domains)
+Muse uses a **three-tier command architecture**. See [`docs/reference/cli-tiers.md`](../reference/cli-tiers.md) for the full specification and JSON output schemas.
+
+### Tier 1 — Plumbing (`muse plumbing …`)
+
+Machine-readable, JSON-outputting, pipeable primitives. Designed for scripts, agents, and CI automation.
+
+| Command | Description |
+|---------|-------------|
+| `muse plumbing hash-object <file>` | SHA-256 a file; optionally store it |
+| `muse plumbing cat-object <id>` | Emit raw bytes of a stored object |
+| `muse plumbing rev-parse <ref>` | Resolve branch/HEAD/prefix → commit_id |
+| `muse plumbing ls-files [<ref>]` | List tracked files and object IDs |
+| `muse plumbing read-commit <id>` | Emit full commit JSON |
+| `muse plumbing read-snapshot <id>` | Emit full snapshot JSON |
+| `muse plumbing commit-tree <snap_id>` | Create a commit from an explicit snapshot |
+| `muse plumbing update-ref <branch> <id>` | Move a branch HEAD |
+| `muse plumbing commit-graph` | Emit commit DAG as JSON |
+| `muse plumbing pack-objects <ids…>` | Build a PackBundle JSON to stdout |
+| `muse plumbing unpack-objects` | Read PackBundle JSON from stdin, write to store |
+| `muse plumbing ls-remote [remote]` | List branch refs on a remote |
+
+### Tier 2 — Core Porcelain (top-level `muse …`)
+
+Human and agent VCS commands. Domain-agnostic; delegate to `muse.core.*`.
 
 | Command | Description |
 |---------|-------------|
@@ -332,13 +355,77 @@ walkthrough covering Phases 1–4 with examples.
 | `muse tag add <tag> [<ref>]` | Tag a commit |
 | `muse tag list [<ref>]` | List tags |
 | `muse domains` | Show domain dashboard — registered domains, capabilities, schema |
+| `muse remote add <name> <url>` | Register a named remote |
+| `muse clone <url> [dir]` | Clone a remote repository |
+| `muse fetch [remote]` | Download commits/snapshots/objects |
+| `muse pull [remote]` | Fetch + three-way merge |
+| `muse push [remote]` | Upload local commits/snapshots/objects |
+| `muse check` | Domain-agnostic invariant check |
+| `muse annotate` | CRDT-backed commit annotations |
 
-### MIDI-Domain Extras (MIDI plugin only)
+### Tier 3 — Semantic Porcelain
+
+Domain-specific commands that interpret multidimensional state. Each sub-namespace is served by the corresponding plugin.
+
+#### MIDI domain (`muse midi …`)
 
 | Command | Description |
 |---------|-------------|
-| `muse commit --section <name> --track <name>` | Commit with music metadata |
-| `muse log --section <s> --track <t>` | Filter log by music metadata |
+| `muse midi notes` | Every note in a track as musical notation |
+| `muse midi note-log` | Note-level commit history |
+| `muse midi note-blame` | Per-bar attribution |
+| `muse midi harmony` | Chord analysis and key detection |
+| `muse midi piano-roll` | ASCII piano roll visualization |
+| `muse midi hotspots` | Bar-level churn leaderboard |
+| `muse midi velocity-profile` | Dynamic range and velocity histogram |
+| `muse midi transpose` | Transpose all notes by N semitones |
+| `muse midi mix` | Combine two MIDI tracks into one |
+| `muse midi query` | MIDI DSL predicate query over history |
+| `muse midi check` | Enforce MIDI invariant rules |
+
+#### Code domain (`muse code …`)
+
+| Command | Description |
+|---------|-------------|
+| `muse code symbols` | List every symbol in a snapshot |
+| `muse code symbol-log` | Full history of one symbol |
+| `muse code detect-refactor` | Detect semantic refactoring operations |
+| `muse code grep` | Search the symbol graph |
+| `muse code blame` | Which commit last touched a symbol |
+| `muse code hotspots` | Symbol churn leaderboard |
+| `muse code stable` | Symbol stability leaderboard |
+| `muse code coupling` | File co-change analysis |
+| `muse code compare` | Deep semantic comparison between snapshots |
+| `muse code languages` | Language and symbol-type breakdown |
+| `muse code patch` | Surgical per-symbol modification |
+| `muse code query` | Symbol graph predicate DSL |
+| `muse code query-history` | Temporal symbol search |
+| `muse code deps` | Import graph and call graph |
+| `muse code find-symbol` | Cross-commit symbol search |
+| `muse code impact` | Transitive blast-radius for a symbol |
+| `muse code dead` | Dead code candidates |
+| `muse code coverage` | Interface call-coverage |
+| `muse code lineage` | Full provenance chain of a symbol |
+| `muse code api-surface` | Public API surface at a commit |
+| `muse code codemap` | Semantic topology of the codebase |
+| `muse code clones` | Find duplicate symbols |
+| `muse code checkout-symbol` | Restore a historical symbol version |
+| `muse code semantic-cherry-pick` | Cherry-pick named symbols from history |
+| `muse code index` | Manage local symbol indexes |
+| `muse code breakage` | Detect structural breakage vs HEAD |
+| `muse code invariants` | Enforce architectural rules |
+| `muse code check` | Semantic invariant enforcement |
+
+#### Coordination domain (`muse coord …`)
+
+| Command | Description |
+|---------|-------------|
+| `muse coord reserve` | Advisory symbol reservation |
+| `muse coord intent` | Declare an operation before executing |
+| `muse coord forecast` | Predict merge conflicts |
+| `muse coord plan-merge` | Dry-run semantic merge plan |
+| `muse coord shard` | Partition codebase into parallel work zones |
+| `muse coord reconcile` | Recommend merge ordering strategy |
 
 ---
 
@@ -404,7 +491,7 @@ API contract, authentication, and tracking branch semantics.
 ## Testing & Verification
 
 ```bash
-# Full test suite (691 tests)
+# Full test suite (1903 tests)
 .venv/bin/pytest tests/ -v
 
 # Type checking (zero errors required)

@@ -1,6 +1,6 @@
 # MuseDomainPlugin Protocol — Language-Agnostic Specification
 
-> **Status:** Canonical · **Version:** v0.1.1
+> **Status:** Canonical · **Version:** v0.1.2
 > **Audience:** Anyone implementing a Muse domain plugin in any language.
 
 ---
