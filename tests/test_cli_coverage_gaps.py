@@ -1,5 +1,4 @@
 """Tests targeting specific coverage gaps in checkout, tag, commit, diff, stash, branch."""
-from __future__ import annotations
 
 import pathlib
 

@@ -1,5 +1,4 @@
 """Tests targeting coverage gaps in core modules: object_store, repo, store, merge_engine."""
-from __future__ import annotations
 
 import json
 import os

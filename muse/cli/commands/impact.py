@@ -50,7 +50,6 @@ Flags:
 ``--json``
     Emit the full blast-radius map as JSON.
 """
-from __future__ import annotations
 
 import json
 import logging

@@ -26,7 +26,6 @@ Output::
 
     High coupling = hidden dependency. Consider extracting a shared interface.
 """
-from __future__ import annotations
 
 import json
 import logging

@@ -5,7 +5,6 @@ Modes::
     --soft   — move the branch pointer; leave muse-work/ and index unchanged.
     --hard   — move the branch pointer AND restore muse-work/ from the target snapshot.
 """
-from __future__ import annotations
 
 import json
 import logging

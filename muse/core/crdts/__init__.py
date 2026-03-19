@@ -54,8 +54,6 @@ at merge time and calls :meth:`CRDTPlugin.join` instead of the three-way merge
 path.  See :mod:`muse.domain` for the full ``CRDTPlugin`` contract.
 """
 
-from __future__ import annotations
-
 from muse.core.crdts.aw_map import AWMap, AWMapDict, AWMapEntry
 from muse.core.crdts.g_counter import GCounter, GCounterDict
 from muse.core.crdts.lww_register import LWWRegister, LWWValue

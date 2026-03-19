@@ -39,7 +39,6 @@ Flags:
 ``--json``
     Emit the full symbol table as JSON for tooling integration.
 """
-from __future__ import annotations
 
 import json
 import logging

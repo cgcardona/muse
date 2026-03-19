@@ -42,7 +42,6 @@ Public API
 - :class:`CommitEvaluator` — type alias for the evaluator callable.
 - :func:`walk_history`  — traverse commits and collect matches.
 """
-from __future__ import annotations
 
 import logging
 import pathlib

@@ -15,4 +15,3 @@ Extending the language support
 Implement :class:`~muse.plugins.code.ast_parser.LanguageAdapter` and
 register the instance in :data:`~muse.plugins.code.ast_parser.ADAPTERS`.
 """
-from __future__ import annotations

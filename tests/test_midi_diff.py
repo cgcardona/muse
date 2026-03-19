@@ -8,7 +8,6 @@ Covers:
 - Content IDs are deterministic and unique per note.
 - Human-readable summaries and content_summary strings.
 """
-from __future__ import annotations
 
 import io
 import struct

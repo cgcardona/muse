@@ -52,7 +52,6 @@ Algorithm
 6.  Emit ``InsertOp`` for genuinely added symbols.
 7.  Emit ``ReplaceOp`` for symbols whose ``content_id`` changed.
 """
-from __future__ import annotations
 
 import logging
 

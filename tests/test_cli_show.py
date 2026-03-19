@@ -1,5 +1,4 @@
 """Tests for muse show — inspect a commit's metadata, diff, and files."""
-from __future__ import annotations
 
 import json
 import pathlib

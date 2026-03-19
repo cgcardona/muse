@@ -1,5 +1,4 @@
 """Tests for muse.core.provenance — AgentIdentity, HMAC signing, key I/O."""
-from __future__ import annotations
 
 import pathlib
 import tempfile

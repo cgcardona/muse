@@ -27,7 +27,6 @@ Public API
 - :func:`write_code_manifest`  — persist to ``.muse/code_manifests/<id>.json``.
 - :func:`read_code_manifest`   — load from disk.
 """
-from __future__ import annotations
 
 import hashlib
 import json

@@ -21,7 +21,6 @@ Usage::
     muse annotate abc1234 --reviewed-by ci-bot --test-run
     muse annotate                              # annotate HEAD
 """
-from __future__ import annotations
 
 import logging
 import pathlib

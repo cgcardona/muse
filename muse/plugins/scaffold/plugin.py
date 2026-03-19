@@ -27,7 +27,6 @@ Protocol capabilities implemented here
 - OT merge: ``StructuredMergePlugin`` (optional — remove if not needed)
 - CRDT: ``CRDTPlugin`` (optional — remove if not needed)
 """
-from __future__ import annotations
 
 import hashlib
 import json

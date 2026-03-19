@@ -1,5 +1,4 @@
 """Tests for muse.core.store — file-based commit and snapshot storage."""
-from __future__ import annotations
 
 import datetime
 import json

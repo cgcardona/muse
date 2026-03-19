@@ -12,7 +12,6 @@ Adversarial scenarios:
 - Revert commit.
 - Reset.
 """
-from __future__ import annotations
 
 import pathlib
 

@@ -24,7 +24,6 @@ Output::
 
     4 match(es) across 2 files
 """
-from __future__ import annotations
 
 import json
 import logging

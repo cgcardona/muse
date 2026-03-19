@@ -60,7 +60,6 @@ Public API
 - :class:`RGANoteEntry`  — one element in the RGA (TypedDict).
 - :class:`MusicRGA`      — the voice-aware ordered note sequence CRDT.
 """
-from __future__ import annotations
 
 import logging
 import uuid as _uuid_mod

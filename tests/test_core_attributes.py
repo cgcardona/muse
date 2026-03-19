@@ -1,5 +1,4 @@
 """Tests for muse/core/attributes.py — .museattributes TOML parser and resolver."""
-from __future__ import annotations
 
 import logging
 import pathlib

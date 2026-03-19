@@ -44,7 +44,6 @@ All functions are synchronous — file I/O on a local ``.muse/`` directory
 does not require async. This removes the SQLAlchemy/asyncpg dependency from
 the CLI entirely.
 """
-from __future__ import annotations
 
 import datetime
 import json

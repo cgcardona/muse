@@ -5,7 +5,7 @@
 Muse — domain-agnostic version control for multidimensional state. Version control is the abstraction; music is the first domain; genomics, scientific simulation, 3D spatial design, and spacetime simulation are next.
 
 - **Entry point:** `muse` CLI (Typer). No web server, no HTTP API, no database.
-- **Stack:** Python 3.11, Typer, file-based content-addressed storage (`.muse/`), synchronous I/O throughout.
+- **Stack:** Python 3.14, Typer, file-based content-addressed storage (`.muse/`), synchronous I/O throughout.
 - **Plugin contract:** `MuseDomainPlugin` protocol in `muse/domain.py`. Every new domain is a new plugin — the core engine never changes.
 - **Version:** single source of truth in `pyproject.toml`.
 
@@ -89,7 +89,6 @@ tests/               → pytest suite
 
 ## Code standards
 
-- **Every Python file** has `from __future__ import annotations` as the first import, immediately after the module docstring (if present). No exceptions.
 - Type hints everywhere — 100% coverage, no untyped functions or parameters.
 - `list[X]` / `dict[K, V]` style — never `List`, `Dict`, `Optional`.
 - `X | None` — never `Optional[X]`.

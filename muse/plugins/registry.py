@@ -12,7 +12,6 @@ The domain for a repository is stored in ``.muse/repo.json`` under the key
 ``"domain"``.  Repositories created before this key was introduced default to
 ``'midi'``.
 """
-from __future__ import annotations
 
 import json
 import pathlib

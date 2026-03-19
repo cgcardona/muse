@@ -25,7 +25,6 @@ Public API
 - :func:`load_patterns` — parse ``.museignore`` → ``list[str]``
 - :func:`is_ignored`    — test a relative POSIX path against a pattern list
 """
-from __future__ import annotations
 
 import fnmatch
 import pathlib

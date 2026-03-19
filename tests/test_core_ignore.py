@@ -1,5 +1,4 @@
 """Tests for muse/core/ignore.py — .museignore parser and path filter."""
-from __future__ import annotations
 
 import pathlib
 

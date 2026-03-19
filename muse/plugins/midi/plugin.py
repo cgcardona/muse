@@ -50,7 +50,6 @@ When ``repo_root`` is available, MIDI files are loaded from the object store
 and diffed at note level. Without it, modified ``.mid`` files fall back to
 ``ReplaceOp``.
 """
-from __future__ import annotations
 
 import hashlib
 import json

@@ -1,5 +1,4 @@
 """Tests for muse.plugins.midi.entity — NoteEntity, EntityIndex, assign/diff."""
-from __future__ import annotations
 
 import pathlib
 

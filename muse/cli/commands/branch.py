@@ -1,5 +1,4 @@
 """muse branch — list, create, rename, or delete branches."""
-from __future__ import annotations
 
 import json
 import logging

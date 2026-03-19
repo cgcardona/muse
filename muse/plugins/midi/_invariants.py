@@ -78,7 +78,6 @@ Public API
 - :func:`load_invariant_rules` — load from TOML file with defaults fallback.
 - :func:`run_invariants`       — evaluate all rules against a commit.
 """
-from __future__ import annotations
 
 import logging
 import pathlib

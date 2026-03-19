@@ -10,7 +10,6 @@ Each of the 21 internal dimensions is tested for:
 6. extract_dimensions round-trips every event type.
 7. Large sequences (100 notes, many CC events) handled correctly.
 """
-from __future__ import annotations
 
 import io
 from typing import TypedDict

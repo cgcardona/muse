@@ -46,7 +46,6 @@ dependencies, no regex-based hacks.  All parsing errors raise
 ``PredicateError`` with a human-readable message including the position
 in the input string.
 """
-from __future__ import annotations
 
 import re
 import logging
@@ -63,7 +62,6 @@ Predicate = Callable[[str, SymbolRecord], bool]
 
 class PredicateError(ValueError):
     """Raised when a predicate string cannot be parsed or evaluated."""
-
 
 # ---------------------------------------------------------------------------
 # Tokeniser

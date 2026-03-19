@@ -1,5 +1,4 @@
 """Tests for the code-domain invariants engine."""
-from __future__ import annotations
 
 import pathlib
 import tempfile

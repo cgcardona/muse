@@ -6,7 +6,6 @@ Usage::
     muse checkout -b <branch>        — create and switch to new branch
     muse checkout <commit-id>        — detach HEAD at a specific commit
 """
-from __future__ import annotations
 
 import json
 import logging

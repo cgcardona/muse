@@ -37,7 +37,6 @@ Supported fields
                  ``"minor"``, ``"major"``.
 ``branch``       Branch name.
 """
-from __future__ import annotations
 
 import logging
 import pathlib

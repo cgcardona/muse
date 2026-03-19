@@ -42,7 +42,6 @@ Usage::
     muse query "kind=function" "name$=_test" --commit HEAD~10
     muse query "kind=function" "name~=validate" --all-commits
 """
-from __future__ import annotations
 
 import json
 import logging

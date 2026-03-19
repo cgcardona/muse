@@ -18,8 +18,6 @@ Additionally, :func:`~muse.core.merge_engine.crdt_join_snapshots` is tested
 for the integration path through the merge engine.
 """
 
-from __future__ import annotations
-
 import pathlib
 
 import pytest

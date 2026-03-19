@@ -24,7 +24,6 @@ Public API
 - :func:`record_delta_ops`  — write a ``StructuredDelta``'s ops to the op log.
 - :func:`open_code_session` — open (or create) a named op log session.
 """
-from __future__ import annotations
 
 import logging
 import pathlib

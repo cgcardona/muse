@@ -10,7 +10,6 @@ Stand-alone usage
     python tools/render_domain_registry.py
     python tools/render_domain_registry.py --out artifacts/domain_registry.html
 """
-from __future__ import annotations
 
 import json
 import pathlib
@@ -262,7 +261,6 @@ _TYPED_DELTA_EXAMPLE = """\
 
 
 _SCAFFOLD_SNIPPET = """\
-from __future__ import annotations
 from muse.domain import (
     MuseDomainPlugin, LiveState, StateSnapshot,
     StateDelta, DriftReport, MergeResult, DomainSchema,

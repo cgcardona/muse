@@ -16,7 +16,6 @@ Output
     artifacts/tour_de_force.json   — structured event log + DAG
     artifacts/demo.html            — shareable visualization
 """
-from __future__ import annotations
 
 import argparse
 import json
