@@ -12,6 +12,8 @@ This directory contains the complete documentation for Muse — a domain-agnosti
 |-------------|-----------|
 | Understand the full architecture | [Architecture Reference](architecture/muse-vcs.md) |
 | Browse the CLI command tiers | [CLI Tiers Reference](reference/cli-tiers.md) |
+| See all MIDI semantic commands | [MIDI Domain Reference](reference/midi-domain.md) |
+| See all Code semantic commands | [Code Domain Reference](reference/code-domain.md) |
 | Build a new domain plugin | [Plugin Authoring Guide](guide/plugin-authoring-guide.md) |
 | Learn CRDT semantics | [CRDT Reference](guide/crdt-reference.md) |
 | See an end-to-end walkthrough | [E2E Demo](architecture/muse-e2e-demo.md) |
@@ -58,6 +60,10 @@ docs/
 │   ├── cli-tiers.md              — three-tier CLI architecture: Tier 1 plumbing
 │   │                               (JSON, pipeable), Tier 2 porcelain (core VCS),
 │   │                               Tier 3 semantic (midi/code/coord namespaces)
+│   ├── midi-domain.md            — MIDI domain complete reference: all 31 semantic
+│   │                               porcelain commands, flags, JSON schemas, types
+│   ├── code-domain.md            — Code domain complete reference: all semantic
+│   │                               porcelain commands, symbol identity model, types
 │   ├── type-contracts.md         — single source of truth for every named type:
 │   │                               TypedDicts, dataclasses, Protocols, Enums,
 │   │                               and TypeAliases with Mermaid diagrams
@@ -68,9 +74,10 @@ docs/
 │                                   dotfile exclusion rules
 │
 └── demo/
-    └── demo-script.md            — narration script for the video demo covering
-                                    all nine acts: core VCS through CRDT semantics
-                                    and the live domain dashboard
+    ├── midi-demo.md              — MIDI domain demo walkthrough: all 31 semantic
+    │                               porcelain commands with CLI output examples
+    ├── demo-code.md              — Code domain demo walkthrough
+    └── demo-script.md            — narration script for the video demo
 ```
 
 ---
