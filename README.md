@@ -243,7 +243,7 @@ pip install -e ".[dev]"
 
 Core dependencies:
 
-- Python 3.11+
+- Python 3.13+
 - Typer (CLI)
 - mido (MIDI parsing, music plugin only)
 - toml
