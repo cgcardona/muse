@@ -1,4 +1,4 @@
-# Muse Music Plugin — Tour de Force
+# Muse MIDI Plugin — Demo
 
 > **Version control for music is not "track changes to audio files."**
 > **It is: version control that understands music.**

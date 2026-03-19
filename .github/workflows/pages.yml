@@ -34,7 +34,7 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Generate demo pages
-        run: python tools/tour_de_force.py
+        run: python tools/demo.py
 
       - name: Generate Domain Registry (also writes index.html)
         run: python tools/render_domain_registry.py

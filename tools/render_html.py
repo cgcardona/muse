@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Muse Tour de Force — HTML renderer.
+"""Muse Demo — HTML renderer.
 
-Takes the structured TourData dict produced by tour_de_force.py and renders
+Takes the structured DemoData dict produced by demo.py and renders
 a self-contained, shareable HTML file with an interactive D3 commit DAG,
 operation log, architecture diagram, and animated replay.
 
 Stand-alone usage
 -----------------
-    python tools/render_html.py artifacts/tour_de_force.json
-    python tools/render_html.py artifacts/tour_de_force.json --out custom.html
+    python tools/render_html.py artifacts/demo.json
+    python tools/render_html.py artifacts/demo.json --out custom.html
 """
 
 import json
@@ -1718,8 +1718,8 @@ def render(tour: dict, output_path: pathlib.Path) -> None:
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Render tour_de_force.json → HTML")
-    parser.add_argument("json_file", help="Path to tour_de_force.json")
+    parser = argparse.ArgumentParser(description="Render demo.json → HTML")
+    parser.add_argument("json_file", help="Path to demo.json")
     parser.add_argument("--out", default=None, help="Output HTML path")
     args = parser.parse_args()
 
