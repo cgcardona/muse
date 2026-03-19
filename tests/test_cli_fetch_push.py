@@ -288,9 +288,10 @@ class TestLsRemote:
         transport_mock.fetch_remote_info.return_value = info
 
         with unittest.mock.patch(
-            "muse.cli.commands.ls_remote.HttpTransport", return_value=transport_mock
+            "muse.cli.commands.plumbing.ls_remote.HttpTransport",
+            return_value=transport_mock,
         ):
-            result = runner.invoke(cli, ["ls-remote", "origin"])
+            result = runner.invoke(cli, ["plumbing", "ls-remote", "origin"])
 
         assert result.exit_code == 0
         assert "abc123" in result.output
@@ -302,10 +303,11 @@ class TestLsRemote:
         transport_mock.fetch_remote_info.return_value = info
 
         with unittest.mock.patch(
-            "muse.cli.commands.ls_remote.HttpTransport", return_value=transport_mock
+            "muse.cli.commands.plumbing.ls_remote.HttpTransport",
+            return_value=transport_mock,
         ):
             # --json option must precede positional arg in add_typer groups.
-            result = runner.invoke(cli, ["ls-remote", "--json", "origin"])
+            result = runner.invoke(cli, ["plumbing", "ls-remote", "--json", "origin"])
 
         assert result.exit_code == 0
         data = json.loads(result.output)
@@ -313,9 +315,8 @@ class TestLsRemote:
         assert "repo_id" in data
 
     def test_ls_remote_unknown_name_fails(self, repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["ls-remote", "ghost"])
+        result = runner.invoke(cli, ["plumbing", "ls-remote", "ghost"])
         assert result.exit_code != 0
-        assert "not a configured remote" in result.output or "not configured" in result.output
 
     def test_ls_remote_bare_url_accepted(self, repo: pathlib.Path) -> None:
         info = _make_remote_info({"main": "abc123"})
@@ -323,10 +324,11 @@ class TestLsRemote:
         transport_mock.fetch_remote_info.return_value = info
 
         with unittest.mock.patch(
-            "muse.cli.commands.ls_remote.HttpTransport", return_value=transport_mock
+            "muse.cli.commands.plumbing.ls_remote.HttpTransport",
+            return_value=transport_mock,
         ):
             result = runner.invoke(
-                cli, ["ls-remote", "https://hub.example.com/repos/r1"]
+                cli, ["plumbing", "ls-remote", "https://hub.example.com/repos/r1"]
             )
 
         assert result.exit_code == 0

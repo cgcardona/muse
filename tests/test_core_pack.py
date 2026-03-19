@@ -213,9 +213,9 @@ class TestApplyPack:
         (muse_dir / "snapshots").mkdir(parents=True)
         (muse_dir / "objects").mkdir(parents=True)
 
-        new_count = apply_pack(dest, bundle)
+        result = apply_pack(dest, bundle)
 
-        assert new_count == 1
+        assert result["objects_written"] == 1
         assert has_object(dest, oid)
         assert read_object(dest, oid) == content
         assert read_snapshot(dest, "snap1") is not None
@@ -230,9 +230,9 @@ class TestApplyPack:
 
         bundle = build_pack(repo, ["c1"])
         apply_pack(repo, bundle)
-        new_count = apply_pack(repo, bundle)
+        result = apply_pack(repo, bundle)
 
-        assert new_count == 0  # All already present.
+        assert result["objects_written"] == 0  # All already present.
 
     def test_malformed_object_skipped(self, repo: pathlib.Path) -> None:
         bundle: PackBundle = {
@@ -240,13 +240,13 @@ class TestApplyPack:
             "snapshots": [],
             "objects": [ObjectPayload(object_id="abc123", content_b64="NOT_VALID_BASE64!!!")],
         }
-        new_count = apply_pack(repo, bundle)
-        assert new_count == 0
+        result = apply_pack(repo, bundle)
+        assert result["objects_written"] == 0
 
     def test_empty_bundle_is_noop(self, repo: pathlib.Path) -> None:
         bundle: PackBundle = {}
-        new_count = apply_pack(repo, bundle)
-        assert new_count == 0
+        result = apply_pack(repo, bundle)
+        assert result["objects_written"] == 0
 
     def test_apply_preserves_commit_metadata(
         self, repo: pathlib.Path, tmp_path: pathlib.Path
@@ -282,5 +282,5 @@ class TestApplyPack:
         (dest / ".muse" / "snapshots").mkdir(parents=True)
         (dest / ".muse" / "objects").mkdir(parents=True)
 
-        count = apply_pack(dest, bundle)
-        assert count == 2
+        result = apply_pack(dest, bundle)
+        assert result["objects_written"] == 2

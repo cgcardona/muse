@@ -177,7 +177,7 @@ def clone(
         shutil.rmtree(target, ignore_errors=True)
         raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
 
-    new_objects = apply_pack(target, bundle)
+    apply_result = apply_pack(target, bundle)
 
     # Write branch head refs for every remote branch.
     for b, cid in info["branch_heads"].items():
@@ -196,6 +196,6 @@ def clone(
     commits_received = len(bundle.get("commits") or [])
     typer.echo(
         f"✅ Cloned into '{target_name}' — "
-        f"{commits_received} commit(s), {new_objects} object(s), "
+        f"{commits_received} commit(s), {apply_result['objects_written']} object(s), "
         f"domain={domain}, branch={default_branch} ({default_commit_id[:8]})"
     )

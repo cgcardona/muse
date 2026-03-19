@@ -97,6 +97,19 @@ class FetchRequest(TypedDict, total=False):
     have: list[str]
 
 
+class ApplyResult(TypedDict):
+    """Counts returned by :func:`apply_pack` describing what was written.
+
+    ``objects_skipped`` counts blobs already present in the store (not
+    rewritten, idempotent).  All other counts reflect *new* writes only.
+    """
+
+    commits_written: int
+    snapshots_written: int
+    objects_written: int
+    objects_skipped: int
+
+
 # ---------------------------------------------------------------------------
 # Pack building
 # ---------------------------------------------------------------------------
@@ -195,7 +208,7 @@ def build_pack(
 # ---------------------------------------------------------------------------
 
 
-def apply_pack(repo_root: pathlib.Path, bundle: PackBundle) -> int:
+def apply_pack(repo_root: pathlib.Path, bundle: PackBundle) -> ApplyResult:
     """Write the contents of *bundle* into a local ``.muse/`` directory.
 
     Writes in dependency order: objects first (blobs), then snapshots (which
@@ -207,9 +220,12 @@ def apply_pack(repo_root: pathlib.Path, bundle: PackBundle) -> int:
         bundle:    :class:`PackBundle` received from the remote.
 
     Returns:
-        Count of *new* objects written.  Already-present objects are not counted.
+        :class:`ApplyResult` with counts of newly written and skipped items.
     """
-    new_object_count = 0
+    objects_written = 0
+    objects_skipped = 0
+    snapshots_written = 0
+    commits_written = 0
 
     for obj in bundle.get("objects") or []:
         oid = obj.get("object_id", "")
@@ -223,26 +239,40 @@ def apply_pack(repo_root: pathlib.Path, bundle: PackBundle) -> int:
             logger.warning("⚠️ apply_pack: bad base64 for %s: %s", oid[:8], exc)
             continue
         if write_object(repo_root, oid, raw):
-            new_object_count += 1
+            objects_written += 1
+        else:
+            objects_skipped += 1
 
     for snap_dict in bundle.get("snapshots") or []:
         try:
             snap = SnapshotRecord.from_dict(snap_dict)
+            is_new = read_snapshot(repo_root, snap.snapshot_id) is None
             write_snapshot(repo_root, snap)
+            if is_new:
+                snapshots_written += 1
         except (KeyError, ValueError) as exc:
             logger.warning("⚠️ apply_pack: malformed snapshot — skipped: %s", exc)
 
     for commit_dict in bundle.get("commits") or []:
         try:
             commit = CommitRecord.from_dict(commit_dict)
+            is_new = read_commit(repo_root, commit.commit_id) is None
             write_commit(repo_root, commit)
+            if is_new:
+                commits_written += 1
         except (KeyError, ValueError) as exc:
             logger.warning("⚠️ apply_pack: malformed commit — skipped: %s", exc)
 
     logger.info(
-        "✅ Applied pack: %d new objects, %d snapshots, %d commits",
-        new_object_count,
-        len(bundle.get("snapshots") or []),
-        len(bundle.get("commits") or []),
+        "✅ Applied pack: %d new blobs, %d new snapshots, %d new commits (%d blobs skipped)",
+        objects_written,
+        snapshots_written,
+        commits_written,
+        objects_skipped,
     )
-    return new_object_count
+    return ApplyResult(
+        commits_written=commits_written,
+        snapshots_written=snapshots_written,
+        objects_written=objects_written,
+        objects_skipped=objects_skipped,
+    )
