@@ -22,7 +22,7 @@ Storage layout::
 
     .muse/music_manifests/
         <snapshot_id>.json     — full MusicManifest for this snapshot
-        (rebuildable from history; add to .museignore in CI)
+        (rebuildable from history; add to .museignore [domain.midi] in CI)
 
 Public API
 ----------

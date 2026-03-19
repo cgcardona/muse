@@ -68,8 +68,15 @@ the raw strings never appear in the identity record.
 
 Agent keys live at `.muse/keys/<agent_id>-<fingerprint>.key` as hex-encoded
 files.  Multiple agents can coexist; each has its own key file keyed by
-`agent_id`.  Key files should be added to `.museignore` and managed
-separately from the repository content.
+`agent_id`.  Key files should be added to the ``[global]`` section of
+`.museignore` (TOML format) and managed separately from repository content:
+
+```toml
+[global]
+patterns = [
+    ".muse/keys/",
+]
+```
 
 ## Querying provenance
 

@@ -33,8 +33,9 @@ Entity indexes live under ``.muse/entity_index/`` as derived artifacts:
 
     .muse/entity_index/<commit_id>/<track_safe_name>.json
 
-They are fully rebuildable from commit history and should be added to
-``.museignore`` in agent automation scripts to avoid accidental commits.
+They are fully rebuildable from commit history and should be added to the
+``[domain.midi]`` section of ``.museignore`` in agent automation scripts
+to avoid accidental commits.
 
 Public API
 ----------
