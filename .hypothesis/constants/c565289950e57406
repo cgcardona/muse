@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/domains.py
-# hypothesis_version: 6.151.9
-
-['*.py', '--json', '--new', '.muse', 'CRDT', 'Domain Schema', 'NAME', 'Next steps:', 'OT Merge', 'Plugin', 'ScaffoldPlugin', 'Typed Deltas', '_', 'active', 'capabilities', 'description', 'dimensions', 'domain', 'false', 'kind', 'merge_mode', 'midi', 'name', 'plugins', 'repo.json', 'scaffold', 'schema', 'schema_version', 'top_level', 'true', '─', '═', '╔', '╗', '╚', '╝', '○', '●']

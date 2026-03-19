@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/clones.py
-# hypothesis_version: 6.151.9
-
-['--commit', '--json', '--kind', '--min-cluster', '--tier', '-c', '-k', '-m', '-t', '.muse', '::', 'HEAD', 'KIND', 'N', 'REF', 'address', 'body_hash', 'both', 'clusters', 'commit', 'content_id', 'count', 'exact', 'exact_clone_clusters', 'hash', 'import', 'kind', 'kind_filter', 'language', 'members', 'min_cluster', 'near', 'near_clone_clusters', 'refs/heads/', 'repo.json', 'repo_id', 'schema_version', 'signature_id', 'tier', '─']

@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/core/query_engine.py
-# hypothesis_version: 6.151.9
-
-[500, '.muse', '?', 'No matches found.', 'agent_id', 'author', 'commit_id', 'committed_at', 'detail', 'heads', 'refs', 'unknown']

@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/core/op_log.py
-# hypothesis_version: 6.151.9
-
-[',', ', ', '.muse/op_log', ':', 'a', 'actor_id', 'checkpoint.json', 'domain', 'domain_op', 'lamport_ts', 'no ops', 'op', 'ops.jsonl', 'unknown']

@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/note_blame.py
-# hypothesis_version: 6.151.9
-
-['%Y-%m-%d', '--bar', '--from', '--json', '-b', '.muse', 'HEAD', 'N', 'REF', 'TRACK', 'address', 'bar', 'beat_duration', 'beat_in_bar', 'channel', 'child_ops', 'content_id', 'insert', 'introduced_by', 'note', 'notes', 'op', 'ops', 'patch', 'pitch_name', 'refs/heads/', 'repo.json', 'repo_id', 'track', 'unknown', 'velocity']

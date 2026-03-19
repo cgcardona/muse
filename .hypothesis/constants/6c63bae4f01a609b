@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/plugins/scaffold/plugin.py
-# hypothesis_version: 6.151.9
-
-['*.scaffold', 'address', 'by_content', 'by_position', 'crdt_state', 'files', 'label', 'labels', 'lcs', 'metadata', 'ops', 'or_set', 'primary', 'record', 'scaffold', 'sequence', 'set', 'summary', 'three_way', 'vclock', '{}']

@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/forecast.py
-# hypothesis_version: 6.151.9
-
-[0.5, 0.75, 0.9, 1.0, '--branch', '--json', '-b', '.muse', 'BRANCH', 'HEAD', 'active_reservations', 'address_overlap', 'addresses', 'agents', 'blast_radius_overlap', 'branch_filter', 'confidence', 'conflict_type', 'conflicts', 'delete', 'description', 'extract', 'high_risk', 'intents', 'low_risk', 'medium_risk', 'modify', 'operation_conflict', 'refs/heads/', 'rename', 'repo.json', 'repo_id', 'schema_version', '─', '⚠️ ', '🔴']

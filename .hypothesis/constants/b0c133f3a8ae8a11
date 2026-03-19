@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/annotate.py
-# hypothesis_version: 6.151.9
-
-[',', '--reviewed-by', '--test-run', '.muse', 'HEAD', 'refs/heads/', '❌ No commit found.']

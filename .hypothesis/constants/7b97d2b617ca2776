@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/plugins/midi/midi_diff.py
-# hypothesis_version: 6.151.9
-
-[480, ', ', 'A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'EntityIndex | None', 'F', 'F#', 'G', 'G#', 'base', 'channel', 'delete', 'duration_ticks', 'insert', 'keep', 'midi_notes', 'midi_notes_tracked', 'mutate', 'no note changes', 'note_off', 'note_on', 'op', 'pitch', 'start_tick', 'velocity']

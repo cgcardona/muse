@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/core/diff_algorithms/__init__.py
-# hypothesis_version: 6.151.9
-
-[', ', 'DiffInput', 'MapInput', 'SequenceInput', 'SetInput', 'TensorInput', 'TreeInput', 'TreeNode', 'by_content', 'by_key', 'content_hash', 'delete', 'diff_by_schema', 'domain', 'entries', 'file_path', 'files', 'insert', 'items', 'key_type', 'kind', 'map', 'no changes', 'op', 'replace', 'root', 'sequence', 'set', 'snapshot_diff', 'tensor', 'tree', 'values']

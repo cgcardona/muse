@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/core/crdts/aw_map.py
-# hypothesis_version: 6.151.9
-
-['entries', 'key', 'token', 'tombstones', 'value']

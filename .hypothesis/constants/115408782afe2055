@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/core/schema.py
-# hypothesis_version: 6.151.9
-
-['aw_map', 'block', 'by_content', 'by_id', 'by_key', 'by_position', 'crdt', 'float32', 'float64', 'full', 'g_counter', 'gumtree', 'int16', 'int32', 'int64', 'int8', 'lcs', 'lww_register', 'map', 'myers', 'or_set', 'patience', 'rga', 'sequence', 'set', 'sparse', 'tensor', 'three_way', 'tree', 'zhang_shasha']

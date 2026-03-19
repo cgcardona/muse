@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/checkout_symbol.py
-# hypothesis_version: 6.151.9
-
-['--commit', '--dry-run', '-c', '.muse', '::', 'ADDRESS', 'HEAD', 'REF', 'current', 'end_lineno', 'historical', 'lineno', 'refs/heads/', 'replace', 'repo.json', 'repo_id', 'utf-8']

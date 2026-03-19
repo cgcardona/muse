@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/plugins/code/_refactor_classify.py
-# hypothesis_version: 6.151.9
-
-[0.0, 0.5, 1.0, '::', 'body_hash', 'confidence', 'content_id', 'evidence', 'exact_classification', 'extract', 'full_rewrite', 'impl_only', 'inferred_refactor', 'inline', 'kind', 'merge', 'metadata_id', 'metadata_only', 'move', 'name', 'new_address', 'new_body_hash', 'new_content_id', 'new_kind', 'new_signature_id', 'none', 'old_address', 'old_body_hash', 'old_content_id', 'old_kind', 'old_signature_id', 'qualified_name', 'rename', 'rename+move', 'signature_id', 'signature_only', 'split', 'unchanged']

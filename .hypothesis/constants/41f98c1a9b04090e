@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/core/coordination.py
-# hypothesis_version: 6.151.9
-
-[3600, '*.json', '.muse', 'Intent', 'Reservation', 'addresses', 'branch', 'coordination', 'created_at', 'detail', 'expires_at', 'intent_id', 'intents', 'operation', 'reservation_id', 'reservations', 'run_id', 'schema_version']

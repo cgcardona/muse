@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/mix.py
-# hypothesis_version: 6.151.9
-
-['(empty)', '--channel-a', '--channel-b', '--dry-run', '--output', '-n', '-o', 'N', 'OUTPUT', 'TRACK-A', 'TRACK-B', 'muse-work']

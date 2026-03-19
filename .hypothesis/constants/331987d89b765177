@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/plugins/midi/_query.py
-# hypothesis_version: 6.151.9
-
-[-999.0, 2.23, 2.29, 2.33, 2.39, 2.52, 2.54, 2.6, 2.68, 2.69, 2.88, 3.17, 3.34, 3.48, 3.52, 3.53, 3.66, 3.98, 4.09, 4.38, 4.75, 5.19, 5.38, 6.33, 6.35, 10000, '5', '??', 'A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'NoteInfo', 'aug', 'channel', 'dim', 'dim7', 'dom7', 'duration_ticks', 'maj', 'maj7', 'major', 'min', 'min7', 'minor', 'muse-work', 'pitch', 'start_tick', 'sus2', 'sus4', 'unknown', 'velocity']

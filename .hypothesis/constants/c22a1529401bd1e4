@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/plugins/midi/plugin.py
-# hypothesis_version: 6.151.9
-
-[0.5, 65536, '*', ',', ', ', '.', '.mid', ':', 'Key signature events', 'address', 'audio_file', 'by_content', 'by_position', 'cc_chorus', 'cc_expression', 'cc_modulation', 'cc_other', 'cc_pan', 'cc_portamento', 'cc_reverb', 'cc_soft_pedal', 'cc_sostenuto', 'cc_sustain', 'cc_volume', 'channel_pressure', 'child_ops', 'content_id', 'delete', 'dimension-merge', 'domain', 'files', 'float32', 'insert', 'key_signatures', 'lcs', 'manual', 'markers', 'meta_event', 'midi', 'new_content_id', 'no changes', 'note_event', 'notes', 'op', 'ops', 'ours', 'patch', 'pitch_bend', 'poly_pressure', 'program_change', 'rb', 'replace', 'sequence', 'set', 'sparse', 'summary', 'tempo_map', 'tensor', 'theirs', 'three_way', 'time_signatures', 'track_node', 'track_structure', 'tree', 'working tree clean', 'zhang_shasha']

@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/check.py
-# hypothesis_version: 6.151.9
-
-['--json', '--rules', '--strict', '.muse', 'HEAD', 'code', 'has_errors', 'midi', 'refs/heads/', '❌ No commit found.']

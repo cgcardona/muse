@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/checkout.py
-# hypothesis_version: 6.151.9
-
-['--create', '--force', '-b', '-f', '.muse', 'Create a new branch.', 'HEAD', 'address', 'delete', 'heads', 'insert', 'muse-work', 'op', 'ops', 'patch', 'refs', 'refs/heads/', 'replace', 'repo.json', 'repo_id']

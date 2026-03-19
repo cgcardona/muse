@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/midi_query.py
-# hypothesis_version: 6.151.9
-
-[100, '--from', '--json', '--max-results', '--to', '--track', '-f', '-n', '-t', '.muse', 'COMMIT', 'HEAD', 'N', 'No matches found.', 'PATH', 'QUERY', 'midi-query', 'notes', 'refs/heads/', '~']

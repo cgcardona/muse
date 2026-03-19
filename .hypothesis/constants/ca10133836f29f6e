@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/semantic_cherry_pick.py
-# hypothesis_version: 6.151.9
-
-['--dry-run', '--from', '--json', '.muse', '::', 'ADDRESS...', 'Dry-run', 'HEAD', 'REF', 'Semantic cherry-pick', 'address', 'already_current', 'applied', 'content identical', 'content_id', 'created file', 'detail', 'dry_run', 'end_lineno', 'failed', 'file_missing', 'from_commit', 'lineno', 'new_lines', 'not_found', 'old_lines', 'parse_error', 'refs/heads/', 'replace', 'repo.json', 'repo_id', 'results', 'status', 'utf-8', 'ℹ️ ', '─', '✅', '❌']

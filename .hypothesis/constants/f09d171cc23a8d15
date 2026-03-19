@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/midi_check.py
-# hypothesis_version: 6.151.9
-
-[', ', '--json', '--rules', '--strict', '--track', '-r', '-t', '.muse', 'COMMIT', 'FILE', 'HEAD', 'PATH', 'bar', 'error', 'has_errors', 'info', 'midi-check', 'midi_invariants.toml', 'refs/heads/', 'severity', 'track', 'violations', 'warning', '•', 'ℹ️', '⚠️', '❌']

@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/core/diff_algorithms/tree_edit.py
-# hypothesis_version: 6.151.9
-
-[', ', 'delete', 'insert', 'keep', 'move', 'op', 'replace']

@@ -30,3 +30,4 @@ artifacts/
 # Muse repo state — created when tests or the CLI run inside the source tree.
 # The source repo is not itself a Muse-managed repo.
 .muse/
+.hypothesis/

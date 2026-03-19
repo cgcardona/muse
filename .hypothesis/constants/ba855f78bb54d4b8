@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/detect_refactor.py
-# hypothesis_version: 6.151.9
-
-['--from', '--json', '--kind', '--to', '-k', '.muse', 'HEAD', 'IMPLEMENTATION', 'KIND', 'MOVE          ', 'REF', 'RENAME        ', 'SIGNATURE     ', 'address', 'child_ops', 'commit_id', 'commit_message', 'committed_at', 'content_summary', 'delete', 'detail', 'events', 'from', 'implementation', 'initial commit', 'kind', 'move', 'moved to', 'moved to ', 'new_summary', 'old_summary', 'op', 'ops', 'patch', 'refs/heads/', 'rename', 'renamed to ', 'replace', 'repo.json', 'repo_id', 'schema_version', 'signature', 'to', 'total', '─']

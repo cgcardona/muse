@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/find_symbol.py
-# hypothesis_version: 6.151.9
-
-['%Y-%m-%d', '*', '--all-branches', '--first', '--hash', '--json', '--kind', '--name', '-k', '-n', '.', '.muse', '::', 'HASH', 'KIND', 'NAME', 'address', 'appearances', 'branch', 'branch_presence', 'child_ops', 'commit_id', 'commit_message', 'commits', 'committed_at', 'content_id', 'content_summary', 'first_only', 'function', 'hash', 'heads', 'insert', 'kind', 'manifest', 'name', 'op', 'ops', 'patch', 'query', 'refs', 'repo.json', 'repo_id', 'snapshot_id', 'snapshots', '─']

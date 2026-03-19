@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/plugins/code/_callgraph.py
-# hypothesis_version: 6.151.9
-
-['.', '.py', '.pyi', '::', 'async_function', 'async_method', 'function', 'kind', 'method', 'qualified_name']

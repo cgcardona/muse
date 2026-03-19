@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/log.py
-# hypothesis_version: 6.151.9
-
-[365, 1000, '%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '(no commits)', '--author', '--emotion', '--graph', '--max-count', '--oneline', '--patch', '--section', '--since', '--stat', '--track', '--until', '-n', '-p', '.muse', 'ASCII graph.', 'Filter by author.', 'HEAD', 'One line per commit.', 'Show file diff.', 'day', 'emotion', 'month', 'none', 'refs/heads/', 'repo.json', 'repo_id', 'section', 'today', 'track', 'week', 'year', 'yesterday']

@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/core/invariants.py
-# hypothesis_version: 6.151.9
-
-['[error]', '[info] ', '[warn] ', 'address', 'error', 'info', 'rule', 'rule_name', 'rules_checked', 'severity', 'violations', 'warning', 'ℹ️ ', '⚠️ ', '❌']

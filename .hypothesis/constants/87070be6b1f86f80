@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/cherry_pick.py
-# hypothesis_version: 6.151.9
-
-['--no-commit', '-n', '.muse', 'Commit ID to apply.', 'HEAD', 'files', 'heads', 'muse-work', 'refs', 'refs/heads/', 'repo.json', 'repo_id']

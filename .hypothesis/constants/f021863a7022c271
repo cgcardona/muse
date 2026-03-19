@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/shard.py
-# hypothesis_version: 6.151.9
-
-['--agents', '--commit', '--json', '--language', '-c', '-l', '-n', '.', '.muse', 'HEAD', 'LANG', 'N', 'REF', 'Use this commit.', 'agents', 'commit', 'coupling_score', 'cross_shard_edges', 'files', 'import', 'import::', 'kind', 'qualified_name', 'refs/heads/', 'repo.json', 'repo_id', 'schema_version', 'shard', 'shards', 'shards_created', 'symbol_count', '─']

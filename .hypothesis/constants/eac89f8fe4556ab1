@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/index_rebuild.py
-# hypothesis_version: 6.151.9
-
-['\nLocal index status:', '--index', '--verbose', '-i', '-v', '.muse', '0', '::', 'HEAD', 'NAME', 'Show progress.', 'absent', 'address', 'body_hash', 'child_ops', 'content_id', 'delete', 'entries', 'hash_occurrence', 'heads', 'import', 'index', 'insert', 'kind', 'name', 'new_content_id', 'op', 'ops', 'patch', 'present', 'rebuild', 'refs', 'refs/heads/', 'replace', 'signature_id', 'status', 'symbol_history', 'updated_at', '─']

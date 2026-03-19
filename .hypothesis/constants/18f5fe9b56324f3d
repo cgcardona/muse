@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/tag.py
-# hypothesis_version: 6.151.9
-
-['.muse', 'HEAD', 'List tags.', 'add', 'list', 'refs/heads/', 'remove', 'repo.json', 'repo_id']

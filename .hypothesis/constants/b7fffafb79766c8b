@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/symbols.py
-# hypothesis_version: 6.151.9
-
-['--commit', '--count', '--file', '--hashes', '--json', '--kind', '-c', '-f', '-k', '.c', '.cc', '.cjs', '.cpp', '.cs', '.cxx', '.go', '.h', '.hpp', '.hxx', '.java', '.js', '.jsx', '.kt', '.kts', '.mjs', '.muse', '.py', '.pyi', '.rb', '.rs', '.ts', '.tsx', 'C', 'C#', 'C++', 'Go', 'HEAD', 'Java', 'JavaScript', 'KIND', 'Kotlin', 'PATH', 'Python', 'REF', 'Ruby', 'Rust', 'TypeScript', 'address', 'async_function', 'async_method', 'body_hash', 'class', 'content_id', 'end_lineno', 'fn', 'fn~', 'function', 'import', 'kind', 'lineno', 'method', 'method~', 'name', 'qualified_name', 'refs/heads/', 'repo.json', 'repo_id', 'signature_id', 'var', 'variable']

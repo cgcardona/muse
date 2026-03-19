@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/commit.py
-# hypothesis_version: 6.151.9
-
-['--allow-empty', '--author', '--emotion', '--message', '--section', '--track', '-m', '.muse', 'Commit message.', 'HEAD', 'breaking_changes', 'emotion', 'files', 'muse-work', 'none', 'refs/heads/', 'repo.json', 'repo_id', 'section', 'sem_ver_bump', 'track']

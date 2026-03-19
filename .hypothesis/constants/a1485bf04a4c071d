@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/branch.py
-# hypothesis_version: 6.151.9
-
-['(empty)', '*', '* ', '--all', '--delete', '--verbose', '-a', '-d', '-v', '.muse', 'Delete a branch.', 'HEAD', 'List all branches.', 'heads', 'refs', 'refs/heads/']

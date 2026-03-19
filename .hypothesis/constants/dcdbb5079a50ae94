@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/symbol_log.py
-# hypothesis_version: 6.151.9
-
-[500, '%Y-%m-%d', '--from', '--json', '--max', '.muse', '::', 'ADDRESS', 'HEAD', 'N', 'REF', 'address', 'child_ops', 'commit_id', 'committed_at', 'content_summary', 'created', 'delete', 'deleted', 'detail', 'event', 'implementation', 'insert', 'message', 'modified', 'moved', 'moved to', 'moved to ', 'new_address', 'new_summary', 'op', 'ops', 'patch', 'refs/heads/', 'renamed', 'renamed to ', 'replace', 'repo.json', 'repo_id', 'signature', '─']

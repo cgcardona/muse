@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/plan_merge.py
-# hypothesis_version: 6.151.9
-
-['--json', '.muse', '::', 'HEAD', 'OURS', 'Our commit/branch.', 'THEIRS', 'Their commit/branch.', 'absent', 'added', 'address', 'apply ours (delete)', 'apply ours (insert)', 'auto-merge', 'body_hash', 'clean', 'conflict_type', 'conflicts', 'content_id', 'deleted', 'full_rewrite', 'impl_only', 'items', 'name', 'no change', 'no_conflict', 'nothing to merge', 'ours', 'ours_change', 'overlap', 'recommendation', 'refs/heads/', 'rename+modify', 'rename_edit', 'repo.json', 'repo_id', 'same', 'schema_version', 'signature_id', 'signature_only', 'symbol_edit_overlap', 'theirs', 'theirs_change', 'total_symbols', 'unchanged', '─', '⚠️ ', '🔴']

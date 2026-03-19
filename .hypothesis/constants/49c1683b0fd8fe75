@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/plugins/code/_invariants.py
-# hypothesis_version: 6.151.9
-
-[0.3, 100, ' → ', ', ', '.', '.py', '.pyi', '/', '::', '\\', '_', '__all__', '__init__.py', '_test.py', 'code', 'complexity_gate', 'dead_exports', 'error', 'file', 'function', 'global', 'info', 'main', 'max_complexity', 'min_ratio', 'name', 'no importers found', 'no_circular_imports', 'no_cycles', 'no_dead_exports', 'params', 'repo', 'rule_type', 'scope', 'severity', 'test_', 'test_coverage_floor', 'threshold', 'unnamed', 'warning', '…']

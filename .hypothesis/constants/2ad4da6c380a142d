@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/domain.py
-# hypothesis_version: 6.151.9
-
-['.', '::', 'CRDTPlugin', 'CRDTSnapshotManifest', 'ConflictRecord', 'DeleteOp', 'DomainAddress', 'DomainOp', 'DriftReport', 'EntityProvenance', 'FieldMutation', 'InsertOp', 'LeafDomainOp', 'LiveState', 'MergeResult', 'MoveOp', 'MuseDomainPlugin', 'MutateOp', 'PatchOp', 'ReplaceOp', 'SemVerBump', 'SnapshotManifest', 'StateDelta', 'StateSnapshot', 'StructuredDelta', '_', 'address', 'addresses', 'child_ops', 'conflict_type', 'delete', 'domain', 'file_level', 'implementation', 'infer_sem_ver_bump', 'insert', 'major', 'minor', 'move', 'mutate', 'new_summary', 'none', 'old_summary', 'op', 'ops', 'ours_summary', 'patch', 'path', 'renamed to ', 'replace', 'signature', 'summary', 'theirs_summary', 'working tree clean']

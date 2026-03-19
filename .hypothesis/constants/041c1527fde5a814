@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/coupling.py
-# hypothesis_version: 6.151.9
-
-['--from', '--json', '--min', '--to', '--top', '-n', '.muse', 'HEAD', 'N', 'REF', 'co_changes', 'commit', 'commits', 'commits_analysed', 'file_a', 'file_b', 'ops', 'pairs', 'refs/heads/', 'repo.json', 'repo_id']

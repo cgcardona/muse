@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/app.py
-# hypothesis_version: 6.151.9
-
-['__main__', 'annotate', 'api-surface', 'attributes', 'blame', 'branch', 'breakage', 'check', 'checkout', 'checkout-symbol', 'cherry-pick', 'clones', 'code-check', 'code-query', 'codemap', 'commit', 'compare', 'coupling', 'coverage', 'dead', 'deps', 'detect-refactor', 'diff', 'domains', 'find-symbol', 'forecast', 'grep', 'harmony', 'hotspots', 'impact', 'index', 'init', 'intent', 'invariants', 'languages', 'lineage', 'log', 'merge', 'midi-check', 'midi-query', 'mix', 'muse', 'note-blame', 'note-hotspots', 'note-log', 'notes', 'patch', 'piano-roll', 'plan-merge', 'query', 'query-history', 'reconcile', 'reserve', 'reset', 'revert', 'semantic-cherry-pick', 'shard', 'show', 'stable', 'stash', 'status', 'symbol-log', 'symbols', 'tag', 'transpose', 'velocity-profile']

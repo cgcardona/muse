@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/note_log.py
-# hypothesis_version: 6.151.9
-
-['  (removed)', '  +', '  -', '%Y-%m-%d', '+', '-', '--from', '--json', '--max', '-n', '.muse', 'HEAD', 'N', 'REF', 'TRACK', 'address', 'author', 'changes', 'child_ops', 'commit_id', 'content_summary', 'date', 'delete', 'events', 'insert', 'message', 'note', 'op', 'ops', 'patch', 'refs/heads/', 'repo.json', 'repo_id', 'track', 'unknown']

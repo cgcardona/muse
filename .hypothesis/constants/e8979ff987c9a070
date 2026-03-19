@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/cli/commands/notes.py
-# hypothesis_version: 6.151.9
-
-['--bar', '--channel', '--commit', '--json', '-C', '-b', '-c', '.muse', 'HEAD', 'N', 'REF', 'TRACK', 'bar', 'beat', 'beat_duration', 'beat_in_bar', 'channel', 'commit', 'duration_ticks', 'notes', 'pitch', 'pitch_name', 'refs/heads/', 'repo.json', 'repo_id', 'start_tick', 'track', 'velocity', 'working tree', '─']

@@ -1,4 +1,0 @@
-# file: /Users/gabriel/muse/muse/core/indices.py
-# hypothesis_version: 6.151.9
-
-['.muse', '0', 'SymbolHistoryEntry', 'absent', 'body_hash', 'commit_id', 'committed_at', 'content_id', 'corrupt', 'entries', 'hash_occurrence', 'index', 'indices', 'name', 'op', 'present', 'schema_version', 'signature_id', 'status', 'symbol_history', 'unknown', 'updated_at']
