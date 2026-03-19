@@ -143,8 +143,17 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:0 20px
 #heatmap-svg{display:block}
 
 /* ── CLI REFERENCE ── */
-.cli-section{max-width:1400px;margin:0 auto;padding:0 14px 40px}
-.cli-section h2{font-size:16px;font-weight:600;margin-bottom:14px;color:var(--accent)}
+.cli-section{max-width:1400px;margin:0 auto;padding:0 14px 60px}
+.cli-section>h2{font-size:16px;font-weight:600;margin-bottom:20px;color:var(--accent)}
+.cli-group-section{margin-bottom:32px}
+.cli-group-hd{display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:6px 12px;
+  background:rgba(255,255,255,0.025);border:1px solid var(--border);border-radius:7px}
+.cli-group-icon{font-size:14px}
+.cli-group-label{font-size:12px;font-weight:700;color:var(--text);letter-spacing:.02em}
+.cli-group-desc{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace}
+.cli-group-count{font-size:9px;color:var(--accent);background:rgba(51,221,255,.08);
+  border:1px solid rgba(51,221,255,.18);padding:1px 7px;border-radius:10px;
+  font-family:'JetBrains Mono',monospace;margin-left:auto;white-space:nowrap}
 .cli-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
 .cli-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px 14px}
 .cli-cmd{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent);margin-bottom:4px}
@@ -296,7 +305,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:0 20px
 <!-- CLI REFERENCE -->
 <div class="cli-section">
   <h2>muse midi — Semantic Porcelain Commands</h2>
-  <div class="cli-grid" id="cli-grid"></div>
+  <div id="cli-groups"></div>
 </div>
 
 <script>
@@ -1048,162 +1057,433 @@ const CmdLog = (() => {
 })();
 
 // ═══════════════════════════════════════════════════════════════
-// CLI REFERENCE
+// CLI REFERENCE — all 31 semantic porcelain commands, 8 groups
 // ═══════════════════════════════════════════════════════════════
 (function buildCLI() {
-  const commands = [
-    { cmd:'muse midi notes <track>',
-      desc:'List every note in a MIDI track as musical notation.',
-      flags:['--ref <sha>       read from a historical commit instead of working tree',
-             '--bar <N>         filter to notes in bar N (1-indexed, 4/4 time)',
-             '--channel <N>     filter to MIDI channel N (0-based)',
-             '--json            emit results as JSON'],
-      ret:'Pitch · velocity · start · duration for each note',
-      example:`<span class="ex-cmd">$ muse midi notes tracks/bass.mid --bar 3</span>
+
+  const GROUPS = [
+
+    // ── GROUP 1 ─────────────────────────────────────────────────
+    { icon:'🎹', label:'Notation & Visualization', desc:'What does the music look like?', commands: [
+      { cmd:'muse midi notes <track>',
+        desc:'List every note in a MIDI track as musical notation.',
+        flags:['--commit <sha>    read from a historical commit instead of working tree',
+               '--bar <N>         filter to notes in bar N (1-indexed, 4/4 time)',
+               '--channel <N>     filter to MIDI channel N (0-based)',
+               '--json            emit results as JSON'],
+        ret:'Pitch · velocity · start · duration for each note',
+        example:`<span class="ex-cmd">$ muse midi notes tracks/bass.mid --bar 3</span>
 <span class="ex-dim">bar 3  ch 0</span>
   <span class="ex-ok">E2</span>   vel=92  start=8.00s  dur=0.31s
   <span class="ex-ok">G2</span>   vel=80  start=8.25s  dur=0.18s
   <span class="ex-ok">B2</span>   vel=88  start=8.50s  dur=0.31s
   <span class="ex-ok">E3</span>   vel=95  start=8.75s  dur=0.62s
 <span class="ex-dim">4 notes · 1 channel · Em pentatonic</span>` },
-    { cmd:'muse midi note-log <track>',
-      desc:'Note-level commit history — which notes were added or removed in each commit.',
-      flags:['--from <sha>      start walking from this commit (default: HEAD)',
-             '--max <N>         maximum number of commits to walk (default: 50)',
-             '--json            emit results as JSON'],
-      ret:'Per-commit note diff: pitches added and removed',
-      example:`<span class="ex-cmd">$ muse midi note-log tracks/drums.mid --max 3</span>
-<span class="ex-dim">3f0b5c8d</span>  Groove: hi-hat 16ths, ghost snares
-  <span class="ex-ok">+</span> F#1 ×16  <span class="ex-ok">+</span> D2 ×4  <span class="ex-ok">+</span> C2 ×2 <span class="ex-dim">(ghost)</span>
-<span class="ex-dim">2d9e1a47</span>  Foundation: kick+snare groove
-  <span class="ex-ok">+</span> C2 ×4  <span class="ex-ok">+</span> D2 ×2
-<span class="ex-dim">1b3c8f02</span>  Foundation: 4/4, 96 BPM, Em key
-  <span class="ex-dim">— no note changes (metadata only)</span>` },
-    { cmd:'muse midi note-blame <track>',
-      desc:'Per-bar attribution — which commit introduced the notes in each bar?',
-      flags:['--bar <N>         bar number to inspect (1-indexed, 4/4 time)',
-             '--from <sha>      start search from this commit (default: HEAD)',
-             '--json            emit results as JSON'],
-      ret:'SHA · author · message for each note in the bar',
-      example:`<span class="ex-cmd">$ muse midi note-blame tracks/bass.mid --bar 5</span>
-<span class="ex-dim">bar 5 · 4 notes</span>
-  <span class="ex-ok">E2</span>  <span class="ex-dim">3f0b5c8d</span>  Groove: full drum kit + bass
-  <span class="ex-ok">G2</span>  <span class="ex-dim">3f0b5c8d</span>  Groove: full drum kit + bass
-  <span class="ex-ok">A2</span>  <span class="ex-dim">4e2c91aa</span>  Groove: bass expression + reverb
-  <span class="ex-ok">B2</span>  <span class="ex-dim">4e2c91aa</span>  Groove: bass expression + reverb` },
-    { cmd:'muse midi harmony <track>',
-      desc:'Chord analysis and key detection from MIDI note content.',
-      flags:['--ref <sha>       analyse a historical snapshot instead of working tree',
-             '--json            emit results as JSON'],
-      ret:'Detected key · chord progression · bar-by-bar harmony',
-      example:`<span class="ex-cmd">$ muse midi harmony tracks/epiano.mid</span>
+      { cmd:'muse midi piano-roll <track>',
+        desc:'ASCII piano roll visualization of a MIDI track.',
+        flags:['--commit <sha>    render from a historical snapshot',
+               '--bars <from-to>  bar range to render, e.g. 1-8 (default: first 8)',
+               '--resolution <N>  grid cells per beat: 1=quarter, 2=eighth, 4=sixteenth'],
+        ret:'ASCII grid: pitches on Y-axis, time on X-axis',
+        example:`<span class="ex-cmd">$ muse midi piano-roll tracks/epiano.mid --bars 1-3 --resolution 2</span>
+<span class="ex-dim">      |1.1 1.2 1.3 1.4|2.1 2.2 2.3 2.4|3.1 3.2 3.3 3.4|</span>
+<span class="ex-ok">  E4</span>  <span class="ex-hi">███</span> <span class="ex-dim">░░░</span> <span class="ex-hi">███</span> <span class="ex-dim">░░░</span> | <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> | <span class="ex-hi">███</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> <span class="ex-hi">███</span>
+<span class="ex-ok">  D4</span>  <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> <span class="ex-hi">███</span> | <span class="ex-hi">███</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> | <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span>
+<span class="ex-ok">  B3</span>  <span class="ex-dim">░░░</span> <span class="ex-hi">███</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> | <span class="ex-dim">░░░</span> <span class="ex-hi">███</span> <span class="ex-hi">███</span> <span class="ex-dim">░░░</span> | <span class="ex-dim">░░░</span> <span class="ex-hi">███</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span>` },
+      { cmd:'muse midi instrumentation <track>',
+        desc:'Per-channel note distribution, pitch range, register, and mean velocity.',
+        flags:['--commit <sha>    analyse a historical snapshot instead of working tree',
+               '--json            emit results as JSON'],
+        ret:'Channel · note count · pitch range · register · mean velocity',
+        example:`<span class="ex-cmd">$ muse midi instrumentation tracks/full_score.mid</span>
+<span class="ex-dim">Channels: 3  ·  Total notes: 106</span>
+<span class="ex-dim">Ch   Notes  Range        Register   Mean vel</span>
+ <span class="ex-ok"> 0</span>      34  C2–G2        <span class="ex-hi">bass</span>          84.2
+ <span class="ex-ok"> 1</span>      40  E4–B5        <span class="ex-hi">treble</span>        71.8
+ <span class="ex-ok"> 2</span>      32  C3–A4        <span class="ex-hi">mid</span>           78.6` },
+    ]},
+
+    // ── GROUP 2 ─────────────────────────────────────────────────
+    { icon:'🎼', label:'Pitch, Harmony & Scale', desc:'Key, mode, chords, intervals', commands: [
+      { cmd:'muse midi harmony <track>',
+        desc:'Chord analysis and key detection from MIDI note content.',
+        flags:['--commit <sha>    analyse a historical snapshot instead of working tree',
+               '--json            emit results as JSON'],
+        ret:'Detected key · chord progression · pitch-class distribution',
+        example:`<span class="ex-cmd">$ muse midi harmony tracks/epiano.mid</span>
 <span class="ex-dim">key</span>     <span class="ex-ok">E minor</span>  <span class="ex-dim">(confidence 0.94)</span>
 <span class="ex-dim">mode</span>    natural minor
 <span class="ex-dim">bar 1</span>   Em7    <span class="ex-hi">i7</span>
 <span class="ex-dim">bar 2</span>   Am7    <span class="ex-hi">iv7</span>
 <span class="ex-dim">bar 3</span>   Bm7    <span class="ex-hi">v7</span>
 <span class="ex-dim">bar 4</span>   Em7    <span class="ex-hi">i7</span>  <span class="ex-dim">← cadence</span>` },
-    { cmd:'muse midi piano-roll <track>',
-      desc:'ASCII piano roll visualization of a MIDI track.',
-      flags:['--ref <sha>       render from a historical snapshot',
-             '--bars <from-to>  bar range to render, e.g. 1-8 (default: first 8)',
-             '--resolution <N>  grid cells per beat: 1=quarter, 2=eighth, 4=sixteenth'],
-      ret:'ASCII grid: pitches on Y-axis, time on X-axis',
-      example:`<span class="ex-cmd">$ muse midi piano-roll tracks/epiano.mid --bars 1-3 --resolution 2</span>
-<span class="ex-dim">      |1.1 1.2 1.3 1.4|2.1 2.2 2.3 2.4|3.1 3.2 3.3 3.4|</span>
-<span class="ex-ok">  E4</span>  <span class="ex-hi">███</span> <span class="ex-dim">░░░</span> <span class="ex-hi">███</span> <span class="ex-dim">░░░</span> | <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> | <span class="ex-hi">███</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> <span class="ex-hi">███</span>
-<span class="ex-ok">  D4</span>  <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> <span class="ex-hi">███</span> | <span class="ex-hi">███</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> | <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span>
-<span class="ex-ok">  B3</span>  <span class="ex-dim">░░░</span> <span class="ex-hi">███</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span> | <span class="ex-dim">░░░</span> <span class="ex-hi">███</span> <span class="ex-hi">███</span> <span class="ex-dim">░░░</span> | <span class="ex-dim">░░░</span> <span class="ex-hi">███</span> <span class="ex-dim">░░░</span> <span class="ex-dim">░░░</span>` },
-    { cmd:'muse midi hotspots',
-      desc:'Bar-level churn leaderboard — which bars change most across commits.',
-      flags:['--top <N>         number of bars to show (default: 20)',
-             '--track <path>    restrict to a specific MIDI file',
-             '--from <sha>      start of commit range (default: initial commit)',
-             '--to <sha>        end of commit range (default: HEAD)',
-             '--json            emit results as JSON'],
-      ret:'Ranked bar list with change counts and contributing commits',
-      example:`<span class="ex-cmd">$ muse midi hotspots --top 5</span>
-<span class="ex-dim">rank  bar  changes  last commit</span>
- <span class="ex-hi">#1</span>   bar 7     9      <span class="ex-dim">3f0b5c8d</span>  Groove: expression marks
- <span class="ex-hi">#2</span>   bar 3     7      <span class="ex-dim">4e2c91aa</span>  Harmony: modal interchange
- <span class="ex-hi">#3</span>   bar 5     6      <span class="ex-dim">2d9e1a47</span>  Groove: syncopated kick
- <span class="ex-ok">#4</span>   bar 1     4      <span class="ex-dim">1b3c8f02</span>  Foundation: intro motif
- <span class="ex-ok">#5</span>   bar 2     3      <span class="ex-dim">1b3c8f02</span>  Foundation: call-response` },
-    { cmd:'muse midi velocity-profile <track>',
-      desc:'Dynamic range and velocity histogram for a MIDI track.',
-      flags:['--ref <sha>       analyse a historical snapshot instead of working tree',
-             '--by-bar          show per-bar average velocity instead of overall histogram',
-             '--json            emit results as JSON'],
-      ret:'Min · max · mean velocity; histogram buckets or per-bar averages',
-      example:`<span class="ex-cmd">$ muse midi velocity-profile tracks/drums.mid --by-bar</span>
-<span class="ex-dim">dynamic range</span>  min=<span class="ex-ok">42</span>  max=<span class="ex-hi">118</span>  mean=<span class="ex-gold">83</span>  σ=19.4
+      { cmd:'muse midi scale <track>',
+        desc:'Detect the scale or mode (major, dorian, blues, whole-tone…) by pitch-class analysis.',
+        flags:['--commit <sha>    analyse a historical snapshot instead of working tree',
+               '--top <N>         number of top scale matches to show (default: 3)',
+               '--json            emit results as JSON'],
+        ret:'Ranked scale matches: root · name · confidence · out-of-scale note count',
+        example:`<span class="ex-cmd">$ muse midi scale tracks/epiano.mid --top 3</span>
+<span class="ex-dim">  Rank  Root   Scale             Confidence  Out-of-scale</span>
+<span class="ex-ok">     1</span>  E      natural minor          0.971             0
+<span class="ex-ok">     2</span>  E      dorian                 0.929             2
+     3   A      major                  0.886             4` },
+      { cmd:'muse midi contour <track>',
+        desc:'Classify the melodic contour shape (arch, ascending, valley, wave…) and report intervals.',
+        flags:['--commit <sha>    analyse a historical snapshot instead of working tree',
+               '--json            emit results as JSON'],
+        ret:'Shape · pitch range · direction changes · interval sequence',
+        example:`<span class="ex-cmd">$ muse midi contour tracks/lead.mid</span>
+<span class="ex-dim">Shape:             </span><span class="ex-ok">arch</span>
+<span class="ex-dim">Pitch range:       </span>D3 – C6  <span class="ex-dim">(35 semitones)</span>
+<span class="ex-dim">Direction changes: </span>6
+<span class="ex-dim">Avg interval size: </span>2.43 semitones
+<span class="ex-dim">Interval sequence: </span>+2 +3 +2 -1 +4 -3 +2 -2 -3 +1 …` },
+      { cmd:'muse midi tension <track>',
+        desc:'Harmonic tension curve per bar — consonance/dissonance arc from interval weights.',
+        flags:['--commit <sha>    analyse a historical snapshot instead of working tree',
+               '--json            emit results as JSON'],
+        ret:'Bar · tension score [0–1] · label (consonant / mild / tense)',
+        example:`<span class="ex-cmd">$ muse midi tension tracks/epiano.mid</span>
+<span class="ex-dim">bar  1</span>  <span class="ex-ok">▂▂▂▂▂▂▂▂           </span>  <span class="ex-ok">0.08</span>  consonant
+<span class="ex-dim">bar  2</span>  <span class="ex-gold">████████████████   </span>  <span class="ex-gold">0.43</span>  mild
+<span class="ex-dim">bar  3</span>  <span class="ex-hi">████████████████████</span>  <span class="ex-hi">0.67</span>  tense
+<span class="ex-dim">bar  4</span>  <span class="ex-ok">████               </span>  <span class="ex-ok">0.12</span>  consonant` },
+      { cmd:'muse midi cadence <track>',
+        desc:'Detect phrase-ending cadences (authentic, deceptive, half, plagal) at bar boundaries.',
+        flags:['--commit <sha>    analyse a historical snapshot instead of working tree',
+               '--json            emit results as JSON'],
+        ret:'Bar · cadence type · from chord · to chord',
+        example:`<span class="ex-cmd">$ muse midi cadence tracks/epiano.mid</span>
+<span class="ex-dim">Found 2 cadences</span>
+<span class="ex-dim">  Bar   Type         From       To</span>
+    <span class="ex-ok">5</span>   half         Em         Bdom7
+    <span class="ex-ok">9</span>   authentic    Bdom7      Em  <span class="ex-dim">← resolution</span>` },
+    ]},
+
+    // ── GROUP 3 ─────────────────────────────────────────────────
+    { icon:'🥁', label:'Rhythm & Dynamics', desc:'Timing, feel, density, velocity', commands: [
+      { cmd:'muse midi rhythm <track>',
+        desc:'Quantify syncopation, swing ratio, and quantisation accuracy.',
+        flags:['--commit <sha>    analyse a historical snapshot instead of working tree',
+               '--json            emit results as JSON'],
+        ret:'Syncopation score · swing ratio · quantisation score · dominant subdivision',
+        example:`<span class="ex-cmd">$ muse midi rhythm tracks/drums.mid</span>
+<span class="ex-dim">Notes: 64  ·  Bars: 8  ·  Notes/bar avg: 8.0</span>
+<span class="ex-dim">Dominant subdivision: </span><span class="ex-ok">sixteenth</span>
+<span class="ex-dim">Quantisation score:   </span><span class="ex-ok">0.942</span>  <span class="ex-dim">(very tight)</span>
+<span class="ex-dim">Syncopation score:    </span><span class="ex-gold">0.382</span>  <span class="ex-dim">(moderate)</span>
+<span class="ex-dim">Swing ratio:          </span>1.003  <span class="ex-dim">(straight)</span>` },
+      { cmd:'muse midi tempo <track>',
+        desc:'Estimate BPM from inter-onset intervals; report ticks-per-beat metadata.',
+        flags:['--commit <sha>    analyse a historical snapshot instead of working tree',
+               '--json            emit results as JSON'],
+        ret:'Estimated BPM · ticks-per-beat · confidence · method',
+        example:`<span class="ex-cmd">$ muse midi tempo tracks/drums.mid</span>
+<span class="ex-dim">Estimated BPM:  </span>  <span class="ex-ok">96.0</span>
+<span class="ex-dim">Ticks per beat: </span>  480
+<span class="ex-dim">Confidence:     </span>  <span class="ex-ok">high</span>  <span class="ex-dim">(ioi_voting method)</span>` },
+      { cmd:'muse midi density <track>',
+        desc:'Note density (notes per beat) per bar — reveals textural arc of a composition.',
+        flags:['--commit <sha>    analyse a historical snapshot instead of working tree',
+               '--json            emit results as JSON'],
+        ret:'Bar · note count · notes per beat; peak bar and overall average',
+        example:`<span class="ex-cmd">$ muse midi density tracks/drums.mid</span>
+<span class="ex-dim">Bars: 8  ·  Peak: bar 5 (6.25/beat)  ·  Avg: 5.1</span>
+<span class="ex-dim">bar 1</span>  ████████████         4.00 notes/beat  (16 notes)
+<span class="ex-dim">bar 2</span>  ████████████████████ 5.25 notes/beat  (21 notes)
+<span class="ex-dim">bar 3</span>  █████████████        4.25 notes/beat  (17 notes)` },
+      { cmd:'muse midi velocity-profile <track>',
+        desc:'Dynamic range and velocity histogram for a MIDI track.',
+        flags:['--commit <sha>    analyse a historical snapshot instead of working tree',
+               '--by-bar          show per-bar average velocity instead of overall histogram',
+               '--json            emit results as JSON'],
+        ret:'Min · max · mean velocity; histogram buckets or per-bar averages',
+        example:`<span class="ex-cmd">$ muse midi velocity-profile tracks/drums.mid --by-bar</span>
+<span class="ex-dim">dynamic range</span>  min=<span class="ex-ok">42</span>  max=<span class="ex-hi">118</span>  mean=<span class="ex-gold">83</span>
 <span class="ex-dim">bar 1</span>  ████████████░░░░  avg=<span class="ex-gold">88</span>
 <span class="ex-dim">bar 2</span>  █████████░░░░░░░  avg=<span class="ex-gold">72</span>
 <span class="ex-dim">bar 3</span>  ██████████████░░  avg=<span class="ex-hi">96</span>  <span class="ex-dim">← peak intensity</span>
 <span class="ex-dim">bar 4</span>  ███████░░░░░░░░░  avg=<span class="ex-ok">58</span>  <span class="ex-dim">← breakdown</span>` },
-    { cmd:'muse midi transpose <track>',
-      desc:'Transpose all notes in a MIDI track by N semitones.',
-      flags:['--semitones <N>   semitones to shift (positive = up, negative = down)',
-             '--dry-run         preview what would change without writing to disk',
-             '--clamp           clamp pitches to 0–127 instead of failing on overflow'],
-      ret:'✓ Transposed <N> notes by <semitones> semitones',
-      example:`<span class="ex-cmd">$ muse midi transpose tracks/bass.mid --semitones -5 --dry-run</span>
-<span class="ex-dim">dry run — no files written</span>
-  E2 → B1    G2 → D2    A2 → E2
-  B2 → F#2   E3 → B2    G3 → D3
-  <span class="ex-dim">... 28 more notes</span>
-<span class="ex-ok">✓</span> would transpose 34 notes  <span class="ex-dim">Em → Bm  (−5 st, A major → E major rel.)</span>` },
-    { cmd:'muse midi mix <track-a> <track-b>',
-      desc:'Combine notes from two MIDI tracks into a single output track.',
-      flags:['--output <path>   destination .mid file (workspace-relative)',
-             '--channel-a <N>   remap all notes from track-a to MIDI channel N',
-             '--channel-b <N>   remap all notes from track-b to MIDI channel N',
-             '--dry-run         preview the operation without writing to disk'],
-      ret:'✓ Wrote <N> notes to <output>',
-      example:`<span class="ex-cmd">$ muse midi mix tracks/drums.mid tracks/bass.mid \\
-    --output tracks/rhythm.mid --channel-a 9 --channel-b 0</span>
-<span class="ex-dim">drums </span> 48 notes  ch 10 → <span class="ex-ok">ch 9</span>
-<span class="ex-dim">bass  </span> 34 notes  ch  0 → <span class="ex-ok">ch 0</span>
-<span class="ex-dim">merged</span> 82 notes  sorted by start time
-<span class="ex-ok">✓</span> wrote tracks/rhythm.mid` },
-    { cmd:'muse midi query "<expr>"',
-      desc:'MIDI DSL predicate query over commit history — bars, chords, pitches, agents.',
-      flags:['--track <path>    restrict search to a single MIDI file',
-             '--from <sha>      start commit (default: HEAD)',
-             '--stop <sha>      stop before this commit (exclusive)',
-             '--max <N>         maximum number of matches to return',
-             '--json            emit results as JSON'],
-      ret:'Matching commits with bar · pitch · velocity context',
-      example:`<span class="ex-cmd">$ muse midi query "bar=5 AND pitch&gt;=E3 AND velocity&gt;90"</span>
+    ]},
+
+    // ── GROUP 4 ─────────────────────────────────────────────────
+    { icon:'🔬', label:'Structure & Voice Leading', desc:'Motifs, form, counterpoint quality', commands: [
+      { cmd:'muse midi motif <track>',
+        desc:'Find recurring melodic interval patterns (motifs) in a MIDI track.',
+        flags:['--commit <sha>    analyse a historical snapshot instead of working tree',
+               '--min-length <N>  minimum motif length in notes (default: 3)',
+               '--min-occurrences <N>  minimum recurrences to report (default: 2)',
+               '--json            emit results as JSON'],
+        ret:'Interval pattern · occurrences · starting pitch · bars where it appears',
+        example:`<span class="ex-cmd">$ muse midi motif tracks/lead.mid --min-length 3</span>
+<span class="ex-dim">Found 2 motifs</span>
+<span class="ex-ok">Motif 0</span>  [<span class="ex-hi">+2 +2 -3</span>]   3×   first: <span class="ex-ok">E4</span>   bars: 1, 5, 9
+<span class="ex-ok">Motif 1</span>  [<span class="ex-hi">-2 +4 -2</span>]   2×   first: <span class="ex-ok">G4</span>   bars: 3, 7` },
+      { cmd:'muse midi voice-leading <track>',
+        desc:'Detect parallel fifths, octaves, and large leaps — classical counterpoint lint.',
+        flags:['--commit <sha>    analyse a historical snapshot instead of working tree',
+               '--strict          exit with error code when issues are found (for CI)',
+               '--json            emit results as JSON'],
+        ret:'List of voice-leading issues: bar · type · description',
+        example:`<span class="ex-cmd">$ muse midi voice-leading tracks/strings.mid --strict</span>
+<span class="ex-gold">⚠  2 issues found</span>
+<span class="ex-dim">  Bar   Type               Description</span>
+    6   parallel_fifths    voices 0–1: parallel perfect fifths
+    9   large_leap         top voice: leap of 11 semitones
+<span class="ex-dim">exit code 1  (--strict mode)</span>` },
+      { cmd:'muse midi compare <track> <ref-a> [ref-b]',
+        desc:'Semantic comparison between two MIDI snapshots across key, rhythm, density, and swing.',
+        flags:['--json            emit results as JSON'],
+        ret:'Table: dimension · value-A · value-B · delta',
+        example:`<span class="ex-cmd">$ muse midi compare tracks/epiano.mid HEAD~2 HEAD</span>
+<span class="ex-dim">Dimension          A              B              Δ</span>
+Notes              18             32             <span class="ex-ok">+14</span>
+Bars                4              8             <span class="ex-ok">+4</span>
+Key                E minor        E minor         <span class="ex-ok">=</span>
+Density avg        4.5/beat       5.1/beat       <span class="ex-gold">+0.6</span>
+Syncopation        0.11           0.38           <span class="ex-hi">+0.27</span>  ← more syncopated` },
+    ]},
+
+    // ── GROUP 5 ─────────────────────────────────────────────────
+    { icon:'📜', label:'History & Attribution', desc:'What changed, when, by whom', commands: [
+      { cmd:'muse midi note-log <track>',
+        desc:'Note-level commit history — which notes were added or removed in each commit.',
+        flags:['--from <sha>      start walking from this commit (default: HEAD)',
+               '--max <N>         maximum number of commits to walk (default: 50)',
+               '--json            emit results as JSON'],
+        ret:'Per-commit note diff: pitches added and removed',
+        example:`<span class="ex-cmd">$ muse midi note-log tracks/drums.mid --max 3</span>
+<span class="ex-dim">3f0b5c8d</span>  Groove: hi-hat 16ths, ghost snares
+  <span class="ex-ok">+</span> F#1 ×16  <span class="ex-ok">+</span> D2 ×4  <span class="ex-ok">+</span> C2 ×2 <span class="ex-dim">(ghost)</span>
+<span class="ex-dim">2d9e1a47</span>  Foundation: kick+snare groove
+  <span class="ex-ok">+</span> C2 ×4  <span class="ex-ok">+</span> D2 ×2
+<span class="ex-dim">1b3c8f02</span>  Foundation: 4/4, 96 BPM, Em key
+  <span class="ex-dim">— no note changes (metadata only)</span>` },
+      { cmd:'muse midi note-blame <track>',
+        desc:'Per-bar attribution — which commit introduced the notes in each bar?',
+        flags:['--bar <N>         bar number to inspect (1-indexed, 4/4 time)',
+               '--from <sha>      start search from this commit (default: HEAD)',
+               '--json            emit results as JSON'],
+        ret:'SHA · author · message for each note in the bar',
+        example:`<span class="ex-cmd">$ muse midi note-blame tracks/bass.mid --bar 5</span>
+<span class="ex-dim">bar 5 · 4 notes</span>
+  <span class="ex-ok">E2</span>  <span class="ex-dim">3f0b5c8d</span>  Groove: full drum kit + bass
+  <span class="ex-ok">G2</span>  <span class="ex-dim">3f0b5c8d</span>  Groove: full drum kit + bass
+  <span class="ex-ok">A2</span>  <span class="ex-dim">4e2c91aa</span>  Groove: bass expression + reverb
+  <span class="ex-ok">B2</span>  <span class="ex-dim">4e2c91aa</span>  Groove: bass expression + reverb` },
+      { cmd:'muse midi hotspots',
+        desc:'Bar-level churn leaderboard — which bars change most across commits.',
+        flags:['--top <N>         number of bars to show (default: 20)',
+               '--track <path>    restrict to a specific MIDI file',
+               '--from <sha>      start of commit range (default: initial commit)',
+               '--to <sha>        end of commit range (default: HEAD)',
+               '--json            emit results as JSON'],
+        ret:'Ranked bar list with change counts and contributing commits',
+        example:`<span class="ex-cmd">$ muse midi hotspots --top 5</span>
+<span class="ex-dim">rank  bar  changes  last commit</span>
+ <span class="ex-hi">#1</span>   bar 7     9      <span class="ex-dim">3f0b5c8d</span>  Groove: expression marks
+ <span class="ex-hi">#2</span>   bar 3     7      <span class="ex-dim">4e2c91aa</span>  Harmony: modal interchange
+ <span class="ex-hi">#3</span>   bar 5     6      <span class="ex-dim">2d9e1a47</span>  Groove: syncopated kick
+ <span class="ex-ok">#4</span>   bar 1     4      <span class="ex-dim">1b3c8f02</span>  Foundation: intro motif` },
+    ]},
+
+    // ── GROUP 6 ─────────────────────────────────────────────────
+    { icon:'🤖', label:'Multi-Agent Intelligence', desc:'Swarm ops, search, coordination', commands: [
+      { cmd:'muse midi agent-map <track>',
+        desc:'Bar-level blame — which agent last edited each bar of a MIDI track.',
+        flags:['--commit <sha>    start history walk from this commit (default: HEAD)',
+               '--depth <N>       maximum commits to walk back (default: 50)',
+               '--json            emit results as JSON'],
+        ret:'Bar · last author · commit SHA · commit message',
+        example:`<span class="ex-cmd">$ muse midi agent-map tracks/lead.mid</span>
+<span class="ex-dim">  Bar   Last author              Commit    Message</span>
+    1   <span class="ex-ok">agent-melody</span>             3f0b5c8d  Groove: full kit + lead
+    2   <span class="ex-ok">agent-melody</span>             3f0b5c8d  Groove: full kit + lead
+    3   <span class="ex-hi">agent-harmony</span>            4e2c91aa  Harmony: modal interchange
+    4   <span class="ex-hi">agent-harmony</span>            4e2c91aa  Harmony: modal interchange` },
+      { cmd:'muse midi find-phrase <track>',
+        desc:'Search for a melodic phrase across MIDI commit history by similarity scoring.',
+        flags:['--query <path>    path to a short .mid file containing the phrase to find',
+               '--depth <N>       maximum commits to scan (default: 50)',
+               '--min-score <S>   minimum similarity score to report (default: 0.5)',
+               '--json            emit results as JSON'],
+        ret:'Ranked commits: score · SHA · author · message',
+        example:`<span class="ex-cmd">$ muse midi find-phrase tracks/lead.mid --query query/motif.mid</span>
+<span class="ex-dim">Scanning 20 commits…</span>
+<span class="ex-dim">Score   Commit    Author              Message</span>
+<span class="ex-ok">0.934</span>   3f0b5c8d  agent-melody        Groove: full arrangement
+<span class="ex-gold">0.812</span>   4e2c91aa  agent-harmony       Harmony: modal interchange
+0.643   2d9e1a47  agent-melody        Groove: syncopated kick` },
+      { cmd:'muse midi shard <track>',
+        desc:'Partition a composition into bar-range shards for parallel agent work.',
+        flags:['--shards <N>      number of equal shards to produce',
+               '--bars-per-shard <N>  fixed shard size (alternative to --shards)',
+               '--output-dir <D>  directory to write shard files (default: shards/)',
+               '--dry-run         preview shard plan without writing files'],
+        ret:'Shard plan + bar ranges; writes N MIDI files to output-dir',
+        example:`<span class="ex-cmd">$ muse midi shard tracks/full.mid --shards 4 --dry-run</span>
+<span class="ex-dim">Shard plan: tracks/full.mid  →  4 shards  ·  Total bars: 16</span>
+<span class="ex-ok">Shard 0</span>  bars  1– 4  →  shards/full_shard_0.mid  <span class="ex-dim">(48 notes)</span>
+<span class="ex-ok">Shard 1</span>  bars  5– 8  →  shards/full_shard_1.mid  <span class="ex-dim">(52 notes)</span>
+<span class="ex-ok">Shard 2</span>  bars  9–12  →  shards/full_shard_2.mid  <span class="ex-dim">(41 notes)</span>
+<span class="ex-ok">Shard 3</span>  bars 13–16  →  shards/full_shard_3.mid  <span class="ex-dim">(38 notes)</span>` },
+      { cmd:'muse midi query "<expr>"',
+        desc:'MIDI DSL predicate query over commit history — bars, chords, pitches, agents.',
+        flags:['--track <path>    restrict search to a single MIDI file',
+               '--from <sha>      start commit (default: HEAD)',
+               '--max <N>         maximum number of matches to return',
+               '--json            emit results as JSON'],
+        ret:'Matching commits with bar · pitch · velocity context',
+        example:`<span class="ex-cmd">$ muse midi query "bar=5 AND pitch&gt;=E3 AND velocity&gt;90"</span>
 <span class="ex-dim">3 matches across 2 commits</span>
   <span class="ex-dim">3f0b5c8d</span>  bar 5  <span class="ex-ok">G3</span>  vel=<span class="ex-hi">102</span>  start=16.25s
   <span class="ex-dim">3f0b5c8d</span>  bar 5  <span class="ex-ok">B3</span>  vel=<span class="ex-hi">97</span>   start=16.50s
   <span class="ex-dim">4e2c91aa</span>  bar 5  <span class="ex-ok">E3</span>  vel=<span class="ex-hi">118</span>  start=16.00s` },
-    { cmd:'muse midi check [<commit>]',
-      desc:'Enforce MIDI invariant rules: polyphony, pitch range, key consistency, parallel fifths.',
-      flags:['--track <path>    restrict check to a single MIDI file',
-             '--rules <file>    path to TOML invariant rules file (default: .muse/midi_invariants.toml)',
-             '--strict          exit 1 when any error-severity violation is found',
-             '--json            output machine-readable JSON'],
-      ret:'✓ All invariants pass — or — ⚠ violations with severity + bar location',
-      example:`<span class="ex-cmd">$ muse midi check --strict</span>
-<span class="ex-ok">✓</span> polyphony      max 4 voices  ≤ limit 6
-<span class="ex-ok">✓</span> pitch range    E1–C6  within 0–127
-<span class="ex-ok">✓</span> key consistency  Em detected  0 out-of-key notes
-<span class="ex-gold">⚠</span> parallel fifths  bar 6 beat 2  <span class="ex-gold">severity: warning</span>
+    ]},
+
+    // ── GROUP 7 ─────────────────────────────────────────────────
+    { icon:'🔧', label:'Transformation', desc:'Surgical musical operations on the working tree', commands: [
+      { cmd:'muse midi transpose <track>',
+        desc:'Transpose all notes in a MIDI track by N semitones.',
+        flags:['--semitones <N>   semitones to shift (positive = up, negative = down)',
+               '--dry-run         preview what would change without writing to disk',
+               '--clamp           clamp pitches to 0–127 instead of failing on overflow'],
+        ret:'✅ Transposed <N> notes by <semitones> semitones',
+        example:`<span class="ex-cmd">$ muse midi transpose tracks/bass.mid --semitones -5 --dry-run</span>
+<span class="ex-dim">dry run — no files written</span>
+  E2 → B1    G2 → D2    A2 → E2
+  B2 → F#2   E3 → B2    G3 → D3
+  <span class="ex-dim">... 28 more notes</span>
+<span class="ex-ok">✅</span> would transpose 34 notes  <span class="ex-dim">Em → Bm</span>` },
+      { cmd:'muse midi invert <track>',
+        desc:'Melodic inversion — reflect all intervals around a pivot pitch.',
+        flags:['--pivot <PITCH>   pivot as note name (C4, A#3) or MIDI number (default: first note)',
+               '--clamp           clamp out-of-range pitches to 0–127',
+               '--dry-run         preview without writing'],
+        ret:'✅ Inverted <N> notes around <pivot>',
+        example:`<span class="ex-cmd">$ muse midi invert tracks/melody.mid --pivot E4 --dry-run</span>
+<span class="ex-dim">pivot: E4 / MIDI 64</span>
+  G4 → C4    B4 → A3    D5 → F3
+  <span class="ex-dim">... 20 more notes</span>
+<span class="ex-dim">New range: B1–E4  (was E4–G6)  No changes written.</span>` },
+      { cmd:'muse midi retrograde <track>',
+        desc:'Retrograde transformation — reverse the pitch order of all notes.',
+        flags:['--dry-run         preview without writing'],
+        ret:'✅ Retrograded <N> notes; span preserved',
+        example:`<span class="ex-cmd">$ muse midi retrograde tracks/melody.mid --dry-run</span>
+<span class="ex-dim">Notes:   23
+Was:     first note = G4
+Would:   first note = D5
+Span:    8.00 beats (unchanged)
+No changes written (--dry-run).</span>` },
+      { cmd:'muse midi quantize <track>',
+        desc:'Snap note onsets to a rhythmic grid (whole/half/quarter/8th/16th/32nd/triplet).',
+        flags:['--grid <GRID>     quantisation grid (default: 16th)',
+               '--strength <S>    quantisation strength 0.0–1.0 (default: 1.0)',
+               '--dry-run         preview without writing'],
+        ret:'✅ <N> notes adjusted; avg shift and max shift in ticks',
+        example:`<span class="ex-cmd">$ muse midi quantize tracks/lead.mid --grid 16th --strength 0.8 --dry-run</span>
+<span class="ex-dim">Notes adjusted:  28 / 32</span>
+<span class="ex-dim">Avg tick shift:  18.4  ·  Max: 57</span>
+<span class="ex-dim">No changes written (--dry-run).</span>` },
+      { cmd:'muse midi humanize <track>',
+        desc:'Add subtle timing and velocity variation to give quantised MIDI a human feel.',
+        flags:['--timing <BEATS>  max timing jitter in beats (default: 0.01)',
+               '--velocity <VEL>  max velocity jitter in MIDI units (default: 6)',
+               '--seed <INT>      random seed for reproducible humanisation',
+               '--dry-run         preview without writing'],
+        ret:'✅ <N> notes adjusted with timing and velocity jitter',
+        example:`<span class="ex-cmd">$ muse midi humanize tracks/lead.mid --timing 0.015 --velocity 10 --seed 42</span>
+<span class="ex-ok">✅ Humanised tracks/lead.mid</span>
+   32 notes adjusted
+   Timing jitter: ±0.015 beats  ·  Velocity jitter: ±10
+   <span class="ex-dim">Run \`muse status\` to review, then \`muse commit\`</span>` },
+      { cmd:'muse midi arpeggiate <track>',
+        desc:'Convert simultaneous chord voicings into a sequential arpeggio pattern.',
+        flags:['--rate <RATE>     arpeggio note rate: quarter/8th/16th/32nd (default: 16th)',
+               '--order <ORDER>   pitch order: up/down/up-down/random (default: up)',
+               '--seed <INT>      random seed for --order random',
+               '--dry-run         preview without writing'],
+        ret:'✅ <N> chord clusters → <M> arpeggio notes',
+        example:`<span class="ex-cmd">$ muse midi arpeggiate tracks/epiano.mid --rate 8th --order up-down</span>
+<span class="ex-ok">✅ Arpeggiated tracks/epiano.mid  (8th-note rate, up-down order)</span>
+   8 chord clusters → 40 arpeggio notes
+   <span class="ex-dim">Run \`muse status\` to review, then \`muse commit\`</span>` },
+      { cmd:'muse midi normalize <track>',
+        desc:'Rescale note velocities to a target dynamic range [min, max].',
+        flags:['--min <VEL>       target minimum velocity (default: 40)',
+               '--max <VEL>       target maximum velocity (default: 110)',
+               '--dry-run         preview without writing'],
+        ret:'✅ <N> notes rescaled; old and new range + mean velocity',
+        example:`<span class="ex-cmd">$ muse midi normalize tracks/lead.mid --min 50 --max 100</span>
+<span class="ex-ok">✅ Normalised tracks/lead.mid</span>
+   32 notes rescaled  ·  range: 62–104 → <span class="ex-ok">50–100</span>
+   Mean velocity: <span class="ex-gold">83.0</span> → <span class="ex-ok">75.2</span>
+   <span class="ex-dim">Run \`muse status\` to review, then \`muse commit\`</span>` },
+      { cmd:'muse midi mix <track-a> <track-b>',
+        desc:'Combine notes from two MIDI tracks into a single output track.',
+        flags:['--output <path>   destination .mid file (workspace-relative)',
+               '--channel-a <N>   remap all notes from track-a to MIDI channel N',
+               '--channel-b <N>   remap all notes from track-b to MIDI channel N',
+               '--dry-run         preview the operation without writing to disk'],
+        ret:'✅ Wrote <N> notes to <output>',
+        example:`<span class="ex-cmd">$ muse midi mix tracks/drums.mid tracks/bass.mid \\
+    --output tracks/rhythm.mid --channel-a 9 --channel-b 0</span>
+<span class="ex-dim">drums </span> 48 notes  ch 10 → <span class="ex-ok">ch 9</span>
+<span class="ex-dim">bass  </span> 34 notes  ch  0 → <span class="ex-ok">ch 0</span>
+<span class="ex-dim">merged</span> 82 notes  sorted by start time
+<span class="ex-ok">✅</span> wrote tracks/rhythm.mid` },
+    ]},
+
+    // ── GROUP 8 ─────────────────────────────────────────────────
+    { icon:'🛡', label:'Invariants & Quality Gates', desc:'Lint, enforcement, CI integration', commands: [
+      { cmd:'muse midi check [<commit>]',
+        desc:'Enforce MIDI invariant rules: polyphony, pitch range, key consistency, parallel fifths.',
+        flags:['--track <path>    restrict check to a single MIDI file',
+               '--rules <file>    path to TOML invariant rules file (default: .muse/midi_invariants.toml)',
+               '--strict          exit 1 when any error-severity violation is found',
+               '--json            output machine-readable JSON'],
+        ret:'✅ All invariants pass — or — ⚠ violations with severity + bar location',
+        example:`<span class="ex-cmd">$ muse midi check --strict</span>
+<span class="ex-ok">✅</span> polyphony      max 4 voices  ≤ limit 6
+<span class="ex-ok">✅</span> pitch range    E1–C6  within 0–127
+<span class="ex-ok">✅</span> key consistency  Em detected  0 out-of-key notes
+<span class="ex-gold">⚠</span>  parallel fifths  bar 6 beat 2  <span class="ex-gold">severity: warning</span>
 <span class="ex-dim">1 warning, 0 errors  (exit 0)</span>` },
+    ]},
   ];
 
-  const grid = document.getElementById('cli-grid');
-  commands.forEach(c => {
-    const card = document.createElement('div');
-    card.className = 'cli-card';
-    card.innerHTML = `<div class="cli-cmd">$ ${c.cmd}</div>
-      <div class="cli-desc">${c.desc}</div>
-      <div class="cli-flags">${c.flags.map(f => `<div class="cli-flag">${f.replace(/^(--?\S+)/,'<span>$1</span>')}</div>`).join('')}</div>
-      <div style="margin-top:6px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'JetBrains Mono',monospace">→ ${c.ret}</div>
-      ${c.example ? `<div class="cli-example">${c.example}</div>` : ''}`;
-    grid.appendChild(card);
+  const container = document.getElementById('cli-groups');
+
+  GROUPS.forEach(group => {
+    const section = document.createElement('div');
+    section.className = 'cli-group-section';
+
+    const hd = document.createElement('div');
+    hd.className = 'cli-group-hd';
+    hd.innerHTML = `<span class="cli-group-icon">${group.icon}</span>
+      <span class="cli-group-label">${group.label}</span>
+      <span class="cli-group-desc">${group.desc}</span>
+      <span class="cli-group-count">${group.commands.length} command${group.commands.length !== 1 ? 's' : ''}</span>`;
+    section.appendChild(hd);
+
+    const grid = document.createElement('div');
+    grid.className = 'cli-grid';
+
+    group.commands.forEach(c => {
+      const card = document.createElement('div');
+      card.className = 'cli-card';
+      card.innerHTML = `<div class="cli-cmd">$ ${c.cmd}</div>
+        <div class="cli-desc">${c.desc}</div>
+        <div class="cli-flags">${c.flags.map(f => `<div class="cli-flag">${f.replace(/^(--?\S+)/,'<span>$1</span>')}</div>`).join('')}</div>
+        <div style="margin-top:6px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'JetBrains Mono',monospace">→ ${c.ret}</div>
+        ${c.example ? `<div class="cli-example">${c.example}</div>` : ''}`;
+      grid.appendChild(card);
+    });
+
+    section.appendChild(grid);
+    container.appendChild(section);
   });
 })();
 
