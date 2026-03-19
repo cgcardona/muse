@@ -1,1446 +1,1298 @@
 #!/usr/bin/env python3
-"""MIDI Demo Page generator — Bach Prelude BWV 846 × Muse VCS.
+"""MIDI Demo Page — Groove in Em × Muse VCS.
 
 Outputs: artifacts/midi-demo.html
 
-Demonstrates Muse's 21-dimensional MIDI version control using
-Bach's Prelude No. 1 in C Major (BWV 846).
+Demonstrates Muse's 21-dimensional MIDI version control using an original
+funky-soul groove composition built across a 5-act VCS narrative:
 
-Note data sourced from the music21 corpus (MuseScore 1.3 transcription,
-2013-07-09, musescore.com/score/117279). Bach died 1750 — public domain.
-Format: [pitch_midi, velocity, start_sec, duration_sec, measure, voice]
+  Instruments:
+    - Drums       (kick/snare/hi-hat/ghost snares/crash)
+    - Bass guitar (E minor pentatonic walking line)
+    - Electric Piano (Em7→Am7→Bm7→Cmaj7 chord voicings)
+    - Lead Synth  (E pentatonic melody with pitch bends)
+    - Brass/Ensemble (stabs and pads — conflict & resolution)
+
+  VCS Narrative:
+    Act 1  — Foundation  (3 commits on main)
+    Act 2  — Divergence  (feat/groove + feat/harmony branches)
+    Act 3  — Clean Merge (feat/groove + feat/harmony → main)
+    Act 4  — Conflict    (conflict/brass-a vs conflict/ensemble)
+    Act 5  — Resolution  (resolved mix, v1.0 tag, 21 dimensions)
 """
 
 import json
 import logging
+import math
 import pathlib
 
 logger = logging.getLogger(__name__)
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Bach BWV 846 — note data extracted from music21 corpus MusicXML
-# Voices: 1=treble arpeggios (pitch 55-81), 5=bass long notes (36-60),
-#         6=inner voice (47-64). Tempo: 66 BPM, Duration: ~127s.
-# ──────────────────────────────────────────────────────────────────────────────
-_BACH_NOTES_JSON = (
-    "[[60,64,0.0,1.5833,1,5],[64,64,0.2083,0.5938,1,6],[67,80,0.4167,0.1979,1,1],"
-    "[72,80,0.625,0.1979,1,1],[76,80,0.8333,0.1979,1,1],[67,80,1.0417,0.1979,1,1],"
-    "[72,80,1.25,0.1979,1,1],[76,80,1.4583,0.1979,1,1],[60,64,1.6667,1.5833,1,5],"
-    "[64,64,1.875,0.5938,1,6],[67,80,2.0833,0.1979,1,1],[72,80,2.2917,0.1979,1,1],"
-    "[76,80,2.5,0.1979,1,1],[67,80,2.7083,0.1979,1,1],[72,80,2.9167,0.1979,1,1],"
-    "[76,80,3.125,0.1979,1,1],[60,64,3.3333,1.5833,2,5],[62,64,3.5417,0.5938,2,6],"
-    "[69,80,3.75,0.1979,2,1],[74,80,3.9583,0.1979,2,1],[77,80,4.1667,0.1979,2,1],"
-    "[69,80,4.375,0.1979,2,1],[74,80,4.5833,0.1979,2,1],[77,80,4.7917,0.1979,2,1],"
-    "[60,64,5.0,1.5833,2,5],[62,64,5.2083,0.5938,2,6],[69,80,5.4167,0.1979,2,1],"
-    "[74,80,5.625,0.1979,2,1],[77,80,5.8333,0.1979,2,1],[69,80,6.0417,0.1979,2,1],"
-    "[74,80,6.25,0.1979,2,1],[77,80,6.4583,0.1979,2,1],[59,64,6.6667,1.5833,3,5],"
-    "[62,64,6.875,0.5938,3,6],[67,80,7.0833,0.1979,3,1],[74,80,7.2917,0.1979,3,1],"
-    "[77,80,7.5,0.1979,3,1],[67,80,7.7083,0.1979,3,1],[74,80,7.9167,0.1979,3,1],"
-    "[77,80,8.125,0.1979,3,1],[59,64,8.3333,1.5833,3,5],[62,64,8.5417,0.5938,3,6],"
-    "[67,80,8.75,0.1979,3,1],[74,80,8.9583,0.1979,3,1],[77,80,9.1667,0.1979,3,1],"
-    "[67,80,9.375,0.1979,3,1],[74,80,9.5833,0.1979,3,1],[77,80,9.7917,0.1979,3,1],"
-    "[60,64,10.0,1.5833,4,5],[64,64,10.2083,0.5938,4,6],[67,80,10.4167,0.1979,4,1],"
-    "[72,80,10.625,0.1979,4,1],[76,80,10.8333,0.1979,4,1],[67,80,11.0417,0.1979,4,1],"
-    "[72,80,11.25,0.1979,4,1],[76,80,11.4583,0.1979,4,1],[60,64,11.6667,1.5833,4,5],"
-    "[64,64,11.875,0.5938,4,6],[67,80,12.0833,0.1979,4,1],[72,80,12.2917,0.1979,4,1],"
-    "[76,80,12.5,0.1979,4,1],[67,80,12.7083,0.1979,4,1],[72,80,12.9167,0.1979,4,1],"
-    "[76,80,13.125,0.1979,4,1],[60,64,13.3333,1.5833,5,5],[64,64,13.5417,0.5938,5,6],"
-    "[69,80,13.75,0.1979,5,1],[76,80,13.9583,0.1979,5,1],[81,80,14.1667,0.1979,5,1],"
-    "[69,80,14.375,0.1979,5,1],[76,80,14.5833,0.1979,5,1],[81,80,14.7917,0.1979,5,1],"
-    "[60,64,15.0,1.5833,5,5],[64,64,15.2083,0.5938,5,6],[69,80,15.4167,0.1979,5,1],"
-    "[76,80,15.625,0.1979,5,1],[81,80,15.8333,0.1979,5,1],[69,80,16.0417,0.1979,5,1],"
-    "[76,80,16.25,0.1979,5,1],[81,80,16.4583,0.1979,5,1],[60,64,16.6667,1.5833,6,5],"
-    "[62,64,16.875,0.5938,6,6],[66,80,17.0833,0.1979,6,1],[69,80,17.2917,0.1979,6,1],"
-    "[74,80,17.5,0.1979,6,1],[66,80,17.7083,0.1979,6,1],[69,80,17.9167,0.1979,6,1],"
-    "[74,80,18.125,0.1979,6,1],[60,64,18.3333,1.5833,6,5],[62,64,18.5417,0.5938,6,6],"
-    "[66,80,18.75,0.1979,6,1],[69,80,18.9583,0.1979,6,1],[74,80,19.1667,0.1979,6,1],"
-    "[66,80,19.375,0.1979,6,1],[69,80,19.5833,0.1979,6,1],[74,80,19.7917,0.1979,6,1],"
-    "[59,64,20.0,1.5833,7,5],[62,64,20.2083,0.5938,7,6],[67,80,20.4167,0.1979,7,1],"
-    "[74,80,20.625,0.1979,7,1],[79,80,20.8333,0.1979,7,1],[67,80,21.0417,0.1979,7,1],"
-    "[74,80,21.25,0.1979,7,1],[79,80,21.4583,0.1979,7,1],[59,64,21.6667,1.5833,7,5],"
-    "[62,64,21.875,0.5938,7,6],[67,80,22.0833,0.1979,7,1],[74,80,22.2917,0.1979,7,1],"
-    "[79,80,22.5,0.1979,7,1],[67,80,22.7083,0.1979,7,1],[74,80,22.9167,0.1979,7,1],"
-    "[79,80,23.125,0.1979,7,1],[59,64,23.3333,1.5833,8,5],[60,64,23.5417,0.5938,8,6],"
-    "[64,80,23.75,0.1979,8,1],[67,80,23.9583,0.1979,8,1],[72,80,24.1667,0.1979,8,1],"
-    "[64,80,24.375,0.1979,8,1],[67,80,24.5833,0.1979,8,1],[72,80,24.7917,0.1979,8,1],"
-    "[59,64,25.0,1.5833,8,5],[60,64,25.2083,0.5938,8,6],[64,80,25.4167,0.1979,8,1],"
-    "[67,80,25.625,0.1979,8,1],[72,80,25.8333,0.1979,8,1],[64,80,26.0417,0.1979,8,1],"
-    "[67,80,26.25,0.1979,8,1],[72,80,26.4583,0.1979,8,1],[57,64,26.6667,1.5833,9,5],"
-    "[60,64,26.875,0.5938,9,6],[64,80,27.0833,0.1979,9,1],[67,80,27.2917,0.1979,9,1],"
-    "[72,80,27.5,0.1979,9,1],[64,80,27.7083,0.1979,9,1],[67,80,27.9167,0.1979,9,1],"
-    "[72,80,28.125,0.1979,9,1],[57,64,28.3333,1.5833,9,5],[60,64,28.5417,0.5938,9,6],"
-    "[64,80,28.75,0.1979,9,1],[67,80,28.9583,0.1979,9,1],[72,80,29.1667,0.1979,9,1],"
-    "[64,80,29.375,0.1979,9,1],[67,80,29.5833,0.1979,9,1],[72,80,29.7917,0.1979,9,1],"
-    "[50,64,30.0,1.5833,10,5],[57,64,30.2083,0.5938,10,6],[62,80,30.4167,0.1979,10,1],"
-    "[66,80,30.625,0.1979,10,1],[72,80,30.8333,0.1979,10,1],[62,80,31.0417,0.1979,10,1],"
-    "[66,80,31.25,0.1979,10,1],[72,80,31.4583,0.1979,10,1],[50,64,31.6667,1.5833,10,5],"
-    "[57,64,31.875,0.5938,10,6],[62,80,32.0833,0.1979,10,1],[66,80,32.2917,0.1979,10,1],"
-    "[72,80,32.5,0.1979,10,1],[62,80,32.7083,0.1979,10,1],[66,80,32.9167,0.1979,10,1],"
-    "[72,80,33.125,0.1979,10,1],[55,64,33.3333,1.5833,11,5],[59,64,33.5417,0.5938,11,6],"
-    "[62,80,33.75,0.1979,11,1],[67,80,33.9583,0.1979,11,1],[71,80,34.1667,0.1979,11,1],"
-    "[62,80,34.375,0.1979,11,1],[67,80,34.5833,0.1979,11,1],[71,80,34.7917,0.1979,11,1],"
-    "[55,64,35.0,1.5833,11,5],[59,64,35.2083,0.5938,11,6],[62,80,35.4167,0.1979,11,1],"
-    "[67,80,35.625,0.1979,11,1],[71,80,35.8333,0.1979,11,1],[62,80,36.0417,0.1979,11,1],"
-    "[67,80,36.25,0.1979,11,1],[71,80,36.4583,0.1979,11,1],[55,64,36.6667,1.5833,12,5],"
-    "[58,64,36.875,0.5938,12,6],[64,80,37.0833,0.1979,12,1],[67,80,37.2917,0.1979,12,1],"
-    "[73,80,37.5,0.1979,12,1],[64,80,37.7083,0.1979,12,1],[67,80,37.9167,0.1979,12,1],"
-    "[73,80,38.125,0.1979,12,1],[55,64,38.3333,1.5833,12,5],[58,64,38.5417,0.5938,12,6],"
-    "[64,80,38.75,0.1979,12,1],[67,80,38.9583,0.1979,12,1],[73,80,39.1667,0.1979,12,1],"
-    "[64,80,39.375,0.1979,12,1],[67,80,39.5833,0.1979,12,1],[73,80,39.7917,0.1979,12,1],"
-    "[53,64,40.0,1.5833,13,5],[57,64,40.2083,0.5938,13,6],[62,80,40.4167,0.1979,13,1],"
-    "[69,80,40.625,0.1979,13,1],[74,80,40.8333,0.1979,13,1],[62,80,41.0417,0.1979,13,1],"
-    "[69,80,41.25,0.1979,13,1],[74,80,41.4583,0.1979,13,1],[53,64,41.6667,1.5833,13,5],"
-    "[57,64,41.875,0.5938,13,6],[62,80,42.0833,0.1979,13,1],[69,80,42.2917,0.1979,13,1],"
-    "[74,80,42.5,0.1979,13,1],[62,80,42.7083,0.1979,13,1],[69,80,42.9167,0.1979,13,1],"
-    "[74,80,43.125,0.1979,13,1],[53,64,43.3333,1.5833,14,5],[56,64,43.5417,0.5938,14,6],"
-    "[62,80,43.75,0.1979,14,1],[65,80,43.9583,0.1979,14,1],[71,80,44.1667,0.1979,14,1],"
-    "[62,80,44.375,0.1979,14,1],[65,80,44.5833,0.1979,14,1],[71,80,44.7917,0.1979,14,1],"
-    "[53,64,45.0,1.5833,14,5],[56,64,45.2083,0.5938,14,6],[62,80,45.4167,0.1979,14,1],"
-    "[65,80,45.625,0.1979,14,1],[71,80,45.8333,0.1979,14,1],[62,80,46.0417,0.1979,14,1],"
-    "[65,80,46.25,0.1979,14,1],[71,80,46.4583,0.1979,14,1],[52,64,46.6667,1.5833,15,5],"
-    "[55,64,46.875,0.5938,15,6],[60,80,47.0833,0.1979,15,1],[67,80,47.2917,0.1979,15,1],"
-    "[72,80,47.5,0.1979,15,1],[60,80,47.7083,0.1979,15,1],[67,80,47.9167,0.1979,15,1],"
-    "[72,80,48.125,0.1979,15,1],[52,64,48.3333,1.5833,15,5],[55,64,48.5417,0.5938,15,6],"
-    "[60,80,48.75,0.1979,15,1],[67,80,48.9583,0.1979,15,1],[72,80,49.1667,0.1979,15,1],"
-    "[60,80,49.375,0.1979,15,1],[67,80,49.5833,0.1979,15,1],[72,80,49.7917,0.1979,15,1],"
-    "[52,64,50.0,1.5833,16,5],[53,64,50.2083,0.5938,16,6],[57,80,50.4167,0.1979,16,1],"
-    "[60,80,50.625,0.1979,16,1],[65,80,50.8333,0.1979,16,1],[57,80,51.0417,0.1979,16,1],"
-    "[60,80,51.25,0.1979,16,1],[65,80,51.4583,0.1979,16,1],[52,64,51.6667,1.5833,16,5],"
-    "[53,64,51.875,0.5938,16,6],[57,80,52.0833,0.1979,16,1],[60,80,52.2917,0.1979,16,1],"
-    "[65,80,52.5,0.1979,16,1],[57,80,52.7083,0.1979,16,1],[60,80,52.9167,0.1979,16,1],"
-    "[65,80,53.125,0.1979,16,1],[50,64,53.3333,1.5833,17,5],[53,64,53.5417,0.5938,17,6],"
-    "[57,80,53.75,0.1979,17,1],[60,80,53.9583,0.1979,17,1],[65,80,54.1667,0.1979,17,1],"
-    "[57,80,54.375,0.1979,17,1],[60,80,54.5833,0.1979,17,1],[65,80,54.7917,0.1979,17,1],"
-    "[50,64,55.0,1.5833,17,5],[53,64,55.2083,0.5938,17,6],[57,80,55.4167,0.1979,17,1],"
-    "[60,80,55.625,0.1979,17,1],[65,80,55.8333,0.1979,17,1],[57,80,56.0417,0.1979,17,1],"
-    "[60,80,56.25,0.1979,17,1],[65,80,56.4583,0.1979,17,1],[43,64,56.6667,1.5833,18,5],"
-    "[50,64,56.875,0.5938,18,6],[55,80,57.0833,0.1979,18,1],[59,80,57.2917,0.1979,18,1],"
-    "[65,80,57.5,0.1979,18,1],[55,80,57.7083,0.1979,18,1],[59,80,57.9167,0.1979,18,1],"
-    "[65,80,58.125,0.1979,18,1],[43,64,58.3333,1.5833,18,5],[50,64,58.5417,0.5938,18,6],"
-    "[55,80,58.75,0.1979,18,1],[59,80,58.9583,0.1979,18,1],[65,80,59.1667,0.1979,18,1],"
-    "[55,80,59.375,0.1979,18,1],[59,80,59.5833,0.1979,18,1],[65,80,59.7917,0.1979,18,1],"
-    "[48,64,60.0,1.5833,19,5],[52,64,60.2083,0.5938,19,6],[55,80,60.4167,0.1979,19,1],"
-    "[60,80,60.625,0.1979,19,1],[64,80,60.8333,0.1979,19,1],[55,80,61.0417,0.1979,19,1],"
-    "[60,80,61.25,0.1979,19,1],[64,80,61.4583,0.1979,19,1],[48,64,61.6667,1.5833,19,5],"
-    "[52,64,61.875,0.5938,19,6],[55,80,62.0833,0.1979,19,1],[60,80,62.2917,0.1979,19,1],"
-    "[64,80,62.5,0.1979,19,1],[55,80,62.7083,0.1979,19,1],[60,80,62.9167,0.1979,19,1],"
-    "[64,80,63.125,0.1979,19,1],[48,64,63.3333,1.5833,20,5],[55,64,63.5417,0.5938,20,6],"
-    "[58,80,63.75,0.1979,20,1],[60,80,63.9583,0.1979,20,1],[64,80,64.1667,0.1979,20,1],"
-    "[58,80,64.375,0.1979,20,1],[60,80,64.5833,0.1979,20,1],[64,80,64.7917,0.1979,20,1],"
-    "[48,64,65.0,1.5833,20,5],[55,64,65.2083,0.5938,20,6],[58,80,65.4167,0.1979,20,1],"
-    "[60,80,65.625,0.1979,20,1],[64,80,65.8333,0.1979,20,1],[58,80,66.0417,0.1979,20,1],"
-    "[60,80,66.25,0.1979,20,1],[64,80,66.4583,0.1979,20,1],[41,64,66.6667,1.5833,21,5],"
-    "[53,64,66.875,0.5938,21,6],[57,80,67.0833,0.1979,21,1],[60,80,67.2917,0.1979,21,1],"
-    "[64,80,67.5,0.1979,21,1],[57,80,67.7083,0.1979,21,1],[60,80,67.9167,0.1979,21,1],"
-    "[64,80,68.125,0.1979,21,1],[41,64,68.3333,1.5833,21,5],[53,64,68.5417,0.5938,21,6],"
-    "[57,80,68.75,0.1979,21,1],[60,80,68.9583,0.1979,21,1],[64,80,69.1667,0.1979,21,1],"
-    "[57,80,69.375,0.1979,21,1],[60,80,69.5833,0.1979,21,1],[64,80,69.7917,0.1979,21,1],"
-    "[42,64,70.0,1.5833,22,5],[48,64,70.2083,0.5938,22,6],[57,80,70.4167,0.1979,22,1],"
-    "[60,80,70.625,0.1979,22,1],[63,80,70.8333,0.1979,22,1],[57,80,71.0417,0.1979,22,1],"
-    "[60,80,71.25,0.1979,22,1],[63,80,71.4583,0.1979,22,1],[42,64,71.6667,1.5833,22,5],"
-    "[48,64,71.875,0.5938,22,6],[57,80,72.0833,0.1979,22,1],[60,80,72.2917,0.1979,22,1],"
-    "[63,80,72.5,0.1979,22,1],[57,80,72.7083,0.1979,22,1],[60,80,72.9167,0.1979,22,1],"
-    "[63,80,73.125,0.1979,22,1],[44,64,73.3333,1.5833,23,5],[53,64,73.5417,0.5938,23,6],"
-    "[59,80,73.75,0.1979,23,1],[60,80,73.9583,0.1979,23,1],[62,80,74.1667,0.1979,23,1],"
-    "[59,80,74.375,0.1979,23,1],[60,80,74.5833,0.1979,23,1],[62,80,74.7917,0.1979,23,1],"
-    "[44,64,75.0,1.5833,23,5],[53,64,75.2083,0.5938,23,6],[59,80,75.4167,0.1979,23,1],"
-    "[60,80,75.625,0.1979,23,1],[62,80,75.8333,0.1979,23,1],[59,80,76.0417,0.1979,23,1],"
-    "[60,80,76.25,0.1979,23,1],[62,80,76.4583,0.1979,23,1],[43,64,76.6667,1.5833,24,5],"
-    "[53,64,76.875,0.5938,24,6],[55,80,77.0833,0.1979,24,1],[59,80,77.2917,0.1979,24,1],"
-    "[62,80,77.5,0.1979,24,1],[55,80,77.7083,0.1979,24,1],[59,80,77.9167,0.1979,24,1],"
-    "[62,80,78.125,0.1979,24,1],[43,64,78.3333,1.5833,24,5],[53,64,78.5417,0.5938,24,6],"
-    "[55,80,78.75,0.1979,24,1],[59,80,78.9583,0.1979,24,1],[62,80,79.1667,0.1979,24,1],"
-    "[55,80,79.375,0.1979,24,1],[59,80,79.5833,0.1979,24,1],[62,80,79.7917,0.1979,24,1],"
-    "[43,64,80.0,1.5833,25,5],[52,64,80.2083,0.5938,25,6],[55,80,80.4167,0.1979,25,1],"
-    "[60,80,80.625,0.1979,25,1],[64,80,80.8333,0.1979,25,1],[55,80,81.0417,0.1979,25,1],"
-    "[60,80,81.25,0.1979,25,1],[64,80,81.4583,0.1979,25,1],[43,64,81.6667,1.5833,25,5],"
-    "[52,64,81.875,0.5938,25,6],[55,80,82.0833,0.1979,25,1],[60,80,82.2917,0.1979,25,1],"
-    "[64,80,82.5,0.1979,25,1],[55,80,82.7083,0.1979,25,1],[60,80,82.9167,0.1979,25,1],"
-    "[64,80,83.125,0.1979,25,1],[43,64,83.3333,1.5833,26,5],[50,64,83.5417,0.5938,26,6],"
-    "[55,80,83.75,0.1979,26,1],[59,80,83.9583,0.1979,26,1],[65,80,84.1667,0.1979,26,1],"
-    "[55,80,84.375,0.1979,26,1],[59,80,84.5833,0.1979,26,1],[65,80,84.7917,0.1979,26,1],"
-    "[43,64,85.0,1.5833,26,5],[50,64,85.2083,0.5938,26,6],[55,80,85.4167,0.1979,26,1],"
-    "[59,80,85.625,0.1979,26,1],[65,80,85.8333,0.1979,26,1],[55,80,86.0417,0.1979,26,1],"
-    "[59,80,86.25,0.1979,26,1],[65,80,86.4583,0.1979,26,1],[43,64,86.6667,1.5833,27,5],"
-    "[51,64,86.875,0.5938,27,6],[57,80,87.0833,0.1979,27,1],[60,80,87.2917,0.1979,27,1],"
-    "[66,80,87.5,0.1979,27,1],[57,80,87.7083,0.1979,27,1],[60,80,87.9167,0.1979,27,1],"
-    "[66,80,88.125,0.1979,27,1],[43,64,88.3333,1.5833,27,5],[51,64,88.5417,0.5938,27,6],"
-    "[57,80,88.75,0.1979,27,1],[60,80,88.9583,0.1979,27,1],[66,80,89.1667,0.1979,27,1],"
-    "[57,80,89.375,0.1979,27,1],[60,80,89.5833,0.1979,27,1],[66,80,89.7917,0.1979,27,1],"
-    "[43,64,90.0,1.5833,28,5],[52,64,90.2083,0.5938,28,6],[55,80,90.4167,0.1979,28,1],"
-    "[60,80,90.625,0.1979,28,1],[67,80,90.8333,0.1979,28,1],[55,80,91.0417,0.1979,28,1],"
-    "[60,80,91.25,0.1979,28,1],[67,80,91.4583,0.1979,28,1],[43,64,91.6667,1.5833,28,5],"
-    "[52,64,91.875,0.5938,28,6],[55,80,92.0833,0.1979,28,1],[60,80,92.2917,0.1979,28,1],"
-    "[67,80,92.5,0.1979,28,1],[55,80,92.7083,0.1979,28,1],[60,80,92.9167,0.1979,28,1],"
-    "[67,80,93.125,0.1979,28,1],[43,64,93.3333,1.5833,29,5],[50,64,93.5417,0.5938,29,6],"
-    "[55,80,93.75,0.1979,29,1],[60,80,93.9583,0.1979,29,1],[65,80,94.1667,0.1979,29,1],"
-    "[55,80,94.375,0.1979,29,1],[60,80,94.5833,0.1979,29,1],[65,80,94.7917,0.1979,29,1],"
-    "[43,64,95.0,1.5833,29,5],[50,64,95.2083,0.5938,29,6],[55,80,95.4167,0.1979,29,1],"
-    "[60,80,95.625,0.1979,29,1],[65,80,95.8333,0.1979,29,1],[55,80,96.0417,0.1979,29,1],"
-    "[60,80,96.25,0.1979,29,1],[65,80,96.4583,0.1979,29,1],[43,64,96.6667,1.5833,30,5],"
-    "[50,64,96.875,0.5938,30,6],[55,80,97.0833,0.1979,30,1],[59,80,97.2917,0.1979,30,1],"
-    "[65,80,97.5,0.1979,30,1],[55,80,97.7083,0.1979,30,1],[59,80,97.9167,0.1979,30,1],"
-    "[65,80,98.125,0.1979,30,1],[43,64,98.3333,1.5833,30,5],[50,64,98.5417,0.5938,30,6],"
-    "[55,80,98.75,0.1979,30,1],[59,80,98.9583,0.1979,30,1],[65,80,99.1667,0.1979,30,1],"
-    "[55,80,99.375,0.1979,30,1],[59,80,99.5833,0.1979,30,1],[65,80,99.7917,0.1979,30,1],"
-    "[36,64,100.0,1.5833,31,5],[48,64,100.2083,0.5938,31,6],[55,80,100.4167,0.1979,31,1],"
-    "[58,80,100.625,0.1979,31,1],[64,80,100.8333,0.1979,31,1],[55,80,101.0417,0.1979,31,1],"
-    "[58,80,101.25,0.1979,31,1],[64,80,101.4583,0.1979,31,1],[36,64,101.6667,1.5833,31,5],"
-    "[48,64,101.875,0.5938,31,6],[55,80,102.0833,0.1979,31,1],[58,80,102.2917,0.1979,31,1],"
-    "[64,80,102.5,0.1979,31,1],[55,80,102.7083,0.1979,31,1],[58,80,102.9167,0.1979,31,1],"
-    "[64,80,103.125,0.1979,31,1],[36,64,103.3333,1.5833,32,5],[48,64,103.5417,0.5938,32,6],"
-    "[53,80,103.75,0.1979,32,1],[57,80,103.9583,0.1979,32,1],[60,80,104.1667,0.1979,32,1],"
-    "[65,80,104.375,0.1979,32,1],[60,80,104.5833,0.1979,32,1],[57,80,104.7917,0.1979,32,1],"
-    "[60,80,105.0,0.1979,32,1],[57,80,105.2083,0.1979,32,1],[53,80,105.4167,0.1979,32,1],"
-    "[57,80,105.625,0.1979,32,1],[53,80,105.8333,0.1979,32,1],[50,80,106.0417,0.1979,32,1],"
-    "[53,80,106.25,0.1979,32,1],[50,80,106.4583,0.1979,32,1],[36,64,116.3636,1.7273,33,5],"
-    "[47,64,116.5909,0.6477,33,6],[67,80,116.8182,0.2159,33,1],[71,80,117.0455,0.2159,33,1],"
-    "[74,80,117.2727,0.2159,33,1],[77,80,117.5,0.2159,33,1],[74,80,117.7273,0.2159,33,1],"
-    "[71,80,117.9545,0.2159,33,1],[74,80,118.1818,0.2159,33,1],[71,80,118.4091,0.2159,33,1],"
-    "[67,80,118.6364,0.2159,33,1],[71,80,118.8636,0.2159,33,1],[62,80,119.0909,0.2159,33,1],"
-    "[65,80,119.3182,0.2159,33,1],[64,80,119.5455,0.2159,33,1],[62,80,119.7727,0.2159,33,1],"
-    "[64,80,120.0,3.4545,34,1],[36,64,120.0,3.4545,34,5],[67,80,123.6364,3.4545,34,1],"
-    "[72,80,123.6364,3.4545,34,1],[48,64,123.6364,3.4545,34,5]]"
-)
+# ─────────────────────────────────────────────────────────────────────────────
+# MUSICAL CONSTANTS  (96 BPM, E minor)
+# ─────────────────────────────────────────────────────────────────────────────
+BPM: int = 96
+BEAT: float = 60.0 / BPM   # 0.625 s / beat
+BAR: float = 4 * BEAT       # 2.5 s / bar
+S16: float = BEAT / 4       # 16th note  = 0.15625 s
+E8: float = BEAT / 2        # 8th note   = 0.3125 s
+Q4: float = BEAT            # quarter    = 0.625 s
+H2: float = 2 * BEAT        # half       = 1.25 s
+W1: float = 4 * BEAT        # whole      = 2.5 s
+BARS: int = 8               # every commit plays 8 bars ≈ 20 s
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 21 MIDI Dimensions
-# ──────────────────────────────────────────────────────────────────────────────
-_DIMS_21: list[dict[str, str]] = [
-    {"id": "notes",            "label": "Notes",          "group": "core",   "color": "#00d4ff", "desc": "note_on/note_off — the musical content itself"},
-    {"id": "pitch_bend",       "label": "Pitch Bend",     "group": "expr",   "color": "#7c6cff", "desc": "pitchwheel — semitone-accurate pitch deviation"},
-    {"id": "channel_pressure", "label": "Ch. Pressure",   "group": "expr",   "color": "#9d8cff", "desc": "aftertouch — mono channel pressure"},
-    {"id": "poly_pressure",    "label": "Poly Aftertouch","group": "expr",   "color": "#b8a8ff", "desc": "polytouch — per-note polyphonic aftertouch"},
-    {"id": "cc_modulation",    "label": "Modulation",     "group": "cc",     "color": "#ff6b9d", "desc": "CC 1 — modulation wheel depth"},
-    {"id": "cc_volume",        "label": "Volume",         "group": "cc",     "color": "#ff8c42", "desc": "CC 7 — channel volume level"},
-    {"id": "cc_pan",           "label": "Pan",            "group": "cc",     "color": "#ffd700", "desc": "CC 10 — stereo pan position"},
-    {"id": "cc_expression",    "label": "Expression",     "group": "cc",     "color": "#00ff87", "desc": "CC 11 — expression controller"},
-    {"id": "cc_sustain",       "label": "Sustain Pedal",  "group": "cc",     "color": "#00d4ff", "desc": "CC 64 — damper/sustain pedal"},
-    {"id": "cc_portamento",    "label": "Portamento",     "group": "cc",     "color": "#66e0ff", "desc": "CC 65 — portamento on/off"},
-    {"id": "cc_sostenuto",     "label": "Sostenuto",      "group": "cc",     "color": "#99eaff", "desc": "CC 66 — sostenuto pedal"},
-    {"id": "cc_soft_pedal",    "label": "Soft Pedal",     "group": "cc",     "color": "#aaeeff", "desc": "CC 67 — soft pedal (una corda)"},
-    {"id": "cc_reverb",        "label": "Reverb Send",    "group": "fx",     "color": "#e879f9", "desc": "CC 91 — reverb send level"},
-    {"id": "cc_chorus",        "label": "Chorus Send",    "group": "fx",     "color": "#c084fc", "desc": "CC 93 — chorus send level"},
-    {"id": "cc_other",         "label": "Other CC",       "group": "fx",     "color": "#a78bfa", "desc": "All remaining CC numbers"},
-    {"id": "program_change",   "label": "Program/Patch",  "group": "meta",   "color": "#fb923c", "desc": "program_change — instrument/patch select"},
-    {"id": "tempo_map",        "label": "Tempo Map",      "group": "meta",   "color": "#f87171", "desc": "set_tempo meta events (non-independent)"},
-    {"id": "time_signatures",  "label": "Time Signatures","group": "meta",   "color": "#fbbf24", "desc": "time_signature meta events (non-independent)"},
-    {"id": "key_signatures",   "label": "Key Signatures", "group": "meta",   "color": "#a3e635", "desc": "key_signature meta events"},
-    {"id": "markers",          "label": "Markers",        "group": "meta",   "color": "#34d399", "desc": "marker, cue, text, lyrics, copyright events"},
-    {"id": "track_structure",  "label": "Track Structure","group": "meta",   "color": "#94a3b8", "desc": "track_name, sysex, unknown meta (non-independent)"},
-]
+# GM Drum pitches
+KICK = 36; SNARE = 38; HAT_C = 42; HAT_O = 46; CRASH = 49; RIDE = 51
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Commit graph definition
-# dagX: column (0=lower-register, 1=main, 2=upper-register)
-# dagY: row (0=top)
-# filter: {minM, maxM, voices[]} or null for no notes
-# dims: dimension IDs active/modified in this commit
-# dimAct: activity level per dimension (0-4)
-# ──────────────────────────────────────────────────────────────────────────────
-_COMMITS: list[dict[str, object]] = [
-    {
-        "id": "c0", "sha": "0000000", "branch": "main",
-        "label": "muse init",
-        "message": "Initial commit — muse init --domain midi",
-        "command": "muse init --domain midi",
-        "output": "✓ Initialized Muse repository\n  Domain    : midi\n  Dimensions: 21\n  Location  : .muse/\n  Tracking  : muse-work/",
-        "parents": [],
-        "dagX": 1, "dagY": 0,
-        "filter": None,
-        "newVoices": [],
-        "newMeasures": [],
-        "dims": [],
-        "dimAct": {},
-        "stats": "0 notes · 0 dimensions",
-        "noteCount": 0,
-    },
-    {
-        "id": "c1", "sha": "a1b2c3d", "branch": "feat/lower-register",
-        "label": "bass + inner\nbars 1–12",
-        "message": "feat: bass and inner voices, bars 1–12",
-        "command": 'muse commit -m "feat: bass and inner voices, bars 1–12"',
-        "output": "✓ [feat/lower-register a1b2c3d]\n  48 notes added\n  Dimensions modified: notes, tempo_map,\n    time_signatures, track_structure\n  Key detected: C major",
-        "parents": ["c0"],
-        "dagX": 0, "dagY": 1,
-        "filter": {"minM": 1, "maxM": 12, "voices": [5, 6]},
-        "newVoices": [5, 6],
-        "newMeasures": [1, 12],
-        "dims": ["notes", "tempo_map", "time_signatures", "track_structure"],
-        "dimAct": {"notes": 3, "tempo_map": 2, "time_signatures": 2, "track_structure": 1},
-        "stats": "+48 notes · 4 dimensions",
-        "noteCount": 48,
-    },
-    {
-        "id": "c2", "sha": "b3c4d5e", "branch": "feat/lower-register",
-        "label": "lower voices\nbars 13–24",
-        "message": "feat: bass and inner voices extended, bars 13–24",
-        "command": 'muse commit -m "feat: bass and inner voices extended, bars 13–24"',
-        "output": "✓ [feat/lower-register b3c4d5e]\n  40 notes added\n  Dimensions modified: notes, cc_sustain,\n    cc_volume\n  Chord progression: Fm → C7 → Dm",
-        "parents": ["c1"],
-        "dagX": 0, "dagY": 2,
-        "filter": {"minM": 1, "maxM": 24, "voices": [5, 6]},
-        "newVoices": [5, 6],
-        "newMeasures": [13, 24],
-        "dims": ["notes", "cc_sustain", "cc_volume"],
-        "dimAct": {"notes": 3, "cc_sustain": 2, "cc_volume": 1},
-        "stats": "+40 notes · 3 dimensions",
-        "noteCount": 88,
-    },
-    {
-        "id": "c3", "sha": "c4d5e6f", "branch": "feat/lower-register",
-        "label": "lower voices\nbars 25–34 + FX",
-        "message": "feat: complete lower register + reverb + expression",
-        "command": 'muse commit -m "feat: complete lower register + reverb + expression"',
-        "output": "✓ [feat/lower-register c4d5e6f]\n  42 notes added\n  Dimensions modified: notes, cc_sustain,\n    cc_reverb, cc_expression, markers\n  Bass descends to C2 (MIDI 36) — full range",
-        "parents": ["c2"],
-        "dagX": 0, "dagY": 3,
-        "filter": {"minM": 1, "maxM": 34, "voices": [5, 6]},
-        "newVoices": [5, 6],
-        "newMeasures": [25, 34],
-        "dims": ["notes", "cc_sustain", "cc_reverb", "cc_expression", "markers"],
-        "dimAct": {"notes": 3, "cc_sustain": 2, "cc_reverb": 2, "cc_expression": 3, "markers": 1},
-        "stats": "+42 notes · 5 dimensions",
-        "noteCount": 130,
-    },
-    {
-        "id": "c4", "sha": "d5e6f7a", "branch": "feat/upper-register",
-        "label": "treble arpeggios\nbars 1–12",
-        "message": "feat: treble arpeggios, bars 1–12",
-        "command": 'muse commit -m "feat: treble arpeggios, bars 1–12"',
-        "output": "✓ [feat/upper-register d5e6f7a]\n  144 notes added\n  Dimensions modified: notes, cc_volume,\n    program_change\n  Voice 1: soprano arpeggios reach A5 (MIDI 81)",
-        "parents": ["c0"],
-        "dagX": 2, "dagY": 1,
-        "filter": {"minM": 1, "maxM": 12, "voices": [1]},
-        "newVoices": [1],
-        "newMeasures": [1, 12],
-        "dims": ["notes", "cc_volume", "program_change"],
-        "dimAct": {"notes": 4, "cc_volume": 2, "program_change": 1},
-        "stats": "+144 notes · 3 dimensions",
-        "noteCount": 144,
-    },
-    {
-        "id": "c5", "sha": "e6f7a8b", "branch": "feat/upper-register",
-        "label": "arpeggios\nbars 13–24",
-        "message": "feat: treble arpeggios, bars 13–24 + modulation",
-        "command": 'muse commit -m "feat: treble arpeggios, bars 13–24 + modulation"',
-        "output": "✓ [feat/upper-register e6f7a8b]\n  120 notes added\n  Dimensions modified: notes, cc_modulation,\n    cc_expression, key_signatures\n  Development section — chromatic tensions",
-        "parents": ["c4"],
-        "dagX": 2, "dagY": 2,
-        "filter": {"minM": 1, "maxM": 24, "voices": [1]},
-        "newVoices": [1],
-        "newMeasures": [13, 24],
-        "dims": ["notes", "cc_modulation", "cc_expression", "key_signatures"],
-        "dimAct": {"notes": 4, "cc_modulation": 2, "cc_expression": 3, "key_signatures": 1},
-        "stats": "+120 notes · 4 dimensions",
-        "noteCount": 264,
-    },
-    {
-        "id": "c6", "sha": "f7a8b9c", "branch": "feat/upper-register",
-        "label": "coda\nbars 25–34",
-        "message": "feat: coda arpeggios bars 25–34 + final dynamics",
-        "command": 'muse commit -m "feat: coda arpeggios bars 25–34 + final dynamics"',
-        "output": "✓ [feat/upper-register f7a8b9c]\n  139 notes added\n  Dimensions modified: notes, cc_expression,\n    cc_soft_pedal, markers\n  Coda: bars 33–34 hold final C major chord",
-        "parents": ["c5"],
-        "dagX": 2, "dagY": 3,
-        "filter": {"minM": 1, "maxM": 34, "voices": [1]},
-        "newVoices": [1],
-        "newMeasures": [25, 34],
-        "dims": ["notes", "cc_expression", "cc_soft_pedal", "markers"],
-        "dimAct": {"notes": 4, "cc_expression": 3, "cc_soft_pedal": 2, "markers": 2},
-        "stats": "+139 notes · 4 dimensions",
-        "noteCount": 403,
-    },
-    {
-        "id": "c7", "sha": "9a0b1c2", "branch": "main",
-        "label": "muse merge\nPrelude complete ✓",
-        "message": "merge: unite lower and upper registers — Prelude BWV 846 complete",
-        "command": "muse merge feat/lower-register feat/upper-register",
-        "output": "✓ [main 9a0b1c2] merge: Prelude BWV 846 complete\n  Auto-merged: notes (no pitch conflicts —\n    registers non-overlapping)\n  Merged dimensions: 10 / 21\n  533 notes · 2:07 duration · Key: C major",
-        "parents": ["c3", "c6"],
-        "dagX": 1, "dagY": 4,
-        "filter": {"minM": 1, "maxM": 34, "voices": [1, 5, 6]},
-        "newVoices": [1, 5, 6],
-        "newMeasures": [1, 34],
-        "dims": [
-            "notes", "tempo_map", "time_signatures", "track_structure",
-            "cc_sustain", "cc_volume", "cc_expression", "cc_reverb",
-            "cc_modulation", "cc_soft_pedal", "markers", "program_change",
-            "key_signatures",
-        ],
-        "dimAct": {
-            "notes": 4, "tempo_map": 2, "time_signatures": 2, "track_structure": 1,
-            "cc_sustain": 2, "cc_volume": 2, "cc_expression": 3, "cc_reverb": 2,
-            "cc_modulation": 2, "cc_soft_pedal": 2, "markers": 2, "program_change": 1,
-            "key_signatures": 1,
-        },
-        "stats": "533 notes · 13 dimensions · 2:07",
-        "noteCount": 533,
-    },
+# E-minor chord voicings (mid register)
+_EM7  = [52, 55, 59, 62]   # E3 G3 B3 D4
+_AM9  = [57, 60, 64, 67]   # A3 C4 E4 G4
+_BM7  = [59, 62, 66, 69]   # B3 D4 F#4 A4
+_CMAJ = [60, 64, 67, 71]   # C4 E4 G4 B4
+CHORDS: list[list[int]] = [_EM7, _AM9, _BM7, _CMAJ]
+
+# E pentatonic (lead)
+PENTA: list[int] = [64, 67, 69, 71, 74, 76]  # E4 G4 A4 B4 D5 E5
+
+
+def _n(pitch: int, vel: int, t: float, dur: float, instr: str) -> list[object]:
+    """Pack a single MIDI note: [pitch, vel, start_sec, dur_sec, instr]."""
+    return [pitch, vel, round(t, 5), round(dur, 5), instr]
+
+
+def _bs(bar: int) -> float:
+    """Bar start time in seconds (0-indexed)."""
+    return bar * BAR
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DRUMS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def gen_drums_basic(bars: range) -> list[list[object]]:
+    """Kick + snare only — the skeleton groove."""
+    notes: list[list[object]] = []
+    for b in bars:
+        t = _bs(b)
+        if b == bars.start:
+            notes.append(_n(CRASH, 100, t, 1.0, "crash"))
+        # Kick beats 1 & 3
+        notes.append(_n(KICK, 110, t,            0.08, "kick"))
+        notes.append(_n(KICK, 100, t + 2 * Q4,   0.08, "kick"))
+        # Snare beats 2 & 4
+        notes.append(_n(SNARE, 95, t + Q4,       0.10, "snare"))
+        notes.append(_n(SNARE, 90, t + 3 * Q4,   0.10, "snare"))
+    return notes
+
+
+def gen_drums_full(bars: range) -> list[list[object]]:
+    """Full funk pattern: kick/snare + hi-hat 16ths + ghost snares."""
+    notes = gen_drums_basic(bars)
+    for b in bars:
+        t = _bs(b)
+        # Closed hi-hat every 16th (open on 14th 16th)
+        for i in range(16):
+            if i == 14:
+                notes.append(_n(HAT_O, 72, t + i * S16, 0.20, "hat_o"))
+            else:
+                vel = 75 if i % 4 == 0 else (60 if i % 2 == 0 else 45)
+                notes.append(_n(HAT_C, vel, t + i * S16, 0.06, "hat_c"))
+        # Ghost snares (very soft, add texture)
+        for ghost_16th in [2, 6, 10, 14]:
+            notes.append(_n(SNARE, 22, t + ghost_16th * S16, 0.04, "ghost"))
+        # Syncopated kick pickup on odd bars
+        if b % 2 == 1:
+            notes.append(_n(KICK, 78, t + 3 * Q4 + S16, 0.07, "kick"))
+    return notes
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BASS GUITAR  (E minor pentatonic walking line)
+# ─────────────────────────────────────────────────────────────────────────────
+# E2=40  G2=43  A2=45  B2=47  C3=48  D3=50  E3=52
+_BASS_CELLS: list[list[tuple[float, int, float, int]]] = [
+    # (beat_offset, pitch, dur_beats, vel)  — bar 0 mod 4 (Em root)
+    [(0.0, 40, 1.00, 95), (1.00, 43, 0.50, 85), (1.50, 45, 0.25, 80), (1.75, 47, 2.25, 90)],
+    # bar 1 mod 4 (Am flavor)
+    [(0.0, 40, 1.25, 95), (1.25, 43, 0.50, 85), (1.75, 45, 0.75, 85),
+     (2.50, 47, 0.50, 80), (3.00, 50, 1.00, 80)],
+    # bar 2 mod 4 (Am → Bm)
+    [(0.0, 45, 1.00, 90), (1.00, 48, 0.50, 80), (1.50, 47, 1.75, 85), (3.25, 45, 0.75, 75)],
+    # bar 3 mod 4 (Bm → Em)
+    [(0.0, 47, 1.00, 90), (1.00, 50, 0.50, 85), (1.50, 45, 1.00, 80), (2.50, 40, 1.50, 95)],
 ]
 
 
-def render_midi_demo() -> str:
-    """Generate the complete self-contained MIDI demo HTML page."""
-    notes_json = _BACH_NOTES_JSON
-    commits_json = json.dumps(_COMMITS, separators=(",", ":"))
-    dims_json = json.dumps(_DIMS_21, separators=(",", ":"))
-
-    html = _HTML_TEMPLATE
-    html = html.replace("__NOTES_JSON__", notes_json)
-    html = html.replace("__COMMITS_JSON__", commits_json)
-    html = html.replace("__DIMS_JSON__", dims_json)
-    return html
+def gen_bass(bars: range) -> list[list[object]]:
+    """E minor pentatonic walking bass line — 4-bar repeating cell."""
+    notes: list[list[object]] = []
+    for b in bars:
+        t = _bs(b)
+        for beat_off, pitch, dur_beats, vel in _BASS_CELLS[b % 4]:
+            notes.append(_n(pitch, vel, t + beat_off * Q4, dur_beats * Q4, "bass"))
+    return notes
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# HTML template  (no Python f-strings — JS braces are literal)
-# ──────────────────────────────────────────────────────────────────────────────
-_HTML_TEMPLATE = """<!DOCTYPE html>
+# ─────────────────────────────────────────────────────────────────────────────
+# ELECTRIC PIANO  (Em7 → Am9 → Bm7 → Cmaj7 comping)
+# ─────────────────────────────────────────────────────────────────────────────
+# Syncopated comping hits within each bar
+_COMP_HITS: list[tuple[float, float, int]] = [
+    # (beat_offset, dur_beats, base_vel)
+    (0.00, 0.35, 85),   # beat 1  stab
+    (1.50, 0.50, 70),   # beat 2+ upbeat
+    (2.00, 0.35, 80),   # beat 3  stab
+    (3.50, 1.00, 72),   # beat 4+ sustain into next bar
+]
+
+
+def gen_epiano(bars: range) -> list[list[object]]:
+    """Funky electric piano comping — syncopated voicings."""
+    notes: list[list[object]] = []
+    for b in bars:
+        t = _bs(b)
+        chord = CHORDS[b % 4]
+        for beat_off, dur_beats, base_vel in _COMP_HITS:
+            for i, pitch in enumerate(chord):
+                vel = min(127, base_vel + (3 - i) * 3)  # root loudest
+                notes.append(_n(pitch, vel, t + beat_off * Q4, dur_beats * Q4, "epiano"))
+    return notes
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LEAD SYNTH  (E pentatonic melody, 4-bar cell)
+# ─────────────────────────────────────────────────────────────────────────────
+# (abs_beat_within_4_bars, pitch_idx, dur_beats, vel)
+_LEAD_CELL: list[tuple[float, int, float, int]] = [
+    # bar 0 — call phrase (ascending)
+    (0.00, 2, 0.50, 85), (0.50, 3, 0.25, 80), (0.75, 4, 0.25, 82),
+    (1.00, 4, 0.50, 88), (1.50, 3, 0.50, 78), (2.00, 3, 0.40, 80),
+    (2.50, 2, 0.50, 75), (3.00, 1, 1.00, 82),
+    # bar 1 — response (peak)
+    (4.00, 0, 0.50, 75), (4.50, 1, 0.50, 78), (5.00, 2, 1.00, 88),
+    (6.00, 3, 0.50, 82), (6.50, 4, 0.25, 80), (6.75, 5, 0.25, 85),
+    (7.00, 5, 1.00, 92),
+    # bar 2 — descent
+    (8.00, 4, 0.50, 85), (8.50, 3, 0.50, 80), (9.00, 2, 0.50, 78),
+    (9.50, 1, 0.50, 75), (10.00, 0, 1.00, 80), (11.00, 1, 1.00, 82),
+    # bar 3 — resolution
+    (12.00, 2, 0.50, 80), (12.50, 3, 0.50, 82), (13.00, 4, 1.00, 88),
+    (14.00, 3, 0.50, 80), (14.50, 2, 0.50, 78), (15.00, 0, 1.50, 92),
+]
+
+
+def gen_lead(bars: range) -> list[list[object]]:
+    """E pentatonic melody — 4-bar repeating call-and-response phrase."""
+    notes: list[list[object]] = []
+    first = bars.start
+    for b in bars:
+        t = _bs(b)
+        cell_bar = (b - first) % 4
+        for abs_beat, pidx, dur_beats, vel in _LEAD_CELL:
+            if int(abs_beat) // 4 == cell_bar:
+                local_beat = abs_beat - cell_bar * 4
+                notes.append(_n(PENTA[pidx], vel, t + local_beat * Q4, dur_beats * Q4, "lead"))
+    return notes
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BRASS / ENSEMBLE
+# ─────────────────────────────────────────────────────────────────────────────
+
+def gen_brass_a(bars: range) -> list[list[object]]:
+    """Brass A: punchy staccato off-beat stabs.  G major triad."""
+    STAB = [55, 59, 62]   # G3 B3 D4 (Em → G power)
+    notes: list[list[object]] = []
+    for b in bars:
+        t = _bs(b)
+        for beat_off in [0.5, 1.5, 2.5, 3.5]:
+            for pitch in STAB:
+                notes.append(_n(pitch, 95, t + beat_off * Q4, E8 * 0.55, "brass"))
+    return notes
+
+
+def gen_brass_b(bars: range) -> list[list[object]]:
+    """Brass B / Ensemble: legato swell pads.  Em9 voicing."""
+    PAD = [52, 55, 59, 64, 67]   # E3 G3 B3 E4 G4
+    notes: list[list[object]] = []
+    for b in bars:
+        t = _bs(b)
+        for pitch in PAD:
+            notes.append(_n(pitch, 70, t, H2 * 1.8, "brassb"))
+            notes.append(_n(pitch + 12, 55, t + H2, H2, "brassb"))  # octave upper bloom
+    return notes
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COMMIT DATA  (13 commits, 4 branches, 5 acts)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _all_notes(instrs: list[str], bars: range) -> list[list[object]]:
+    """Gather notes for the given instruments over the bar range."""
+    generators: dict[str, list[list[object]]] = {}
+    if any(i in instrs for i in ["kick", "snare", "hat_c", "hat_o", "ghost", "crash"]):
+        full = set(instrs) & {"hat_c", "hat_o", "ghost"}
+        if full:
+            generators.update({k: [] for k in ["kick","snare","hat_c","hat_o","ghost","crash"]})
+            for nt in gen_drums_full(bars):
+                if nt[4] in instrs:
+                    generators[str(nt[4])].append(nt)
+        else:
+            for nt in gen_drums_basic(bars):
+                if nt[4] in instrs:
+                    generators.setdefault(str(nt[4]), []).append(nt)
+    if "bass" in instrs:
+        generators["bass"] = gen_bass(bars)
+    if "epiano" in instrs:
+        generators["epiano"] = gen_epiano(bars)
+    if "lead" in instrs:
+        generators["lead"] = gen_lead(bars)
+    if "brass" in instrs:
+        generators["brass"] = gen_brass_a(bars)
+    if "brassb" in instrs:
+        generators["brassb"] = gen_brass_b(bars)
+
+    all_notes: list[list[object]] = []
+    for lst in generators.values():
+        all_notes.extend(lst)
+    return all_notes
+
+
+_R = range(0, BARS)    # all 8 bars
+_DK = ["kick", "snare"]
+_DF = ["kick", "snare", "hat_c", "hat_o", "ghost", "crash"]
+
+
+def _build_commits() -> list[dict[str, object]]:
+    """Return the full ordered commit list with note payloads."""
+
+    def mk(
+        sha: str,
+        branch: str,
+        label: str,
+        cmd: str,
+        output: str,
+        act: int,
+        instrs: list[str],
+        dim_act: dict[str, int],
+        parents: list[str] | None = None,
+        conflict: bool = False,
+        resolved: bool = False,
+    ) -> dict[str, object]:
+        notes = _all_notes(instrs, _R)
+        return {
+            "sha": sha,
+            "branch": branch,
+            "label": label,
+            "cmd": cmd,
+            "output": output,
+            "act": act,
+            "notes": notes,
+            "dimAct": dim_act,
+            "parents": parents or [],
+            "conflict": conflict,
+            "resolved": resolved,
+        }
+
+    # Dimension shorthand
+    _META  = {"time_signatures": 2, "key_signatures": 2, "tempo_map": 2, "markers": 2, "track_structure": 1}
+    _VOL   = {"cc_volume": 2, "cc_pan": 1}
+    _BASS_D = {"cc_portamento": 2, "cc_reverb": 1, "cc_expression": 1, "cc_other": 1}
+    _PIANO = {"cc_sustain": 2, "cc_chorus": 1, "cc_soft_pedal": 1, "cc_sostenuto": 1}
+    _LEAD_D = {"pitch_bend": 3, "cc_modulation": 2, "channel_pressure": 2, "poly_pressure": 1}
+    _BRASS_D = {"cc_expression": 3}
+    _ENS_D  = {"cc_reverb": 3, "cc_chorus": 2}  # CONFLICT source
+
+    c: list[dict[str, object]] = []
+
+    c.append(mk("a0f4d2e1", "main",
+        "muse init\\n--domain midi",
+        "muse init --domain midi",
+        "✓ Initialized Muse repository\n  domain: midi  |  .muse/ created",
+        0, [],
+        {**_META},
+    ))
+
+    c.append(mk("1b3c8f02", "main",
+        "Foundation\\n4/4 · 96 BPM · Em",
+        "muse commit -m 'Foundation: 4/4, 96 BPM, Em key'",
+        "✓ [main 1b3c8f02] Foundation: 4/4, 96 BPM, Em key\n"
+        "  1 file changed — .museattributes, time_sig, key_sig, markers",
+        1, [],
+        {**_META, "program_change": 1},
+        ["a0f4d2e1"],
+    ))
+
+    c.append(mk("2d9e1a47", "main",
+        "Foundation\\nkick + snare groove",
+        "muse commit -m 'Foundation: kick+snare groove pattern'",
+        "✓ [main 2d9e1a47] Foundation: kick+snare groove pattern\n"
+        "  notes dim active  |  cc_volume",
+        1, _DK,
+        {**_META, "notes": 2, **_VOL},
+        ["1b3c8f02"],
+    ))
+
+    # ── Act 2: Divergence ─────────────────────────────────────────────────────
+
+    c.append(mk("3f0b5c8d", "feat/groove",
+        "Groove\\nfull drum kit + bass",
+        "muse commit -m 'Groove: hi-hat 16ths, ghost snares, bass root motion'",
+        "✓ [feat/groove 3f0b5c8d] Groove: hi-hat 16ths, ghost snares, bass root motion\n"
+        "  notes, program_change, cc_portamento, cc_pan",
+        2, [*_DF, "bass"],
+        {**_META, "notes": 3, **_VOL, "program_change": 2, **_BASS_D},
+        ["2d9e1a47"],
+    ))
+
+    c.append(mk("4a2c7e91", "feat/groove",
+        "Groove\\nbass expression + reverb",
+        "muse commit -m 'Groove: bass portamento slides, CC reverb tail'",
+        "✓ [feat/groove 4a2c7e91] Groove: bass portamento slides, CC reverb tail\n"
+        "  cc_portamento, cc_reverb, cc_expression active",
+        2, [*_DF, "bass"],
+        {**_META, "notes": 3, **_VOL, "program_change": 2, **_BASS_D},
+        ["3f0b5c8d"],
+    ))
+
+    c.append(mk("5e8d3b14", "feat/harmony",
+        "Harmony\\nEm7→Am9→Bm7→Cmaj7",
+        "muse commit -m 'Harmony: Em7 chord voicings, CC sustain + chorus'",
+        "✓ [feat/harmony 5e8d3b14] Harmony: Em7 chord voicings, CC sustain + chorus\n"
+        "  notes, cc_sustain, cc_chorus, cc_soft_pedal",
+        2, [*_DF, "epiano"],
+        {**_META, "notes": 3, **_VOL, "program_change": 2, **_PIANO},
+        ["2d9e1a47"],
+    ))
+
+    c.append(mk("6c1f9a52", "feat/harmony",
+        "Melody\\nE pentatonic + pitch bends",
+        "muse commit -m 'Melody: E pentatonic lead, pitch_bend, channel_pressure'",
+        "✓ [feat/harmony 6c1f9a52] Melody: E pentatonic lead, pitch_bend, channel_pressure\n"
+        "  pitch_bend, cc_modulation, channel_pressure, poly_pressure",
+        2, [*_DF, "epiano", "lead"],
+        {**_META, "notes": 3, **_VOL, "program_change": 2, **_PIANO, **_LEAD_D},
+        ["5e8d3b14"],
+    ))
+
+    # ── Act 3: Clean Merge ────────────────────────────────────────────────────
+
+    c.append(mk("7b4e2d85", "main",
+        "MERGE\\nfeat/groove + feat/harmony",
+        "muse merge feat/groove feat/harmony",
+        "✓ Merged 'feat/groove' into 'main' — 0 conflicts\n"
+        "✓ Merged 'feat/harmony' into 'main' — 0 conflicts\n"
+        "  Full rhythm + harmony stack active",
+        3, [*_DF, "bass", "epiano", "lead"],
+        {**_META, "notes": 4, **_VOL, "program_change": 3,
+         **_BASS_D, **_PIANO, **_LEAD_D},
+        ["4a2c7e91", "6c1f9a52"],
+    ))
+
+    # ── Act 4: Conflict ───────────────────────────────────────────────────────
+
+    c.append(mk("8d7f1c36", "conflict/brass-a",
+        "Brass A\\nstaccato stabs",
+        "muse commit -m 'Brass A: punchy stabs, CC expression bus'",
+        "✓ [conflict/brass-a 8d7f1c36] Brass A: punchy stabs, CC expression bus\n"
+        "  brass track  |  cc_expression elevated",
+        4, [*_DF, "bass", "epiano", "lead", "brass"],
+        {**_META, "notes": 4, **_VOL, "program_change": 3,
+         **_BASS_D, **_PIANO, **_LEAD_D, **_BRASS_D},
+        ["7b4e2d85"],
+    ))
+
+    c.append(mk("9e0a4b27", "conflict/ensemble",
+        "Ensemble\\nlegato pads",
+        "muse commit -m 'Ensemble: legato pads, CC reverb swell'",
+        "✓ [conflict/ensemble 9e0a4b27] Ensemble: legato pads, CC reverb swell\n"
+        "  brassb track  |  cc_reverb elevated (CONFLICT INCOMING)",
+        4, [*_DF, "bass", "epiano", "lead", "brassb"],
+        {**_META, "notes": 4, **_VOL, "program_change": 3,
+         **_BASS_D, **_PIANO, **_LEAD_D, **_ENS_D},
+        ["7b4e2d85"],
+    ))
+
+    c.append(mk("a1b5c8d9", "main",
+        "MERGE\\nconflict/brass-a → main",
+        "muse merge conflict/brass-a",
+        "✓ Merged 'conflict/brass-a' into 'main' — 0 conflicts\n"
+        "  stab brass layer integrated",
+        4, [*_DF, "bass", "epiano", "lead", "brass"],
+        {**_META, "notes": 4, **_VOL, "program_change": 3,
+         **_BASS_D, **_PIANO, **_LEAD_D, **_BRASS_D},
+        ["7b4e2d85", "8d7f1c36"],
+    ))
+
+    c.append(mk("b2c6d9e0", "main",
+        "⚠ CONFLICT\\ncc_reverb dimension",
+        "muse merge conflict/ensemble",
+        "⚠  CONFLICT detected in dimension: cc_reverb\n"
+        "  conflict/brass-a:  cc_reverb = 45\n"
+        "  conflict/ensemble: cc_reverb = 82\n"
+        "  → muse resolve --strategy=auto cc_reverb",
+        4, [*_DF, "bass", "epiano", "lead", "brass", "brassb"],
+        {**_META, "notes": 5, **_VOL, "program_change": 4,
+         **_BASS_D, **_PIANO, **_LEAD_D, **_BRASS_D, **_ENS_D},
+        ["a1b5c8d9", "9e0a4b27"],
+        conflict=True,
+    ))
+
+    # ── Act 5: Resolution ─────────────────────────────────────────────────────
+
+    c.append(mk("c3d7e0f1", "main",
+        "RESOLVED · v1.0\\n21 dimensions active",
+        "muse resolve --strategy=auto cc_reverb && muse tag add v1.0",
+        "✓ Resolved cc_reverb — took max(45, 82) = 82\n"
+        "✓ All 21 MIDI dimensions active\n"
+        "✓ Tag 'v1.0' created → [main c3d7e0f1]",
+        5, [*_DF, "bass", "epiano", "lead", "brass", "brassb"],
+        {**_META, "notes": 5, **_VOL, "program_change": 4,
+         **_BASS_D, **_PIANO, **_LEAD_D, **_BRASS_D, **_ENS_D},
+        ["b2c6d9e0"],
+        resolved=True,
+    ))
+
+    return c
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HTML TEMPLATE
+# ─────────────────────────────────────────────────────────────────────────────
+
+_HTML = """\
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bach BWV 846 × Muse VCS — 21-Dimensional MIDI Demo</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Muse · MIDI Demo — Groove in Em</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tone@14.7.77/build/Tone.js"></script>
 <style>
-:root {
-  --bg: #07090f;
-  --bg2: #0c0f1a;
-  --bg3: #111627;
-  --surface: rgba(255,255,255,0.035);
-  --surface2: rgba(255,255,255,0.06);
-  --border: rgba(255,255,255,0.07);
-  --border2: rgba(255,255,255,0.12);
-  --text: #e2e8f0;
-  --muted: #64748b;
-  --dim: #475569;
-  --cyan: #00d4ff;
-  --purple: #7c6cff;
-  --gold: #ffd700;
-  --green: #00ff87;
-  --pink: #ff6b9d;
-  --orange: #ff8c42;
-  --font: 'Inter', sans-serif;
-  --mono: 'JetBrains Mono', monospace;
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07090f;--surface:#0d1118;--panel:#111724;--border:rgba(255,255,255,0.07);
+  --text:#e8eaf0;--muted:rgba(255,255,255,0.38);--accent:#33ddff;
+  --pink:#ff6b9d;--purple:#a855f7;--gold:#f59e0b;--green:#34d399;
+  --kick:#ef4444;--snare:#fb923c;--hat:#facc15;--crash:#fef9c3;
+  --bass:#a855f7;--epiano:#22d3ee;--lead:#f472b6;--brass:#34d399;--brassb:#86efac;
+  --main:#4f8ef7;--groove:#a855f7;--harmony:#22d3ee;--bra:#ef4444;--ens:#f59e0b;
 }
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; }
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font);
-  font-size: 14px;
-  line-height: 1.6;
-  min-height: 100vh;
-  overflow-x: hidden;
-}
-
-/* ── Particles canvas ── */
-#particles-canvas {
-  position: fixed; top: 0; left: 0;
-  width: 100%; height: 100%;
-  pointer-events: none; z-index: 0;
-  opacity: 0.4;
-}
+html{font-size:14px;scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;overflow-x:hidden}
 
 /* ── NAV ── */
-.nav {
-  position: sticky; top: 0; z-index: 100;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 28px;
-  background: rgba(7,9,15,0.85);
-  backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--border);
-}
-.nav-brand {
-  display: flex; align-items: center; gap: 10px;
-  font-family: var(--mono); font-size: 13px;
-  color: var(--cyan); text-decoration: none;
-  letter-spacing: 0.02em;
-}
-.nav-brand .sep { color: var(--muted); }
-.nav-links { display: flex; gap: 20px; }
-.nav-links a {
-  color: var(--muted); text-decoration: none; font-size: 12px;
-  letter-spacing: 0.05em; text-transform: uppercase;
-  transition: color 0.2s;
-}
-.nav-links a:hover { color: var(--text); }
-.badge {
-  background: rgba(0,212,255,0.1); color: var(--cyan);
-  border: 1px solid rgba(0,212,255,0.2);
-  padding: 2px 8px; border-radius: 20px;
-  font-size: 10px; font-family: var(--mono);
-  letter-spacing: 0.05em;
-}
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:48px;
+    background:rgba(13,17,24,0.92);border-bottom:1px solid var(--border);
+    position:sticky;top:0;z-index:50;backdrop-filter:blur(8px)}
+.nav-logo{font-size:13px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:.05em}
+.nav-links{display:flex;gap:18px}
+.nav-links a{font-size:12px;color:var(--muted);text-decoration:none;transition:color .2s}
+.nav-links a:hover,.nav-links a.active{color:var(--text)}
+.nav-badge{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent);
+           background:rgba(51,221,255,.1);border:1px solid rgba(51,221,255,.2);
+           padding:2px 8px;border-radius:20px}
 
 /* ── HERO ── */
-.hero {
-  position: relative; z-index: 1;
-  text-align: center;
-  padding: 60px 28px 44px;
-  background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(124,108,255,0.12) 0%, transparent 70%);
-}
-.hero-eyebrow {
-  font-family: var(--mono); font-size: 11px; letter-spacing: 0.15em;
-  text-transform: uppercase; color: var(--cyan); margin-bottom: 14px;
-}
-.hero h1 {
-  font-size: clamp(28px, 5vw, 52px);
-  font-weight: 300; letter-spacing: -0.02em;
-  line-height: 1.15; margin-bottom: 16px;
-}
-.hero h1 em { font-style: normal; color: var(--cyan); }
-.hero h1 strong { font-weight: 600; }
-.hero-sub {
-  color: var(--muted); font-size: 15px; max-width: 580px;
-  margin: 0 auto 32px;
-}
-.hero-pills {
-  display: flex; flex-wrap: wrap; justify-content: center;
-  gap: 8px; margin-bottom: 36px;
-}
-.pill {
-  padding: 5px 12px; border-radius: 20px;
-  font-size: 11px; font-family: var(--mono);
-  border: 1px solid var(--border2);
-  background: var(--surface);
-  color: var(--muted);
-}
-.pill.cyan  { border-color: rgba(0,212,255,0.3);   color: var(--cyan);   background: rgba(0,212,255,0.07); }
-.pill.purple{ border-color: rgba(124,108,255,0.3); color: var(--purple); background: rgba(124,108,255,0.07); }
-.pill.gold  { border-color: rgba(255,215,0,0.3);   color: var(--gold);   background: rgba(255,215,0,0.07); }
-.pill.green { border-color: rgba(0,255,135,0.3);   color: var(--green);  background: rgba(0,255,135,0.07); }
-.hero-actions { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
-.btn {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 9px 20px; border-radius: 8px;
-  font-size: 13px; font-weight: 500; cursor: pointer;
-  border: none; transition: all 0.2s; text-decoration: none;
-  font-family: var(--font);
-}
-.btn-primary {
-  background: var(--cyan); color: #07090f;
-}
-.btn-primary:hover { background: #33ddff; transform: translateY(-1px); }
-.btn-ghost {
-  background: var(--surface2); color: var(--text);
-  border: 1px solid var(--border2);
-}
-.btn-ghost:hover { background: rgba(255,255,255,0.09); }
-.btn-sm { padding: 6px 14px; font-size: 12px; }
-.btn-icon { font-size: 15px; }
-.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.hero{padding:28px 24px 18px;text-align:center}
+.hero h1{font-size:clamp(22px,3.5vw,36px);font-weight:700;letter-spacing:-.02em;
+         background:linear-gradient(135deg,#fff 30%,var(--accent) 100%);
+         -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hero-sub{font-size:13px;color:var(--muted);margin-top:6px}
+.hero-tags{display:flex;justify-content:center;flex-wrap:wrap;gap:8px;margin-top:12px}
+.hero-tag{font-size:10px;font-family:'JetBrains Mono',monospace;padding:2px 8px;
+          border-radius:20px;background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--muted)}
+.hero-tag.on{color:var(--accent);background:rgba(51,221,255,.08);border-color:rgba(51,221,255,.2)}
 
-/* ── DEMO WRAPPER ── */
-.demo-wrapper {
-  position: relative; z-index: 1;
-  max-width: 1400px; margin: 0 auto;
-  padding: 0 16px 40px;
-}
+/* ── MAIN GRID ── */
+.main-grid{display:grid;grid-template-columns:320px 1fr;gap:12px;padding:0 14px 14px;
+           max-width:1400px;margin:0 auto}
+@media(max-width:900px){.main-grid{grid-template-columns:1fr}}
 
-/* ── SECTION HEADING ── */
-.section-title {
-  font-size: 10px; font-family: var(--mono);
-  letter-spacing: 0.12em; text-transform: uppercase;
-  color: var(--muted); margin-bottom: 12px;
-  display: flex; align-items: center; gap: 8px;
-}
-.section-title::before {
-  content: ''; display: block;
-  width: 16px; height: 1px;
-  background: var(--border2);
-}
+/* ── PANELS ── */
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.panel-hd{display:flex;align-items:center;justify-content:space-between;
+          padding:9px 14px;border-bottom:1px solid var(--border);
+          font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:.05em}
+.panel-hd span{color:var(--text);font-size:12px}
 
-/* ── MAIN DEMO GRID ── */
-.main-demo {
-  display: grid;
-  grid-template-columns: 220px 1fr 220px;
-  grid-template-rows: auto;
-  gap: 12px;
-  margin-bottom: 12px;
-}
+/* ── DAG ── */
+#dag-wrap{padding:10px 0 6px}
+#dag-svg{display:block;width:100%;overflow:visible}
+#dag-branch-badge{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--accent);
+                  background:rgba(51,221,255,.1);border:1px solid rgba(51,221,255,.15);
+                  padding:1px 6px;border-radius:12px}
 
-/* ── PANEL ── */
-.panel {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  overflow: hidden;
-}
-.panel-header {
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: space-between;
-  background: rgba(255,255,255,0.015);
-}
-.panel-title {
-  font-size: 10px; font-family: var(--mono);
-  letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--muted);
-}
-.panel-body { padding: 0; }
-
-/* ── DAG PANEL ── */
-#dag-container {
-  height: 420px;
-  overflow: hidden;
-  padding: 8px 0;
-}
-#dag-container svg { width: 100%; height: 100%; }
-
-/* ── PIANO ROLL PANEL ── */
-#piano-roll-wrap {
-  height: 420px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  position: relative;
-  cursor: crosshair;
-  background: #080c16;
-}
-#piano-roll-wrap::-webkit-scrollbar { height: 4px; }
-#piano-roll-wrap::-webkit-scrollbar-track { background: var(--bg2); }
-#piano-roll-wrap::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-#piano-roll-svg { display: block; }
-.note-rect { transition: opacity 0.3s; }
-.note-new { filter: brightness(1.3); }
-
-/* ── DIM PANEL ── */
-.dim-list {
-  height: 420px;
-  overflow-y: auto;
-  padding: 4px 0;
-}
-.dim-list::-webkit-scrollbar { width: 4px; }
-.dim-list::-webkit-scrollbar-thumb { background: var(--border2); }
-.dim-row {
-  display: flex; align-items: center;
-  padding: 5px 12px; gap: 8px;
-  transition: background 0.2s; cursor: default;
-}
-.dim-row:hover { background: var(--surface); }
-.dim-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  flex-shrink: 0;
-  background: var(--dim);
-  transition: background 0.3s, box-shadow 0.3s;
-}
-.dim-row.active .dim-dot {
-  box-shadow: 0 0 8px currentColor;
-}
-.dim-name {
-  font-family: var(--mono); font-size: 10px;
-  color: var(--muted); flex: 1;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  transition: color 0.3s;
-}
-.dim-row.active .dim-name { color: var(--text); }
-.dim-bar-wrap {
-  width: 48px; height: 4px;
-  background: rgba(255,255,255,0.05);
-  border-radius: 2px; overflow: hidden;
-}
-.dim-bar {
-  height: 100%; border-radius: 2px;
-  width: 0; transition: width 0.4s ease, background 0.3s;
-}
-.dim-group-label {
-  padding: 8px 12px 2px;
-  font-size: 9px; font-family: var(--mono);
-  text-transform: uppercase; letter-spacing: 0.12em;
-  color: var(--dim);
-}
-
-/* ── CONTROLS ── */
-.controls-bar {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px 20px;
-  display: flex; align-items: center; gap: 16px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-.ctrl-group { display: flex; align-items: center; gap: 8px; }
-.ctrl-btn {
-  width: 36px; height: 36px; border-radius: 8px;
-  background: var(--surface); border: 1px solid var(--border2);
-  color: var(--text); font-size: 14px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: all 0.15s;
-}
-.ctrl-btn:hover { background: var(--surface2); }
-.ctrl-btn.active { background: var(--cyan); color: #07090f; border-color: var(--cyan); }
-.ctrl-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-.ctrl-play {
-  width: 44px; height: 44px; border-radius: 50%;
-  background: var(--cyan); border: none; color: #07090f;
-  font-size: 18px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 0 20px rgba(0,212,255,0.3);
-  transition: all 0.15s;
-}
-.ctrl-play:hover { background: #33ddff; transform: scale(1.05); }
-.ctrl-play.playing { background: var(--pink); box-shadow: 0 0 20px rgba(255,107,157,0.3); }
-.ctrl-sep { width: 1px; height: 28px; background: var(--border); }
-.ctrl-timeline {
-  flex: 1; min-width: 120px;
-  display: flex; align-items: center; gap: 10px;
-}
-.ctrl-time {
-  font-family: var(--mono); font-size: 11px; color: var(--muted);
-  white-space: nowrap;
-}
-.progress-track {
-  flex: 1; height: 4px; background: var(--surface2);
-  border-radius: 2px; cursor: pointer; position: relative;
-}
-.progress-fill {
-  height: 100%; background: var(--cyan); border-radius: 2px;
-  width: 0; transition: width 0.1s linear;
-}
-.audio-status {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 11px; color: var(--muted); font-family: var(--mono);
-}
-.audio-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--dim); transition: background 0.3s;
-}
-.audio-dot.ready { background: var(--green); box-shadow: 0 0 8px var(--green); }
-.audio-dot.loading { background: var(--gold); animation: pulse 1s infinite; }
-.commit-info {
-  flex: 1; min-width: 180px;
-}
-.commit-sha {
-  font-family: var(--mono); font-size: 10px; color: var(--cyan);
-}
-.commit-msg {
-  font-size: 11px; color: var(--muted);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  max-width: 260px;
-}
+/* ── ACT BADGE ── */
+.act-badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;
+           font-family:'JetBrains Mono',monospace;color:var(--muted)}
+.act-dot{width:6px;height:6px;border-radius:50%;background:currentColor}
 
 /* ── COMMAND LOG ── */
-.cmd-log-panel {
-  background: #060810;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  margin-bottom: 12px; overflow: hidden;
-}
-.cmd-log-header {
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; gap: 8px;
-  background: rgba(255,255,255,0.02);
-}
-.terminal-dots { display: flex; gap: 5px; }
-.terminal-dots span {
-  width: 10px; height: 10px; border-radius: 50%;
-}
-.dot-red   { background: #ff5f57; }
-.dot-yellow{ background: #febc2e; }
-.dot-green { background: #28c840; }
-.cmd-log-title {
-  font-family: var(--mono); font-size: 10px;
-  color: var(--muted); letter-spacing: 0.08em;
-  flex: 1; text-align: center;
-}
-.cmd-log-body {
-  padding: 14px 20px;
-  font-family: var(--mono); font-size: 12px;
-  min-height: 110px; max-height: 160px;
-  overflow-y: auto;
-}
-.cmd-log-body::-webkit-scrollbar { width: 4px; }
-.cmd-log-body::-webkit-scrollbar-thumb { background: var(--border2); }
-.log-line { line-height: 1.7; }
-.log-prompt { color: var(--green); }
-.log-cmd    { color: var(--text); }
-.log-out    { color: var(--muted); white-space: pre; }
-.log-cursor {
-  display: inline-block; width: 8px; height: 13px;
-  background: var(--cyan); vertical-align: middle;
-  animation: blink 1s step-end infinite;
-}
+#cmd-terminal{margin:10px;background:#060a12;border:1px solid var(--border);
+              border-radius:6px;padding:10px;min-height:100px;max-height:140px;overflow:hidden}
+.term-dots{display:flex;gap:4px;margin-bottom:8px}
+.term-dot{width:9px;height:9px;border-radius:50%}
+.t-red{background:#ff5f57}.t-yel{background:#febc2e}.t-grn{background:#28c840}
+#cmd-prompt{font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.6;color:#c4c9d4}
+.cmd-line{color:var(--accent)}
+.cmd-ok{color:var(--green)}
+.cmd-warn{color:var(--gold)}
+.cmd-err{color:var(--kick)}
+.cmd-cursor{display:inline-block;width:6px;height:13px;background:var(--accent);
+            animation:blink .9s step-end infinite;vertical-align:middle}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── DAW TRACK VIEW ── */
+.daw-wrap{position:relative;overflow-x:auto;overflow-y:hidden}
+#daw-svg{display:block}
+.daw-time-label{font-family:'JetBrains Mono',monospace;font-size:9px;fill:var(--muted)}
+.daw-track-label{font-family:'JetBrains Mono',monospace;font-size:9px;fill:var(--muted);text-anchor:end}
+.playhead-line{stroke:rgba(255,255,255,0.8);stroke-width:1.5;pointer-events:none}
+
+/* ── CONTROLS ── */
+.ctrl-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;
+          background:var(--surface);border-top:1px solid var(--border);
+          border-bottom:1px solid var(--border);flex-wrap:wrap}
+.ctrl-group{display:flex;align-items:center;gap:6px}
+.ctrl-btn{width:36px;height:36px;border-radius:50%;border:1px solid var(--border);
+          background:rgba(255,255,255,.05);color:var(--text);cursor:pointer;
+          display:flex;align-items:center;justify-content:center;font-size:13px;
+          transition:all .15s}
+.ctrl-btn:hover{background:rgba(255,255,255,.1);border-color:var(--accent)}
+.ctrl-btn:disabled{opacity:.3;cursor:not-allowed}
+.ctrl-play{width:44px;height:44px;border-radius:50%;border:none;
+           background:var(--accent);color:#000;cursor:pointer;font-size:15px;
+           display:flex;align-items:center;justify-content:center;
+           transition:all .15s;box-shadow:0 0 16px rgba(51,221,255,.3)}
+.ctrl-play:hover{transform:scale(1.08)}
+.ctrl-play.playing{background:var(--pink);box-shadow:0 0 20px rgba(255,107,157,.4)}
+.ctrl-info{font-family:'JetBrains Mono',monospace;font-size:11px}
+.ctrl-time{color:var(--accent);min-width:40px}
+.ctrl-sha{color:var(--muted);font-size:10px}
+.ctrl-msg{font-size:11px;color:var(--text);flex:1;min-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.audio-status{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace}
+.audio-status.ready{color:var(--green)}
+.audio-status.loading{color:var(--gold)}
+
+/* ── 21-DIM PANEL ── */
+.dim-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:10px 12px;max-height:280px;overflow-y:auto}
+.dim-row{display:flex;align-items:center;gap:5px;padding:3px 5px;border-radius:4px;
+         transition:background .2s;cursor:default;min-width:0}
+.dim-row:hover{background:rgba(255,255,255,.04)}
+.dim-row.active{background:rgba(255,255,255,.02)}
+.dim-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.15);flex-shrink:0;transition:all .3s}
+.dim-name{font-size:9.5px;font-family:'JetBrains Mono',monospace;color:var(--muted);
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;transition:color .3s}
+.dim-row.active .dim-name{color:var(--text)}
+.dim-bar-wrap{width:32px;height:4px;background:rgba(255,255,255,.07);border-radius:2px;flex-shrink:0}
+.dim-bar{height:100%;width:0;border-radius:2px;transition:width .4s,background .3s}
+.dim-group-label{grid-column:1/-1;font-size:9px;font-family:'JetBrains Mono',monospace;
+                 color:rgba(255,255,255,.2);text-transform:uppercase;letter-spacing:.08em;
+                 padding:5px 5px 2px;border-top:1px solid var(--border);margin-top:4px}
+.dim-group-label:first-child{border-top:none;margin-top:0}
 
 /* ── HEATMAP ── */
-.heatmap-panel {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  margin-bottom: 40px; overflow: hidden;
-}
-.heatmap-body {
-  padding: 16px 20px;
-  overflow-x: auto;
-}
-#heatmap-svg { display: block; }
+#heatmap-wrap{padding:12px 14px;overflow-x:auto}
+#heatmap-svg{display:block}
 
 /* ── CLI REFERENCE ── */
-.cli-section {
-  max-width: 1400px; margin: 0 auto;
-  padding: 0 16px 80px;
-}
-.cli-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 12px; margin-top: 20px;
-}
-.cmd-card {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 12px; padding: 16px 18px;
-  transition: border-color 0.2s;
-}
-.cmd-card:hover { border-color: var(--border2); }
-.cmd-name {
-  font-family: var(--mono); font-size: 13px;
-  color: var(--cyan); margin-bottom: 4px;
-}
-.cmd-desc {
-  font-size: 12px; color: var(--muted); margin-bottom: 10px;
-}
-.cmd-flags { display: flex; flex-direction: column; gap: 4px; }
-.cmd-flag {
-  display: flex; gap: 8px; align-items: baseline;
-}
-.flag-name {
-  font-family: var(--mono); font-size: 10px;
-  color: var(--purple); white-space: nowrap;
-}
-.flag-desc {
-  font-size: 11px; color: var(--dim);
-}
-.cmd-return {
-  margin-top: 8px; padding-top: 8px;
-  border-top: 1px solid var(--border);
-  font-size: 11px; color: var(--dim);
-}
-.cmd-return span {
-  font-family: var(--mono); color: var(--gold);
-}
+.cli-section{max-width:1400px;margin:0 auto;padding:0 14px 40px}
+.cli-section h2{font-size:16px;font-weight:600;margin-bottom:14px;color:var(--accent)}
+.cli-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
+.cli-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+.cli-cmd{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent);margin-bottom:4px}
+.cli-desc{font-size:12px;color:var(--muted);margin-bottom:6px}
+.cli-flags{display:flex;flex-direction:column;gap:2px}
+.cli-flag{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,.4)}
+.cli-flag span{color:var(--text)}
 
-/* ── FOOTER ── */
-footer {
-  border-top: 1px solid var(--border);
-  padding: 24px 28px;
-  display: flex; justify-content: space-between; align-items: center;
-  flex-wrap: wrap; gap: 12px;
-  font-size: 11px; color: var(--dim);
-}
-footer a { color: var(--muted); text-decoration: none; }
-footer a:hover { color: var(--text); }
+/* ── INIT OVERLAY ── */
+#init-overlay{position:fixed;inset:0;background:rgba(7,9,15,.88);
+              display:flex;flex-direction:column;align-items:center;justify-content:center;
+              z-index:100;backdrop-filter:blur(6px);gap:16px;text-align:center}
+#init-overlay h2{font-size:24px;font-weight:700;color:var(--text)}
+#init-overlay p{font-size:14px;color:var(--muted);max-width:400px}
+.btn-init{padding:12px 28px;border-radius:8px;border:none;background:var(--accent);
+          color:#000;font-size:15px;font-weight:600;cursor:pointer;transition:all .2s}
+.btn-init:hover{transform:scale(1.05);box-shadow:0 0 20px rgba(51,221,255,.4)}
 
-/* ── ANIMATIONS ── */
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-@keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
-.fade-in { animation: fadeIn 0.4s ease forwards; }
+/* ── BRANCH LEGEND ── */
+.branch-legend{display:flex;flex-wrap:wrap;gap:10px;padding:6px 14px 10px}
+.bl-item{display:flex;align-items:center;gap:5px;font-size:10px;
+         font-family:'JetBrains Mono',monospace;color:var(--muted)}
+.bl-dot{width:9px;height:9px;border-radius:50%}
+.bl-item.active .bl-dot{box-shadow:0 0 6px currentColor}
+.bl-item.active span{color:var(--text)}
 
-/* ── RESPONSIVE ── */
-@media(max-width: 900px) {
-  .main-demo {
-    grid-template-columns: 1fr;
-  }
-  #dag-container, .dim-list { height: 200px; }
-}
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:3px}
 </style>
 </head>
 <body>
 
-<canvas id="particles-canvas"></canvas>
+<div id="init-overlay">
+  <h2>Muse MIDI Demo</h2>
+  <p>Groove in Em — 5-act VCS narrative · 5 instruments · 21 dimensions<br>Click to initialize audio engine.</p>
+  <button class="btn-init" id="btn-init-audio">Initialize Audio ▶</button>
+</div>
 
-<!-- ── NAV ── -->
-<nav class="nav">
-  <a class="nav-brand" href="index.html">
-    <span>muse</span><span class="sep">/</span><span>midi-demo</span>
-  </a>
+<nav>
+  <span class="nav-logo">muse / midi-demo</span>
   <div class="nav-links">
-    <a href="index.html">Registry</a>
-    <a href="demo.html">VCS Demo</a>
-    <a href="https://github.com/cgcardona/muse" target="_blank">GitHub</a>
+    <a href="index.html">Docs</a>
+    <a href="demo.html">Demo</a>
+    <a href="midi-demo.html" class="active">MIDI</a>
   </div>
-  <span class="badge">v0.1.2</span>
+  <span class="nav-badge">v0.1.2</span>
 </nav>
 
-<!-- ── HERO ── -->
-<section class="hero">
-  <div class="hero-eyebrow">Muse VCS · MIDI Domain · 21-Dimensional Version Control</div>
-  <h1>
-    <em>Bach</em> · <strong>Prelude No. 1 in C Major</strong><br>
-    BWV 846 · Well-Tempered Clavier
-  </h1>
-  <p class="hero-sub">
-    Watch Bach's Prelude built commit-by-commit across two parallel branches —
-    then merged automatically using Muse's 21-dimensional MIDI diff engine.
-    533 authentic notes. Real piano audio. Zero conflicts.
-  </p>
-  <div class="hero-pills">
-    <span class="pill cyan">533 notes · 34 bars</span>
-    <span class="pill purple">21 MIDI dimensions</span>
-    <span class="pill gold">2 branches · 1 merge</span>
-    <span class="pill green">Salamander Grand Piano</span>
-    <span class="pill">Bach (1685–1750) · Public domain</span>
-    <span class="pill">music21 corpus</span>
+<div class="hero">
+  <h1>Groove in Em · Muse VCS</h1>
+  <div class="hero-sub">5-act VCS narrative · 5 instruments · 13 commits · 4 branches · 21 MIDI dimensions</div>
+  <div class="hero-tags">
+    <span class="hero-tag on">drums</span>
+    <span class="hero-tag on">bass</span>
+    <span class="hero-tag on">electric piano</span>
+    <span class="hero-tag on">lead synth</span>
+    <span class="hero-tag on">brass</span>
+    <span class="hero-tag">96 BPM</span>
+    <span class="hero-tag">E minor</span>
   </div>
-  <div class="hero-actions">
-    <button class="btn btn-primary" id="btn-init-audio">
-      <span class="btn-icon">🎹</span> Load Piano &amp; Begin
-    </button>
-    <a class="btn btn-ghost" href="#cli-reference">
-      <span class="btn-icon">📖</span> CLI Reference
-    </a>
-    <a class="btn btn-ghost" href="index.html">
-      <span class="btn-icon">←</span> Landing Page
-    </a>
+</div>
+
+<!-- CONTROLS -->
+<div class="ctrl-bar">
+  <div class="ctrl-group">
+    <button class="ctrl-btn" id="btn-first" title="First commit">⏮</button>
+    <button class="ctrl-btn" id="btn-prev"  title="Previous commit">◀</button>
+    <button class="ctrl-play" id="btn-play" disabled title="Play / Pause">▶</button>
+    <button class="ctrl-btn" id="btn-next"  title="Next commit">▶</button>
+    <button class="ctrl-btn" id="btn-last"  title="Last commit">⏭</button>
   </div>
-</section>
-
-<!-- ── MAIN DEMO ── -->
-<div class="demo-wrapper">
-
-  <!-- info bar -->
-  <div class="section-title" style="margin-bottom:14px">
-    Interactive Demo — click any commit to hear and see that state
+  <div class="ctrl-group ctrl-info">
+    <span class="ctrl-time" id="time-display">0:00</span>
+    <span class="ctrl-sha"  id="sha-display">a0f4d2e1</span>
   </div>
+  <div class="ctrl-msg" id="msg-display">muse init --domain midi</div>
+  <span class="audio-status" id="audio-status">○ click ▶ to load audio</span>
+</div>
 
-  <!-- 3-column grid -->
-  <div class="main-demo">
+<!-- MAIN GRID -->
+<div class="main-grid">
+
+  <!-- LEFT COLUMN -->
+  <div style="display:flex;flex-direction:column;gap:12px">
 
     <!-- DAG -->
     <div class="panel">
-      <div class="panel-header">
-        <span class="panel-title">Commit DAG</span>
-        <span class="badge" style="font-size:9px" id="dag-branch-label">main</span>
+      <div class="panel-hd">
+        <span>COMMIT DAG</span>
+        <span id="dag-branch-badge" class="nav-badge" style="border-color:rgba(79,142,247,.3);color:#4f8ef7">main</span>
       </div>
-      <div id="dag-container"></div>
+      <div class="branch-legend" id="branch-legend"></div>
+      <div id="dag-wrap"><svg id="dag-svg"></svg></div>
     </div>
 
-    <!-- Piano Roll -->
+    <!-- CMD LOG -->
     <div class="panel">
-      <div class="panel-header">
-        <span class="panel-title">Piano Roll — 4 octaves (C2 → C6)</span>
-        <div style="display:flex;gap:8px;align-items:center">
-          <span class="pill cyan" style="font-size:9px">■ Treble arpeggios</span>
-          <span class="pill purple" style="font-size:9px">■ Bass</span>
-          <span class="pill gold" style="font-size:9px">■ Inner voice</span>
+      <div class="panel-hd"><span>COMMAND LOG</span><span id="act-label">Act 0</span></div>
+      <div id="cmd-terminal">
+        <div class="term-dots">
+          <div class="term-dot t-red"></div>
+          <div class="term-dot t-yel"></div>
+          <div class="term-dot t-grn"></div>
         </div>
-      </div>
-      <div id="piano-roll-wrap">
-        <svg id="piano-roll-svg"></svg>
+        <div id="cmd-prompt"><span class="cmd-cursor"></span></div>
       </div>
     </div>
 
-    <!-- 21-Dim Panel -->
+    <!-- 21-DIM PANEL -->
     <div class="panel">
-      <div class="panel-header">
-        <span class="panel-title">21 MIDI Dimensions</span>
-        <span id="dim-active-count" style="font-family:var(--mono);font-size:10px;color:var(--muted)">0 active</span>
+      <div class="panel-hd"><span>21 MIDI DIMENSIONS</span><span id="dim-active-count">0 active</span></div>
+      <div class="dim-grid" id="dim-list"></div>
+    </div>
+
+  </div><!-- /left -->
+
+  <!-- RIGHT COLUMN -->
+  <div style="display:flex;flex-direction:column;gap:12px">
+
+    <!-- DAW TRACK VIEW -->
+    <div class="panel">
+      <div class="panel-hd"><span>DAW TRACK VIEW</span><span id="daw-commit-label">commit 0/12</span></div>
+      <div class="daw-wrap">
+        <svg id="daw-svg"></svg>
       </div>
-      <div class="dim-list" id="dim-list"></div>
     </div>
 
-  </div>
+    <!-- HEATMAP -->
+    <div class="panel">
+      <div class="panel-hd"><span>DIMENSION ACTIVITY HEATMAP</span><span style="color:var(--muted);font-size:10px">commits × 21 dimensions</span></div>
+      <div id="heatmap-wrap"><svg id="heatmap-svg"></svg></div>
+    </div>
 
-  <!-- Controls -->
-  <div class="controls-bar">
-    <div class="ctrl-group">
-      <button class="ctrl-btn" id="btn-first" title="First commit">⏮</button>
-      <button class="ctrl-btn" id="btn-prev"  title="Previous commit">◀</button>
-      <button class="ctrl-play" id="btn-play" title="Play / Pause">▶</button>
-      <button class="ctrl-btn" id="btn-next"  title="Next commit">▶</button>
-      <button class="ctrl-btn" id="btn-last"  title="Last commit">⏭</button>
-    </div>
-    <div class="ctrl-sep"></div>
-    <div class="ctrl-timeline">
-      <span class="ctrl-time" id="time-display">0:00</span>
-      <div class="progress-track" id="progress-track">
-        <div class="progress-fill" id="progress-fill"></div>
-      </div>
-      <span class="ctrl-time" id="time-total">2:07</span>
-    </div>
-    <div class="ctrl-sep"></div>
-    <div class="commit-info">
-      <div class="commit-sha" id="commit-sha-disp">0000000</div>
-      <div class="commit-msg" id="commit-msg-disp">Select a commit to begin</div>
-    </div>
-    <div class="ctrl-sep"></div>
-    <div class="audio-status">
-      <div class="audio-dot" id="audio-dot"></div>
-      <span id="audio-label">Click "Load Piano"</span>
-    </div>
-  </div>
+  </div><!-- /right -->
+</div><!-- /main-grid -->
 
-  <!-- Command Log -->
-  <div class="cmd-log-panel">
-    <div class="cmd-log-header">
-      <div class="terminal-dots">
-        <span class="dot-red"></span>
-        <span class="dot-yellow"></span>
-        <span class="dot-green"></span>
-      </div>
-      <div class="cmd-log-title">muse — MIDI repository</div>
-    </div>
-    <div class="cmd-log-body" id="cmd-log">
-      <div class="log-line">
-        <span class="log-prompt">$ </span>
-        <span class="log-cmd">muse status</span>
-      </div>
-      <div class="log-line log-out">On branch main · 0 notes · Select a commit ↑</div>
-      <div class="log-line"><span class="log-cursor"></span></div>
-    </div>
-  </div>
-
-  <!-- Heatmap -->
-  <div class="heatmap-panel">
-    <div class="panel-header">
-      <span class="panel-title">Dimension Activity Heatmap — Commits × Dimensions</span>
-      <span style="font-size:10px;color:var(--muted);font-family:var(--mono)">
-        darker = inactive · brighter = active
-      </span>
-    </div>
-    <div class="heatmap-body">
-      <svg id="heatmap-svg"></svg>
-    </div>
-  </div>
-
-</div><!-- /demo-wrapper -->
-
-<!-- ── CLI REFERENCE ── -->
-<div class="cli-section" id="cli-reference">
-  <div class="section-title">MIDI-Domain Commands — muse CLI Reference</div>
-  <p style="color:var(--muted);font-size:13px;margin-bottom:8px">
-    All standard VCS commands (commit, log, branch, merge, diff, …) work on MIDI files.
-    The commands below are MIDI-specific additions provided by MidiPlugin.
-  </p>
+<!-- CLI REFERENCE -->
+<div class="cli-section">
+  <h2>MIDI Plugin — Command Reference</h2>
   <div class="cli-grid" id="cli-grid"></div>
 </div>
 
-<footer>
-  <div>
-    <strong style="color:var(--text)">Muse VCS</strong> · v0.1.2 ·
-    Bach BWV 846 — public domain (Bach 1685–1750) ·
-    Note data: <a href="https://github.com/cuthbertLab/music21" target="_blank">music21 corpus</a> (CC0)
-  </div>
-  <div>
-    <a href="index.html">Landing Page</a> ·
-    <a href="demo.html">VCS Demo</a> ·
-    <a href="https://github.com/cgcardona/muse" target="_blank">GitHub</a>
-  </div>
-</footer>
-
 <script>
 // ═══════════════════════════════════════════════════════════════
-// DATA (injected by render_midi_demo.py)
+// DATA
 // ═══════════════════════════════════════════════════════════════
-// [pitch_midi, velocity, start_sec, duration_sec, measure, voice]
-const BACH_NOTES = __NOTES_JSON__;
-const COMMITS    = __COMMITS_JSON__;
-const DIMS_21    = __DIMS_JSON__;
+const BPM = __BPM__;
+const BEAT = 60 / BPM;
+const BAR  = 4 * BEAT;
+const TOTAL_SECS = 8 * BAR;
 
-const TOTAL_DURATION = 127.09;
-const VOICE_COLOR = { 1: '#00d4ff', 5: '#7c6cff', 6: '#ffd700' };
-const PITCH_MIN = 36, PITCH_MAX = 84;
+const COMMITS = __COMMITS__;
+
+const DIMS_21 = [
+  {id:'notes',         label:'notes',          group:'core', color:'#33ddff', desc:'Note-on/off events'},
+  {id:'pitch_bend',    label:'pitch_bend',     group:'expr', color:'#f472b6', desc:'Pitch wheel automation'},
+  {id:'channel_pressure',label:'channel_pressure',group:'expr',color:'#fb923c',desc:'Channel aftertouch'},
+  {id:'poly_pressure', label:'poly_pressure',  group:'expr', color:'#f97316', desc:'Per-note aftertouch'},
+  {id:'cc_modulation', label:'cc_modulation',  group:'cc',   color:'#a78bfa', desc:'CC 1 — vibrato/LFO'},
+  {id:'cc_volume',     label:'cc_volume',      group:'cc',   color:'#60a5fa', desc:'CC 7 — channel volume'},
+  {id:'cc_pan',        label:'cc_pan',         group:'cc',   color:'#34d399', desc:'CC 10 — stereo pan'},
+  {id:'cc_expression', label:'cc_expression',  group:'cc',   color:'#f59e0b', desc:'CC 11 — expression'},
+  {id:'cc_sustain',    label:'cc_sustain',     group:'cc',   color:'#22d3ee', desc:'CC 64 — sustain pedal'},
+  {id:'cc_portamento', label:'cc_portamento',  group:'cc',   color:'#a855f7', desc:'CC 65 — portamento on/off'},
+  {id:'cc_sostenuto',  label:'cc_sostenuto',   group:'cc',   color:'#818cf8', desc:'CC 66 — sostenuto pedal'},
+  {id:'cc_soft_pedal', label:'cc_soft_pedal',  group:'cc',   color:'#6ee7b7', desc:'CC 67 — soft pedal'},
+  {id:'cc_reverb',     label:'cc_reverb',      group:'fx',   color:'#c4b5fd', desc:'CC 91 — reverb send'},
+  {id:'cc_chorus',     label:'cc_chorus',      group:'fx',   color:'#93c5fd', desc:'CC 93 — chorus send'},
+  {id:'cc_other',      label:'cc_other',       group:'fx',   color:'#6b7280', desc:'Other CC controllers'},
+  {id:'program_change',label:'program_change', group:'meta', color:'#f9a825', desc:'Instrument program selection'},
+  {id:'tempo_map',     label:'tempo_map',      group:'meta', color:'#ef4444', desc:'BPM automation'},
+  {id:'time_signatures',label:'time_signatures',group:'meta',color:'#ec4899', desc:'Meter changes'},
+  {id:'key_signatures',label:'key_signatures', group:'meta', color:'#d946ef', desc:'Key / mode changes'},
+  {id:'markers',       label:'markers',        group:'meta', color:'#8b5cf6', desc:'Named timeline markers'},
+  {id:'track_structure',label:'track_structure',group:'meta',color:'#64748b', desc:'Track count & arrangement'},
+];
+
+const BRANCH_COLOR = {
+  'main':'#4f8ef7', 'feat/groove':'#a855f7',
+  'feat/harmony':'#22d3ee', 'conflict/brass-a':'#ef4444', 'conflict/ensemble':'#f59e0b'
+};
+
+const INSTR_COLOR = {
+  kick:'#ef4444', snare:'#fb923c', hat_c:'#facc15', hat_o:'#86efac',
+  ghost:'rgba(251,146,60,0.35)', crash:'#fef3c7',
+  bass:'#a855f7', epiano:'#22d3ee', lead:'#f472b6', brass:'#34d399', brassb:'#86efac'
+};
+
+const INSTR_LABEL = {
+  kick:'KICK', snare:'SNARE', hat_c:'HAT', hat_o:'HAT',
+  ghost:'GHOST', crash:'CRASH', bass:'BASS', epiano:'E.PIANO', lead:'LEAD',
+  brass:'BRASS A', brassb:'BRASS B'
+};
+
+const ACT_LABELS = ['Init', 'Foundation', 'Divergence', 'Clean Merge', 'Conflict', 'Resolution'];
 
 // ═══════════════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════════════
 const state = {
-  commitIdx: 0,
+  cur: 0,
   isPlaying: false,
   audioReady: false,
-  audioLoading: false,
-  playheadSec: 0,
+  pausedAt: null,        // null = not paused, number = paused at this second
   playStartWallClock: 0,
   playStartAudioSec: 0,
   rafId: null,
 };
 
-// ═══════════════════════════════════════════════════════════════
-// PARTICLES BACKGROUND
-// ═══════════════════════════════════════════════════════════════
-(function initParticles() {
-  const canvas = document.getElementById('particles-canvas');
-  const ctx = canvas.getContext('2d');
-  let W, H, particles;
-
-  function resize() {
-    W = canvas.width  = window.innerWidth;
-    H = canvas.height = window.innerHeight;
-  }
-
-  function createParticles() {
-    const count = Math.floor(W * H / 14000);
-    particles = Array.from({ length: count }, () => ({
-      x: Math.random() * W,
-      y: Math.random() * H,
-      r: Math.random() * 1.2 + 0.2,
-      a: Math.random() * Math.PI * 2,
-      speed: Math.random() * 0.15 + 0.03,
-      opacity: Math.random() * 0.5 + 0.1,
-    }));
-  }
-
-  function draw() {
-    ctx.clearRect(0, 0, W, H);
-    for (const p of particles) {
-      p.x += Math.cos(p.a) * p.speed;
-      p.y += Math.sin(p.a) * p.speed;
-      p.a += (Math.random() - 0.5) * 0.02;
-      if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
-      if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(120,180,255,${p.opacity})`;
-      ctx.fill();
-    }
-    requestAnimationFrame(draw);
-  }
-
-  resize();
-  createParticles();
-  draw();
-  window.addEventListener('resize', () => { resize(); createParticles(); });
-})();
+let instruments = {};
+let masterBus = null;
 
 // ═══════════════════════════════════════════════════════════════
-// HELPERS
+// AUDIO ENGINE  (Tone.js, multi-instrument)
 // ═══════════════════════════════════════════════════════════════
-function getCommit(idx) { return COMMITS[idx]; }
+async function initAudio() {
+  const overlay = document.getElementById('init-overlay');
+  const statusEl = document.getElementById('audio-status');
+  const btn = document.getElementById('btn-play');
 
-function getNotesForCommit(commit) {
-  if (!commit.filter) return [];
-  const f = commit.filter;
-  return BACH_NOTES.filter(n =>
-    n[4] >= f.minM && n[4] <= f.maxM &&
-    f.voices.includes(n[5])
-  );
+  if (overlay) overlay.style.display = 'none';
+  statusEl.textContent = '◌ loading…';
+  statusEl.className = 'audio-status loading';
+
+  await Tone.start();
+
+  // Master chain: Compressor → Limiter → Destination
+  const limiter    = new Tone.Limiter(-1).toDestination();
+  const masterComp = new Tone.Compressor({threshold:-18, ratio:4, attack:0.003, release:0.25}).connect(limiter);
+  masterBus = masterComp;
+
+  // Per-instrument reverb sends
+  const roomRev  = new Tone.Reverb({decay:1.8, wet:0.18}).connect(masterBus);
+  const hallRev  = new Tone.Reverb({decay:3.5, wet:0.28}).connect(masterBus);
+
+  // 808-style kick
+  const kick = new Tone.MembraneSynth({
+    pitchDecay:0.08, octaves:8,
+    envelope:{attack:0.001, decay:0.28, sustain:0, release:0.12},
+    volume:2
+  }).connect(masterBus);
+
+  // Snare
+  const snare = new Tone.NoiseSynth({
+    noise:{type:'white'},
+    envelope:{attack:0.001, decay:0.14, sustain:0, release:0.06},
+    volume:-4
+  }).connect(masterBus);
+
+  // Closed hi-hat
+  const hat_c = new Tone.MetalSynth({
+    frequency:600, harmonicity:5.1, modulationIndex:32,
+    resonance:4000, octaves:1.5,
+    envelope:{attack:0.001, decay:0.028, release:0.01},
+    volume:-16
+  }).connect(masterBus);
+
+  // Open hi-hat
+  const hat_o = new Tone.MetalSynth({
+    frequency:600, harmonicity:5.1, modulationIndex:32,
+    resonance:4000, octaves:1.5,
+    envelope:{attack:0.001, decay:0.22, release:0.08},
+    volume:-13
+  }).connect(masterBus);
+
+  // Ghost snare (quieter)
+  const ghost = new Tone.NoiseSynth({
+    noise:{type:'white'},
+    envelope:{attack:0.001, decay:0.04, sustain:0, release:0.01},
+    volume:-20
+  }).connect(masterBus);
+
+  // Crash cymbal
+  const crash = new Tone.MetalSynth({
+    frequency:300, harmonicity:5.1, modulationIndex:64,
+    resonance:4000, octaves:2.5,
+    envelope:{attack:0.001, decay:1.6, release:0.8},
+    volume:-10
+  }).connect(masterBus);
+
+  // Bass guitar (fat mono saw + resonant filter)
+  const bass = new Tone.MonoSynth({
+    oscillator:{type:'sawtooth'},
+    filter:{Q:3, type:'lowpass', rolloff:-24},
+    filterEnvelope:{attack:0.002, decay:0.15, sustain:0.5, release:0.4, baseFrequency:260, octaves:3},
+    envelope:{attack:0.004, decay:0.12, sustain:0.85, release:0.35},
+    volume:-2
+  }).connect(masterBus);
+  bass.connect(roomRev);
+
+  // Electric piano (FM — warm Rhodes-ish)
+  const epiano = new Tone.PolySynth(Tone.FMSynth, {
+    harmonicity:3.01, modulationIndex:14,
+    oscillator:{type:'triangle'},
+    envelope:{attack:0.01, decay:1.1, sustain:0.5, release:0.6},
+    modulation:{type:'square'},
+    modulationEnvelope:{attack:0.002, decay:0.12, sustain:0.2, release:0.01},
+    volume:-10
+  }).connect(masterBus);
+  epiano.connect(roomRev);
+
+  // Lead synth (fat detune sawtooth)
+  const lead = new Tone.PolySynth(Tone.Synth, {
+    oscillator:{type:'fatsawtooth', spread:28, count:3},
+    envelope:{attack:0.025, decay:0.18, sustain:0.65, release:0.45},
+    volume:-9
+  }).connect(masterBus);
+  lead.connect(hallRev);
+
+  // Brass A (punchy staccato)
+  const brass = new Tone.PolySynth(Tone.Synth, {
+    oscillator:{type:'sawtooth'},
+    envelope:{attack:0.008, decay:0.25, sustain:0.75, release:0.18},
+    volume:-8
+  }).connect(masterBus);
+  brass.connect(roomRev);
+
+  // Brass B / Ensemble (legato lush pads)
+  const brassb = new Tone.PolySynth(Tone.Synth, {
+    oscillator:{type:'triangle'},
+    envelope:{attack:0.32, decay:0.6, sustain:0.82, release:0.9},
+    volume:-12
+  }).connect(masterBus);
+  brassb.connect(hallRev);
+
+  instruments = { kick, snare, hat_c, hat_o, ghost, crash, bass, epiano, lead, brass, brassb };
+
+  state.audioReady = true;
+  btn.disabled = false;
+  statusEl.textContent = '● audio ready';
+  statusEl.className = 'audio-status ready';
 }
 
-function isNewNote(note, commit) {
-  if (!commit.filter || !commit.newMeasures.length) return false;
-  return note[4] >= commit.newMeasures[0] &&
-         note[4] <= commit.newMeasures[1] &&
-         commit.newVoices.includes(note[5]);
+// ── Play helpers ────────────────────────────────────────────────
+
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2,'0')}`;
 }
 
-function fmtTime(s) {
-  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
-  return `${m}:${String(sec).padStart(2,'0')}`;
+function _scheduleNotes(notes, offsetSec) {
+  // Group by (instr, start_sec, dur_sec) for polyphonic batching
+  const groups = {};
+  for (const [pitch, vel, startSec, durSec, instr] of notes) {
+    if (startSec < offsetSec - 0.01) continue;  // skip already-played
+    const key = `${instr}__${startSec.toFixed(4)}__${durSec.toFixed(4)}`;
+    if (!groups[key]) groups[key] = {instr, startSec, durSec, velMax:0, pitches:[]};
+    groups[key].pitches.push(pitch);
+    groups[key].velMax = Math.max(groups[key].velMax, vel);
+  }
+
+  const origin = Tone.now() + 0.15 - offsetSec;
+
+  for (const grp of Object.values(groups)) {
+    const syn = instruments[grp.instr];
+    if (!syn) continue;
+    const when = origin + grp.startSec;
+    if (when < Tone.now()) continue;
+    const velN = grp.velMax / 127;
+    const dur  = Math.max(0.02, grp.durSec);
+
+    try {
+      if (grp.instr === 'kick')              syn.triggerAttackRelease('C2', dur, when, velN);
+      else if (['snare','ghost'].includes(grp.instr)) syn.triggerAttackRelease(dur, when, velN);
+      else if (['hat_c','hat_o','crash'].includes(grp.instr)) syn.triggerAttackRelease(dur, when, velN);
+      else {
+        const freqs = grp.pitches.map(p => Tone.Frequency(p,'midi').toNote());
+        syn.triggerAttackRelease(freqs.length === 1 ? freqs[0] : freqs, dur, when, velN);
+      }
+    } catch(e) { /* ignore scheduling errors */ }
+  }
+}
+
+function stopPlayback() {
+  state.isPlaying = false;
+  state.pausedAt  = null;
+  if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
+  try { Tone.getTransport().stop(); Tone.getTransport().cancel(); } catch(e) {}
+  document.getElementById('time-display').textContent = '0:00';
+  document.getElementById('btn-play').className = 'ctrl-play';
+  document.getElementById('btn-play').textContent = '▶';
+  DAW.setPlayhead(0);
+}
+
+function pausePlayback() {
+  const elapsed = (performance.now() - state.playStartWallClock) / 1000;
+  state.pausedAt = state.playStartAudioSec + elapsed;
+  state.isPlaying = false;
+  if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
+  try { Tone.getTransport().stop(); Tone.getTransport().cancel(); } catch(e) {}
+  document.getElementById('btn-play').className = 'ctrl-play';
+  document.getElementById('btn-play').textContent = '▶';
+}
+
+function playNotes(notes, fromSec) {
+  const startAt = fromSec ?? 0;
+  state.isPlaying = true;
+  state.pausedAt  = null;
+  state.playStartWallClock = performance.now() - startAt * 1000;
+  state.playStartAudioSec  = startAt;
+
+  _scheduleNotes(notes, startAt);
+
+  document.getElementById('btn-play').className = 'ctrl-play playing';
+  document.getElementById('btn-play').textContent = '⏸';
+
+  // Animation loop
+  const animate = () => {
+    const elapsed = (performance.now() - state.playStartWallClock) / 1000;
+    const sec = state.playStartAudioSec + elapsed;
+    document.getElementById('time-display').textContent = fmtTime(elapsed);
+    DAW.setPlayhead(sec);
+
+    if (elapsed >= TOTAL_SECS + 0.5) {
+      stopPlayback();
+      return;
+    }
+    state.rafId = requestAnimationFrame(animate);
+  };
+  state.rafId = requestAnimationFrame(animate);
 }
 
 // ═══════════════════════════════════════════════════════════════
-// PIANO ROLL
+// COMMIT NAVIGATION
 // ═══════════════════════════════════════════════════════════════
-const PR = (() => {
-  const KEYBOARD_W = 44;
-  const NOTE_H     = 8;
-  const PX_PER_SEC = 6.5;
-  const TOTAL_W    = Math.ceil(TOTAL_DURATION * PX_PER_SEC) + KEYBOARD_W + 20;
-  const TOTAL_H    = (PITCH_MAX - PITCH_MIN) * NOTE_H;
-  const WHITE_NOTES = new Set([0,2,4,5,7,9,11]);
+function selectCommit(idx) {
+  const wasPlaying = state.isPlaying;
+  if (state.isPlaying) stopPlayback();
 
-  const svg = d3.select('#piano-roll-svg')
-    .attr('width', TOTAL_W)
-    .attr('height', TOTAL_H);
+  state.cur = Math.max(0, Math.min(COMMITS.length - 1, idx));
+  const commit = COMMITS[state.cur];
 
-  // Background
-  svg.append('rect')
-    .attr('width', TOTAL_W).attr('height', TOTAL_H)
-    .attr('fill', '#08101c');
+  // Update UI elements
+  document.getElementById('sha-display').textContent = commit.sha.slice(0,8);
+  document.getElementById('msg-display').textContent = commit.cmd;
+  document.getElementById('act-label').textContent = `Act ${commit.act} · ${ACT_LABELS[commit.act] || ''}`;
+  document.getElementById('daw-commit-label').textContent = `commit ${state.cur + 1}/${COMMITS.length}`;
 
-  // Octave lines & background stripes
-  for (let pitch = PITCH_MIN; pitch <= PITCH_MAX; pitch++) {
-    const sem = pitch % 12;
-    const y = TOTAL_H - (pitch - PITCH_MIN + 1) * NOTE_H;
-    if (!WHITE_NOTES.has(sem)) {
-      svg.append('rect')
-        .attr('x', KEYBOARD_W).attr('y', y)
-        .attr('width', TOTAL_W - KEYBOARD_W).attr('height', NOTE_H)
-        .attr('fill', 'rgba(0,0,0,0.25)');
-    }
-    if (sem === 0) {
-      svg.append('line')
-        .attr('x1', KEYBOARD_W).attr('x2', TOTAL_W)
-        .attr('y1', y).attr('y2', y)
-        .attr('stroke', 'rgba(255,255,255,0.08)').attr('stroke-width', 1);
-    }
+  const bColor = BRANCH_COLOR[commit.branch] || '#fff';
+  const badge = document.getElementById('dag-branch-badge');
+  badge.textContent = commit.branch;
+  badge.style.color = bColor;
+  badge.style.borderColor = bColor + '40';
+  badge.style.background = bColor + '14';
+
+  DAG.select(state.cur);
+  DAW.render(commit);
+  DimPanel.update(commit);
+  CmdLog.show(commit);
+
+  if (wasPlaying && commit.notes.length) {
+    playNotes(commit.notes, 0);
   }
-
-  // Bar grid (every 2 bars for readability)
-  const secPerBar = (60.0 / 66) * 4;
-  for (let bar = 0; bar <= 34; bar += 2) {
-    const x = KEYBOARD_W + bar * secPerBar * PX_PER_SEC;
-    svg.append('line')
-      .attr('x1', x).attr('x2', x)
-      .attr('y1', 0).attr('y2', TOTAL_H)
-      .attr('stroke', bar % 8 === 0 ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)')
-      .attr('stroke-width', 1);
-    if (bar % 4 === 0 && bar > 0) {
-      svg.append('text')
-        .attr('x', x + 2).attr('y', 9)
-        .attr('font-size', 8).attr('fill', 'rgba(255,255,255,0.2)')
-        .attr('font-family', 'JetBrains Mono, monospace')
-        .text(`m${bar+1}`);
-    }
-  }
-
-  // Piano keyboard (left edge)
-  for (let pitch = PITCH_MIN; pitch < PITCH_MAX; pitch++) {
-    const sem = pitch % 12;
-    const isWhite = WHITE_NOTES.has(sem);
-    const y = TOTAL_H - (pitch - PITCH_MIN + 1) * NOTE_H;
-    svg.append('rect')
-      .attr('x', 0).attr('y', y + 0.5)
-      .attr('width', isWhite ? KEYBOARD_W - 2 : KEYBOARD_W * 0.62)
-      .attr('height', NOTE_H - 1)
-      .attr('rx', 1)
-      .attr('fill', isWhite ? 'rgba(230,235,245,0.88)' : '#1c1c2e');
-    // C note label
-    if (sem === 0) {
-      const oct = Math.floor(pitch / 12) - 1;
-      svg.append('text')
-        .attr('x', KEYBOARD_W - 5).attr('y', y + NOTE_H - 1)
-        .attr('font-size', 7).attr('fill', '#555')
-        .attr('text-anchor', 'end')
-        .attr('font-family', 'JetBrains Mono, monospace')
-        .text(`C${oct}`);
-    }
-  }
-
-  // Notes group (rendered above keyboard)
-  const notesG = svg.append('g').attr('transform', `translate(${KEYBOARD_W},0)`);
-
-  // Playhead
-  const playhead = svg.append('line')
-    .attr('class', 'playhead')
-    .attr('x1', KEYBOARD_W).attr('x2', KEYBOARD_W)
-    .attr('y1', 0).attr('y2', TOTAL_H)
-    .attr('stroke', 'rgba(255,255,255,0.7)')
-    .attr('stroke-width', 1.5)
-    .attr('opacity', 0);
-
-  let currentCommit = null;
-
-  function update(commit) {
-    currentCommit = commit;
-    const notes = getNotesForCommit(commit);
-
-    notesG.selectAll('.note-rect')
-      .data(notes, d => d[0] + '_' + d[2])
-      .join(
-        enter => enter.append('rect')
-          .attr('class', 'note-rect')
-          .attr('x', d => d[2] * PX_PER_SEC)
-          .attr('y', d => TOTAL_H - (d[0] - PITCH_MIN + 1) * NOTE_H)
-          .attr('width', d => Math.max(d[3] * PX_PER_SEC - 1, 2))
-          .attr('height', NOTE_H - 1)
-          .attr('rx', 1.5)
-          .attr('fill', d => VOICE_COLOR[d[5]] || '#888')
-          .attr('opacity', 0)
-          .call(s => {
-            s.transition().duration(350)
-             .attr('opacity', d => isNewNote(d, commit) ? 0.95 : 0.55);
-          }),
-        update => update
-          .transition().duration(250)
-          .attr('opacity', d => isNewNote(d, commit) ? 0.95 : 0.55),
-        exit => exit
-          .transition().duration(200)
-          .attr('opacity', 0)
-          .remove()
-      );
-
-    // Scroll piano roll to show new notes
-    if (commit.newMeasures && commit.newMeasures.length) {
-      const targetSec = (commit.newMeasures[0] - 1) * secPerBar;
-      const scrollX = Math.max(0, targetSec * PX_PER_SEC - 40);
-      document.getElementById('piano-roll-wrap').scrollTo({ left: scrollX, behavior: 'smooth' });
-    }
-  }
-
-  function setPlayhead(sec) {
-    const x = KEYBOARD_W + sec * PX_PER_SEC;
-    playhead.attr('x1', x).attr('x2', x).attr('opacity', sec > 0 ? 0.8 : 0);
-    // Auto-scroll to follow playhead
-    const wrap = document.getElementById('piano-roll-wrap');
-    const wrapW = wrap.clientWidth;
-    const relX  = x - wrap.scrollLeft;
-    if (relX > wrapW * 0.75) {
-      wrap.scrollLeft = x - wrapW * 0.25;
-    } else if (relX < wrapW * 0.1) {
-      wrap.scrollLeft = Math.max(0, x - 60);
-    }
-  }
-
-  return { update, setPlayhead };
-})();
+}
 
 // ═══════════════════════════════════════════════════════════════
-// DAG
+// DAG RENDERER
 // ═══════════════════════════════════════════════════════════════
 const DAG = (() => {
-  const container = document.getElementById('dag-container');
-  const W = container.clientWidth || 210;
-  const H = 410;
-  const NODE_R = 14;
-  const ROWS = 5;
-  const ROW_H = (H - 70) / ROWS;
+  const W = 300, PADX = 30, PADY = 22, NODE_R = 11;
 
-  // Col x positions
-  const COL = [W * 0.18, W * 0.5, W * 0.82];
-
-  // Branch colors
-  const BRANCH_COLOR = {
-    'main':                  '#00ff87',
-    'feat/lower-register':   '#7c6cff',
-    'feat/upper-register':   '#00d4ff',
+  // Assign column per branch
+  const BRANCH_COL = {
+    'main':0, 'feat/groove':1, 'feat/harmony':2,
+    'conflict/brass-a':1, 'conflict/ensemble':2
   };
 
-  const svg = d3.select('#dag-container').append('svg')
-    .attr('width', W).attr('height', H);
+  const positions = COMMITS.map((c, i) => {
+    const col = BRANCH_COL[c.branch] ?? 0;
+    const ncols = 3;
+    const xStep = (W - 2*PADX) / (ncols - 0.5);
+    return { x: PADX + col * xStep, y: PADY + i * 34, c };
+  });
+
+  const H = PADY + (COMMITS.length - 1) * 34 + PADY + 10;
+  const svg = d3.select('#dag-svg').attr('width', W).attr('height', H);
 
   // Gradient defs
   const defs = svg.append('defs');
-  ['lower','upper','main'].forEach(name => {
-    const g = defs.append('radialGradient')
-      .attr('id', `glow-${name}`)
-      .attr('cx','50%').attr('cy','50%').attr('r','50%');
-    const col = name === 'main' ? '#00ff87' : name === 'lower' ? '#7c6cff' : '#00d4ff';
-    g.append('stop').attr('offset','0%').attr('stop-color', col).attr('stop-opacity', 0.4);
-    g.append('stop').attr('offset','100%').attr('stop-color', col).attr('stop-opacity', 0);
+  Object.entries(BRANCH_COLOR).forEach(([branch, color]) => {
+    const g = defs.append('radialGradient').attr('id', `glow-${branch.replace(/\\W/g,'_')}`);
+    g.append('stop').attr('offset','0%').attr('stop-color', color).attr('stop-opacity', 0.4);
+    g.append('stop').attr('offset','100%').attr('stop-color', color).attr('stop-opacity', 0);
   });
 
-  // Position function
-  function pos(c) {
-    return { x: COL[c.dagX], y: 35 + c.dagY * ROW_H };
-  }
-
-  // Branch label headers
-  [
-    {x: COL[0], label: 'feat/lower', color: '#7c6cff'},
-    {x: COL[1], label: 'main',       color: '#00ff87'},
-    {x: COL[2], label: 'feat/upper', color: '#00d4ff'},
-  ].forEach(({x, label, color}) => {
-    svg.append('text')
-      .attr('x', x).attr('y', 14)
-      .attr('text-anchor', 'middle')
-      .attr('font-size', 8)
-      .attr('font-family', 'JetBrains Mono, monospace')
-      .attr('fill', color)
-      .attr('letter-spacing', 1)
-      .text(label);
-  });
-
-  // Draw edges
-  COMMITS.forEach(c => {
-    c.parents.forEach(pid => {
-      const parent = COMMITS.find(p => p.id === pid);
-      if (!parent) return;
-      const p1 = pos(parent), p2 = pos(c);
-      const sameCol = Math.abs(p1.x - p2.x) < 5;
-      if (sameCol) {
+  // Edges
+  COMMITS.forEach((c, i) => {
+    const p2 = positions[i];
+    (c.parents || []).forEach(psha => {
+      const pi = COMMITS.findIndex(x => x.sha === psha);
+      if (pi < 0) return;
+      const p1 = positions[pi];
+      if (p1.x === p2.x) {
         svg.append('line')
           .attr('x1', p1.x).attr('y1', p1.y)
-          .attr('x2', p2.x).attr('y2', p2.y)
-          .attr('stroke', BRANCH_COLOR[c.branch] || '#fff')
-          .attr('stroke-width', 1.5)
-          .attr('stroke-opacity', 0.25);
+          .attr('x2', p2.x).attr('y2', p2.y - NODE_R - 1)
+          .attr('stroke', BRANCH_COLOR[c.branch] || '#666')
+          .attr('stroke-width', 1.5).attr('stroke-opacity', 0.4);
       } else {
         const my = (p1.y + p2.y) / 2;
-        const path = `M${p2.x},${p2.y} C${p2.x},${my} ${p1.x},${my} ${p1.x},${p1.y}`;
-        svg.append('path')
-          .attr('d', path)
-          .attr('fill', 'none')
-          .attr('stroke', 'rgba(255,255,255,0.18)')
-          .attr('stroke-width', 1.5)
-          .attr('stroke-dasharray', '3,2');
+        const path = `M${p1.x},${p1.y} C${p1.x},${my} ${p2.x},${my} ${p2.x},${p2.y - NODE_R - 1}`;
+        svg.append('path').attr('d', path).attr('fill','none')
+          .attr('stroke', BRANCH_COLOR[c.branch] || '#666')
+          .attr('stroke-width', 1.5).attr('stroke-opacity', 0.3)
+          .attr('stroke-dasharray', '4,2');
       }
     });
   });
 
-  // Node groups
-  const nodeGs = svg.selectAll('.dag-node')
-    .data(COMMITS)
-    .join('g')
-    .attr('class', 'dag-node')
-    .attr('transform', c => `translate(${pos(c).x},${pos(c).y})`)
-    .attr('cursor', 'pointer')
-    .on('click', (e, d) => selectCommit(COMMITS.indexOf(d)));
+  // Nodes
+  const nodeGs = svg.selectAll('.dag-node').data(COMMITS).join('g')
+    .attr('class','dag-node')
+    .attr('transform',(_,i) => `translate(${positions[i].x},${positions[i].y})`)
+    .attr('cursor','pointer')
+    .on('click',(_,d) => selectCommit(COMMITS.indexOf(d)));
 
-  // Glow ring (shown when selected)
-  nodeGs.append('circle')
-    .attr('r', NODE_R + 8)
-    .attr('class', 'node-glow')
-    .attr('fill', d => {
-      const n = d.branch === 'main' ? 'main' : d.branch.includes('lower') ? 'lower' : 'upper';
-      return `url(#glow-${n})`;
-    })
+  // Glow
+  nodeGs.append('circle').attr('r', NODE_R+7).attr('class','node-glow')
+    .attr('fill', d => `url(#glow-${d.branch.replace(/\\W/g,'_')})`)
     .attr('opacity', 0);
 
-  // Selection ring
-  nodeGs.append('circle')
-    .attr('r', NODE_R + 4)
-    .attr('class', 'node-ring')
-    .attr('fill', 'none')
-    .attr('stroke', d => BRANCH_COLOR[d.branch] || '#fff')
-    .attr('stroke-width', 1.5)
-    .attr('opacity', 0);
+  // Ring
+  nodeGs.append('circle').attr('r', NODE_R+3).attr('class','node-ring')
+    .attr('fill','none').attr('stroke', d => BRANCH_COLOR[d.branch]||'#fff')
+    .attr('stroke-width', 1.5).attr('opacity', 0);
 
   // Main circle
-  nodeGs.append('circle')
-    .attr('r', NODE_R)
-    .attr('fill', d => {
-      if (d.branch === 'main') return '#0d1f14';
-      if (d.branch.includes('lower')) return '#12102a';
-      return '#0a1c28';
-    })
-    .attr('stroke', d => BRANCH_COLOR[d.branch] || '#fff')
-    .attr('stroke-width', 1.8);
+  nodeGs.append('circle').attr('r', NODE_R)
+    .attr('fill', d => d.conflict ? '#1a0505' : d.resolved ? '#011a0d' : '#0d1118')
+    .attr('stroke', d => BRANCH_COLOR[d.branch]||'#fff').attr('stroke-width', 1.8);
 
-  // SHA label
-  nodeGs.append('text')
-    .attr('text-anchor', 'middle').attr('dy', '0.35em')
-    .attr('font-size', 8).attr('fill', 'rgba(255,255,255,0.7)')
-    .attr('font-family', 'JetBrains Mono, monospace')
-    .text(d => d.sha.slice(0,5));
+  // Icon
+  nodeGs.append('text').attr('text-anchor','middle').attr('dy','0.38em')
+    .attr('font-size', 9).attr('fill', d => BRANCH_COLOR[d.branch]||'#fff')
+    .attr('font-family','JetBrains Mono, monospace')
+    .text(d => d.conflict ? '⚠' : d.resolved ? '✓' : d.sha.slice(0,4));
 
-  // Commit message (two lines, below node)
-  nodeGs.each(function(d) {
+  // Label
+  nodeGs.each(function(d, i) {
     const g = d3.select(this);
     const lines = d.label.split('\\n');
-    lines.forEach((line, i) => {
-      g.append('text')
-        .attr('text-anchor', 'middle')
-        .attr('y', NODE_R + 10 + i * 11)
-        .attr('font-size', 7.5)
-        .attr('fill', 'rgba(255,255,255,0.38)')
-        .attr('font-family', 'JetBrains Mono, monospace')
-        .text(line);
+    lines.forEach((line, li) => {
+      g.append('text').attr('text-anchor','start')
+        .attr('x', NODE_R + 5).attr('y', (li - (lines.length-1)/2) * 11 + 1)
+        .attr('font-size', 8.5).attr('fill','rgba(255,255,255,0.45)')
+        .attr('font-family','JetBrains Mono, monospace').text(line);
     });
   });
 
   function select(idx) {
-    const commit = COMMITS[idx];
     svg.selectAll('.node-ring').attr('opacity', 0);
     svg.selectAll('.node-glow').attr('opacity', 0);
-    svg.selectAll('.dag-node')
-      .filter(d => d.id === commit.id)
+    const c = COMMITS[idx];
+    svg.selectAll('.dag-node').filter(d => d.sha === c.sha)
       .select('.node-ring').attr('opacity', 1);
-    svg.selectAll('.dag-node')
-      .filter(d => d.id === commit.id)
+    svg.selectAll('.dag-node').filter(d => d.sha === c.sha)
       .select('.node-glow').attr('opacity', 1);
-
-    document.getElementById('dag-branch-label').textContent = commit.branch;
   }
 
   return { select };
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// DAW TRACK VIEW
+// ═══════════════════════════════════════════════════════════════
+const DAW = (() => {
+  const LABEL_W = 64;
+  const DRUM_TYPES = { crash:0, hat_o:1, hat_c:2, ghost:3, snare:4, kick:5 };
+
+  const TRACKS = [
+    { key:'drums',  label:'DRUMS',    instrs:['kick','snare','hat_c','hat_o','ghost','crash'], color:'#ef4444', h:62 },
+    { key:'bass',   label:'BASS',     instrs:['bass'],   color:'#a855f7', h:44, pMin:36, pMax:60 },
+    { key:'epiano', label:'E.PIANO',  instrs:['epiano'], color:'#22d3ee', h:52, pMin:50, pMax:74 },
+    { key:'lead',   label:'LEAD',     instrs:['lead'],   color:'#f472b6', h:44, pMin:62, pMax:78 },
+    { key:'brass',  label:'BRASS',    instrs:['brass','brassb'], color:'#34d399', h:44, pMin:50, pMax:78 },
+  ];
+
+  const GAP = 5;
+  const totalH = TRACKS.reduce((a,t) => a + t.h + GAP, 0) + 30; // +30 for time axis
+  const svgW = 720;
+
+  const svg = d3.select('#daw-svg').attr('width', svgW).attr('height', totalH);
+  d3.select('#daw-svg').style('min-width', `${svgW}px`);
+
+  const contentW = svgW - LABEL_W;
+  const xScale = d3.scaleLinear().domain([0, TOTAL_SECS]).range([LABEL_W, svgW - 8]);
+
+  // Time axis
+  const timeG = svg.append('g').attr('transform', `translate(0,${totalH - 24})`);
+  timeG.append('line').attr('x1', LABEL_W).attr('x2', svgW-8).attr('y1',0).attr('y2',0)
+    .attr('stroke','rgba(255,255,255,0.1)');
+  d3.range(0, TOTAL_SECS+1, BAR).forEach(sec => {
+    const x = xScale(sec);
+    timeG.append('line').attr('x1',x).attr('x2',x).attr('y1',0).attr('y2',5)
+      .attr('stroke','rgba(255,255,255,0.2)');
+    timeG.append('text').attr('x',x).attr('y',15)
+      .attr('class','daw-time-label').attr('text-anchor','middle')
+      .text(`${Math.round(sec)}s`);
+  });
+
+  // Bar lines (every beat)
+  d3.range(0, TOTAL_SECS, BEAT).forEach(sec => {
+    svg.append('line')
+      .attr('x1', xScale(sec)).attr('x2', xScale(sec))
+      .attr('y1', 0).attr('y2', totalH-24)
+      .attr('stroke', sec % BAR < 0.01 ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.025)')
+      .attr('stroke-width', sec % BAR < 0.01 ? 1 : 0.5);
+  });
+
+  // Track backgrounds
+  let yOff = 0;
+  TRACKS.forEach(track => {
+    svg.append('rect').attr('x', LABEL_W).attr('y', yOff).attr('width', contentW)
+      .attr('height', track.h).attr('fill','rgba(255,255,255,0.015)').attr('rx', 3);
+    svg.append('text').attr('x', LABEL_W - 6).attr('y', yOff + track.h/2 + 1)
+      .attr('class','daw-track-label').attr('dy','0.35em').text(track.label)
+      .attr('fill', track.color + '88');
+    // Separator
+    svg.append('line').attr('x1', 0).attr('x2', svgW)
+      .attr('y1', yOff + track.h + GAP/2).attr('y2', yOff + track.h + GAP/2)
+      .attr('stroke','rgba(255,255,255,0.04)');
+    yOff += track.h + GAP;
+  });
+
+  // Note groups (cleared on each render)
+  const notesG = svg.append('g').attr('class','notes-g');
+
+  // Playhead
+  const playheadG = svg.append('g');
+  const playheadLine = playheadG.append('line').attr('class','playhead-line')
+    .attr('x1', xScale(0)).attr('x2', xScale(0))
+    .attr('y1', 0).attr('y2', totalH - 26).attr('opacity', 0);
+
+  function setPlayhead(sec) {
+    const x = xScale(Math.min(sec, TOTAL_SECS));
+    playheadLine.attr('x1', x).attr('x2', x).attr('opacity', sec > 0 ? 0.8 : 0);
+  }
+
+  function render(commit) {
+    notesG.selectAll('*').remove();
+    const notes = commit.notes || [];
+    if (!notes.length) return;
+
+    const byInstr = {};
+    for (const [pitch, vel, startSec, durSec, instr] of notes) {
+      (byInstr[instr] = byInstr[instr] || []).push([pitch, vel, startSec, durSec]);
+    }
+
+    let yOff = 0;
+    TRACKS.forEach(track => {
+      const trackNotes = track.instrs.flatMap(k => (byInstr[k] || []).map(n => ({...n, instr:k})));
+      if (!trackNotes.length) { yOff += track.h + GAP; return; }
+
+      if (track.key === 'drums') {
+        const nRows = 6;
+        const rowH  = (track.h - 4) / nRows;
+        for (const nt of trackNotes) {
+          const row = DRUM_TYPES[nt.instr] ?? 2;
+          const y = yOff + 2 + row * rowH;
+          const x = xScale(nt[2]);
+          const w = Math.max(2, (xScale(nt[2] + nt[3]) - x) * 0.9);
+          notesG.append('rect').attr('x', x).attr('y', y).attr('width', w)
+            .attr('height', rowH - 1).attr('rx', 1)
+            .attr('fill', INSTR_COLOR[nt.instr] || '#fff')
+            .attr('opacity', nt.instr === 'ghost' ? 0.4 : 0.85);
+        }
+      } else {
+        const pMin = track.pMin || 36;
+        const pMax = track.pMax || 80;
+        for (const nt of trackNotes) {
+          const pitch = nt[0]; const vel = nt[1];
+          const frac  = (pitch - pMin) / (pMax - pMin);
+          const y     = yOff + track.h - 4 - frac * (track.h - 8);
+          const x     = xScale(nt[2]);
+          const w     = Math.max(3, (xScale(nt[2] + nt[3]) - x) * 0.9);
+          const alpha = 0.5 + (vel / 127) * 0.5;
+          notesG.append('rect').attr('x', x).attr('y', y - 3)
+            .attr('width', w).attr('height', 6).attr('rx', 2)
+            .attr('fill', INSTR_COLOR[nt.instr] || track.color)
+            .attr('opacity', alpha);
+        }
+      }
+
+      yOff += track.h + GAP;
+    });
+  }
+
+  return { render, setPlayhead };
 })();
 
 // ═══════════════════════════════════════════════════════════════
@@ -1448,65 +1300,46 @@ const DAG = (() => {
 // ═══════════════════════════════════════════════════════════════
 const DimPanel = (() => {
   const container = document.getElementById('dim-list');
-
-  // Group by category
   const groups = ['core','expr','cc','fx','meta'];
-  const groupLabel = {core:'Core',expr:'Expression',cc:'Controllers (CC)',fx:'Effects',meta:'Meta / Structure'};
+  const GL = {core:'Core',expr:'Expression',cc:'Controllers (CC)',fx:'Effects',meta:'Meta / Structure'};
 
   groups.forEach(grp => {
     const dims = DIMS_21.filter(d => d.group === grp);
     if (!dims.length) return;
-
-    const label = document.createElement('div');
-    label.className = 'dim-group-label';
-    label.textContent = groupLabel[grp];
-    container.appendChild(label);
-
+    const lbl = document.createElement('div');
+    lbl.className = 'dim-group-label'; lbl.textContent = GL[grp];
+    container.appendChild(lbl);
     dims.forEach(dim => {
       const row = document.createElement('div');
-      row.className = 'dim-row';
-      row.id = `dim-row-${dim.id}`;
-      row.title = dim.desc;
-      row.innerHTML = `
-        <div class="dim-dot" id="dim-dot-${dim.id}" style="background:var(--dim)"></div>
-        <div class="dim-name">${dim.label}</div>
-        <div class="dim-bar-wrap"><div class="dim-bar" id="dim-bar-${dim.id}"></div></div>
-      `;
+      row.className = 'dim-row'; row.id = `dr-${dim.id}`; row.title = dim.desc;
+      row.innerHTML = `<div class="dim-dot" id="dd-${dim.id}"></div>
+                       <div class="dim-name">${dim.label}</div>
+                       <div class="dim-bar-wrap"><div class="dim-bar" id="db-${dim.id}"></div></div>`;
       container.appendChild(row);
     });
   });
 
   function update(commit) {
     const act = commit.dimAct || {};
-    let activeCount = 0;
-
+    let cnt = 0;
     DIMS_21.forEach(dim => {
       const level = act[dim.id] || 0;
-      const row  = document.getElementById(`dim-row-${dim.id}`);
-      const dot  = document.getElementById(`dim-dot-${dim.id}`);
-      const bar  = document.getElementById(`dim-bar-${dim.id}`);
+      const row = document.getElementById(`dr-${dim.id}`);
+      const dot = document.getElementById(`dd-${dim.id}`);
+      const bar = document.getElementById(`db-${dim.id}`);
       if (!row) return;
-
       if (level > 0) {
-        activeCount++;
+        cnt++;
         row.classList.add('active');
-        dot.style.background = dim.color;
-        dot.style.color = dim.color;
-        dot.style.boxShadow = `0 0 6px ${dim.color}`;
-        bar.style.background = dim.color;
-        bar.style.width = `${Math.min(level * 25, 100)}%`;
-        bar.style.boxShadow = `0 0 4px ${dim.color}`;
+        dot.style.background = dim.color; dot.style.boxShadow = `0 0 5px ${dim.color}`;
+        bar.style.background = dim.color; bar.style.width = `${Math.min(level*25,100)}%`;
       } else {
         row.classList.remove('active');
-        dot.style.background = '#2a3040';
-        dot.style.boxShadow = 'none';
-        bar.style.background = 'rgba(255,255,255,0.08)';
-        bar.style.width = '4%';
-        bar.style.boxShadow = 'none';
+        dot.style.background = 'rgba(255,255,255,0.12)'; dot.style.boxShadow = '';
+        bar.style.width = '0'; bar.style.background = '';
       }
     });
-
-    document.getElementById('dim-active-count').textContent = `${activeCount} active`;
+    document.getElementById('dim-active-count').textContent = `${cnt} active`;
   }
 
   return { update };
@@ -1516,50 +1349,24 @@ const DimPanel = (() => {
 // COMMAND LOG
 // ═══════════════════════════════════════════════════════════════
 const CmdLog = (() => {
-  const log = document.getElementById('cmd-log');
+  const prompt = document.getElementById('cmd-prompt');
+  let timer = null;
 
   function show(commit) {
-    log.innerHTML = '';
+    if (timer) clearTimeout(timer);
+    const lines = commit.output.split('\\n');
+    const isWarn = commit.conflict;
+    const isOk   = commit.resolved;
 
-    // Command line
-    const cmdLine = document.createElement('div');
-    cmdLine.className = 'log-line';
-    cmdLine.innerHTML = `<span class="log-prompt">$ </span><span class="log-cmd"></span>`;
-    log.appendChild(cmdLine);
-
-    // Output lines
-    const outEl = document.createElement('div');
-    outEl.className = 'log-line log-out';
-    log.appendChild(outEl);
-
-    // Stats line
-    const statsLine = document.createElement('div');
-    statsLine.className = 'log-line';
-    statsLine.innerHTML = `<span style="color:var(--muted);font-size:11px">[${commit.stats}]</span>`;
-    log.appendChild(statsLine);
-
-    // Cursor
-    const cursor = document.createElement('div');
-    cursor.className = 'log-line';
-    cursor.innerHTML = '<span class="log-cursor"></span>';
-    log.appendChild(cursor);
-
-    // Typewriter effect for command
-    const cmdSpan = cmdLine.querySelector('.log-cmd');
-    let i = 0;
-    const cmdText = commit.command;
-    const timer = setInterval(() => {
-      cmdSpan.textContent = cmdText.slice(0, ++i);
-      if (i >= cmdText.length) {
-        clearInterval(timer);
-        // Show output after command types
-        setTimeout(() => {
-          outEl.textContent = commit.output;
-          log.scrollTop = log.scrollHeight;
-        }, 100);
-      }
-    }, 18);
-    log.scrollTop = 0;
+    let html = `<div class="cmd-line">$ ${commit.cmd}</div>`;
+    lines.forEach(line => {
+      const cls = line.startsWith('⚠') || line.includes('CONFLICT') ? 'cmd-warn'
+                : line.startsWith('✓') ? 'cmd-ok'
+                : line.startsWith('✗') ? 'cmd-err'
+                : '';
+      html += `<div class="${cls}">${line}</div>`;
+    });
+    prompt.innerHTML = html;
   }
 
   return { show };
@@ -1569,437 +1376,196 @@ const CmdLog = (() => {
 // HEATMAP
 // ═══════════════════════════════════════════════════════════════
 (function buildHeatmap() {
-  const container = document.getElementById('heatmap-svg');
-  const CELL_W = 56, CELL_H = 18, LABEL_W = 120, TOP_H = 55;
-  const SVG_W = LABEL_W + COMMITS.length * CELL_W + 20;
-  const SVG_H = TOP_H + DIMS_21.length * CELL_H + 10;
+  const cellW = 32, cellH = 10, padL = 88, padT = 10;
+  const nCols = COMMITS.length;
+  const nRows = DIMS_21.length;
+  const W = padL + nCols * cellW + 10;
+  const H = padT + nRows * cellH + 22;
 
-  const svg = d3.select('#heatmap-svg')
-    .attr('width', SVG_W).attr('height', SVG_H);
+  const svg = d3.select('#heatmap-svg').attr('width', W).attr('height', H);
+  d3.select('#heatmap-svg').style('min-width', `${W}px`);
 
-  // Column headers (commit shas)
+  // Row labels
+  DIMS_21.forEach((dim, ri) => {
+    svg.append('text').attr('x', padL - 4).attr('y', padT + ri * cellH + cellH/2 + 1)
+      .attr('text-anchor','end').attr('dy','0.35em')
+      .attr('font-family','JetBrains Mono,monospace').attr('font-size', 7.5)
+      .attr('fill', dim.color + 'aa').text(dim.label);
+  });
+
+  // Col labels (sha)
   COMMITS.forEach((c, ci) => {
-    const x = LABEL_W + ci * CELL_W + CELL_W / 2;
-    const col = c.branch === 'main' ? '#00ff87' :
-                c.branch.includes('lower') ? '#7c6cff' : '#00d4ff';
-    svg.append('text')
-      .attr('x', x).attr('y', TOP_H - 28)
-      .attr('text-anchor', 'middle')
-      .attr('font-size', 8).attr('fill', col)
-      .attr('font-family', 'JetBrains Mono, monospace')
-      .text(c.sha.slice(0,5));
-
-    // Branch dot
-    svg.append('circle')
-      .attr('cx', x).attr('cy', TOP_H - 16)
-      .attr('r', 4)
-      .attr('fill', col)
-      .attr('opacity', 0.6);
-
-    // Vertical branch line
-    svg.append('line')
-      .attr('x1', x).attr('x2', x)
-      .attr('y1', TOP_H - 10).attr('y2', TOP_H)
-      .attr('stroke', col).attr('stroke-width', 1)
-      .attr('stroke-opacity', 0.3);
+    svg.append('text').attr('x', padL + ci * cellW + cellW/2)
+      .attr('y', H - 6).attr('text-anchor','middle')
+      .attr('font-family','JetBrains Mono,monospace').attr('font-size', 7)
+      .attr('fill', BRANCH_COLOR[c.branch] + 'aa').text(c.sha.slice(0,4));
   });
 
-  // Row labels + cells
-  DIMS_21.forEach((dim, di) => {
-    const y = TOP_H + di * CELL_H;
+  // Cells
+  const cells = svg.selectAll('.hm-cell')
+    .data(COMMITS.flatMap((c,ci) => DIMS_21.map((dim,ri) => ({ci,ri,dim,c,level:c.dimAct[dim.id]||0}))))
+    .join('rect').attr('class','hm-cell')
+    .attr('x', d => padL + d.ci * cellW + 1)
+    .attr('y', d => padT + d.ri * cellH + 1)
+    .attr('width', cellW - 2).attr('height', cellH - 2).attr('rx', 1)
+    .attr('fill', d => d.level > 0 ? d.dim.color : 'rgba(255,255,255,0.04)')
+    .attr('opacity', d => d.level > 0 ? Math.min(0.9, 0.25 + d.level * 0.22) : 1)
+    .attr('cursor','pointer')
+    .on('mouseover', function(evt, d) {
+      d3.select(this).attr('stroke', d.dim.color).attr('stroke-width', 1);
+    })
+    .on('mouseout', function() { d3.select(this).attr('stroke','none'); });
 
-    // Row background (alternating)
-    svg.append('rect')
-      .attr('x', 0).attr('y', y)
-      .attr('width', SVG_W).attr('height', CELL_H)
-      .attr('fill', di % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent');
-
-    // Dimension label
-    svg.append('text')
-      .attr('x', LABEL_W - 6).attr('y', y + CELL_H * 0.67)
-      .attr('text-anchor', 'end')
-      .attr('font-size', 9).attr('fill', 'rgba(255,255,255,0.4)')
-      .attr('font-family', 'JetBrains Mono, monospace')
-      .text(dim.label);
-
-    // Cells
-    COMMITS.forEach((c, ci) => {
-      const level = (c.dimAct && c.dimAct[dim.id]) || 0;
-      const x = LABEL_W + ci * CELL_W;
-      const alpha = level === 0 ? 0.04 : level === 1 ? 0.25 : level === 2 ? 0.5 : level === 3 ? 0.72 : 0.92;
-
-      const cell = svg.append('rect')
-        .attr('x', x + 1).attr('y', y + 1)
-        .attr('width', CELL_W - 2).attr('height', CELL_H - 2)
-        .attr('rx', 2)
-        .attr('fill', level > 0 ? dim.color : 'rgba(255,255,255,0.06)')
-        .attr('opacity', alpha)
-        .attr('cursor', 'pointer');
-
-      cell.on('mouseenter', function() {
-        if (level > 0) {
-          d3.select(this).attr('opacity', Math.min(alpha + 0.2, 1));
-          d3.select(this).attr('stroke', dim.color).attr('stroke-width', 1);
-        }
-      }).on('mouseleave', function() {
-        d3.select(this).attr('opacity', alpha).attr('stroke', 'none');
-      });
-
-      // Level indicator
-      if (level > 0) {
-        svg.append('text')
-          .attr('x', x + CELL_W / 2).attr('y', y + CELL_H * 0.68)
-          .attr('text-anchor', 'middle')
-          .attr('font-size', 7.5)
-          .attr('fill', 'rgba(255,255,255,0.7)')
-          .attr('font-family', 'JetBrains Mono, monospace')
-          .text(level === 1 ? '·' : level === 2 ? '●' : level === 3 ? '★' : '★★');
-      }
+  // Highlight column on commit select
+  window._heatmapSelectCol = function(idx) {
+    cells.attr('opacity', d => {
+      const base = d.level > 0 ? Math.min(0.9, 0.25 + d.level * 0.22) : 1;
+      if (d.ci !== idx) return d.level > 0 ? base * 0.4 : 0.3;
+      return base;
     });
-  });
-
-  // Heatmap selected commit highlight column
-  window._heatmapHighlight = function(idx) {
     svg.selectAll('.hm-col-hl').remove();
-    const x = LABEL_W + idx * CELL_W;
-    svg.insert('rect', ':first-child')
-      .attr('class', 'hm-col-hl')
-      .attr('x', x).attr('y', TOP_H - 2)
-      .attr('width', CELL_W).attr('height', SVG_H - TOP_H + 2)
-      .attr('fill', 'rgba(255,255,255,0.04)')
-      .attr('stroke', 'rgba(255,255,255,0.1)')
-      .attr('stroke-width', 1)
-      .attr('rx', 2);
+    svg.append('rect').attr('class','hm-col-hl')
+      .attr('x', padL + idx * cellW).attr('y', padT - 2)
+      .attr('width', cellW).attr('height', nRows * cellH + 4)
+      .attr('fill','none').attr('stroke', BRANCH_COLOR[COMMITS[idx].branch]||'#fff')
+      .attr('stroke-width', 1).attr('rx', 2).attr('opacity', 0.45);
   };
 })();
 
 // ═══════════════════════════════════════════════════════════════
-// AUDIO ENGINE (Tone.js + Salamander Grand Piano)
+// BRANCH LEGEND
 // ═══════════════════════════════════════════════════════════════
-let piano = null;
-let reverb = null;
-let scheduledNoteIds = [];
-
-async function initAudio() {
-  if (state.audioLoading || state.audioReady) return;
-  state.audioLoading = true;
-
-  const dot = document.getElementById('audio-dot');
-  const lbl = document.getElementById('audio-label');
-  dot.className = 'audio-dot loading';
-  lbl.textContent = 'Loading piano…';
-
-  await Tone.start();
-
-  reverb = new Tone.Reverb({ decay: 2.5, wet: 0.28 }).toDestination();
-
-  piano = new Tone.Sampler({
-    urls: {
-      A0: 'A0.mp3',  C1: 'C1.mp3',  'D#1': 'Ds1.mp3', 'F#1': 'Fs1.mp3',
-      A1: 'A1.mp3',  C2: 'C2.mp3',  'D#2': 'Ds2.mp3', 'F#2': 'Fs2.mp3',
-      A2: 'A2.mp3',  C3: 'C3.mp3',  'D#3': 'Ds3.mp3', 'F#3': 'Fs3.mp3',
-      A3: 'A3.mp3',  C4: 'C4.mp3',  'D#4': 'Ds4.mp3', 'F#4': 'Fs4.mp3',
-      A4: 'A4.mp3',  C5: 'C5.mp3',  'D#5': 'Ds5.mp3', 'F#5': 'Fs5.mp3',
-      A5: 'A5.mp3',  C6: 'C6.mp3',  'D#6': 'Ds6.mp3', 'F#6': 'Fs6.mp3',
-      A6: 'A6.mp3',  C7: 'C7.mp3',  'D#7': 'Ds7.mp3', 'F#7': 'Fs7.mp3',
-      A7: 'A7.mp3',  C8: 'C8.mp3',
-    },
-    release: 1.2,
-    baseUrl: 'https://tonejs.github.io/audio/salamander/',
-    onload: () => {
-      state.audioReady = true;
-      state.audioLoading = false;
-      dot.className = 'audio-dot ready';
-      lbl.textContent = 'Piano ready';
-      document.getElementById('btn-init-audio').textContent = '🎹 Piano Ready';
-      document.getElementById('btn-init-audio').classList.add('active');
-      document.getElementById('btn-play').disabled = false;
-    },
-  }).connect(reverb);
-}
-
-function stopPlayback() {
-  if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
-  state.isPlaying = false;
-  state.playheadSec = 0;
-  PR.setPlayhead(0);
-  updatePlayBtn();
-  document.getElementById('progress-fill').style.width = '0%';
-  document.getElementById('time-display').textContent = '0:00';
-  // Tone.js: cancel all pending events
-  try { Tone.getTransport().stop(); Tone.getTransport().cancel(); } catch(e) {}
-}
-
-function playNotes(notes) {
-  if (!piano || !state.audioReady) return;
-  stopPlayback();
-
-  const minStart = notes.length ? Math.min(...notes.map(n => n[2])) : 0;
-  const now = Tone.now() + 0.3;
-  state.playStartWallClock = performance.now();
-  state.playStartAudioSec  = minStart;
-  state.isPlaying = true;
-  updatePlayBtn();
-
-  // Schedule all notes via Tone.js (offloads to Web Audio scheduler)
-  notes.forEach(n => {
-    const t = now + (n[2] - minStart);
-    const noteName = Tone.Frequency(n[0], 'midi').toNote();
-    const dur = Math.max(n[3], 0.06);
-    const vel = n[1] / 127;
-    try { piano.triggerAttackRelease(noteName, dur, t, vel); } catch(e) {}
+(function buildLegend() {
+  const el = document.getElementById('branch-legend');
+  Object.entries(BRANCH_COLOR).forEach(([branch, color]) => {
+    const item = document.createElement('div');
+    item.className = 'bl-item';
+    item.innerHTML = `<div class="bl-dot" style="background:${color};box-shadow:0 0 5px ${color}"></div>
+                      <span>${branch}</span>`;
+    el.appendChild(item);
   });
-
-  // Animate playhead
-  const totalDur = notes.length ? Math.max(...notes.map(n => n[2] + n[3])) - minStart : 0;
-
-  function tick() {
-    if (!state.isPlaying) return;
-    const elapsed = (performance.now() - state.playStartWallClock) / 1000;
-    const sec = state.playStartAudioSec + elapsed;
-    PR.setPlayhead(sec);
-    document.getElementById('time-display').textContent = fmtTime(elapsed);
-    document.getElementById('progress-fill').style.width =
-      totalDur > 0 ? `${Math.min(elapsed / totalDur * 100, 100)}%` : '0%';
-    if (elapsed < totalDur + 0.5) {
-      state.rafId = requestAnimationFrame(tick);
-    } else {
-      stopPlayback();
-    }
-  }
-  state.rafId = requestAnimationFrame(tick);
-}
+})();
 
 // ═══════════════════════════════════════════════════════════════
-// COMMIT SELECTION (main controller)
-// ═══════════════════════════════════════════════════════════════
-function selectCommit(idx) {
-  state.commitIdx = Math.max(0, Math.min(idx, COMMITS.length - 1));
-  const commit = getCommit(state.commitIdx);
-
-  // Update all panels
-  PR.update(commit);
-  DAG.select(state.commitIdx);
-  DimPanel.update(commit);
-  CmdLog.show(commit);
-  if (window._heatmapHighlight) window._heatmapHighlight(state.commitIdx);
-
-  // Update control info
-  document.getElementById('commit-sha-disp').textContent = commit.sha;
-  document.getElementById('commit-msg-disp').textContent = commit.message;
-
-  // Play if audio ready
-  if (state.audioReady && commit.filter) {
-    const notes = getNotesForCommit(commit);
-    playNotes(notes);
-  }
-
-  updateControls();
-}
-
-function updateControls() {
-  document.getElementById('btn-first').disabled = state.commitIdx === 0;
-  document.getElementById('btn-prev').disabled  = state.commitIdx === 0;
-  document.getElementById('btn-next').disabled  = state.commitIdx === COMMITS.length - 1;
-  document.getElementById('btn-last').disabled  = state.commitIdx === COMMITS.length - 1;
-}
-
-function updatePlayBtn() {
-  const btn = document.getElementById('btn-play');
-  btn.textContent = state.isPlaying ? '⏸' : '▶';
-  btn.className   = 'ctrl-play' + (state.isPlaying ? ' playing' : '');
-}
-
-// ═══════════════════════════════════════════════════════════════
-// CLI REFERENCE DATA
-// ═══════════════════════════════════════════════════════════════
-const CLI_CMDS = [
-  {
-    name: 'muse notes',
-    desc: 'Display notes as a musical notation table (bar / beat / pitch / velocity / duration).',
-    flags: [
-      { name: '--bar <range>', desc: 'Filter to specific bars, e.g. 1-8 or 3' },
-      { name: '--track <path>', desc: 'Restrict to a specific MIDI track file' },
-      { name: '--voice <n>', desc: 'Filter to a MIDI channel/voice (1-16)' },
-      { name: '--format', desc: 'Output format: table (default), csv, json' },
-    ],
-    returns: 'Table rows: bar, beat, pitch (name), MIDI#, velocity, dur(ticks)',
-  },
-  {
-    name: 'muse piano-roll',
-    desc: 'Render an ASCII piano roll of committed MIDI notes.',
-    flags: [
-      { name: '--bars <range>', desc: 'Bars to display (default: all)' },
-      { name: '--resolution', desc: 'Ticks per cell: 12 (16th), 6 (32nd), 3 (64th)' },
-      { name: '--color', desc: 'Enable ANSI color output (voice-coded)' },
-      { name: '--width <n>', desc: 'Terminal width in chars (default: 120)' },
-    ],
-    returns: 'ASCII roll: pitch axis (Y), time axis (X), ● for note-on',
-  },
-  {
-    name: 'muse harmony',
-    desc: 'Chord analysis, key detection (Krumhansl-Schmuckler), and pitch-class histogram.',
-    flags: [
-      { name: '--bar <range>', desc: 'Analyse a specific bar range' },
-      { name: '--window <n>', desc: 'Sliding window in bars (default: 4)' },
-      { name: '--output', desc: 'table | json | histogram' },
-    ],
-    returns: 'Key guess, chord per bar, pitch-class distribution',
-  },
-  {
-    name: 'muse velocity-profile',
-    desc: 'Dynamic range analysis — velocity histogram and per-bar statistics.',
-    flags: [
-      { name: '--bar <range>', desc: 'Restrict to a bar range' },
-      { name: '--bins <n>', desc: 'Histogram bucket count (default: 16)' },
-    ],
-    returns: 'Min/max/mean velocity, per-bar average, ASCII histogram',
-  },
-  {
-    name: 'muse note-log',
-    desc: 'Note-level change history — equivalent of git log -p but for MIDI notes.',
-    flags: [
-      { name: '--bar <range>', desc: 'Filter by bar number' },
-      { name: '--pitch <p>', desc: 'Filter by MIDI pitch (e.g. 60, C4)' },
-      { name: '--oneline', desc: 'Compact one-line-per-commit format' },
-      { name: '--since <ref>', desc: 'Start from a commit ref' },
-    ],
-    returns: '+note / -note rows per commit, with pitch, velocity, timing',
-  },
-  {
-    name: 'muse note-blame',
-    desc: 'Per-bar attribution — which commit last touched each bar.',
-    flags: [
-      { name: '--bar <range>', desc: 'Annotate specific bars only' },
-      { name: '--track <path>', desc: 'Target MIDI file' },
-      { name: '--porcelain', desc: 'Machine-readable output' },
-    ],
-    returns: 'bar#  commit-sha  author  message (one row per bar)',
-  },
-  {
-    name: 'muse note-hotspots',
-    desc: 'Bar-level churn leaderboard — which bars changed most frequently.',
-    flags: [
-      { name: '--top <n>', desc: 'Show top N bars (default: 10)' },
-      { name: '--since <ref>', desc: 'Limit history range' },
-    ],
-    returns: 'Ranked list: bar, change count, last modified commit',
-  },
-  {
-    name: 'muse transpose',
-    desc: 'Surgically shift pitches by semitone interval without creating a new commit.',
-    flags: [
-      { name: '--semitones <n>', desc: 'Number of semitones to shift (+/-)' },
-      { name: '--bar <range>', desc: 'Restrict transposition to a bar range' },
-      { name: '--voice <n>', desc: 'Restrict to a specific MIDI voice/channel' },
-      { name: '--dry-run', desc: 'Preview without writing changes' },
-      { name: '--clamp', desc: 'Clamp to valid MIDI range 0–127 instead of error' },
-    ],
-    returns: 'Modified MIDI file written to muse-work/; use muse diff to review',
-  },
-  {
-    name: 'muse mix',
-    desc: 'Layer two MIDI tracks into a single output track with channel remapping.',
-    flags: [
-      { name: '--channel-a <n>', desc: 'Output channel for first source' },
-      { name: '--channel-b <n>', desc: 'Output channel for second source' },
-      { name: '--out <path>', desc: 'Destination file path' },
-    ],
-    returns: 'Merged MIDI file written to muse-work/; commit to persist',
-  },
-  {
-    name: 'muse midi-query',
-    desc: 'Structured query against MIDI content using the Muse query DSL.',
-    flags: [
-      { name: '--where', desc: 'Filter expression, e.g. "pitch > 60 AND velocity > 90"' },
-      { name: '--select', desc: 'Output columns: pitch, velocity, bar, beat, dur' },
-      { name: '--limit <n>', desc: 'Max rows returned' },
-      { name: '--format', desc: 'table | json | csv' },
-    ],
-    returns: 'Filtered note table matching the query predicate',
-  },
-  {
-    name: 'muse midi-check',
-    desc: 'Validate MIDI invariants: no stuck notes, tempo consistency, no out-of-range events.',
-    flags: [
-      { name: '--strict', desc: 'Error on warnings (not just errors)' },
-      { name: '--fix', desc: 'Auto-correct recoverable violations' },
-    ],
-    returns: 'Pass/fail report with violation details and line references',
-  },
-  {
-    name: 'muse diff',
-    desc: 'Show structured delta between two commits or working tree vs HEAD.',
-    flags: [
-      { name: '<ref1>', desc: 'Base commit SHA or branch name' },
-      { name: '<ref2>', desc: 'Target commit SHA or branch name (default: HEAD)' },
-      { name: '--dimension <d>', desc: 'Filter to a specific MIDI dimension' },
-      { name: '--stat', desc: 'Summary statistics only (note counts per dimension)' },
-    ],
-    returns: 'InsertOp / DeleteOp / MutateOp per note with full field details',
-  },
-];
-
-// ═══════════════════════════════════════════════════════════════
-// BUILD CLI REFERENCE
+// CLI REFERENCE
 // ═══════════════════════════════════════════════════════════════
 (function buildCLI() {
+  const commands = [
+    { cmd:'muse init --domain midi',
+      desc:'Initialize a Muse repository with the MIDI domain plugin.',
+      flags:['--domain <name>   specify domain plugin (midi, code, …)',
+             '--bare            create a bare repository'],
+      ret:'✓ .muse/ directory created with domain config' },
+    { cmd:'muse commit -m <msg>',
+      desc:'Snapshot current MIDI state and create a new commit.',
+      flags:['-m <message>      commit message',
+             '--domain <name>   override domain for this commit',
+             '--no-verify       skip pre-commit hooks'],
+      ret:'[<branch> <sha8>] <message>' },
+    { cmd:'muse status',
+      desc:'Show working directory status vs HEAD snapshot.',
+      flags:['--short           machine-readable one-line output',
+             '--porcelain       stable scripting format'],
+      ret:'Added/modified/removed files; clean or dirty state' },
+    { cmd:'muse diff [<sha>]',
+      desc:'Show 21-dimensional delta between working dir and a commit.',
+      flags:['--stat            summary only (file counts + dim counts)',
+             '--dim <name>      filter to one MIDI dimension',
+             '--commit <sha>    compare two commits'],
+      ret:'StructuredDelta per file: notes±, CC changes, bend curves' },
+    { cmd:'muse log [--oneline] [--stat]',
+      desc:'Show commit history with branch topology.',
+      flags:['--oneline         compact one-line format',
+             '--stat            include files + dimension summary',
+             '--graph           ASCII branch graph'],
+      ret:'Ordered commit list with SHA, message, branch, timestamp' },
+    { cmd:'muse branch -b <name>',
+      desc:'Create a new branch at the current HEAD.',
+      flags:['-b <name>         name of the new branch',
+             '--list            list all branches',
+             '-d <name>         delete a branch'],
+      ret:'✓ Branch <name> created at <sha8>' },
+    { cmd:'muse checkout <branch>',
+      desc:'Switch to a branch or restore a commit.',
+      flags:['<branch>          branch name or commit SHA',
+             '-b <name>         create and switch in one step'],
+      ret:'Switched to branch <name>; working dir restored' },
+    { cmd:'muse merge <branch> [<branch2>]',
+      desc:'Three-way MIDI merge using the 21-dim engine.',
+      flags:['<branch>          branch to merge into current',
+             '--strategy ours|theirs|auto   conflict resolution',
+             '--no-ff           always create a merge commit'],
+      ret:'✓ 0 conflicts — or — ⚠ CONFLICT in <dim> on <file>' },
+    { cmd:'muse resolve --strategy <s> <dim>',
+      desc:'Resolve a dimension conflict after a failed merge.',
+      flags:['--strategy ours|theirs|auto|manual   merge strategy',
+             '<dim>             MIDI dimension to resolve (e.g. cc_reverb)'],
+      ret:'✓ Resolved <dim> using strategy <s>' },
+    { cmd:'muse stash / stash pop',
+      desc:'Park uncommitted changes and restore later.',
+      flags:['stash             save working dir to stash',
+             'stash pop         restore last stash',
+             'stash list        list all stash entries'],
+      ret:'✓ Stashed <N> changes / ✓ Popped stash@{0}' },
+    { cmd:'muse cherry-pick <sha>',
+      desc:'Apply a single commit from any branch.',
+      flags:['<sha>             commit ID to cherry-pick (full or short)',
+             '--no-commit       apply changes without committing'],
+      ret:'[<branch> <sha8>] cherry-pick of <src-sha>' },
+    { cmd:'muse tag add <name>',
+      desc:'Create a lightweight tag at the current HEAD.',
+      flags:['add <name>        create tag',
+             'list              list all tags',
+             'delete <name>     delete a tag'],
+      ret:'✓ Tag <name> → <sha8>' },
+  ];
+
   const grid = document.getElementById('cli-grid');
-  CLI_CMDS.forEach(cmd => {
+  commands.forEach(c => {
     const card = document.createElement('div');
-    card.className = 'cmd-card';
-    card.innerHTML = `
-      <div class="cmd-name">${cmd.name}</div>
-      <div class="cmd-desc">${cmd.desc}</div>
-      <div class="cmd-flags">
-        ${cmd.flags.map(f => `
-          <div class="cmd-flag">
-            <span class="flag-name">${f.name}</span>
-            <span class="flag-desc">${f.desc}</span>
-          </div>
-        `).join('')}
-      </div>
-      <div class="cmd-return">Returns: <span>${cmd.returns}</span></div>
-    `;
+    card.className = 'cli-card';
+    card.innerHTML = `<div class="cli-cmd">$ ${c.cmd}</div>
+      <div class="cli-desc">${c.desc}</div>
+      <div class="cli-flags">${c.flags.map(f => `<div class="cli-flag">${f.replace(/^(--?\\S+)/,'<span>$1</span>')}</div>`).join('')}</div>
+      <div style="margin-top:6px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'JetBrains Mono',monospace">→ ${c.ret}</div>`;
     grid.appendChild(card);
   });
 })();
 
 // ═══════════════════════════════════════════════════════════════
-// WIRE UP CONTROLS
+// EVENT WIRING
 // ═══════════════════════════════════════════════════════════════
 document.getElementById('btn-init-audio').addEventListener('click', initAudio);
 
 document.getElementById('btn-play').addEventListener('click', () => {
   if (!state.audioReady) { initAudio(); return; }
+  const commit = COMMITS[state.cur];
+  if (!commit.notes.length) return;
+
   if (state.isPlaying) {
-    stopPlayback();
+    pausePlayback();
+  } else if (state.pausedAt !== null) {
+    playNotes(commit.notes, state.pausedAt);
   } else {
-    const notes = getNotesForCommit(getCommit(state.commitIdx));
-    playNotes(notes);
+    playNotes(commit.notes, 0);
   }
 });
 
+document.getElementById('btn-prev').addEventListener('click', () => selectCommit(state.cur - 1));
+document.getElementById('btn-next').addEventListener('click', () => selectCommit(state.cur + 1));
 document.getElementById('btn-first').addEventListener('click', () => selectCommit(0));
 document.getElementById('btn-last').addEventListener('click', () => selectCommit(COMMITS.length - 1));
-document.getElementById('btn-prev').addEventListener('click', () => selectCommit(state.commitIdx - 1));
-document.getElementById('btn-next').addEventListener('click', () => selectCommit(state.commitIdx + 1));
 
-// Keyboard shortcuts
 document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT') return;
-  if (e.key === 'ArrowRight') selectCommit(state.commitIdx + 1);
-  if (e.key === 'ArrowLeft')  selectCommit(state.commitIdx - 1);
-  if (e.key === ' ') { e.preventDefault(); document.getElementById('btn-play').click(); }
+  if (e.key === ' ')          { e.preventDefault(); document.getElementById('btn-play').click(); }
+  else if (e.key === 'ArrowRight') selectCommit(state.cur + 1);
+  else if (e.key === 'ArrowLeft')  selectCommit(state.cur - 1);
 });
 
 // ═══════════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════════
 document.getElementById('btn-play').disabled = true;
-document.getElementById('time-total').textContent = fmtTime(TOTAL_DURATION);
-
-// Start with commit 0 (muse init, no notes)
 selectCommit(0);
 </script>
 </body>
@@ -2007,11 +1573,44 @@ selectCommit(0);
 """
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# RENDERER
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_midi_demo() -> str:
+    """Build and return the complete HTML string."""
+    commits = _build_commits()
+
+    # Serialize commits (notes lists contain mixed-type elements)
+    commits_json = json.dumps(commits, separators=(",", ":"))
+
+    html = _HTML
+    html = html.replace("__BPM__", str(BPM))
+    html = html.replace("__COMMITS__", commits_json)
+    return html
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MAIN
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Generate artifacts/midi-demo.html")
+    parser.add_argument("--output-dir", default="artifacts", help="Output directory")
+    args = parser.parse_args()
+
+    out_dir = pathlib.Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    html = render_midi_demo()
+    out_path = out_dir / "midi-demo.html"
+    out_path.write_text(html, encoding="utf-8")
+    logger.info("Written: %s (%d bytes)", out_path, len(html))
+    print(f"✓ MIDI demo → {out_path}")
+
+
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    out = pathlib.Path("artifacts/midi-demo.html")
-    out.parent.mkdir(exist_ok=True)
-    content = render_midi_demo()
-    out.write_text(content, encoding="utf-8")
-    kb = len(content) // 1024
-    logger.info("✅  artifacts/midi-demo.html written (%d KB)", kb)
+    logging.basicConfig(level=logging.INFO)
+    main()
