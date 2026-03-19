@@ -36,6 +36,9 @@ jobs:
       - name: Generate demo pages
         run: python tools/demo.py
 
+      - name: Generate MIDI demo page
+        run: python tools/render_midi_demo.py
+
       - name: Generate Domain Registry (also writes index.html)
         run: python tools/render_domain_registry.py
 
