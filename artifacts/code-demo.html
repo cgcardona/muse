@@ -785,13 +785,19 @@ function updateSymbolGraph(commitIdx) {
 function setGraphMode(mode) {
   state.graphMode = mode;
   state.impactSym = null;
+  // SVG className is a read-only SVGAnimatedString — must use setAttribute
   const svgEl = document.getElementById('sym-svg');
-  svgEl.className = mode === 'default' ? '' : `graph-${mode}`;
+  svgEl.setAttribute('class', mode === 'default' ? '' : `graph-${mode}`);
   document.getElementById('mode-graph').className  = 'mode-btn' + (mode==='default' ? ' active':'');
   document.getElementById('mode-dead').className   = 'mode-btn' + (mode==='dead'    ? ' active-red':'');
   document.getElementById('mode-impact').className = 'mode-btn' + (mode==='impact'  ? ' active':'');
   d3.selectAll('.sym-node').classed('in-impact', false);
   d3.selectAll('.sym-edge').classed('in-impact', false);
+  // Impact mode: immediately show impact for selected sym, or auto-pick Router.dispatch
+  if (mode === 'impact') {
+    const target = state.selectedSym || ALL_SYMBOLS.find(s => s.id === 'Router.dispatch');
+    if (target) selectSymbol(target);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
