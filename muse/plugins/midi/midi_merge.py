@@ -99,6 +99,8 @@ Public API
 - :data:`NON_INDEPENDENT_DIMS` — dimensions that block others on conflict
 """
 
+from __future__ import annotations
+
 import hashlib
 import io
 import json

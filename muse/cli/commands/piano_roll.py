@@ -28,6 +28,8 @@ Output::
          1       2       3       4       1       2       3
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import pathlib

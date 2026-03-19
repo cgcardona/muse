@@ -28,6 +28,8 @@ Protocol capabilities implemented here
 - CRDT: ``CRDTPlugin`` (optional — remove if not needed)
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 import pathlib

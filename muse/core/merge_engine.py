@@ -47,6 +47,8 @@ File-based helpers:
 ``other_branch`` is optional; all other fields are required when conflicts exist.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import pathlib

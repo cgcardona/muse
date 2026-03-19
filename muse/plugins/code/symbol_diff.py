@@ -53,6 +53,8 @@ Algorithm
 7.  Emit ``ReplaceOp`` for symbols whose ``content_id`` changed.
 """
 
+from __future__ import annotations
+
 import logging
 
 from muse.domain import DeleteOp, DomainOp, InsertOp, PatchOp, ReplaceOp

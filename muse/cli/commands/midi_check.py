@@ -42,6 +42,8 @@ Usage::
     muse midi-check --json               # machine-readable output
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import pathlib

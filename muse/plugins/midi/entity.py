@@ -47,6 +47,8 @@ Public API
 - :func:`write_entity_index` / :func:`read_entity_index` — I/O.
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 import logging

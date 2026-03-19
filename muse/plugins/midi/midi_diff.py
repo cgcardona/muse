@@ -33,6 +33,8 @@ Public API
 - :func:`diff_midi_notes` — top-level: MIDI bytes × 2 → ``StructuredDelta``.
 """
 
+from __future__ import annotations
+
 import hashlib
 import io
 import logging

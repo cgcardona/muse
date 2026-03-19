@@ -36,6 +36,8 @@ Public API
 - :func:`read_music_manifest`  — load from the sidecar store.
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 import logging

@@ -30,6 +30,8 @@ errors are caught at compile time rather than at runtime.
 package rather than from the submodule.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Literal, TypedDict
 

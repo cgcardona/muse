@@ -16,6 +16,8 @@ ID derivation contract (deterministic, no random/UUID components):
                   ).hexdigest()
 """
 
+from __future__ import annotations
+
 import hashlib
 import pathlib
 

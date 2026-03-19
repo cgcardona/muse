@@ -31,6 +31,8 @@ Output::
     23 note(s) across 8 bar(s)
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import pathlib

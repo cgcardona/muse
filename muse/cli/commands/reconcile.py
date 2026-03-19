@@ -51,6 +51,8 @@ Flags:
     Emit the reconciliation report as JSON.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 

@@ -58,6 +58,8 @@ incrementally: the ``update_*_index`` functions accept an existing index
 dict and patch it rather than rebuilding from scratch.
 """
 
+from __future__ import annotations
+
 import datetime
 import json
 import logging

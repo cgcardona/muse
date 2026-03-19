@@ -67,6 +67,8 @@ Multi-agent coordination commands::
     reconcile       recommend merge ordering and integration strategy
 """
 
+from __future__ import annotations
+
 import typer
 
 from muse.cli.commands import (

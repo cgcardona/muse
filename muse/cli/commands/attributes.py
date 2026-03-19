@@ -10,6 +10,8 @@ Usage::
     muse attributes --json     # JSON object with meta + rules array
 """
 
+from __future__ import annotations
+
 import json
 
 import typer

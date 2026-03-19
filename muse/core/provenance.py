@@ -39,6 +39,8 @@ Usage
     assert verify_commit_hmac(commit_hash, sig, key)
 """
 
+from __future__ import annotations
+
 import hashlib
 import hmac
 import logging

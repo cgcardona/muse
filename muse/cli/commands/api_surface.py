@@ -54,6 +54,8 @@ Flags:
     Emit results as JSON with a ``schema_version`` wrapper.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import pathlib

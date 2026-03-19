@@ -22,6 +22,8 @@ Output::
       Total       14 files   67 symbols  (4 languages)
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import pathlib

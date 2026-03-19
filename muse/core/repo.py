@@ -6,6 +6,8 @@ the semantics clear (``None`` on miss, never raises) makes callers simpler
 and test isolation easier (``MUSE_REPO_ROOT`` env-var override).
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import pathlib

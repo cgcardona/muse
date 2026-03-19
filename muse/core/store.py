@@ -45,6 +45,8 @@ does not require async. This removes the SQLAlchemy/asyncpg dependency from
 the CLI entirely.
 """
 
+from __future__ import annotations
+
 import datetime
 import json
 import logging

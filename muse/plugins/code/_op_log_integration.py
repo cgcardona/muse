@@ -25,6 +25,8 @@ Public API
 - :func:`open_code_session` — open (or create) a named op log session.
 """
 
+from __future__ import annotations
+
 import logging
 import pathlib
 

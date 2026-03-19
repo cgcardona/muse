@@ -17,6 +17,8 @@ Usage::
     muse check --rules my.toml    # custom rules file
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import pathlib

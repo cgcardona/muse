@@ -34,6 +34,8 @@ Usage::
     muse index rebuild --index hash_occurrence
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import pathlib
