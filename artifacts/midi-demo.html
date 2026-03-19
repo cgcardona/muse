@@ -1471,13 +1471,15 @@ No changes written (--dry-run).</span>` },
     const grid = document.createElement('div');
     grid.className = 'cli-grid';
 
+    const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
     group.commands.forEach(c => {
       const card = document.createElement('div');
       card.className = 'cli-card';
-      card.innerHTML = `<div class="cli-cmd">$ ${c.cmd}</div>
-        <div class="cli-desc">${c.desc}</div>
-        <div class="cli-flags">${c.flags.map(f => `<div class="cli-flag">${f.replace(/^(--?\S+)/,'<span>$1</span>')}</div>`).join('')}</div>
-        <div style="margin-top:6px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'JetBrains Mono',monospace">→ ${c.ret}</div>
+      card.innerHTML = `<div class="cli-cmd">$ ${esc(c.cmd)}</div>
+        <div class="cli-desc">${esc(c.desc)}</div>
+        <div class="cli-flags">${c.flags.map(f => `<div class="cli-flag">${esc(f).replace(/^(--?\S+)/,'<span>$1</span>')}</div>`).join('')}</div>
+        <div style="margin-top:6px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'JetBrains Mono',monospace">→ ${esc(c.ret)}</div>
         ${c.example ? `<div class="cli-example">${c.example}</div>` : ''}`;
       grid.appendChild(card);
     });
