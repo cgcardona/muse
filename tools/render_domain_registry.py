@@ -28,7 +28,7 @@ def _compute_crdt_demos() -> list[dict]:
     """Run the four CRDT primitives live and return formatted demo output."""
     sys.path.insert(0, str(_ROOT))
     try:
-        from muse.core.crdts import GCounter, LWWRegister, ORSet, VectorClock
+        from muse.core.crdts import AWMap, GCounter, LWWRegister, ORSet, RGA, VectorClock
 
         # ORSet
         base, _ = ORSet().add("annotation-GO:0001234")
@@ -178,11 +178,88 @@ def _compute_crdt_demos() -> list[dict]:
           <div class="crdt-join-rule" style="font-size:10.5px;color:var(--mute);font-style:italic">component-wise max &mdash; causal happens-before tracking</div>
         </div>"""
 
+        # RGA — ordered note sequence: A inserts C4+E4, B inserts G4 concurrently
+        rga_a = RGA()
+        rga_a = rga_a.insert(None,    "hash-C4", element_id="1@agent-A")
+        rga_a = rga_a.insert("1@agent-A", "hash-E4", element_id="2@agent-A")
+        rga_b = RGA()
+        rga_b = rga_b.insert(None,    "hash-C4", element_id="1@agent-A")  # same start
+        rga_b = rga_b.insert("1@agent-A", "hash-G4", element_id="1@agent-B")  # concurrent
+        rga_m = rga_a.join(rga_b)
+        rga_seq_a = ["C4", "E4"]
+        rga_seq_b = ["C4", "G4"]
+        _rga_hash_to_note = {"hash-C4": "C4", "hash-E4": "E4", "hash-G4": "G4"}
+        rga_seq_m = [_rga_hash_to_note.get(h, h) for h in rga_m.to_sequence()]
+        rga_out = "\n".join([
+            "RGA — ordered sequence (Google-Docs-style):",
+            f"  Agent A sequence: {rga_seq_a}",
+            f"  Agent B sequence: {rga_seq_b}",
+            f"  join(A, B): {rga_seq_m}  [deterministic, ID-ordered]",
+            "  Tombstones kept — deletions never lose causal history",
+        ])
+        rga_html = """<div class="crdt-vis">
+          <div class="crdt-concurrent">
+            <div class="crdt-rep">
+              <div class="crdt-rep-hdr">Replica A</div>
+              <div class="crdt-op crdt-op-add">+ insert("C4", id=1@A)</div>
+              <div class="crdt-op crdt-op-add">+ insert("E4", id=2@A)</div>
+              <div class="crdt-rep-state">&rarr;&thinsp;[C4, E4]</div>
+            </div>
+            <div class="crdt-rep">
+              <div class="crdt-rep-hdr">Replica B</div>
+              <div class="crdt-op crdt-op-add">+ insert("C4", id=1@A)</div>
+              <div class="crdt-op crdt-op-add">+ insert("G4", id=1@B) <em>concurrent</em></div>
+              <div class="crdt-rep-state">&rarr;&thinsp;[C4, G4]</div>
+            </div>
+          </div>
+          <div class="crdt-join" style="--crdt-c:#f9a825">
+            <span class="crdt-join-label">join(A, B)</span>
+            <span class="crdt-join-val" style="color:#f9a825">[C4, E4, G4]</span>
+            <span class="crdt-join-rule">ID-ordered &mdash; larger ID wins leftmost; all elements preserved</span>
+          </div>
+        </div>"""
+
+        # AWMap — key-value map: A sets "tempo", B sets "key_sig", both survive
+        aw_a = AWMap()
+        aw_a = aw_a.set("tempo",   "120 BPM")
+        aw_b = AWMap()
+        aw_b = aw_b.set("key_sig", "C major")
+        aw_m = aw_a.join(aw_b)
+        aw_keys = sorted(aw_m.keys())
+        awmap_out = "\n".join([
+            "AWMap — add-wins key/value map:",
+            f"  Agent A sets: {{tempo: '120 BPM'}}",
+            f"  Agent B sets: {{key_sig: 'C major'}}",
+            f"  join(A, B) keys: {aw_keys}",
+            "  Both additions survive — concurrent removes cannot win",
+        ])
+        awmap_html = """<div class="crdt-vis">
+          <div class="crdt-concurrent">
+            <div class="crdt-rep">
+              <div class="crdt-rep-hdr">Replica A</div>
+              <div class="crdt-op crdt-op-add">+ set("tempo", "120 BPM")</div>
+              <div class="crdt-rep-state">&rarr;&thinsp;{tempo}</div>
+            </div>
+            <div class="crdt-rep">
+              <div class="crdt-rep-hdr">Replica B</div>
+              <div class="crdt-op crdt-op-add">+ set("key_sig", "C major")</div>
+              <div class="crdt-rep-state">&rarr;&thinsp;{key_sig}</div>
+            </div>
+          </div>
+          <div class="crdt-join" style="--crdt-c:#3fb950">
+            <span class="crdt-join-label">join(A, B)</span>
+            <span class="crdt-join-val" style="color:#3fb950">{key_sig, tempo}</span>
+            <span class="crdt-join-rule">add-wins &mdash; concurrent removes cannot evict new tokens</span>
+          </div>
+        </div>"""
+
         return [
-            {"type": "ORSet",       "sub": "Observed-Remove Set",           "color": "#bc8cff", "icon": _ICONS["union"],      "output": orset_out, "html_output": orset_html},
-            {"type": "LWWRegister", "sub": "Last-Write-Wins Register",      "color": "#58a6ff", "icon": _ICONS["edit"],        "output": lww_out,   "html_output": lww_html},
-            {"type": "GCounter",    "sub": "Grow-Only Distributed Counter",  "color": "#3fb950", "icon": _ICONS["arrow-up"],   "output": gc_out,    "html_output": gc_html},
-            {"type": "VectorClock", "sub": "Causal Ordering",               "color": "#f9a825", "icon": _ICONS["git-branch"],  "output": vc_out,    "html_output": vc_html},
+            {"type": "ORSet",       "sub": "Observed-Remove Set",           "color": "#bc8cff", "icon": _ICONS["union"],      "output": orset_out,  "html_output": orset_html},
+            {"type": "LWWRegister", "sub": "Last-Write-Wins Register",      "color": "#58a6ff", "icon": _ICONS["edit"],        "output": lww_out,    "html_output": lww_html},
+            {"type": "GCounter",    "sub": "Grow-Only Distributed Counter",  "color": "#3fb950", "icon": _ICONS["arrow-up"],   "output": gc_out,     "html_output": gc_html},
+            {"type": "VectorClock", "sub": "Causal Ordering",               "color": "#f9a825", "icon": _ICONS["git-branch"],  "output": vc_out,     "html_output": vc_html},
+            {"type": "RGA",         "sub": "Replicated Growable Array",     "color": "#f9a825", "icon": _ICONS["layers"],      "output": rga_out,    "html_output": rga_html},
+            {"type": "AWMap",       "sub": "Add-Wins Map",                  "color": "#3fb950", "icon": _ICONS["code"],        "output": awmap_out,  "html_output": awmap_html},
         ]
     except Exception as exc:
         print(f"  ⚠ CRDT demo failed ({exc}); using static fallback")
@@ -211,11 +288,11 @@ def _load_domains() -> list[dict]:
         {
             "domain": "midi",
             "active": "true",
-            "capabilities": ["Typed Deltas", "Domain Schema", "OT Merge", "CRDT Primitives"],
+            "capabilities": ["Typed Deltas", "Domain Schema", "OT Merge", "CRDT Primitives", "MusicRGA"],
             "schema": {
                 "schema_version": "1",
                 "merge_mode": "three_way",
-                "description": "MIDI file versioning with 21-dimension structured merge — notes, CC, pitch bend, tempo, time signatures, and more. Each dimension merges independently; only conflicting axes require resolution.",
+                "description": "MIDI file versioning with 21-dimension structured merge — notes, CC, pitch bend, tempo, time signatures, and more. Each dimension merges independently. MusicRGA provides voice-aware CRDT ordering (bass→tenor→alto→soprano) for concurrent note edits.",
                 "dimensions": [
                     {"name": "notes",          "description": "Note-on/off events (pitch, velocity, channel, timing)"},
                     {"name": "control_change",  "description": "CC curves: modulation, sustain, expression, pan"},
@@ -2060,8 +2137,12 @@ _HTML_TEMPLATE = """\
         </div>
         <div class="cap-showcase-body">
           <p class="cap-showcase-desc">
-            Plugins implementing <strong>CRDTPlugin</strong> get four battle-tested
+            Plugins implementing <strong>CRDTPlugin</strong> get six battle-tested
             convergent data structures. No coordination required between replicas.
+            The MIDI plugin extends RGA into <strong>MusicRGA</strong> &mdash; a
+            voice-aware variant that orders concurrent note insertions by voice lane
+            (bass &rarr; tenor &rarr; alto &rarr; soprano) before falling back to
+            op-id, preventing voice crossings without human intervention.
           </p>
           <div class="crdt-mini-grid">
             {{CRDT_CARDS}}
