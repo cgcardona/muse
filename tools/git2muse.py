@@ -80,7 +80,6 @@ _EXCLUDE_PREFIXES: tuple[str, ...] = (
     ".hypothesis/",
     ".github/",
     ".DS_Store",
-    "state/",
     "artifacts/",
     "__pycache__/",
 )
@@ -473,7 +472,6 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     repo_root: pathlib.Path = args.repo_root.resolve()
-    workdir = repo_root / "state"
     dry_run: bool = args.dry_run
     verbose: bool = args.verbose
     branch_arg: str = args.branch
@@ -488,85 +486,90 @@ def main(argv: list[str] | None = None) -> int:
     repo_id = _load_repo_id(repo_root)
     logger.info("✅ Muse repo ID: %s", repo_id)
 
-    # -----------------------------------------------------------------------
-    # Phase 1: main branch
-    # -----------------------------------------------------------------------
-    all_git_to_muse: dict[str, str] = {}
+    # Use a temp directory for git archive extraction — the repo root IS the
+    # working tree and must never be wiped between replays.
+    with tempfile.TemporaryDirectory(prefix="git2muse-") as _tmpdir:
+        workdir = pathlib.Path(_tmpdir)
 
-    if branch_arg in ("main", "all"):
-        logger.info("━━━ Phase 1: replaying main branch ━━━")
-        main_shas = _git_commits_oldest_first(repo_root, "main")
-        # Skip merge commits — they add no unique tree delta.
-        main_shas = [
-            s for s in main_shas
-            if not _is_merge_commit(repo_root, s)
-        ]
-        logger.info("  %d non-merge commits on main", len(main_shas))
+        # -----------------------------------------------------------------------
+        # Phase 1: main branch
+        # -----------------------------------------------------------------------
+        all_git_to_muse: dict[str, str] = {}
 
-        _set_head_ref(repo_root, "main")
-        mapping = _replay_branch(
-            repo_root=repo_root,
-            workdir=workdir,
-            git_shas=main_shas,
-            muse_branch="main",
-            start_parent_muse_id=None,
-            repo_id=repo_id,
-            dry_run=dry_run,
-            verbose=verbose,
-        )
-        all_git_to_muse.update(mapping)
-        logger.info("✅ main: %d commits written", len(mapping))
+        if branch_arg in ("main", "all"):
+            logger.info("━━━ Phase 1: replaying main branch ━━━")
+            main_shas = _git_commits_oldest_first(repo_root, "main")
+            # Skip merge commits — they add no unique tree delta.
+            main_shas = [
+                s for s in main_shas
+                if not _is_merge_commit(repo_root, s)
+            ]
+            logger.info("  %d non-merge commits on main", len(main_shas))
 
-    # -----------------------------------------------------------------------
-    # Phase 2: dev branch (commits not reachable from main)
-    # -----------------------------------------------------------------------
-    if branch_arg in ("dev", "all"):
-        logger.info("━━━ Phase 2: replaying dev branch ━━━")
-        dev_only_shas = _git_commits_oldest_first(
-            repo_root, "dev", exclude_branches=["main"]
-        )
-        dev_only_shas = [
-            s for s in dev_only_shas
-            if not _is_merge_commit(repo_root, s)
-        ]
-        logger.info("  %d dev-only non-merge commits", len(dev_only_shas))
-
-        if dev_only_shas:
-            # Find the git parent of the oldest dev-only commit — it should
-            # already be in all_git_to_muse (it's a main commit).
-            oldest_dev_sha = dev_only_shas[0]
-            git_parents = _git_parent_shas(repo_root, oldest_dev_sha)
-            branch_parent_muse_id: str | None = None
-            for gp in git_parents:
-                if gp in all_git_to_muse:
-                    branch_parent_muse_id = all_git_to_muse[gp]
-                    break
-            if branch_parent_muse_id is None:
-                # Fall back to current main HEAD.
-                branch_parent_muse_id = _get_branch_head(repo_root, "main")
-
-            _set_head_ref(repo_root, "dev")
+            _set_head_ref(repo_root, "main")
             mapping = _replay_branch(
                 repo_root=repo_root,
                 workdir=workdir,
-                git_shas=dev_only_shas,
-                muse_branch="dev",
-                start_parent_muse_id=branch_parent_muse_id,
+                git_shas=main_shas,
+                muse_branch="main",
+                start_parent_muse_id=None,
                 repo_id=repo_id,
                 dry_run=dry_run,
                 verbose=verbose,
             )
             all_git_to_muse.update(mapping)
-            logger.info("✅ dev: %d commits written", len(mapping))
-        else:
-            logger.info("  dev has no unique commits beyond main — skipping")
+            logger.info("✅ main: %d commits written", len(mapping))
+
+        # -----------------------------------------------------------------------
+        # Phase 2: dev branch (commits not reachable from main)
+        # -----------------------------------------------------------------------
+        if branch_arg in ("dev", "all"):
+            logger.info("━━━ Phase 2: replaying dev branch ━━━")
+            dev_only_shas = _git_commits_oldest_first(
+                repo_root, "dev", exclude_branches=["main"]
+            )
+            dev_only_shas = [
+                s for s in dev_only_shas
+                if not _is_merge_commit(repo_root, s)
+            ]
+            logger.info("  %d dev-only non-merge commits", len(dev_only_shas))
+
+            if dev_only_shas:
+                # Find the git parent of the oldest dev-only commit — it should
+                # already be in all_git_to_muse (it's a main commit).
+                oldest_dev_sha = dev_only_shas[0]
+                git_parents = _git_parent_shas(repo_root, oldest_dev_sha)
+                branch_parent_muse_id: str | None = None
+                for gp in git_parents:
+                    if gp in all_git_to_muse:
+                        branch_parent_muse_id = all_git_to_muse[gp]
+                        break
+                if branch_parent_muse_id is None:
+                    # Fall back to current main HEAD.
+                    branch_parent_muse_id = _get_branch_head(repo_root, "main")
+
+                _set_head_ref(repo_root, "dev")
+                mapping = _replay_branch(
+                    repo_root=repo_root,
+                    workdir=workdir,
+                    git_shas=dev_only_shas,
+                    muse_branch="dev",
+                    start_parent_muse_id=branch_parent_muse_id,
+                    repo_id=repo_id,
+                    dry_run=dry_run,
+                    verbose=verbose,
+                )
+                all_git_to_muse.update(mapping)
+                logger.info("✅ dev: %d commits written", len(mapping))
+            else:
+                logger.info("  dev has no unique commits beyond main — skipping")
 
     # Leave HEAD pointing at main.
     if not dry_run:
         _set_head_ref(repo_root, "main")
 
     # Summary.
-    main_count = len([k for k in all_git_to_muse])
+    main_count = len(all_git_to_muse)
     logger.info("━━━ Done ━━━  total Muse commits written: %d", main_count)
 
     return 0
