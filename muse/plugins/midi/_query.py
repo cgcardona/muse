@@ -150,9 +150,7 @@ def load_track_from_workdir(
     Returns:
         ``(notes, ticks_per_beat)`` on success, ``None`` when unreadable.
     """
-    work_path = root / "state" / track_path
-    if not work_path.exists():
-        work_path = root / track_path
+    work_path = root / track_path
     if not work_path.exists():
         return None
     raw = work_path.read_bytes()

@@ -15,9 +15,7 @@ from muse.core.snapshot import (
 
 @pytest.fixture
 def workdir(tmp_path: pathlib.Path) -> pathlib.Path:
-    d = tmp_path / "state"
-    d.mkdir()
-    return d
+    return tmp_path
 
 
 class TestHashFile:

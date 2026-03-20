@@ -11,6 +11,7 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import get_commit_snapshot_manifest, get_head_snapshot_manifest, resolve_commit_ref
+from muse.core.validation import sanitize_display
 from muse.domain import DomainOp, SnapshotManifest
 from muse.plugins.registry import read_domain, resolve_plugin
 
@@ -66,28 +67,37 @@ def diff(
     domain = read_domain(root)
     plugin = resolve_plugin(root)
 
+    def _resolve_manifest(ref: str) -> dict[str, str]:
+        """Resolve a ref (branch, short SHA, full SHA) to its snapshot manifest."""
+        resolved = resolve_commit_ref(root, repo_id, branch, ref)
+        if resolved is None:
+            typer.echo(f"⚠️ Commit '{sanitize_display(ref)}' not found.")
+            raise typer.Exit(code=ExitCode.USER_ERROR)
+        return get_commit_snapshot_manifest(root, resolved.commit_id) or {}
+
     if commit_a is None:
         base_snap = SnapshotManifest(
             files=get_head_snapshot_manifest(root, repo_id, branch) or {},
             domain=domain,
         )
-        target_snap = plugin.snapshot(root / "state")
+        target_snap = plugin.snapshot(root)
     elif commit_b is None:
+        # Single ref provided: diff HEAD vs that ref's snapshot.
         base_snap = SnapshotManifest(
             files=get_head_snapshot_manifest(root, repo_id, branch) or {},
             domain=domain,
         )
         target_snap = SnapshotManifest(
-            files=get_commit_snapshot_manifest(root, commit_a) or {},
+            files=_resolve_manifest(commit_a),
             domain=domain,
         )
     else:
         base_snap = SnapshotManifest(
-            files=get_commit_snapshot_manifest(root, commit_a) or {},
+            files=_resolve_manifest(commit_a),
             domain=domain,
         )
         target_snap = SnapshotManifest(
-            files=get_commit_snapshot_manifest(root, commit_b) or {},
+            files=_resolve_manifest(commit_b),
             domain=domain,
         )
 

@@ -37,7 +37,7 @@ def repo(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Pat
 
 
 def _write(repo: pathlib.Path, filename: str, content: str = "data") -> None:
-    (repo / "state" / filename).write_text(content)
+    (repo / filename).write_text(content)
 
 
 def _commit(msg: str = "commit") -> None:
@@ -180,9 +180,9 @@ class TestIncrementalCheckout:
         _commit("feature commit")
 
         runner.invoke(cli, ["checkout", "main"])
-        assert (repo / "state" / "shared.mid").exists()
-        assert (repo / "state" / "main-only.mid").exists()
-        assert not (repo / "state" / "feature-only.mid").exists()
+        assert (repo / "shared.mid").exists()
+        assert (repo / "main-only.mid").exists()
+        assert not (repo / "feature-only.mid").exists()
 
     def test_checkout_restores_correct_content(self, repo: pathlib.Path) -> None:
         """Modified files get the correct content after checkout."""
@@ -195,7 +195,7 @@ class TestIncrementalCheckout:
         _commit("v2 on feature")
 
         runner.invoke(cli, ["checkout", "main"])
-        assert (repo / "state" / "beat.mid").read_text() == "v1"
+        assert (repo / "beat.mid").read_text() == "v1"
 
     def test_checkout_commit_id_incremental(self, repo: pathlib.Path) -> None:
         """Detached HEAD checkout also uses incremental apply."""
@@ -207,8 +207,8 @@ class TestIncrementalCheckout:
         _commit("second")
 
         runner.invoke(cli, ["checkout", first_id])
-        assert (repo / "state" / "a.mid").exists()
-        assert not (repo / "state" / "b.mid").exists()
+        assert (repo / "a.mid").exists()
+        assert not (repo / "b.mid").exists()
 
     def test_checkout_to_new_branch_keeps_workdir(self, repo: pathlib.Path) -> None:
         """Switching to a brand-new (no-commit) branch keeps the current workdir intact."""
@@ -218,7 +218,7 @@ class TestIncrementalCheckout:
         runner.invoke(cli, ["branch", "empty-branch"])
         runner.invoke(cli, ["checkout", "empty-branch"])
         # workdir is preserved — new branch inherits from where we branched
-        assert (repo / "state" / "beat.mid").exists()
+        assert (repo / "beat.mid").exists()
 
 
 # ---------------------------------------------------------------------------

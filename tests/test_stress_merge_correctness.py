@@ -362,9 +362,8 @@ class TestApplyResolution:
         data = b"resolved content"
         oid = hashlib.sha256(data).hexdigest()
         write_object(repo, oid, data)
-        (repo / "state").mkdir()
         apply_resolution(repo, "beat.mid", oid)
-        restored = (repo / "state" / "beat.mid").read_bytes()
+        restored = (repo / "beat.mid").read_bytes()
         assert restored == data
 
     def test_resolution_creates_nested_dirs(self, repo: pathlib.Path) -> None:
@@ -372,7 +371,7 @@ class TestApplyResolution:
         oid = hashlib.sha256(data).hexdigest()
         write_object(repo, oid, data)
         apply_resolution(repo, "sub/dir/beat.mid", oid)
-        assert (repo / "state" / "sub" / "dir" / "beat.mid").read_bytes() == data
+        assert (repo / "sub" / "dir" / "beat.mid").read_bytes() == data
 
     def test_resolution_missing_object_raises(self, repo: pathlib.Path) -> None:
         with pytest.raises(FileNotFoundError):

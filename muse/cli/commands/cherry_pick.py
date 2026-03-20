@@ -6,13 +6,11 @@ import datetime
 import json
 import logging
 import pathlib
-import shutil
 
 import typer
 
 from muse.core.errors import ExitCode
 from muse.core.merge_engine import write_merge_state
-from muse.core.object_store import restore_object
 from muse.core.repo import require_repo
 from muse.core.snapshot import compute_commit_id, compute_snapshot_id
 from muse.core.store import (
@@ -26,7 +24,8 @@ from muse.core.store import (
     write_commit,
     write_snapshot,
 )
-from muse.core.validation import contain_path, sanitize_display
+from muse.core.validation import sanitize_display
+from muse.core.workdir import apply_manifest
 from muse.domain import SnapshotManifest
 from muse.plugins.registry import read_domain, resolve_plugin
 
@@ -97,20 +96,10 @@ def cherry_pick(
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
     merged_manifest = result.merged["files"]
-    workdir = root / "state"
-    if workdir.exists():
-        shutil.rmtree(workdir)
-    workdir.mkdir()
-    for rel_path, object_id in merged_manifest.items():
-        try:
-            safe_dest = contain_path(workdir, rel_path)
-        except ValueError as exc:
-            logger.warning("⚠️ Skipping unsafe manifest path %r: %s", rel_path, exc)
-            continue
-        restore_object(root, object_id, safe_dest)
+    apply_manifest(root, merged_manifest)
 
     if no_commit:
-        typer.echo(f"Applied {target.commit_id[:8]} to state/. Run 'muse commit' to record.")
+        typer.echo(f"Applied {target.commit_id[:8]} to working tree. Run 'muse commit' to record.")
         return
 
     head_commit_id = get_head_commit_id(root, branch)

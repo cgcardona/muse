@@ -1,7 +1,7 @@
 """muse stash — temporarily shelve uncommitted changes.
 
-Saves the current state/ state to ``.muse/stash.json`` and restores
-the HEAD snapshot to state/.
+Saves the current working tree to ``.muse/stash.json`` and restores
+the HEAD snapshot to the working tree.
 
 Usage::
 
@@ -17,17 +17,16 @@ import datetime
 import json
 import logging
 import pathlib
-import shutil
 from typing import TypedDict
 
 import typer
 
 from muse.core.errors import ExitCode
-from muse.core.object_store import restore_object, write_object_from_path
+from muse.core.object_store import write_object_from_path
 from muse.core.repo import require_repo
 from muse.core.snapshot import compute_snapshot_id
 from muse.core.store import get_head_snapshot_manifest, read_snapshot
-from muse.core.validation import contain_path
+from muse.core.workdir import apply_manifest
 from muse.plugins.registry import resolve_plugin
 
 logger = logging.getLogger(__name__)
@@ -96,17 +95,15 @@ def stash(ctx: typer.Context) -> None:
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
-    workdir = root / "state"
-
     plugin = resolve_plugin(root)
-    manifest = plugin.snapshot(workdir)["files"]
+    manifest = plugin.snapshot(root)["files"]
     if not manifest:
         typer.echo("Nothing to stash.")
         return
 
     snapshot_id = compute_snapshot_id(manifest)
     for rel_path, object_id in manifest.items():
-        write_object_from_path(root, object_id, workdir / rel_path)
+        write_object_from_path(root, object_id, root / rel_path)
 
     stash_entry = StashEntry(
         snapshot_id=snapshot_id,
@@ -118,18 +115,8 @@ def stash(ctx: typer.Context) -> None:
     entries.insert(0, stash_entry)
     _save_stash(root, entries)
 
-    # Restore HEAD
     head_manifest = get_head_snapshot_manifest(root, repo_id, branch) or {}
-    if workdir.exists():
-        shutil.rmtree(workdir)
-    workdir.mkdir()
-    for rel_path, object_id in head_manifest.items():
-        try:
-            safe_dest = contain_path(workdir, rel_path)
-        except ValueError as exc:
-            logger.warning("⚠️ Skipping unsafe manifest path %r: %s", rel_path, exc)
-            continue
-        restore_object(root, object_id, safe_dest)
+    apply_manifest(root, head_manifest)
 
     typer.echo(f"Saved working directory (stash@{{0}})")
 
@@ -146,18 +133,7 @@ def stash_pop() -> None:
     entry = entries.pop(0)
     _save_stash(root, entries)
 
-    workdir = root / "state"
-    if workdir.exists():
-        shutil.rmtree(workdir)
-    workdir.mkdir()
-    for rel_path, object_id in entry["manifest"].items():
-        try:
-            safe_dest = contain_path(workdir, rel_path)
-        except ValueError as exc:
-            logger.warning("⚠️ Skipping unsafe stash path %r: %s", rel_path, exc)
-            continue
-        restore_object(root, object_id, safe_dest)
-
+    apply_manifest(root, entry["manifest"])
     typer.echo(f"Restored stash@{{0}} (branch: {entry['branch']})")
 
 

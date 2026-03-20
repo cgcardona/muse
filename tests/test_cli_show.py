@@ -21,7 +21,7 @@ def repo(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Pat
 
 
 def _write(repo: pathlib.Path, filename: str, content: str = "data") -> None:
-    (repo / "state" / filename).write_text(content)
+    (repo / filename).write_text(content)
 
 
 def _commit(msg: str = "initial", **flags: str) -> str:
@@ -208,7 +208,7 @@ class TestShowJson:
     def test_json_stat_shows_removed_file(self, repo: pathlib.Path) -> None:
         _write(repo, "beat.mid", "v1")
         _commit("add")
-        (repo / "state" / "beat.mid").unlink()
+        (repo / "beat.mid").unlink()
         _write(repo, "lead.mid", "new")
         _commit("swap")
         result = runner.invoke(cli, ["show", "--json", "--stat"])

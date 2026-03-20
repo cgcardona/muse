@@ -7,7 +7,7 @@
 #
 # Pattern syntax (gitignore-compatible):
 #   *.ext             ignore files with this extension at any depth
-#   /path             anchor to the root of state/
+#   /path             anchor to the repository root
 #   dir/              directory pattern (silently skipped — Muse tracks files)
 #   !pattern          un-ignore a previously matched path
 #
@@ -21,6 +21,9 @@ patterns = [
     "*.tmp",
     "*.swp",
     "*.swo",
+    "*.tar.gz",
+    "*.zip",
+    "artifacts/",
 ]
 
 [domain.code]

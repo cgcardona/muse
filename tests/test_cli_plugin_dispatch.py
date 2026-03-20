@@ -40,7 +40,7 @@ def repo(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Pat
 
 
 def _write(repo: pathlib.Path, filename: str, content: str = "data") -> None:
-    (repo / "state" / filename).write_text(content)
+    (repo / filename).write_text(content)
 
 
 def _commit(msg: str = "initial") -> None:
@@ -84,7 +84,8 @@ class TestCommitDispatch:
             runner.invoke(cli, ["commit", "-m", "test"])
             assert len(captured_args) == 1
             assert isinstance(captured_args[0], pathlib.Path)
-            assert captured_args[0].name == "state"
+            # snapshot() receives the repository root (the working tree), not a subdirectory
+            assert (captured_args[0] / ".muse").exists()
 
     def test_commit_uses_snapshot_files_for_manifest(self, repo: pathlib.Path) -> None:
         _write(repo, "track.mid", "content")
@@ -132,7 +133,7 @@ class TestStatusDispatch:
     def test_status_shows_deleted_file(self, repo: pathlib.Path) -> None:
         _write(repo, "beat.mid")
         _commit()
-        (repo / "state" / "beat.mid").unlink()
+        (repo / "beat.mid").unlink()
         result = runner.invoke(cli, ["status"])
         assert result.exit_code == 0
         assert "beat.mid" in result.output

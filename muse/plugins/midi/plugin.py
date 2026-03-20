@@ -11,7 +11,7 @@ Live State
 ----------
 For the MIDI domain, ``LiveState`` is either:
 
-1. A ``state/`` directory path (``pathlib.Path``) — the CLI path where
+1. A ``pathlib.Path`` pointing to the repository root (the working tree) — the
    MIDI files live on disk and are managed by ``muse commit / checkout``.
 2. A dict snapshot previously captured by :meth:`snapshot` — used when
    constructing merges and diffs in memory.
@@ -33,7 +33,7 @@ A music snapshot is a JSON-serialisable dict:
         "domain": "midi"
     }
 
-The ``files`` key maps POSIX paths (relative to ``state/``) to their
+The ``files`` key maps POSIX paths (relative to the repository root) to their
 SHA-256 content digests.
 
 Delta Format
@@ -94,7 +94,7 @@ class MidiPlugin:
 
     Implements :class:`~muse.domain.MuseDomainPlugin` (six core interfaces)
     and :class:`~muse.domain.StructuredMergePlugin` (operation-level
-    merge) for MIDI state stored as files in ``state/``.
+    merge) for MIDI state stored as files in the working tree.
 
     This is the reference implementation. Every other domain plugin implements
     the same six core interfaces; the :class:`~muse.domain.StructuredMergePlugin`
@@ -107,10 +107,10 @@ class MidiPlugin:
     # ------------------------------------------------------------------
 
     def snapshot(self, live_state: LiveState) -> StateSnapshot:
-        """Capture the current ``state/`` directory as a snapshot dict.
+        """Capture the current working tree as a snapshot dict.
 
         Args:
-            live_state: Either a ``pathlib.Path`` pointing to ``state/``
+            live_state: A ``pathlib.Path`` pointing to the repository root (working tree)
                         or an existing snapshot dict (returned as-is).
 
         Returns:
@@ -121,20 +121,21 @@ class MidiPlugin:
         Ignore rules
         ------------
         When *live_state* is a ``pathlib.Path``, the plugin reads
-        ``.museignore`` from the repository root (the parent of ``state/``)
+        ``.museignore`` from the repository root
         and excludes any matching paths from the snapshot. Dotfiles are always
         excluded regardless of ``.museignore``.
         """
         if isinstance(live_state, pathlib.Path):
             from muse.core.ignore import is_ignored, load_ignore_config, resolve_patterns
             workdir = live_state
-            repo_root = workdir.parent
+            repo_root = workdir
             patterns = resolve_patterns(load_ignore_config(repo_root), _DOMAIN_TAG)
             files: dict[str, str] = {}
             for file_path in sorted(workdir.rglob("*")):
                 if not file_path.is_file():
                     continue
-                if file_path.name.startswith("."):
+                rel_parts = file_path.relative_to(workdir).parts
+                if any(part.startswith(".") for part in rel_parts):
                     continue
                 rel = file_path.relative_to(workdir).as_posix()
                 if is_ignored(rel, patterns):
@@ -395,11 +396,11 @@ class MidiPlugin:
         committed: StateSnapshot,
         live: LiveState,
     ) -> DriftReport:
-        """Detect uncommitted changes in ``state/`` relative to *committed*.
+        """Detect uncommitted changes in the working tree relative to *committed*.
 
         Args:
             committed: The last committed snapshot.
-            live:      Either a ``pathlib.Path`` (``state/``) or a snapshot
+            live:      Either a ``pathlib.Path`` (repository root) or a snapshot
                        dict representing current live state.
 
         Returns:

@@ -76,13 +76,10 @@ def _checkout_snapshot(
 
     delta = plugin.diff(current_snap, target_snap)
 
-    workdir = root / "state"
-    workdir.mkdir(exist_ok=True)
-
     # Remove files that no longer exist in the target snapshot.
     removed = [op["address"] for op in delta["ops"] if op["op"] == "delete"]
     for rel_path in removed:
-        fp = workdir / rel_path
+        fp = root / rel_path
         if fp.exists():
             fp.unlink()
 
@@ -96,7 +93,7 @@ def _checkout_snapshot(
     for rel_path in to_restore:
         object_id = target_snap_rec.manifest[rel_path]
         try:
-            safe_dest = contain_path(workdir, rel_path)
+            safe_dest = contain_path(root, rel_path)
         except ValueError as exc:
             logger.warning("⚠️ Skipping unsafe manifest path %r: %s", rel_path, exc)
             continue
@@ -104,7 +101,7 @@ def _checkout_snapshot(
             typer.echo(f"⚠️  Object {object_id[:8]} for '{sanitize_display(rel_path)}' not in local store — skipped.")
 
     # Domain-level post-checkout hook: rescan the workdir to confirm state.
-    plugin.apply(delta, workdir)
+    plugin.apply(delta, root)
 
 
 @app.callback(invoke_without_command=True)
