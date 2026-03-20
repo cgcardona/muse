@@ -173,8 +173,8 @@ def _run(
 
 
 def _write(root: pathlib.Path, filename: str, content: str = "") -> None:
-    """Write a file to muse-work/."""
-    workdir = root / "muse-work"
+    """Write a file to state/."""
+    workdir = root / "state"
     workdir.mkdir(exist_ok=True)
     body = content or f"# {filename}\nformat: muse-state\nversion: 1\n"
     (workdir / filename).write_text(body)
@@ -318,7 +318,7 @@ def act4(root: pathlib.Path) -> None:
         "source: merged A+B\n"
         "notes: manual reconciliation\n"
     )
-    (root / "muse-work" / "shared-state.mid").write_text(resolved)
+    (root / "state" / "shared-state.mid").write_text(resolved)
     clear_merge_state(root)
     _run("resolve_commit", ["commit", "-m", "Resolve: integrate shared-state (A+B reconciled)"], root)
 

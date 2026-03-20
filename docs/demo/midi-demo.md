@@ -17,9 +17,9 @@ rearrangements, and cross-track moves.
 
 ```bash
 muse init --domain music
-# Add some MIDI files to muse-work/
-cp ~/compositions/melody.mid muse-work/tracks/melody.mid
-cp ~/compositions/bass.mid   muse-work/tracks/bass.mid
+# Add some MIDI files to state/
+cp ~/compositions/melody.mid state/tracks/melody.mid
+cp ~/compositions/bass.mid   state/tracks/bass.mid
 muse commit -m "Initial composition"
 ```
 
@@ -759,7 +759,7 @@ Here's what a multi-agent music session looks like with Muse:
 ```bash
 muse init --domain music
 # Agent A starts the melody
-echo "..." | muse-generate --type melody > muse-work/tracks/melody.mid
+echo "..." | muse-generate --type melody > state/tracks/melody.mid
 muse commit -m "Agent A: initial melody sketch"
 ```
 
@@ -775,7 +775,7 @@ muse midi harmony tracks/melody.mid        # Key: G major
 muse midi velocity-profile tracks/melody.mid  # Dynamic: mf
 
 # Generate a compatible harmony
-echo "..." | muse-generate --type harmony --key "G major" > muse-work/tracks/harmony.mid
+echo "..." | muse-generate --type harmony --key "G major" > state/tracks/harmony.mid
 muse commit -m "Agent B: add harmony in G major"
 ```
 

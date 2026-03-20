@@ -11,7 +11,7 @@ Live State
 ----------
 For the MIDI domain, ``LiveState`` is either:
 
-1. A ``muse-work/`` directory path (``pathlib.Path``) — the CLI path where
+1. A ``state/`` directory path (``pathlib.Path``) — the CLI path where
    MIDI files live on disk and are managed by ``muse commit / checkout``.
 2. A dict snapshot previously captured by :meth:`snapshot` — used when
    constructing merges and diffs in memory.
@@ -33,7 +33,7 @@ A music snapshot is a JSON-serialisable dict:
         "domain": "midi"
     }
 
-The ``files`` key maps POSIX paths (relative to ``muse-work/``) to their
+The ``files`` key maps POSIX paths (relative to ``state/``) to their
 SHA-256 content digests.
 
 Delta Format
@@ -94,7 +94,7 @@ class MidiPlugin:
 
     Implements :class:`~muse.domain.MuseDomainPlugin` (six core interfaces)
     and :class:`~muse.domain.StructuredMergePlugin` (operation-level
-    merge) for MIDI state stored as files in ``muse-work/``.
+    merge) for MIDI state stored as files in ``state/``.
 
     This is the reference implementation. Every other domain plugin implements
     the same six core interfaces; the :class:`~muse.domain.StructuredMergePlugin`
@@ -107,10 +107,10 @@ class MidiPlugin:
     # ------------------------------------------------------------------
 
     def snapshot(self, live_state: LiveState) -> StateSnapshot:
-        """Capture the current ``muse-work/`` directory as a snapshot dict.
+        """Capture the current ``state/`` directory as a snapshot dict.
 
         Args:
-            live_state: Either a ``pathlib.Path`` pointing to ``muse-work/``
+            live_state: Either a ``pathlib.Path`` pointing to ``state/``
                         or an existing snapshot dict (returned as-is).
 
         Returns:
@@ -121,7 +121,7 @@ class MidiPlugin:
         Ignore rules
         ------------
         When *live_state* is a ``pathlib.Path``, the plugin reads
-        ``.museignore`` from the repository root (the parent of ``muse-work/``)
+        ``.museignore`` from the repository root (the parent of ``state/``)
         and excludes any matching paths from the snapshot. Dotfiles are always
         excluded regardless of ``.museignore``.
         """
@@ -395,11 +395,11 @@ class MidiPlugin:
         committed: StateSnapshot,
         live: LiveState,
     ) -> DriftReport:
-        """Detect uncommitted changes in ``muse-work/`` relative to *committed*.
+        """Detect uncommitted changes in ``state/`` relative to *committed*.
 
         Args:
             committed: The last committed snapshot.
-            live:      Either a ``pathlib.Path`` (``muse-work/``) or a snapshot
+            live:      Either a ``pathlib.Path`` (``state/``) or a snapshot
                        dict representing current live state.
 
         Returns:

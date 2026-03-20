@@ -79,7 +79,7 @@ def status(
             return
 
     head_manifest = get_head_snapshot_manifest(root, repo_id, branch) or {}
-    workdir = root / "muse-work"
+    workdir = root / "state"
 
     plugin = resolve_plugin(root)
     committed_snap = SnapshotManifest(files=head_manifest, domain=read_domain(root))

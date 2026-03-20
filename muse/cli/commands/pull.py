@@ -61,8 +61,8 @@ def _read_repo_id(root: pathlib.Path) -> str:
 
 
 def _restore_from_manifest(root: pathlib.Path, manifest: dict[str, str]) -> None:
-    """Rebuild ``muse-work/`` to exactly match *manifest*."""
-    workdir = root / "muse-work"
+    """Rebuild ``state/`` to exactly match *manifest*."""
+    workdir = root / "state"
     if workdir.exists():
         shutil.rmtree(workdir)
     workdir.mkdir()

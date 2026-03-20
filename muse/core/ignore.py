@@ -70,7 +70,7 @@ def load_ignore_config(root: pathlib.Path) -> MuseIgnoreConfig:
 
     Args:
         root: Repository root directory (the directory that contains ``.muse/``
-              and ``muse-work/``).  The ``.museignore`` file, if present, lives
+              and ``state/``).  The ``.museignore`` file, if present, lives
               directly inside *root*.
 
     Returns:

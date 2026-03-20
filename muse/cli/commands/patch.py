@@ -116,9 +116,9 @@ def patch(
 
     rel_path, sym_name = address.split("::", 1)
 
-    # Try muse-work/ first (the Muse working directory), fall back to repo root.
+    # Try state/ first (the Muse working directory), fall back to repo root.
     candidates = [
-        root / "muse-work" / rel_path,
+        root / "state" / rel_path,
         root / rel_path,
     ]
     file_path: pathlib.Path | None = None

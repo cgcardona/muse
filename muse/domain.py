@@ -539,7 +539,7 @@ class MuseDomainPlugin(Protocol):
         store the snapshot as a blob in ``.muse/objects/``.
 
         **``.museignore`` contract** — when *live_state* is a
-        ``pathlib.Path`` (the ``muse-work/`` directory), domain plugin
+        ``pathlib.Path`` (the ``state/`` directory), domain plugin
         implementations **must** honour ``.museignore`` by calling
         :func:`muse.core.ignore.load_ignore_config` on the repository root,
         then :func:`muse.core.ignore.resolve_patterns` with the active domain

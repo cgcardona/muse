@@ -120,7 +120,7 @@ def humanize(
         return
 
     midi_bytes = notes_to_midi_bytes(humanised, tpb)
-    workdir = root / "muse-work"
+    workdir = root / "state"
     try:
         work_path = contain_path(workdir, track)
     except ValueError as exc:

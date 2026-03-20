@@ -14,7 +14,7 @@ Two commits that rename a function produce a ``ReplaceOp`` annotated
 
 Live State
 ----------
-``LiveState`` is either a ``pathlib.Path`` pointing to ``muse-work/`` or a
+``LiveState`` is either a ``pathlib.Path`` pointing to ``state/`` or a
 ``SnapshotManifest`` dict.  The path form is used by the CLI; the dict form
 is used by in-memory merge and diff operations.
 
@@ -164,14 +164,14 @@ class CodePlugin:
     # ------------------------------------------------------------------
 
     def snapshot(self, live_state: LiveState) -> StateSnapshot:
-        """Capture the current ``muse-work/`` directory as a snapshot dict.
+        """Capture the current ``state/`` directory as a snapshot dict.
 
         Walks all regular files under *live_state*, hashing each one with
         SHA-256 (raw bytes).  Honours ``.museignore`` and always ignores
         known tool-generated directories (``__pycache__``, ``.git``, etc.).
 
         Args:
-            live_state: A ``pathlib.Path`` pointing to ``muse-work/``, or an
+            live_state: A ``pathlib.Path`` pointing to ``state/``, or an
                         existing ``SnapshotManifest`` dict (returned as-is).
 
         Returns:
@@ -182,7 +182,7 @@ class CodePlugin:
             return live_state
 
         workdir = live_state
-        # .museignore lives in the repo root (parent of muse-work/).
+        # .museignore lives in the repo root (parent of state/).
         repo_root = workdir.parent
         patterns = resolve_patterns(load_ignore_config(repo_root), _DOMAIN_NAME)
 

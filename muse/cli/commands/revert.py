@@ -70,8 +70,8 @@ def revert(
         typer.echo(f"❌ Snapshot {parent_commit.snapshot_id[:8]} not found.")
         raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
 
-    # Restore parent snapshot to muse-work/
-    workdir = root / "muse-work"
+    # Restore parent snapshot to state/
+    workdir = root / "state"
     if workdir.exists():
         shutil.rmtree(workdir)
     workdir.mkdir()
@@ -84,7 +84,7 @@ def revert(
         restore_object(root, object_id, safe_dest)
 
     if no_commit:
-        typer.echo(f"Reverted changes from {target.commit_id[:8]} applied to muse-work/. Run 'muse commit' to record.")
+        typer.echo(f"Reverted changes from {target.commit_id[:8]} applied to state/. Run 'muse commit' to record.")
         return
 
     revert_message = message or f"Revert \"{target.message}\""

@@ -71,7 +71,7 @@ def diff(
             files=get_head_snapshot_manifest(root, repo_id, branch) or {},
             domain=domain,
         )
-        target_snap = plugin.snapshot(root / "muse-work")
+        target_snap = plugin.snapshot(root / "state")
     elif commit_b is None:
         base_snap = SnapshotManifest(
             files=get_head_snapshot_manifest(root, repo_id, branch) or {},

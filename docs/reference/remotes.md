@@ -279,7 +279,7 @@ muse clone <url> [<directory>]
 3. Calls `POST <url>/fetch` with `want=all, have=[]` to download the complete history.
 4. Applies the `PackBundle` (objects → snapshots → commits).
 5. Sets `origin` remote and upstream tracking.
-6. Restores `muse-work/` from the default branch HEAD snapshot.
+6. Restores `state/` from the default branch HEAD snapshot.
 
 **Examples:**
 
@@ -340,7 +340,7 @@ muse pull [<remote>] [options]
 **Merge behaviour:**
 
 - Fast-forward: if the remote HEAD is a direct descendant of local HEAD, the
-  local branch ref and `muse-work/` are advanced without a merge commit.
+  local branch ref and `state/` are advanced without a merge commit.
 - Three-way merge: delegates to the active domain plugin's `merge()` /
   `merge_ops()` — identical to `muse merge`.
 - Conflicts: MERGE_STATE.json is written; the user fixes conflicts then runs

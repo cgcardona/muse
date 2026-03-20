@@ -28,7 +28,7 @@ distinct manifests or commit inputs to produce the same hash if filenames
 contained those characters.
 
 Symlinks in the working tree are excluded from snapshots. Following a
-symlink that points outside muse-work/ would silently commit the contents
+symlink that points outside state/ would silently commit the contents
 of arbitrary filesystem paths.
 
 Hidden directories (any path component starting with ``.``) are also excluded
@@ -65,7 +65,7 @@ def walk_workdir(workdir: pathlib.Path) -> dict[str, str]:
     """Walk *workdir* recursively and return ``{rel_path: object_id}``.
 
     Exclusions (all silent, no warning emitted):
-    - Symlinks — following them could commit content from outside muse-work/.
+    - Symlinks — following them could commit content from outside state/.
     - Directories — only regular files are included.
     - Hidden files — names starting with ``.``.
     - Hidden directories — any path component starting with ``.``.

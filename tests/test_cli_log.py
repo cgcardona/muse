@@ -21,7 +21,7 @@ def repo(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Pat
 
 
 def _write(repo: pathlib.Path, filename: str, content: str = "data") -> None:
-    (repo / "muse-work" / filename).write_text(content)
+    (repo / "state" / filename).write_text(content)
 
 
 def _commit(msg: str, **flags: str) -> None:

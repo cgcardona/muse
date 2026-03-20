@@ -29,7 +29,7 @@ File-based helpers:
 - :func:`read_merge_state` — detect and load an in-progress merge.
 - :func:`write_merge_state` — persist conflict state before exiting.
 - :func:`clear_merge_state` — remove MERGE_STATE.json after resolution.
-- :func:`apply_resolution` — restore a specific object version to muse-work/.
+- :func:`apply_resolution` — restore a specific object version to state/.
 
 ``MERGE_STATE.json`` schema
 ---------------------------
@@ -114,7 +114,7 @@ def read_merge_state(root: pathlib.Path) -> MergeState | None:
         return None
 
     raw_conflicts = data.get("conflict_paths", [])
-    workdir = root / "muse-work"
+    workdir = root / "state"
     safe_conflict_paths: list[str] = []
     if isinstance(raw_conflicts, list):
         for c in raw_conflicts:
@@ -206,7 +206,7 @@ def apply_resolution(
     rel_path: str,
     object_id: str,
 ) -> None:
-    """Restore a specific object version to ``muse-work/<rel_path>``.
+    """Restore a specific object version to ``state/<rel_path>``.
 
     Used by the ``muse merge --resolve`` workflow: after a user has chosen
     which version of a conflicting file to keep, this function writes that
@@ -223,7 +223,7 @@ def apply_resolution(
     from muse.core.object_store import read_object
 
     validate_object_id(object_id)
-    workdir = root / "muse-work"
+    workdir = root / "state"
     dest = contain_path(workdir, rel_path)
 
     content = read_object(root, object_id)

@@ -328,8 +328,8 @@ class TestMidiPluginSnapshotIgnore:
     """End-to-end: .museignore TOML format filters paths during snapshot()."""
 
     def _make_repo(self, tmp_path: pathlib.Path) -> pathlib.Path:
-        """Create a minimal repo structure with a muse-work/ directory."""
-        workdir = tmp_path / "muse-work"
+        """Create a minimal repo structure with a state/ directory."""
+        workdir = tmp_path / "state"
         workdir.mkdir()
         return tmp_path
 
@@ -339,7 +339,7 @@ class TestMidiPluginSnapshotIgnore:
         from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         (workdir / "beat.mid").write_text("data")
         (workdir / "session.tmp").write_text("temp")
 
@@ -352,7 +352,7 @@ class TestMidiPluginSnapshotIgnore:
         from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         (workdir / "beat.mid").write_text("data")
         (workdir / "session.tmp").write_text("temp")
         (root / ".museignore").write_text('[global]\npatterns = ["*.tmp"]\n')
@@ -368,7 +368,7 @@ class TestMidiPluginSnapshotIgnore:
         from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         (workdir / "beat.mid").write_text("data")
         (workdir / "session.bak").write_text("backup")
         (root / ".museignore").write_text(
@@ -386,7 +386,7 @@ class TestMidiPluginSnapshotIgnore:
         from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         (workdir / "beat.mid").write_text("data")
         (workdir / "requirements.txt").write_text("pytest\n")
         # code-only ignore — must NOT apply to the midi plugin.
@@ -405,7 +405,7 @@ class TestMidiPluginSnapshotIgnore:
         from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         (workdir / "session.tmp").write_text("temp")
         (workdir / "important.tmp").write_text("keep me")
         (root / ".museignore").write_text(
@@ -423,7 +423,7 @@ class TestMidiPluginSnapshotIgnore:
         from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         (workdir / "session.bak").write_text("backup")
         content = (
             '[global]\npatterns = ["*.bak"]\n'
@@ -440,7 +440,7 @@ class TestMidiPluginSnapshotIgnore:
         from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         renders = workdir / "renders"
         renders.mkdir()
         (workdir / "beat.mid").write_text("data")
@@ -458,7 +458,7 @@ class TestMidiPluginSnapshotIgnore:
         from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         (workdir / "beat.mid").write_text("data")
         (workdir / ".DS_Store").write_bytes(b"\x00" * 16)
         # No .museignore — dotfiles excluded by the built-in plugin rule.
@@ -472,7 +472,7 @@ class TestMidiPluginSnapshotIgnore:
         from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         (workdir / "beat.mid").write_text("data")
         # Valid TOML — just a comment, no sections.
         (root / ".museignore").write_text("# empty config\n")
@@ -487,7 +487,7 @@ class TestMidiPluginSnapshotIgnore:
         from muse.plugins.midi.plugin import MidiPlugin
 
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         renders = workdir / "renders"
         renders.mkdir()
         (renders / "mix.wav").write_text("audio")
