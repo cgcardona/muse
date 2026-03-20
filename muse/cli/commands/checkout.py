@@ -47,7 +47,7 @@ def _checkout_snapshot(
     target_snapshot_id: str,
     current_snapshot_id: str | None,
 ) -> None:
-    """Incrementally update muse-work/ from current to target snapshot.
+    """Incrementally update state/ from current to target snapshot.
 
     Uses the domain plugin to compute the delta between the two snapshots and
     only touches files that actually changed — removing deleted paths and
@@ -75,7 +75,7 @@ def _checkout_snapshot(
 
     delta = plugin.diff(current_snap, target_snap)
 
-    workdir = root / "muse-work"
+    workdir = root / "state"
     workdir.mkdir(exist_ok=True)
 
     # Remove files that no longer exist in the target snapshot.

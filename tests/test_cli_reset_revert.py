@@ -21,7 +21,7 @@ def repo(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Pat
 
 
 def _write(repo: pathlib.Path, filename: str, content: str = "data") -> None:
-    (repo / "muse-work" / filename).write_text(content)
+    (repo / "state" / filename).write_text(content)
 
 
 def _commit(msg: str = "initial") -> None:
@@ -62,7 +62,7 @@ class TestResetSoft:
 
         runner.invoke(cli, ["reset", first_id])
         # workdir still has lead.mid from second commit (soft = no restore)
-        assert (repo / "muse-work" / "lead.mid").exists()
+        assert (repo / "state" / "lead.mid").exists()
 
     def test_soft_output_message(self, repo: pathlib.Path) -> None:
         _write(repo, "beat.mid")
@@ -105,8 +105,8 @@ class TestResetHard:
 
         runner.invoke(cli, ["reset", "--hard", first_id])
         # After hard reset, workdir should reflect first commit (no lead.mid)
-        assert not (repo / "muse-work" / "lead.mid").exists()
-        assert (repo / "muse-work" / "beat.mid").exists()
+        assert not (repo / "state" / "lead.mid").exists()
+        assert (repo / "state" / "beat.mid").exists()
 
     def test_restores_file_content(self, repo: pathlib.Path) -> None:
         _write(repo, "beat.mid", "original")
@@ -117,7 +117,7 @@ class TestResetHard:
         _commit("second")
 
         runner.invoke(cli, ["reset", "--hard", first_id])
-        assert (repo / "muse-work" / "beat.mid").read_text() == "original"
+        assert (repo / "state" / "beat.mid").read_text() == "original"
 
     def test_hard_output_shows_commit(self, repo: pathlib.Path) -> None:
         _write(repo, "beat.mid")
@@ -160,7 +160,7 @@ class TestRevert:
         second_id = _head_id(repo)
 
         runner.invoke(cli, ["revert", second_id])
-        assert (repo / "muse-work" / "beat.mid").read_text() == "original"
+        assert (repo / "state" / "beat.mid").read_text() == "original"
 
     def test_revert_default_message_includes_original(self, repo: pathlib.Path) -> None:
         # Need a base commit first so "my change" is not the root
@@ -204,7 +204,7 @@ class TestRevert:
 
         result = runner.invoke(cli, ["revert", "--no-commit", second_id])
         assert result.exit_code == 0, result.output
-        assert "muse-work" in result.output or "applied" in result.output.lower()
+        assert "state" in result.output or "applied" in result.output.lower()
         # HEAD should not have advanced
         assert _head_id(repo) != second_id  # third is still HEAD
 
@@ -232,4 +232,4 @@ class TestRevert:
         lead_commit = _head_id(repo)
 
         runner.invoke(cli, ["revert", lead_commit])
-        assert not (repo / "muse-work" / "lead.mid").exists()
+        assert not (repo / "state" / "lead.mid").exists()

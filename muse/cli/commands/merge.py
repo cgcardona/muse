@@ -5,7 +5,7 @@ Algorithm
 1. Find the merge base (LCA) of HEAD and the target branch.
 2. Delegate conflict detection and manifest reconciliation to the domain plugin.
 3. If clean → apply merged manifest, write new commit, advance HEAD.
-4. If conflicts → write muse-work/ with conflict markers, write
+4. If conflicts → write state/ with conflict markers, write
    ``.muse/MERGE_STATE.json``, exit non-zero.
 """
 
@@ -58,9 +58,9 @@ def _read_repo_id(root: pathlib.Path) -> str:
 
 
 def _restore_from_manifest(root: pathlib.Path, manifest: dict[str, str]) -> None:
-    """Rebuild ``muse-work/`` to exactly match *manifest*.
+    """Rebuild ``state/`` to exactly match *manifest*.
 
-    Wipes the existing ``muse-work/`` directory (destructive), recreates it,
+    Wipes the existing ``state/`` directory (destructive), recreates it,
     and restores each object from the local content-addressed store.  All
     parent directories for nested paths are created as needed.
 
@@ -69,7 +69,7 @@ def _restore_from_manifest(root: pathlib.Path, manifest: dict[str, str]) -> None
         manifest: Mapping of workspace-relative POSIX paths to SHA-256
                   object IDs to restore.
     """
-    workdir = root / "muse-work"
+    workdir = root / "state"
     if workdir.exists():
         shutil.rmtree(workdir)
     workdir.mkdir()

@@ -1,7 +1,7 @@
 """muse stash — temporarily shelve uncommitted changes.
 
-Saves the current muse-work/ state to ``.muse/stash.json`` and restores
-the HEAD snapshot to muse-work/.
+Saves the current state/ state to ``.muse/stash.json`` and restores
+the HEAD snapshot to state/.
 
 Usage::
 
@@ -90,13 +90,13 @@ def _save_stash(root: pathlib.Path, stash: list[StashEntry]) -> None:
 
 @app.callback(invoke_without_command=True)
 def stash(ctx: typer.Context) -> None:
-    """Save current muse-work/ changes and restore HEAD."""
+    """Save current state/ changes and restore HEAD."""
     if ctx.invoked_subcommand is not None:
         return
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
-    workdir = root / "muse-work"
+    workdir = root / "state"
 
     plugin = resolve_plugin(root)
     manifest = plugin.snapshot(workdir)["files"]
@@ -146,7 +146,7 @@ def stash_pop() -> None:
     entry = entries.pop(0)
     _save_stash(root, entries)
 
-    workdir = root / "muse-work"
+    workdir = root / "state"
     if workdir.exists():
         shutil.rmtree(workdir)
     workdir.mkdir()

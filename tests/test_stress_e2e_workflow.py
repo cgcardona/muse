@@ -34,7 +34,7 @@ def _run(*args: str) -> tuple[int, str]:
 
 
 def _write_file(repo: pathlib.Path, filename: str, content: str = "code = True\n") -> None:
-    work = repo / "muse-work"
+    work = repo / "state"
     work.mkdir(exist_ok=True)
     (work / filename).write_text(content)
 

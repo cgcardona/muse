@@ -1,10 +1,10 @@
-"""muse commit — record the current muse-work/ state as a new version.
+"""muse commit — record the current state/ state as a new version.
 
 Algorithm
 ---------
 1. Resolve repo root (walk up for ``.muse/``).
 2. Read repo_id from ``.muse/repo.json``, current branch from ``.muse/HEAD``.
-3. Walk ``muse-work/`` and hash each file → snapshot manifest.
+3. Walk ``state/`` and hash each file → snapshot manifest.
 4. If HEAD snapshot_id == current snapshot_id → "nothing to commit".
 5. Compute deterministic commit_id = sha256(parents | snapshot | message | ts).
 6. Write blob objects to ``.muse/objects/``.
@@ -91,7 +91,7 @@ def commit(
     toolchain_id: str | None = typer.Option(None, "--toolchain-id", help="Toolchain string (overrides MUSE_TOOLCHAIN_ID env var)."),
     sign: bool = typer.Option(False, "--sign", help="HMAC-sign the commit using the agent's stored key (requires --agent-id or MUSE_AGENT_ID)."),
 ) -> None:
-    """Record the current muse-work/ state as a new version."""
+    """Record the current state/ state as a new version."""
     if message is None and not allow_empty:
         typer.echo("❌ Provide a commit message with -m MESSAGE.")
         raise typer.Exit(code=ExitCode.USER_ERROR)
@@ -109,16 +109,16 @@ def commit(
     branch, ref_path = _read_branch(root)
     parent_id = _read_parent_id(ref_path)
 
-    workdir = root / "muse-work"
+    workdir = root / "state"
     if not workdir.exists():
-        typer.echo("❌ No muse-work/ directory found. Run 'muse init' first.")
+        typer.echo("❌ No state/ directory found. Run 'muse init' first.")
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
     plugin = resolve_plugin(root)
     snap = plugin.snapshot(workdir)
     manifest = snap["files"]
     if not manifest and not allow_empty:
-        typer.echo("⚠️  muse-work/ is empty — nothing to commit.")
+        typer.echo("⚠️  state/ is empty — nothing to commit.")
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
     snapshot_id = compute_snapshot_id(manifest)

@@ -67,7 +67,7 @@ Every Muse repository is a `.muse/` directory:
   tags/
     <tag_id>.json      — TagRecord
   MERGE_STATE.json     — present only during an active merge conflict
-muse-work/             — the working tree (domain files live here)
+state/             — the working tree (domain files live here)
 .museattributes        — optional: per-path merge strategy overrides (TOML)
 .museignore            — optional: snapshot exclusion rules (TOML, domain-scoped)
 ```

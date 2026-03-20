@@ -2,8 +2,8 @@
 
 Modes::
 
-    --soft   — move the branch pointer; leave muse-work/ and index unchanged.
-    --hard   — move the branch pointer AND restore muse-work/ from the target snapshot.
+    --soft   — move the branch pointer; leave state/ and index unchanged.
+    --hard   — move the branch pointer AND restore state/ from the target snapshot.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def _read_repo_id(root: pathlib.Path) -> str:
 def reset(
     ctx: typer.Context,
     ref: str = typer.Argument(..., help="Commit ID or branch to reset to."),
-    hard: bool = typer.Option(False, "--hard", help="Reset branch pointer AND restore muse-work/."),
+    hard: bool = typer.Option(False, "--hard", help="Reset branch pointer AND restore state/."),
     soft: bool = typer.Option(False, "--soft", help="Reset branch pointer only (default)."),
 ) -> None:
     """Move HEAD to a prior commit."""
@@ -65,7 +65,7 @@ def reset(
         if snapshot is None:
             typer.echo(f"❌ Snapshot {commit.snapshot_id[:8]} not found in object store.")
             raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         if workdir.exists():
             shutil.rmtree(workdir)
         workdir.mkdir()

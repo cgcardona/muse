@@ -1,0 +1,39 @@
+# .museignore — snapshot exclusion rules for this repository.
+# Documentation: docs/reference/museignore.md
+#
+# Format: TOML with [global] and [domain.<name>] sections.
+#   [global]          — patterns applied to every domain
+#   [domain.<name>]   — patterns applied only when the active domain is <name>
+#
+# Pattern syntax (gitignore-compatible):
+#   *.ext             ignore files with this extension at any depth
+#   /path             anchor to the root of state/
+#   dir/              directory pattern (silently skipped — Muse tracks files)
+#   !pattern          un-ignore a previously matched path
+#
+# Last matching rule wins.
+
+[global]
+# Patterns applied to every domain. Last match wins; prefix with ! to un-ignore.
+patterns = [
+    ".DS_Store",
+    "Thumbs.db",
+    "*.tmp",
+    "*.swp",
+    "*.swo",
+]
+
+[domain.code]
+# Patterns applied only when the active domain plugin is "code".
+patterns = [
+    "__pycache__/",
+    "*.pyc",
+    "*.pyo",
+    "node_modules/",
+    "dist/",
+    "build/",
+    ".venv/",
+    "venv/",
+    ".tox/",
+    "*.egg-info/",
+]

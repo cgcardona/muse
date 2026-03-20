@@ -103,7 +103,7 @@ richer merge semantics.
 | `SemVerBump` | `Literal["major", "minor", "patch", "none"]` | Semantic version impact of a delta |
 | `LeafDomainOp` | `InsertOp \| DeleteOp \| MoveOp \| ReplaceOp \| MutateOp` | All non-recursive operation variants |
 | `DomainOp` | `LeafDomainOp \| PatchOp` | The complete discriminated union; `PatchOp.child_ops` is `list[DomainOp]` (recursive) |
-| `LiveState` | `SnapshotManifest \| pathlib.Path` | Current domain state — either an in-memory snapshot or the `muse-work/` directory path |
+| `LiveState` | `SnapshotManifest \| pathlib.Path` | Current domain state — either an in-memory snapshot or the `state/` directory path |
 | `StateSnapshot` | `SnapshotManifest` | A content-addressed, immutable capture of state at a point in time |
 | `StateDelta` | `StructuredDelta` | The typed delta between two snapshots |
 

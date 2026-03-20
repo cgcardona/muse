@@ -97,7 +97,7 @@ class ScaffoldPlugin:
 
         Note:
             ``.museignore`` contract — ``.museignore`` lives in the repository
-            root (the parent of ``muse-work/``).  Global patterns and patterns
+            root (the parent of ``state/``).  Global patterns and patterns
             under ``[domain.<name>]`` matching this plugin's domain are applied.
         """
         if isinstance(live_state, pathlib.Path):

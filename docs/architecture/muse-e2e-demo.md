@@ -28,7 +28,7 @@ Domain: music
 ## Step 0 — Root Commit
 
 ```bash
-cp ~/some-beat.mid muse-work/beat.mid
+cp ~/some-beat.mid state/beat.mid
 muse commit -m "Root: initial beat"
 ```
 
@@ -55,7 +55,7 @@ Date:   2026-03-17 12:00:00 UTC
 ## Step 1 — Mainline Commit
 
 ```bash
-cp ~/bass-line.mid muse-work/bass.mid
+cp ~/bass-line.mid state/bass.mid
 muse commit -m "Add bass line"
 muse log --oneline
 ```
@@ -72,7 +72,7 @@ a1b2c3d4 Root: initial beat
 ```bash
 muse branch feature/keys
 muse checkout feature/keys
-cp ~/piano.mid muse-work/keys.mid
+cp ~/piano.mid state/keys.mid
 muse commit -m "Add piano keys"
 ```
 
@@ -85,7 +85,7 @@ muse commit -m "Add piano keys"
 muse checkout main
 muse branch feature/drums
 muse checkout feature/drums
-cp ~/drum-fill.mid muse-work/drums.mid
+cp ~/drum-fill.mid state/drums.mid
 muse commit -m "Add drum fill"
 ```
 
@@ -150,14 +150,14 @@ Both branches modify the same file:
 # Branch left
 muse branch conflict/left
 muse checkout conflict/left
-echo "version-left" > muse-work/shared.mid
+echo "version-left" > state/shared.mid
 muse commit -m "Left changes shared.mid"
 
 # Branch right
 muse checkout main
 muse branch conflict/right
 muse checkout conflict/right
-echo "version-right" > muse-work/shared.mid
+echo "version-right" > state/shared.mid
 muse commit -m "Right changes shared.mid"
 
 # Attempt merge
@@ -174,7 +174,7 @@ Resolve conflicts and run 'muse merge --continue'
 
 ```bash
 # Manually resolve: pick one or blend both
-cp my-resolved-shared.mid muse-work/shared.mid
+cp my-resolved-shared.mid state/shared.mid
 
 muse merge --continue -m "Merge: resolve shared.mid conflict"
 ```
@@ -241,9 +241,9 @@ The revert commit points directly to the parent snapshot — no re-scan required
 Temporarily set aside uncommitted work:
 
 ```bash
-echo "wip" > muse-work/idea.mid
+echo "wip" > state/idea.mid
 muse stash
-# muse-work is clean — idea.mid is shelved
+# state is clean — idea.mid is shelved
 
 muse stash pop
 # idea.mid is back
