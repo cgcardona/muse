@@ -65,9 +65,9 @@ class TestParseRemoteInfo:
         assert info["default_branch"] == "main"
         assert info["branch_heads"] == {"main": "abc123", "dev": "def456"}
 
-    def test_invalid_json_raises_json_error(self) -> None:
-        import json as _json
-        with pytest.raises(_json.JSONDecodeError):
+    def test_invalid_json_raises_transport_error(self) -> None:
+        from muse.core.transport import TransportError
+        with pytest.raises(TransportError, match="expected JSON"):
             _parse_remote_info(b"not json")
 
     def test_non_dict_response_returns_defaults(self) -> None:
@@ -115,7 +115,7 @@ class TestParseBundle:
                         "commit_id": "c1",
                         "repo_id": "r1",
                         "branch": "main",
-                        "snapshot_id": "s1",
+                        "snapshot_id": "1" * 64,
                         "message": "test",
                         "committed_at": "2026-01-01T00:00:00+00:00",
                         "parent_commit_id": None,
@@ -182,9 +182,9 @@ class TestParsePushResult:
         assert result["ok"] is False
         assert result["message"] == "rejected"
 
-    def test_non_dict_returns_not_ok(self) -> None:
-        result = _parse_push_result(b"null")
-        assert result["ok"] is False
+    def test_non_json_object_raises_transport_error(self) -> None:
+        with pytest.raises(TransportError, match="expected JSON"):
+            _parse_push_result(b"null")
 
     def test_missing_ok_defaults_false(self) -> None:
         raw = json.dumps({"message": "hm", "branch_heads": {}}).encode()
@@ -208,7 +208,7 @@ class TestHttpTransportFetchRemoteInfo:
             }
         ).encode()
         mock_resp = _mock_response(body)
-        with unittest.mock.patch("urllib.request.urlopen", return_value=mock_resp) as m:
+        with unittest.mock.patch("muse.core.transport._open_url", return_value=mock_resp) as m:
             transport = HttpTransport()
             info = transport.fetch_remote_info("https://hub.example.com/repos/r1", None)
         req = m.call_args[0][0]
@@ -220,7 +220,7 @@ class TestHttpTransportFetchRemoteInfo:
             {"repo_id": "r1", "domain": "midi", "default_branch": "main", "branch_heads": {}}
         ).encode()
         mock_resp = _mock_response(body)
-        with unittest.mock.patch("urllib.request.urlopen", return_value=mock_resp) as m:
+        with unittest.mock.patch("muse.core.transport._open_url", return_value=mock_resp) as m:
             HttpTransport().fetch_remote_info("https://hub.example.com/repos/r1", "my-token")
         req = m.call_args[0][0]
         assert req.get_header("Authorization") == "Bearer my-token"
@@ -230,14 +230,14 @@ class TestHttpTransportFetchRemoteInfo:
             {"repo_id": "r1", "domain": "midi", "default_branch": "main", "branch_heads": {}}
         ).encode()
         mock_resp = _mock_response(body)
-        with unittest.mock.patch("urllib.request.urlopen", return_value=mock_resp) as m:
+        with unittest.mock.patch("muse.core.transport._open_url", return_value=mock_resp) as m:
             HttpTransport().fetch_remote_info("https://hub.example.com/repos/r1", None)
         req = m.call_args[0][0]
         assert req.get_header("Authorization") is None
 
     def test_http_401_raises_transport_error(self) -> None:
         with unittest.mock.patch(
-            "urllib.request.urlopen", side_effect=_http_error(401, b"Unauthorized")
+            "muse.core.transport._open_url", side_effect=_http_error(401, b"Unauthorized")
         ):
             with pytest.raises(TransportError) as exc_info:
                 HttpTransport().fetch_remote_info("https://hub.example.com/repos/r1", None)
@@ -245,7 +245,7 @@ class TestHttpTransportFetchRemoteInfo:
 
     def test_http_404_raises_transport_error(self) -> None:
         with unittest.mock.patch(
-            "urllib.request.urlopen", side_effect=_http_error(404)
+            "muse.core.transport._open_url", side_effect=_http_error(404)
         ):
             with pytest.raises(TransportError) as exc_info:
                 HttpTransport().fetch_remote_info("https://hub.example.com/repos/r1", None)
@@ -253,7 +253,7 @@ class TestHttpTransportFetchRemoteInfo:
 
     def test_http_500_raises_transport_error(self) -> None:
         with unittest.mock.patch(
-            "urllib.request.urlopen", side_effect=_http_error(500, b"Internal Error")
+            "muse.core.transport._open_url", side_effect=_http_error(500, b"Internal Error")
         ):
             with pytest.raises(TransportError) as exc_info:
                 HttpTransport().fetch_remote_info("https://hub.example.com/repos/r1", None)
@@ -261,7 +261,7 @@ class TestHttpTransportFetchRemoteInfo:
 
     def test_url_error_raises_transport_error_with_code_0(self) -> None:
         with unittest.mock.patch(
-            "urllib.request.urlopen",
+            "muse.core.transport._open_url",
             side_effect=urllib.error.URLError("Name or service not known"),
         ):
             with pytest.raises(TransportError) as exc_info:
@@ -273,7 +273,7 @@ class TestHttpTransportFetchRemoteInfo:
             {"repo_id": "r", "domain": "midi", "default_branch": "main", "branch_heads": {}}
         ).encode()
         mock_resp = _mock_response(body)
-        with unittest.mock.patch("urllib.request.urlopen", return_value=mock_resp) as m:
+        with unittest.mock.patch("muse.core.transport._open_url", return_value=mock_resp) as m:
             HttpTransport().fetch_remote_info("https://hub.example.com/repos/r1/", None)
         req = m.call_args[0][0]
         assert req.full_url == "https://hub.example.com/repos/r1/refs"
@@ -290,7 +290,7 @@ class TestHttpTransportFetchPack:
             }
         ).encode()
         mock_resp = _mock_response(bundle_body)
-        with unittest.mock.patch("urllib.request.urlopen", return_value=mock_resp) as m:
+        with unittest.mock.patch("muse.core.transport._open_url", return_value=mock_resp) as m:
             transport = HttpTransport()
             bundle = transport.fetch_pack(
                 "https://hub.example.com/repos/r1",
@@ -307,7 +307,7 @@ class TestHttpTransportFetchPack:
 
     def test_http_409_raises_transport_error(self) -> None:
         with unittest.mock.patch(
-            "urllib.request.urlopen", side_effect=_http_error(409)
+            "muse.core.transport._open_url", side_effect=_http_error(409)
         ):
             with pytest.raises(TransportError) as exc_info:
                 HttpTransport().fetch_pack("https://hub.example.com/r", None, [], [])
@@ -321,7 +321,7 @@ class TestHttpTransportPushPack:
         ).encode()
         mock_resp = _mock_response(push_body)
         bundle: PackBundle = {"commits": [], "snapshots": [], "objects": []}
-        with unittest.mock.patch("urllib.request.urlopen", return_value=mock_resp) as m:
+        with unittest.mock.patch("muse.core.transport._open_url", return_value=mock_resp) as m:
             result = HttpTransport().push_pack(
                 "https://hub.example.com/repos/r1", "tok", bundle, "main", False
             )
@@ -338,7 +338,7 @@ class TestHttpTransportPushPack:
         ).encode()
         mock_resp = _mock_response(push_body)
         bundle: PackBundle = {}
-        with unittest.mock.patch("urllib.request.urlopen", return_value=mock_resp) as m:
+        with unittest.mock.patch("muse.core.transport._open_url", return_value=mock_resp) as m:
             HttpTransport().push_pack("https://hub.example.com/r", None, bundle, "main", True)
         req = m.call_args[0][0]
         sent = json.loads(req.data)
@@ -346,7 +346,7 @@ class TestHttpTransportPushPack:
 
     def test_push_rejected_raises_transport_error(self) -> None:
         with unittest.mock.patch(
-            "urllib.request.urlopen", side_effect=_http_error(409, b"non-fast-forward")
+            "muse.core.transport._open_url", side_effect=_http_error(409, b"non-fast-forward")
         ):
             with pytest.raises(TransportError) as exc_info:
                 HttpTransport().push_pack(

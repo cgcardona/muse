@@ -83,7 +83,7 @@ def _make_commit(
         commit_id="abc1234",
         repo_id="repo",
         branch=branch,
-        snapshot_id="snap1",
+        snapshot_id="s" * 64,
         message="test commit",
         committed_at=datetime.datetime.now(datetime.timezone.utc),
         author=author,

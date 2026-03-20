@@ -6,20 +6,41 @@ unit-tested without a database.
 
 ID derivation contract (deterministic, no random/UUID components):
 
-    object_id = sha256(file_bytes).hexdigest()
-    snapshot_id = sha256("|".join(sorted(f"{path}:{oid}" for path, oid in manifest.items()))).hexdigest()
-    commit_id = sha256(
-                    "|".join(sorted(parent_ids))
-                    + "|" + snapshot_id
-                    + "|" + message
-                    + "|" + committed_at_iso
+    object_id   = sha256(file_bytes).hexdigest()
+
+    snapshot_id = sha256(
+                      NUL.join(sorted(f"{path}NUL{oid}" for path, oid in manifest.items()))
                   ).hexdigest()
+
+    commit_id   = sha256(
+                      NUL.join([NUL.join(sorted(parent_ids)),
+                                snapshot_id, message, committed_at_iso])
+                  ).hexdigest()
+
+The null byte (\\x00) is used as the field separator because it is:
+  - Illegal in POSIX filenames (preventing separator-injection attacks from
+    crafted file paths).
+  - Absent from SHA-256 hex strings (preventing injection via object IDs).
+  - Absent from ISO-8601 timestamps and typical message text.
+
+This replaces the previous ``|`` / ``:`` separator scheme which allowed two
+distinct manifests or commit inputs to produce the same hash if filenames
+contained those characters.
+
+Symlinks in the working tree are excluded from snapshots. Following a
+symlink that points outside muse-work/ would silently commit the contents
+of arbitrary filesystem paths.
+
+Hidden directories (any path component starting with ``.``) are also excluded
+to prevent accidental inclusion of ``.git/``, ``.env``, and similar.
 """
 
 from __future__ import annotations
 
 import hashlib
 import pathlib
+
+_SEP = "\x00"
 
 
 def hash_file(path: pathlib.Path) -> str:
@@ -43,29 +64,40 @@ def build_snapshot_manifest(workdir: pathlib.Path) -> dict[str, str]:
 def walk_workdir(workdir: pathlib.Path) -> dict[str, str]:
     """Walk *workdir* recursively and return ``{rel_path: object_id}``.
 
-    Only regular files are included (symlinks and directories are skipped).
+    Exclusions (all silent, no warning emitted):
+    - Symlinks — following them could commit content from outside muse-work/.
+    - Directories — only regular files are included.
+    - Hidden files — names starting with ``.``.
+    - Hidden directories — any path component starting with ``.``.
+
     Paths use POSIX separators regardless of host OS for cross-platform
-    reproducibility. Hidden files (starting with ``.``) are excluded.
+    reproducibility.
     """
     manifest: dict[str, str] = {}
     for file_path in sorted(workdir.rglob("*")):
+        if file_path.is_symlink():
+            continue
         if not file_path.is_file():
             continue
-        if file_path.name.startswith("."):
+        rel = file_path.relative_to(workdir)
+        # Skip hidden files and files inside hidden directories.
+        if any(part.startswith(".") for part in rel.parts):
             continue
-        rel = file_path.relative_to(workdir).as_posix()
-        manifest[rel] = hash_file(file_path)
+        manifest[rel.as_posix()] = hash_file(file_path)
     return manifest
 
 
 def compute_snapshot_id(manifest: dict[str, str]) -> str:
-    """Return sha256 of the sorted ``path:object_id`` pairs.
+    """Return sha256 of the sorted ``path NUL object_id`` pairs.
+
+    The null-byte separator prevents collisions from filenames or object IDs
+    that contain the previous ``|`` / ``:`` separators.
 
     Sorting ensures two identical working trees always produce the same
     snapshot_id, regardless of filesystem traversal order.
     """
-    parts = sorted(f"{path}:{oid}" for path, oid in manifest.items())
-    payload = "|".join(parts).encode()
+    parts = sorted(f"{path}{_SEP}{oid}" for path, oid in manifest.items())
+    payload = _SEP.join(parts).encode()
     return hashlib.sha256(payload).hexdigest()
 
 
@@ -114,17 +146,21 @@ def compute_commit_id(
 ) -> str:
     """Return sha256 of the commit's canonical inputs.
 
+    Uses null bytes as field separators to prevent separator-injection
+    attacks from commit messages, author names, or branch names containing
+    ``|`` characters.
+
     Given the same arguments on two machines the result is identical.
     ``parent_ids`` is sorted before hashing so insertion order does not
     affect determinism.
     """
     parts = [
-        "|".join(sorted(parent_ids)),
+        _SEP.join(sorted(parent_ids)),
         snapshot_id,
         message,
         committed_at_iso,
     ]
-    payload = "|".join(parts).encode()
+    payload = _SEP.join(parts).encode()
     return hashlib.sha256(payload).hexdigest()
 
 
@@ -152,10 +188,10 @@ def compute_commit_tree_id(
         A 64-character lowercase hex SHA-256 digest.
     """
     parts = [
-        "|".join(sorted(parent_ids)),
+        _SEP.join(sorted(parent_ids)),
         snapshot_id,
         message,
         author,
     ]
-    payload = "|".join(parts).encode()
+    payload = _SEP.join(parts).encode()
     return hashlib.sha256(payload).hexdigest()

@@ -90,8 +90,8 @@ class TestBuildPack:
     def test_single_commit_no_history(self, repo: pathlib.Path) -> None:
         content = b"hello world"
         oid = _make_object(repo, content)
-        _make_snapshot(repo, "snap1", {"file.txt": oid})
-        _make_commit(repo, "commit1", "snap1")
+        _make_snapshot(repo, "s" * 64, {"file.txt": oid})
+        _make_commit(repo, "commit1", "s" * 64)
 
         bundle = build_pack(repo, ["commit1"])
 
@@ -103,8 +103,8 @@ class TestBuildPack:
     def test_object_is_base64_encoded(self, repo: pathlib.Path) -> None:
         content = b"\x00\x01\x02\x03"
         oid = _make_object(repo, content)
-        _make_snapshot(repo, "snap1", {"bin.dat": oid})
-        _make_commit(repo, "c1", "snap1")
+        _make_snapshot(repo, "s" * 64, {"bin.dat": oid})
+        _make_commit(repo, "c1", "s" * 64)
 
         bundle = build_pack(repo, ["c1"])
 
@@ -116,9 +116,9 @@ class TestBuildPack:
     def test_multi_commit_chain(self, repo: pathlib.Path) -> None:
         oid1 = _make_object(repo, b"v1")
         oid2 = _make_object(repo, b"v2")
-        _make_snapshot(repo, "snap1", {"f.txt": oid1})
+        _make_snapshot(repo, "s" * 64, {"f.txt": oid1})
         _make_snapshot(repo, "snap2", {"f.txt": oid2})
-        _make_commit(repo, "c1", "snap1")
+        _make_commit(repo, "c1", "s" * 64)
         _make_commit(repo, "c2", "snap2", parent="c1")
 
         bundle = build_pack(repo, ["c2"])
@@ -130,9 +130,9 @@ class TestBuildPack:
     def test_have_excludes_ancestor_commits(self, repo: pathlib.Path) -> None:
         oid1 = _make_object(repo, b"v1")
         oid2 = _make_object(repo, b"v2")
-        _make_snapshot(repo, "snap1", {"f.txt": oid1})
+        _make_snapshot(repo, "s" * 64, {"f.txt": oid1})
         _make_snapshot(repo, "snap2", {"f.txt": oid2})
-        _make_commit(repo, "c1", "snap1")
+        _make_commit(repo, "c1", "s" * 64)
         _make_commit(repo, "c2", "snap2", parent="c1")
 
         bundle = build_pack(repo, ["c2"], have=["c1"])
@@ -144,9 +144,9 @@ class TestBuildPack:
 
     def test_deduplicates_shared_objects(self, repo: pathlib.Path) -> None:
         shared_oid = _make_object(repo, b"shared")
-        _make_snapshot(repo, "snap1", {"a.txt": shared_oid})
+        _make_snapshot(repo, "s" * 64, {"a.txt": shared_oid})
         _make_snapshot(repo, "snap2", {"b.txt": shared_oid})
-        _make_commit(repo, "c1", "snap1")
+        _make_commit(repo, "c1", "s" * 64)
         _make_commit(repo, "c2", "snap2", parent="c1")
 
         bundle = build_pack(repo, ["c2"])
@@ -201,8 +201,8 @@ class TestApplyPack:
         """build_pack → apply_pack in a fresh repo produces identical data."""
         content = b"round trip"
         oid = _make_object(repo, content)
-        _make_snapshot(repo, "snap1", {"f.txt": oid})
-        _make_commit(repo, "c1", "snap1", message="initial")
+        _make_snapshot(repo, "s" * 64, {"f.txt": oid})
+        _make_commit(repo, "c1", "s" * 64, message="initial")
 
         bundle = build_pack(repo, ["c1"])
 
@@ -218,15 +218,15 @@ class TestApplyPack:
         assert result["objects_written"] == 1
         assert has_object(dest, oid)
         assert read_object(dest, oid) == content
-        assert read_snapshot(dest, "snap1") is not None
+        assert read_snapshot(dest, "s" * 64) is not None
         assert read_commit(dest, "c1") is not None
 
     def test_idempotent_apply(self, repo: pathlib.Path) -> None:
         """Applying the same bundle twice does not raise and new_count = 0."""
         content = b"idempotent"
         oid = _make_object(repo, content)
-        _make_snapshot(repo, "snap1", {"f.txt": oid})
-        _make_commit(repo, "c1", "snap1")
+        _make_snapshot(repo, "s" * 64, {"f.txt": oid})
+        _make_commit(repo, "c1", "s" * 64)
 
         bundle = build_pack(repo, ["c1"])
         apply_pack(repo, bundle)
@@ -252,8 +252,8 @@ class TestApplyPack:
         self, repo: pathlib.Path, tmp_path: pathlib.Path
     ) -> None:
         oid = _make_object(repo, b"data")
-        _make_snapshot(repo, "s1", {"data.bin": oid})
-        _make_commit(repo, "c1", "s1", message="preserve me")
+        _make_snapshot(repo, "1" * 64, {"data.bin": oid})
+        _make_commit(repo, "c1", "1" * 64, message="preserve me")
 
         bundle = build_pack(repo, ["c1"])
 
@@ -266,15 +266,15 @@ class TestApplyPack:
         commit = read_commit(dest, "c1")
         assert commit is not None
         assert commit.message == "preserve me"
-        assert commit.snapshot_id == "s1"
+        assert commit.snapshot_id == "1" * 64
 
     def test_apply_returns_new_object_count(
         self, repo: pathlib.Path, tmp_path: pathlib.Path
     ) -> None:
         oid1 = _make_object(repo, b"obj1")
         oid2 = _make_object(repo, b"obj2")
-        _make_snapshot(repo, "s1", {"a": oid1, "b": oid2})
-        _make_commit(repo, "c1", "s1")
+        _make_snapshot(repo, "1" * 64, {"a": oid1, "b": oid2})
+        _make_commit(repo, "c1", "1" * 64)
 
         bundle = build_pack(repo, ["c1"])
         dest = tmp_path / "d"

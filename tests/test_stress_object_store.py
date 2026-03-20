@@ -109,8 +109,10 @@ class TestIdempotency:
         data = b"original content"
         oid = _sha256(data)
         write_object(repo, oid, data)
-        # Attempt to overwrite with different content using the same ID — should be silently skipped.
-        write_object(repo, oid, b"different content")
+        # Writing different content with the same ID raises ValueError (integrity check).
+        # The object on disk is NOT overwritten — idempotency guard fires first.
+        with pytest.raises(ValueError, match="Content integrity failure"):
+            write_object(repo, oid, b"different content")
         assert read_object(repo, oid) == data
 
     def test_triple_write_stays_stable(self, repo: pathlib.Path) -> None:
@@ -189,16 +191,28 @@ class TestSharding:
         assert object_path(repo, oid1).parent == object_path(repo, oid2).parent
 
     def test_objects_with_different_prefix_go_to_different_shards(self, repo: pathlib.Path) -> None:
-        oid1 = "aa" + "x" * 62
-        oid2 = "bb" + "x" * 62
+        # Use valid 64-char hex IDs with different first-two-char prefixes.
+        oid1 = "aa" + "f" * 62
+        oid2 = "bb" + "f" * 62
         assert object_path(repo, oid1).parent != object_path(repo, oid2).parent
 
     def test_256_shards_can_all_be_created(self, repo: pathlib.Path) -> None:
-        """Write one object per possible shard prefix (00-ff)."""
-        for prefix in [f"{i:02x}" for i in range(256)]:
-            data = f"shard-{prefix}".encode()
-            oid = prefix + _sha256(data)[2:]
-            write_object(repo, oid, data)
+        """Write one object per possible shard prefix (00-ff).
+
+        Finds data whose SHA-256 starts with each 2-hex prefix by brute-force,
+        using a counter to stay deterministic.
+        """
+        import itertools
+        written_prefixes: set[str] = set()
+        for n in itertools.count():
+            if len(written_prefixes) == 256:
+                break
+            data = f"shard-seed-{n}".encode()
+            oid = _sha256(data)
+            prefix = oid[:2]
+            if prefix not in written_prefixes:
+                write_object(repo, oid, data)
+                written_prefixes.add(prefix)
         # Verify all 256 shard dirs exist.
         shards = [d.name for d in objects_dir(repo).iterdir() if d.is_dir()]
         assert len(shards) == 256

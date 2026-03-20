@@ -95,17 +95,17 @@ class TestComputeSnapshotId:
 
 class TestComputeCommitId:
     def test_deterministic(self) -> None:
-        kwargs = dict(parent_ids=["p1"], snapshot_id="s1", message="msg", committed_at_iso="2026-01-01T00:00:00+00:00")
+        kwargs = dict(parent_ids=["p1"], snapshot_id="1" * 64, message="msg", committed_at_iso="2026-01-01T00:00:00+00:00")
         assert compute_commit_id(**kwargs) == compute_commit_id(**kwargs)
 
     def test_parent_order_independent(self) -> None:
-        a = compute_commit_id(parent_ids=["p1", "p2"], snapshot_id="s1", message="m", committed_at_iso="t")
-        b = compute_commit_id(parent_ids=["p2", "p1"], snapshot_id="s1", message="m", committed_at_iso="t")
+        a = compute_commit_id(parent_ids=["p1", "p2"], snapshot_id="1" * 64, message="m", committed_at_iso="t")
+        b = compute_commit_id(parent_ids=["p2", "p1"], snapshot_id="1" * 64, message="m", committed_at_iso="t")
         assert a == b
 
     def test_different_messages_different_ids(self) -> None:
-        a = compute_commit_id(parent_ids=[], snapshot_id="s1", message="msg1", committed_at_iso="t")
-        b = compute_commit_id(parent_ids=[], snapshot_id="s1", message="msg2", committed_at_iso="t")
+        a = compute_commit_id(parent_ids=[], snapshot_id="1" * 64, message="msg1", committed_at_iso="t")
+        b = compute_commit_id(parent_ids=[], snapshot_id="1" * 64, message="msg2", committed_at_iso="t")
         assert a != b
 
 

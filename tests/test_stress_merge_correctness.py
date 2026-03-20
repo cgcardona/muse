@@ -329,16 +329,19 @@ class TestMergeStateIOAdversarial:
         clear_merge_state(repo)
 
     def test_write_overwrite_previous(self, repo: pathlib.Path) -> None:
-        write_merge_state(repo, base_commit="b1", ours_commit="o1", theirs_commit="t1", conflict_paths=["a.mid"])
-        write_merge_state(repo, base_commit="b2", ours_commit="o2", theirs_commit="t2", conflict_paths=["b.mid"])
+        b2 = "b" * 64
+        o2 = "c" * 64
+        t2 = "d" * 64
+        write_merge_state(repo, base_commit="1" * 64, ours_commit="2" * 64, theirs_commit="3" * 64, conflict_paths=["a.mid"])
+        write_merge_state(repo, base_commit=b2, ours_commit=o2, theirs_commit=t2, conflict_paths=["b.mid"])
         state = read_merge_state(repo)
         assert state is not None
-        assert state.base_commit == "b2"
+        assert state.base_commit == b2
         assert state.conflict_paths == ["b.mid"]
 
     def test_100_conflict_paths_round_trip(self, repo: pathlib.Path) -> None:
         paths = [f"track-{i:03d}.mid" for i in range(100)]
-        write_merge_state(repo, base_commit="b", ours_commit="o", theirs_commit="t", conflict_paths=paths)
+        write_merge_state(repo, base_commit="b" * 64, ours_commit="c" * 64, theirs_commit="d" * 64, conflict_paths=paths)
         state = read_merge_state(repo)
         assert state is not None
         assert state.conflict_paths == sorted(paths)

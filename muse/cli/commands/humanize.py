@@ -28,6 +28,7 @@ import random
 import typer
 
 from muse.core.errors import ExitCode
+from muse.core.validation import contain_path
 from muse.core.repo import require_repo
 from muse.plugins.midi._query import NoteInfo, load_track_from_workdir, notes_to_midi_bytes
 
@@ -70,8 +71,14 @@ def humanize(
     if timing < 0:
         typer.echo("❌ --timing must be ≥ 0.", err=True)
         raise typer.Exit(code=ExitCode.USER_ERROR)
+    if timing > 1.0:
+        typer.echo("❌ --timing must be ≤ 1.0 beat (to prevent degenerate output).", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
     if velocity < 0:
         typer.echo("❌ --velocity must be ≥ 0.", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+    if velocity > 127:
+        typer.echo("❌ --velocity must be ≤ 127 (MIDI max).", err=True)
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
     root = require_repo()
@@ -113,9 +120,13 @@ def humanize(
         return
 
     midi_bytes = notes_to_midi_bytes(humanised, tpb)
-    work_path = root / "muse-work" / track
-    if not work_path.parent.exists():
-        work_path = root / track
+    workdir = root / "muse-work"
+    try:
+        work_path = contain_path(workdir, track)
+    except ValueError as exc:
+        typer.echo(f"❌ Invalid track path: {exc}")
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+    work_path.parent.mkdir(parents=True, exist_ok=True)
     work_path.write_bytes(midi_bytes)
 
     typer.echo(f"\n✅ Humanised {track}")

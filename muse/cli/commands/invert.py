@@ -30,6 +30,7 @@ import pathlib
 import typer
 
 from muse.core.errors import ExitCode
+from muse.core.validation import contain_path
 from muse.core.repo import require_repo
 from muse.plugins.midi._query import NoteInfo, load_track_from_workdir, notes_to_midi_bytes
 from muse.plugins.midi.midi_diff import _pitch_name
@@ -103,6 +104,9 @@ def invert(
         if pivot_midi is None:
             typer.echo(f"❌ Cannot parse pivot '{pivot}'. Use C4, A#3, or a MIDI number.", err=True)
             raise typer.Exit(code=ExitCode.USER_ERROR)
+        if not 0 <= pivot_midi <= 127:
+            typer.echo(f"❌ Pivot MIDI value {pivot_midi} is out of range [0, 127].", err=True)
+            raise typer.Exit(code=ExitCode.USER_ERROR)
     else:
         pivot_midi = sorted(notes, key=lambda n: n.start_tick)[0].pitch
 
@@ -150,9 +154,13 @@ def invert(
         return
 
     midi_bytes = notes_to_midi_bytes(inverted, tpb)
-    work_path = root / "muse-work" / track
-    if not work_path.parent.exists():
-        work_path = root / track
+    workdir = root / "muse-work"
+    try:
+        work_path = contain_path(workdir, track)
+    except ValueError as exc:
+        typer.echo(f"❌ Invalid track path: {exc}")
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+    work_path.parent.mkdir(parents=True, exist_ok=True)
     work_path.write_bytes(midi_bytes)
 
     typer.echo(f"\n✅ Inverted {track}  (pivot: {_pitch_name(pivot_midi)} / MIDI {pivot_midi})")

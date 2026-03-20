@@ -18,9 +18,12 @@ from __future__ import annotations
 import copy
 import dataclasses
 import logging
+import math
 import pathlib
-import xml.etree.ElementTree as ET
 from typing import TypedDict
+
+from muse.core.validation import MAX_FILE_BYTES
+from muse.core.xml_safe import SafeET as ET
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +85,12 @@ def parse_file(path: pathlib.Path) -> MuseImportData:
     """
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")
+    size = path.stat().st_size
+    if size > MAX_FILE_BYTES:
+        raise RuntimeError(
+            f"File '{path.name}' is {size} bytes, exceeding the "
+            f"{MAX_FILE_BYTES // (1024 * 1024)} MiB import limit."
+        )
     ext = path.suffix.lower()
     if ext in SUPPORTED_MIDI_EXTENSIONS:
         return parse_midi_file(path)
@@ -125,7 +134,8 @@ def parse_midi_file(path: pathlib.Path) -> MuseImportData:
         for msg in track:
             abs_tick += msg.time
             if msg.type == "set_tempo":
-                tempo_us = msg.tempo
+                # Guard against tempo=0 which would cause ZeroDivisionError below.
+                tempo_us = max(msg.tempo, 1)
             elif msg.type == "note_on" and msg.velocity > 0:
                 active[(msg.channel, msg.note)] = (abs_tick, msg.velocity)
             elif msg.type == "note_off" or (
@@ -158,7 +168,8 @@ def parse_midi_file(path: pathlib.Path) -> MuseImportData:
             )
         )
 
-    tempo_bpm = 60_000_000 / tempo_us
+    raw_bpm = 60_000_000 / tempo_us
+    tempo_bpm = raw_bpm if math.isfinite(raw_bpm) else 120.0
     tracks = _unique_ordered([n.channel_name for n in notes])
 
     logger.debug(
@@ -188,6 +199,8 @@ def parse_musicxml_file(path: pathlib.Path) -> MuseImportData:
         raise RuntimeError(f"Cannot parse MusicXML file '{path}': {exc}") from exc
 
     root = tree.getroot()
+    if root is None:
+        raise RuntimeError(f"MusicXML file '{path}' produced an empty document.")
 
     # Strip XML namespace prefix, e.g. {http://www.musicxml.org/…}element → element
     ns = ""
@@ -210,7 +223,10 @@ def parse_musicxml_file(path: pathlib.Path) -> MuseImportData:
             raw = sound.get("tempo")
             if raw is not None:
                 try:
-                    tempo_bpm = float(raw)
+                    parsed_bpm = float(raw)
+                    # Reject Infinity / NaN from a crafted file.
+                    if math.isfinite(parsed_bpm) and parsed_bpm > 0:
+                        tempo_bpm = parsed_bpm
                     break
                 except ValueError:
                     pass
@@ -240,7 +256,9 @@ def parse_musicxml_file(path: pathlib.Path) -> MuseImportData:
                 div_el = attrs.find(t("divisions"))
                 if div_el is not None and div_el.text:
                     try:
-                        divisions = int(div_el.text)
+                        parsed_div = int(div_el.text)
+                        # Reject zero or negative divisions; they invert tick arithmetic.
+                        divisions = max(parsed_div, 1)
                     except ValueError:
                         pass
 

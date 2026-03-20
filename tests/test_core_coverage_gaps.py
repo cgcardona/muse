@@ -1,10 +1,15 @@
 """Tests targeting coverage gaps in core modules: object_store, repo, store, merge_engine."""
 
+import hashlib
 import json
 import os
 import pathlib
 
 import pytest
+
+
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 from muse.core.object_store import (
     has_object,
@@ -56,38 +61,44 @@ class TestObjectStore:
         assert not has_object(tmp_path, "a" * 64)
 
     def test_has_object_true_after_write(self, tmp_path: pathlib.Path) -> None:
-        oid = "a" * 64
-        write_object(tmp_path, oid, b"hello")
+        content = b"hello"
+        oid = _sha256(content)
+        write_object(tmp_path, oid, content)
         assert has_object(tmp_path, oid)
 
     def test_write_object_idempotent_returns_false(self, tmp_path: pathlib.Path) -> None:
-        oid = "b" * 64
-        assert write_object(tmp_path, oid, b"first") is True
-        assert write_object(tmp_path, oid, b"second") is False
+        content = b"first"
+        oid = _sha256(content)
+        assert write_object(tmp_path, oid, content) is True
+        # Second write with correct hash but same ID — idempotent
+        assert write_object(tmp_path, oid, content) is False
         # content should not change
-        assert read_object(tmp_path, oid) == b"first"
+        assert read_object(tmp_path, oid) == content
 
     def test_write_object_from_path_idempotent(self, tmp_path: pathlib.Path) -> None:
+        content = b"content"
         src = tmp_path / "src.bin"
-        src.write_bytes(b"content")
-        oid = "c" * 64
+        src.write_bytes(content)
+        oid = _sha256(content)
         assert write_object_from_path(tmp_path, oid, src) is True
         assert write_object_from_path(tmp_path, oid, src) is False
 
     def test_write_object_from_path_stores_content(self, tmp_path: pathlib.Path) -> None:
+        content = b"my bytes"
         src = tmp_path / "file.bin"
-        src.write_bytes(b"my bytes")
-        oid = "d" * 64
+        src.write_bytes(content)
+        oid = _sha256(content)
         write_object_from_path(tmp_path, oid, src)
-        assert read_object(tmp_path, oid) == b"my bytes"
+        assert read_object(tmp_path, oid) == content
 
     def test_read_object_returns_none_when_absent(self, tmp_path: pathlib.Path) -> None:
         assert read_object(tmp_path, "e" * 64) is None
 
     def test_read_object_returns_bytes(self, tmp_path: pathlib.Path) -> None:
-        oid = "f" * 64
-        write_object(tmp_path, oid, b"data")
-        assert read_object(tmp_path, oid) == b"data"
+        content = b"data"
+        oid = _sha256(content)
+        write_object(tmp_path, oid, content)
+        assert read_object(tmp_path, oid) == content
 
     def test_restore_object_returns_false_when_absent(self, tmp_path: pathlib.Path) -> None:
         dest = tmp_path / "out.bin"
@@ -96,16 +107,18 @@ class TestObjectStore:
         assert not dest.exists()
 
     def test_restore_object_creates_dest(self, tmp_path: pathlib.Path) -> None:
-        oid = "1" * 64
-        write_object(tmp_path, oid, b"restored")
+        content = b"restored"
+        oid = _sha256(content)
+        write_object(tmp_path, oid, content)
         dest = tmp_path / "sub" / "out.bin"
         result = restore_object(tmp_path, oid, dest)
         assert result is True
-        assert dest.read_bytes() == b"restored"
+        assert dest.read_bytes() == content
 
     def test_restore_object_creates_parent_dirs(self, tmp_path: pathlib.Path) -> None:
-        oid = "2" * 64
-        write_object(tmp_path, oid, b"nested")
+        content = b"nested"
+        oid = _sha256(content)
+        write_object(tmp_path, oid, content)
         dest = tmp_path / "a" / "b" / "c" / "file.bin"
         restore_object(tmp_path, oid, dest)
         assert dest.exists()
@@ -241,9 +254,10 @@ class TestMergeEngineCoverageGaps:
 
     def test_apply_resolution_copies_object(self, tmp_path: pathlib.Path) -> None:
         root = self._make_repo(tmp_path)
-        # Write a real object to the store
-        oid = "a" * 64
-        write_object(root, oid, b"resolved content")
+        # Write a real object to the store — oid must be the SHA-256 of the content.
+        content = b"resolved content"
+        oid = _sha256(content)
+        write_object(root, oid, content)
 
         apply_resolution(root, "track.mid", oid)
         dest = root / "muse-work" / "track.mid"

@@ -37,6 +37,7 @@ from muse.core.store import (
     write_commit,
     write_snapshot,
 )
+from muse.core.validation import contain_path, sanitize_display, validate_branch_name
 from muse.domain import SnapshotManifest, StructuredMergePlugin
 from muse.plugins.registry import read_domain, resolve_plugin
 
@@ -73,7 +74,12 @@ def _restore_from_manifest(root: pathlib.Path, manifest: dict[str, str]) -> None
         shutil.rmtree(workdir)
     workdir.mkdir()
     for rel_path, object_id in manifest.items():
-        restore_object(root, object_id, workdir / rel_path)
+        try:
+            safe_dest = contain_path(workdir, rel_path)
+        except ValueError as exc:
+            logger.warning("⚠️ Skipping unsafe manifest path %r: %s", rel_path, exc)
+            continue
+        restore_object(root, object_id, safe_dest)
 
 
 @app.callback(invoke_without_command=True)
@@ -114,8 +120,14 @@ def merge(
     if base_commit_id == ours_commit_id and not no_ff:
         theirs_commit = read_commit(root, theirs_commit_id)
         if theirs_commit:
-            snapshot = json.loads((root / ".muse" / "snapshots" / f"{theirs_commit.snapshot_id}.json").read_text())
-            _restore_from_manifest(root, snapshot["manifest"])
+            ff_snap = read_snapshot(root, theirs_commit.snapshot_id)
+            if ff_snap:
+                _restore_from_manifest(root, ff_snap.manifest)
+        try:
+            validate_branch_name(current_branch)
+        except ValueError as exc:
+            typer.echo(f"❌ Current branch name is invalid: {exc}")
+            raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
         (root / ".muse" / "refs" / "heads" / current_branch).write_text(theirs_commit_id)
         typer.echo(f"Fast-forward to {theirs_commit_id[:8]}")
         return
@@ -207,6 +219,11 @@ def merge(
         parent_commit_id=ours_commit_id,
         parent2_commit_id=theirs_commit_id,
     ))
+    try:
+        validate_branch_name(current_branch)
+    except ValueError as exc:
+        typer.echo(f"❌ Current branch name is invalid: {exc}")
+        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
     (root / ".muse" / "refs" / "heads" / current_branch).write_text(commit_id)
 
-    typer.echo(f"Merged '{branch}' into '{current_branch}' ({commit_id[:8]})")
+    typer.echo(f"Merged '{sanitize_display(branch)}' into '{sanitize_display(current_branch)}' ({commit_id[:8]})")

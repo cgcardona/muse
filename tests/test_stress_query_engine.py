@@ -204,14 +204,14 @@ class TestFormatMatches:
 
     def test_single_match_includes_commit_id(self) -> None:
         match = QueryMatch(
-            commit_id="abc12345",
+            commit_id="a" * 64,
             branch="main",
             author="alice",
             committed_at=_now().isoformat(),
             detail="test match",
         )
         out = format_matches([match])
-        assert "abc12345" in out
+        assert "aaaaaaaa" in out
 
     def test_multiple_matches_all_present(self) -> None:
         matches = [
