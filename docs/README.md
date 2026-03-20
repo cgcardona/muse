@@ -1,6 +1,6 @@
 # Muse Documentation
 
-> **Version:** v0.1.2 · [Project README](../README.md) · [Source](../muse/)
+> **Version:** v0.1.3 · [Project README](../README.md) · [Source](../muse/)
 
 This directory contains the complete documentation for Muse — a domain-agnostic version control system for multidimensional state.
 
@@ -11,6 +11,10 @@ This directory contains the complete documentation for Muse — a domain-agnosti
 | I want to… | Start here |
 |-------------|-----------|
 | Understand the full architecture | [Architecture Reference](architecture/muse-vcs.md) |
+| Authenticate with MuseHub | [Auth Reference](reference/auth.md) |
+| Connect a repo to a hub | [Hub Reference](reference/hub.md) |
+| Understand the security model | [Security Architecture](reference/security.md) |
+| Push, fetch, or clone a repo | [Remotes Reference](reference/remotes.md) |
 | Browse the CLI command tiers | [CLI Tiers Reference](reference/cli-tiers.md) |
 | See all MIDI semantic commands | [MIDI Domain Reference](reference/midi-domain.md) |
 | See all Code semantic commands | [Code Domain Reference](reference/code-domain.md) |
@@ -57,6 +61,15 @@ docs/
 │   └── muse-variation-spec.md    — variation semantics for the MIDI domain
 │
 ├── reference/
+│   ├── auth.md                   — muse auth login/whoami/logout: identity lifecycle,
+│   │                               ~/.muse/identity.toml format, env vars, flows
+│   ├── hub.md                    — muse hub connect/status/disconnect/ping: hub fabric,
+│   │                               hub vs remote distinction, HTTPS enforcement
+│   ├── remotes.md                — muse push/fetch/clone/pull/remote: transport arch,
+│   │                               PackBundle wire format, tracking branches
+│   ├── security.md               — security architecture: validation trust model,
+│   │                               path containment, ANSI injection, XML safety,
+│   │                               transport hardening, identity store guarantees
 │   ├── cli-tiers.md              — three-tier CLI architecture: Tier 1 plumbing
 │   │                               (JSON, pipeable), Tier 2 porcelain (core VCS),
 │   │                               Tier 3 semantic (midi/code/coord namespaces)
