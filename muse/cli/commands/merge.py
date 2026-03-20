@@ -37,6 +37,7 @@ from muse.core.store import (
     write_commit,
     write_snapshot,
 )
+from muse.core.reflog import append_reflog
 from muse.core.validation import contain_path, sanitize_display, validate_branch_name
 from muse.domain import SnapshotManifest, StructuredMergePlugin
 from muse.plugins.registry import read_domain, resolve_plugin
@@ -129,6 +130,11 @@ def merge(
             typer.echo(f"❌ Current branch name is invalid: {exc}")
             raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
         (root / ".muse" / "refs" / "heads" / current_branch).write_text(theirs_commit_id)
+        append_reflog(
+            root, current_branch, old_id=ours_commit_id, new_id=theirs_commit_id,
+            author="user",
+            operation=f"merge: fast-forward {sanitize_display(branch)} → {sanitize_display(current_branch)}",
+        )
         typer.echo(f"Fast-forward to {theirs_commit_id[:8]}")
         return
 
@@ -225,5 +231,11 @@ def merge(
         typer.echo(f"❌ Current branch name is invalid: {exc}")
         raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
     (root / ".muse" / "refs" / "heads" / current_branch).write_text(commit_id)
+
+    append_reflog(
+        root, current_branch, old_id=ours_commit_id, new_id=commit_id,
+        author="user",
+        operation=f"merge: {sanitize_display(branch)} into {sanitize_display(current_branch)}",
+    )
 
     typer.echo(f"Merged '{sanitize_display(branch)}' into '{sanitize_display(current_branch)}' ({commit_id[:8]})")

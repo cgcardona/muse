@@ -38,6 +38,7 @@ from muse.core.store import (
     write_commit,
     write_snapshot,
 )
+from muse.core.reflog import append_reflog
 from muse.core.validation import sanitize_display, validate_branch_name
 from muse.domain import SemVerBump, SnapshotManifest, StructuredDelta, infer_sem_ver_bump
 from muse.plugins.registry import read_domain, resolve_plugin
@@ -220,5 +221,14 @@ def commit(
 
     ref_path.parent.mkdir(parents=True, exist_ok=True)
     ref_path.write_text(commit_id)
+
+    append_reflog(
+        root,
+        branch,
+        old_id=parent_id,
+        new_id=commit_id,
+        author=author or "unknown",
+        operation=f"commit: {sanitize_display(message or '(no message)')}",
+    )
 
     typer.echo(f"[{sanitize_display(branch)} {commit_id[:8]}] {sanitize_display(message or '')}")

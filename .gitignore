@@ -27,6 +27,10 @@ build/
 # Generated data artifacts (large or machine-produced files)
 artifacts/*.json
 
+# Archive outputs from muse archive (generated, not source)
+*.tar.gz
+*.zip
+
 # Muse repo state — created when tests or the CLI run inside the source tree.
 # The source repo is not itself a Muse-managed repo.
 .muse/
