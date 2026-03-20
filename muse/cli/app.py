@@ -38,6 +38,20 @@ Tier 2 — Core Porcelain commands::
     attributes  remote      clone       fetch       pull
     push        check       annotate
 
+Identity & hub fabric::
+
+    auth login      muse auth login [--token TOKEN] [--hub HUB] [--agent]
+    auth whoami     muse auth whoami [--json]
+    auth logout     muse auth logout [--hub HUB]
+    hub connect     muse hub connect <url>
+    hub status      muse hub status [--json]
+    hub disconnect  muse hub disconnect
+    hub ping        muse hub ping
+    config show     muse config show [--json]
+    config get      muse config get <key>
+    config set      muse config set <key> <value>
+    config edit     muse config edit
+
 Tier 3 — MIDI domain commands (``muse midi …``)::
 
     Analysis:
@@ -80,6 +94,7 @@ from muse.cli.commands import (
     annotate,
     api_surface,
     attributes,
+    auth,
     blame,
     branch,
     cherry_pick,
@@ -93,6 +108,7 @@ from muse.cli.commands import (
     code_query,
     commit,
     compare,
+    config_cmd,
     coupling,
     coverage,
     dead,
@@ -106,6 +122,7 @@ from muse.cli.commands import (
     grep,
     harmony,
     hotspots,
+    hub,
     impact,
     index_rebuild,
     init,
@@ -224,6 +241,11 @@ cli.add_typer(plumbing_cli, name="plumbing")
 
 cli.add_typer(attributes.app,   name="attributes",  help="Display .museattributes merge-strategy rules.")
 cli.add_typer(init.app,         name="init",        help="Initialise a new Muse repository.")
+
+# Identity & hub fabric
+cli.add_typer(auth.app,         name="auth",        help="Identity management — login as human or agent, inspect credentials.")
+cli.add_typer(hub.app,          name="hub",         help="MuseHub fabric — connect, inspect, and disconnect this repo from the hub.")
+cli.add_typer(config_cmd.app,   name="config",      help="Local repository configuration — show, get, set typed config values.")
 
 # Remote sync
 cli.add_typer(remote.app,       name="remote",      help="Manage remote repository connections (add, remove, rename, list).")

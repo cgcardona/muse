@@ -45,11 +45,12 @@ Error codes
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import urllib.error
 import urllib.request
-from typing import Protocol
+from typing import IO, Protocol
 
 from muse.core.pack import FetchRequest, ObjectPayload, PackBundle, PushResult, RemoteInfo
 from muse.core.store import CommitDict, SnapshotDict
@@ -58,6 +59,52 @@ from muse.domain import SemVerBump
 logger = logging.getLogger(__name__)
 
 _TIMEOUT_SECONDS = 60
+
+
+# ---------------------------------------------------------------------------
+# Security — redirect and scheme enforcement
+# ---------------------------------------------------------------------------
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Refuse all HTTP redirects.
+
+    ``urllib.request`` follows redirects by default, including across schemes
+    (HTTPS → HTTP) and across hosts.  If a server we contact redirects us:
+
+    - To HTTP: the ``Authorization: Bearer`` header would be sent in cleartext.
+    - To a different host: the token would be sent to an unintended recipient.
+
+    We refuse both.  The server must use the correct, stable URL.  If a
+    redirect is required during operations, it is always better to surface
+    it as a hard error so the operator can update the configured URL than to
+    silently follow it and leak credentials.
+    """
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: http.client.HTTPMessage,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        raise urllib.error.HTTPError(
+            req.full_url,
+            code,
+            (
+                f"Redirect refused ({code}): server tried to redirect to {newurl!r}. "
+                "Update the configured remote URL to the final destination."
+            ),
+            headers,
+            fp,
+        )
+
+
+# Build one opener that never follows redirects.  Used for every request
+# so that Authorization headers are never sent to an unintended recipient.
+_STRICT_OPENER = urllib.request.build_opener(_NoRedirectHandler())
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +206,14 @@ class HttpTransport:
         token: str | None,
         body_bytes: bytes | None = None,
     ) -> urllib.request.Request:
+        # Never send a bearer token over cleartext HTTP — the token would be
+        # visible to any network observer on the path.
+        if token and not url.startswith("https://"):
+            raise TransportError(
+                f"Refusing to send credentials to a non-HTTPS URL: {url!r}. "
+                "Ensure the remote URL uses https://.",
+                0,
+            )
         headers: dict[str, str] = {"Accept": "application/json"}
         if body_bytes is not None:
             headers["Content-Type"] = "application/json"
@@ -174,17 +229,21 @@ class HttpTransport:
     def _execute(self, req: urllib.request.Request) -> bytes:
         """Send *req* and return raw response bytes.
 
+        Uses :data:`_STRICT_OPENER` which refuses all HTTP redirects, ensuring
+        ``Authorization`` headers are never forwarded to an unintended host or
+        sent over a downgraded cleartext connection.
+
         Raises:
             :class:`TransportError` on non-2xx HTTP or any network error.
         """
         try:
-            with urllib.request.urlopen(req, timeout=_TIMEOUT_SECONDS) as resp:
+            with _STRICT_OPENER.open(req, timeout=_TIMEOUT_SECONDS) as resp:
                 body: bytes = resp.read()
             return body
         except urllib.error.HTTPError as exc:
             try:
                 err_body: str = exc.read().decode("utf-8", errors="replace")
-            except Exception:
+            except Exception:  # noqa: BLE001
                 err_body = ""
             raise TransportError(f"HTTP {exc.code}: {err_body[:400]}", exc.code) from exc
         except urllib.error.URLError as exc:
