@@ -1,20 +1,45 @@
 """Muse CLI configuration helpers.
 
-Reads and writes ``.muse/config.toml`` — the local repository configuration file.
+Reads and writes ``.muse/config.toml`` — the per-repository configuration
+file.  Credentials (bearer tokens) are **not** stored here; they live in
+``~/.muse/identity.toml`` managed by :mod:`muse.core.identity`.
 
-The config file supports:
-- ``[auth] token`` — bearer token for Muse Hub authentication (NEVER logged).
-- ``[remotes.<name>] url`` — remote Hub URL for push/pull sync.
-- ``[remotes.<name>] branch`` — upstream branch tracking for a remote.
-- ``[domain]`` — domain-specific key/value pairs; the active plugin reads these.
+Config schema
+-------------
+::
 
-Token lifecycle (MVP):
-  1. User obtains a token via ``POST /auth/token``.
-  2. User stores it in ``.muse/config.toml`` under ``[auth] token = "..."``
-  3. CLI commands that contact the Hub read the token here automatically.
+    [user]
+    name  = "Alice"        # display name (human or agent handle)
+    email = "a@example.com"
+    type  = "human"        # "human" | "agent"
 
-Security note: ``.muse/config.toml`` should be added to ``.gitignore`` to
-prevent the token from being committed to version control.
+    [hub]
+    url   = "https://musehub.ai"   # MuseHub fabric endpoint for this repo
+
+    [remotes.origin]
+    url    = "https://hub.muse.io/repos/my-repo"
+    branch = "main"
+
+    [domain]
+    # Domain-specific key/value pairs; read by the active domain plugin.
+    # ticks_per_beat = "480"
+
+Settable via ``muse config set``
+---------------------------------
+- ``user.name``, ``user.email``, ``user.type``
+- ``hub.url``  (alias: ``muse hub connect <url>``)
+- ``domain.*``
+
+Not settable via ``muse config set``
+--------------------------------------
+- ``remotes.*``  — use ``muse remote add/remove``
+- credentials    — use ``muse auth login``
+
+Token resolution
+----------------
+:func:`get_auth_token` reads the hub URL from this file, then resolves the
+bearer token from ``~/.muse/identity.toml`` via
+:func:`muse.core.identity.resolve_token`.  The token is **never** logged.
 """
 
 from __future__ import annotations
@@ -22,6 +47,7 @@ from __future__ import annotations
 import logging
 import pathlib
 import shutil
+import subprocess
 import tomllib
 from typing import TypedDict
 
@@ -36,10 +62,18 @@ _MUSE_DIR = ".muse"
 # ---------------------------------------------------------------------------
 
 
-class AuthEntry(TypedDict, total=False):
-    """``[auth]`` section in ``.muse/config.toml``."""
+class UserConfig(TypedDict, total=False):
+    """``[user]`` section in ``.muse/config.toml``."""
 
-    token: str
+    name: str
+    email: str
+    type: str   # "human" | "agent"
+
+
+class HubConfig(TypedDict, total=False):
+    """``[hub]`` section in ``.muse/config.toml``."""
+
+    url: str
 
 
 class RemoteEntry(TypedDict, total=False):
@@ -52,7 +86,8 @@ class RemoteEntry(TypedDict, total=False):
 class MuseConfig(TypedDict, total=False):
     """Structured view of the entire ``.muse/config.toml`` file."""
 
-    auth: AuthEntry
+    user: UserConfig
+    hub: HubConfig
     remotes: dict[str, RemoteEntry]
     domain: dict[str, str]
 
@@ -76,7 +111,7 @@ def _config_path(repo_root: pathlib.Path | None) -> pathlib.Path:
 
 
 def _load_config(config_path: pathlib.Path) -> MuseConfig:
-    """Load and parse config.toml; return an empty MuseConfig if absent or unreadable."""
+    """Load and parse config.toml; return an empty MuseConfig if absent."""
     if not config_path.is_file():
         return {}
 
@@ -89,13 +124,27 @@ def _load_config(config_path: pathlib.Path) -> MuseConfig:
 
     config: MuseConfig = {}
 
-    auth_raw = raw.get("auth")
-    if isinstance(auth_raw, dict):
-        auth: AuthEntry = {}
-        token_val = auth_raw.get("token")
-        if isinstance(token_val, str):
-            auth["token"] = token_val
-        config["auth"] = auth
+    user_raw = raw.get("user")
+    if isinstance(user_raw, dict):
+        user: UserConfig = {}
+        name_val = user_raw.get("name")
+        if isinstance(name_val, str):
+            user["name"] = name_val
+        email_val = user_raw.get("email")
+        if isinstance(email_val, str):
+            user["email"] = email_val
+        type_val = user_raw.get("type")
+        if isinstance(type_val, str):
+            user["type"] = type_val
+        config["user"] = user
+
+    hub_raw = raw.get("hub")
+    if isinstance(hub_raw, dict):
+        hub: HubConfig = {}
+        url_val = hub_raw.get("url")
+        if isinstance(url_val, str):
+            hub["url"] = url_val
+        config["hub"] = hub
 
     remotes_raw = raw.get("remotes")
     if isinstance(remotes_raw, dict):
@@ -103,9 +152,9 @@ def _load_config(config_path: pathlib.Path) -> MuseConfig:
         for name, remote_raw in remotes_raw.items():
             if isinstance(remote_raw, dict):
                 entry: RemoteEntry = {}
-                url_val = remote_raw.get("url")
-                if isinstance(url_val, str):
-                    entry["url"] = url_val
+                rurl = remote_raw.get("url")
+                if isinstance(rurl, str):
+                    entry["url"] = rurl
                 branch_val = remote_raw.get("branch")
                 if isinstance(branch_val, str):
                     entry["branch"] = branch_val
@@ -123,81 +172,352 @@ def _load_config(config_path: pathlib.Path) -> MuseConfig:
     return config
 
 
+def _escape(value: str) -> str:
+    """Escape a TOML string value (backslash and double-quote)."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _dump_toml(config: MuseConfig) -> str:
-    """Serialize a MuseConfig back to TOML text.
+    """Serialise a MuseConfig to TOML text.
 
-    Handles the subset of TOML used by .muse/config.toml:
-    - ``[auth]`` section with a ``token`` string.
-    - ``[remotes.<name>]`` sections with ``url`` and optional ``branch`` strings.
-
-    The ``[auth]`` section is always written first so the file is stable.
+    Section order: ``[user]``, ``[hub]``, ``[remotes.*]``, ``[domain]``.
     """
     lines: list[str] = []
 
-    auth = config.get("auth")
-    if auth:
-        lines.append("[auth]")
-        token = auth.get("token", "")
-        if token:
-            escaped = token.replace("\\", "\\\\").replace('"', '\\"')
-            lines.append(f'token = "{escaped}"')
+    user = config.get("user")
+    if user:
+        lines.append("[user]")
+        name = user.get("name", "")
+        if name:
+            lines.append(f'name = "{_escape(name)}"')
+        email = user.get("email", "")
+        if email:
+            lines.append(f'email = "{_escape(email)}"')
+        utype = user.get("type", "")
+        if utype:
+            lines.append(f'type = "{_escape(utype)}"')
+        lines.append("")
+
+    hub = config.get("hub")
+    if hub:
+        lines.append("[hub]")
+        url = hub.get("url", "")
+        if url:
+            lines.append(f'url = "{_escape(url)}"')
         lines.append("")
 
     remotes = config.get("remotes") or {}
     for remote_name in sorted(remotes):
         entry = remotes[remote_name]
         lines.append(f"[remotes.{remote_name}]")
-        url = entry.get("url", "")
-        if url:
-            escaped = url.replace("\\", "\\\\").replace('"', '\\"')
-            lines.append(f'url = "{escaped}"')
+        rurl = entry.get("url", "")
+        if rurl:
+            lines.append(f'url = "{_escape(rurl)}"')
         branch = entry.get("branch", "")
         if branch:
-            lines.append(f'branch = "{branch}"')
+            lines.append(f'branch = "{_escape(branch)}"')
+        lines.append("")
+
+    domain = config.get("domain") or {}
+    if domain:
+        lines.append("[domain]")
+        for key, val in sorted(domain.items()):
+            lines.append(f'{key} = "{_escape(val)}"')
         lines.append("")
 
     return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
-# Auth helpers
+# Auth token resolution (via identity store)
 # ---------------------------------------------------------------------------
 
 
 def get_auth_token(repo_root: pathlib.Path | None = None) -> str | None:
-    """Read ``[auth] token`` from ``.muse/config.toml``.
+    """Return the bearer token for this repository's configured hub.
 
-    Returns the token string if present and non-empty, or ``None`` if the
-    file does not exist, ``[auth]`` is absent, or ``token`` is empty/missing.
+    Reads the hub URL from ``[hub] url`` in ``.muse/config.toml``, then
+    resolves the token from ``~/.muse/identity.toml`` via
+    :func:`muse.core.identity.resolve_token`.
 
-    The token value is NEVER logged — log lines mask it as ``"Bearer ***"``.
+    Returns ``None`` when no hub is configured or no identity is stored for
+    that hub.  The token value is **never** logged.
 
     Args:
-        repo_root: Explicit repository root. Defaults to the current working
-                   directory. In tests, pass a ``tmp_path`` fixture value.
+        repo_root: Repository root. Defaults to ``Path.cwd()``.
 
     Returns:
-        The raw token string, or ``None``.
+        Bearer token string, or ``None``.
     """
-    config_path = _config_path(repo_root)
+    from muse.core.identity import resolve_token  # avoid circular import at module level
 
-    if not config_path.is_file():
-        logger.debug("⚠️ No %s found at %s", _CONFIG_FILENAME, config_path)
+    hub_url = get_hub_url(repo_root)
+    if hub_url is None:
+        logger.debug("⚠️ No hub configured — skipping auth token lookup")
         return None
 
-    config = _load_config(config_path)
-    auth = config.get("auth")
-    if auth is None:
-        logger.debug("⚠️ [auth] section missing in %s", config_path)
+    token = resolve_token(hub_url)
+    if token is None:
+        logger.debug("⚠️ No identity for hub %s — run `muse auth login`", hub_url)
         return None
 
-    token = auth.get("token", "")
-    if not token.strip():
-        logger.debug("⚠️ [auth] token missing or empty in %s", config_path)
+    logger.debug("✅ Auth token resolved for hub %s (Bearer ***)", hub_url)
+    return token
+
+
+# ---------------------------------------------------------------------------
+# Hub helpers
+# ---------------------------------------------------------------------------
+
+
+def get_hub_url(repo_root: pathlib.Path | None = None) -> str | None:
+    """Return the hub URL from ``[hub] url``, or ``None`` if not configured.
+
+    Args:
+        repo_root: Repository root. Defaults to ``Path.cwd()``.
+
+    Returns:
+        URL string, or ``None``.
+    """
+    config = _load_config(_config_path(repo_root))
+    hub = config.get("hub")
+    if hub is None:
+        return None
+    url = hub.get("url", "")
+    return url.strip() if url.strip() else None
+
+
+def set_hub_url(url: str, repo_root: pathlib.Path | None = None) -> None:
+    """Write ``[hub] url`` to ``.muse/config.toml``.
+
+    Preserves all other sections. Creates the config file if absent.
+
+    Args:
+        url: Hub URL (e.g. ``"https://musehub.ai"``).
+        repo_root: Repository root. Defaults to ``Path.cwd()``.
+    """
+    cp = _config_path(repo_root)
+    cp.parent.mkdir(parents=True, exist_ok=True)
+    config = _load_config(cp)
+    config["hub"] = HubConfig(url=url)
+    cp.write_text(_dump_toml(config), encoding="utf-8")
+    logger.info("✅ Hub URL set to %s", url)
+
+
+def clear_hub_url(repo_root: pathlib.Path | None = None) -> None:
+    """Remove the ``[hub]`` section from ``.muse/config.toml``.
+
+    Args:
+        repo_root: Repository root. Defaults to ``Path.cwd()``.
+    """
+    cp = _config_path(repo_root)
+    config = _load_config(cp)
+    if "hub" in config:
+        del config["hub"]
+    cp.write_text(_dump_toml(config), encoding="utf-8")
+    logger.info("✅ Hub disconnected")
+
+
+# ---------------------------------------------------------------------------
+# User config helpers
+# ---------------------------------------------------------------------------
+
+
+def get_user_config(repo_root: pathlib.Path | None = None) -> UserConfig:
+    """Return the ``[user]`` section, or an empty UserConfig if absent."""
+    config = _load_config(_config_path(repo_root))
+    return config.get("user") or {}
+
+
+def set_user_field(key: str, value: str, repo_root: pathlib.Path | None = None) -> None:
+    """Set a single ``[user]`` field by name.
+
+    Allowed keys: ``name``, ``email``, ``type``.
+
+    Args:
+        key: Field name within ``[user]``.
+        value: New value.
+        repo_root: Repository root. Defaults to ``Path.cwd()``.
+
+    Raises:
+        ValueError: If *key* is not a recognised user config field.
+    """
+    if key not in {"name", "email", "type"}:
+        raise ValueError(f"Unknown [user] config key: {key!r}. Valid keys: name, email, type")
+    cp = _config_path(repo_root)
+    cp.parent.mkdir(parents=True, exist_ok=True)
+    config = _load_config(cp)
+    user: UserConfig = config.get("user") or {}
+    if key == "name":
+        user["name"] = value
+    elif key == "email":
+        user["email"] = value
+    elif key == "type":
+        user["type"] = value
+    config["user"] = user
+    cp.write_text(_dump_toml(config), encoding="utf-8")
+    logger.info("✅ user.%s = %r", key, value)
+
+
+# ---------------------------------------------------------------------------
+# Generic dotted-key helpers
+# ---------------------------------------------------------------------------
+
+_BLOCKED_NAMESPACES: dict[str, str] = {
+    "auth": "Use `muse auth login` to manage credentials.",
+    "remotes": "Use `muse remote add/remove/rename` to manage remotes.",
+}
+
+_SETTABLE_NAMESPACES = {"user", "hub", "domain"}
+
+
+def get_config_value(key: str, repo_root: pathlib.Path | None = None) -> str | None:
+    """Get a config value by dotted key (e.g. ``user.name``, ``hub.url``).
+
+    Returns ``None`` when the key is not set or the namespace is unknown.
+
+    Args:
+        key: Dotted key in ``<namespace>.<subkey>`` form.
+        repo_root: Repository root. Defaults to ``Path.cwd()``.
+
+    Returns:
+        String value, or ``None``.
+    """
+    parts = key.split(".", 1)
+    if len(parts) != 2:
+        return None
+    namespace, subkey = parts
+    config = _load_config(_config_path(repo_root))
+
+    if namespace == "user":
+        user = config.get("user") or {}
+        if subkey == "name":
+            return user.get("name")
+        if subkey == "email":
+            return user.get("email")
+        if subkey == "type":
+            return user.get("type")
         return None
 
-    logger.debug("✅ Auth token loaded from %s (Bearer ***)", config_path)
-    return token.strip()
+    if namespace == "hub":
+        hub = config.get("hub") or {}
+        if subkey == "url":
+            return hub.get("url")
+        return None
+
+    if namespace == "domain":
+        domain = config.get("domain") or {}
+        return domain.get(subkey)
+
+    return None
+
+
+def set_config_value(key: str, value: str, repo_root: pathlib.Path | None = None) -> None:
+    """Set a config value by dotted key (e.g. ``user.name``, ``domain.ticks_per_beat``).
+
+    Args:
+        key: Dotted key in ``<namespace>.<subkey>`` form.
+        value: New string value.
+        repo_root: Repository root. Defaults to ``Path.cwd()``.
+
+    Raises:
+        ValueError: If the namespace is blocked, unknown, or the subkey is invalid.
+    """
+    parts = key.split(".", 1)
+    if len(parts) != 2:
+        raise ValueError(f"Key must be in 'namespace.subkey' form, got: {key!r}")
+    namespace, subkey = parts
+
+    if namespace in _BLOCKED_NAMESPACES:
+        raise ValueError(_BLOCKED_NAMESPACES[namespace])
+
+    if namespace not in _SETTABLE_NAMESPACES:
+        raise ValueError(
+            f"Unknown config namespace {namespace!r}. "
+            f"Settable namespaces: {', '.join(sorted(_SETTABLE_NAMESPACES))}"
+        )
+
+    cp = _config_path(repo_root)
+    cp.parent.mkdir(parents=True, exist_ok=True)
+    config = _load_config(cp)
+
+    if namespace == "user":
+        set_user_field(subkey, value, repo_root)
+        return
+
+    if namespace == "hub":
+        if subkey != "url":
+            raise ValueError(f"Unknown [hub] config key: {subkey!r}. Valid keys: url")
+        hub: HubConfig = config.get("hub") or {}
+        hub["url"] = value
+        config["hub"] = hub
+        cp.write_text(_dump_toml(config), encoding="utf-8")
+        logger.info("✅ hub.url = %r", value)
+        return
+
+    # namespace == "domain"
+    domain: dict[str, str] = config.get("domain") or {}
+    domain[subkey] = value
+    config["domain"] = domain
+    cp.write_text(_dump_toml(config), encoding="utf-8")
+    logger.info("✅ domain.%s = %r", subkey, value)
+
+
+def config_as_dict(repo_root: pathlib.Path | None = None) -> dict[str, dict[str, str]]:
+    """Return the full config as a plain ``dict[str, dict[str, str]]`` for JSON output.
+
+    Credentials are never included — the hub section only contains the URL.
+
+    Args:
+        repo_root: Repository root. Defaults to ``Path.cwd()``.
+
+    Returns:
+        Nested dict suitable for ``json.dumps``.
+    """
+    config = _load_config(_config_path(repo_root))
+    result: dict[str, dict[str, str]] = {}
+
+    user = config.get("user")
+    if user:
+        user_dict: dict[str, str] = {}
+        uname = user.get("name")
+        if uname:
+            user_dict["name"] = uname
+        uemail = user.get("email")
+        if uemail:
+            user_dict["email"] = uemail
+        utype = user.get("type")
+        if utype:
+            user_dict["type"] = utype
+        if user_dict:
+            result["user"] = user_dict
+
+    hub = config.get("hub")
+    if hub:
+        hub_url = hub.get("url", "")
+        if hub_url:
+            result["hub"] = {"url": hub_url}
+
+    remotes = config.get("remotes") or {}
+    if remotes:
+        remotes_dict: dict[str, str] = {}
+        for rname, entry in sorted(remotes.items()):
+            url = entry.get("url", "")
+            if url:
+                remotes_dict[rname] = url
+        if remotes_dict:
+            result["remotes"] = remotes_dict
+
+    domain = config.get("domain") or {}
+    if domain:
+        result["domain"] = dict(sorted(domain.items()))
+
+    return result
+
+
+def config_path_for_editor(repo_root: pathlib.Path | None = None) -> pathlib.Path:
+    """Return the config path for the ``config edit`` command."""
+    return _config_path(repo_root)
 
 
 # ---------------------------------------------------------------------------
@@ -206,10 +526,7 @@ def get_auth_token(repo_root: pathlib.Path | None = None) -> str | None:
 
 
 def get_remote(name: str, repo_root: pathlib.Path | None = None) -> str | None:
-    """Return the URL for remote *name* from ``[remotes.<name>] url``.
-
-    Returns ``None`` when the config file is absent or the named remote has
-    not been configured. Never raises — callers decide what to do on miss.
+    """Return the URL for remote *name*, or ``None`` when not configured.
 
     Args:
         name: Remote name (e.g. ``"origin"``).
@@ -234,21 +551,18 @@ def set_remote(
     url: str,
     repo_root: pathlib.Path | None = None,
 ) -> None:
-    """Write ``[remotes.<name>] url = "<url>"`` to ``.muse/config.toml``.
+    """Write ``[remotes.<name>] url`` to ``.muse/config.toml``.
 
-    Preserves all other sections already in the config file. Creates the
-    ``.muse/`` directory and ``config.toml`` if they do not exist.
+    Preserves all other sections. Creates the file if absent.
 
     Args:
         name: Remote name (e.g. ``"origin"``).
-        url: Remote URL (e.g. ``"https://vcs.example.com/repos/my-repo"``).
+        url: Remote URL.
         repo_root: Repository root. Defaults to ``Path.cwd()``.
     """
-    config_path = _config_path(repo_root)
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-
-    config = _load_config(config_path)
-
+    cp = _config_path(repo_root)
+    cp.parent.mkdir(parents=True, exist_ok=True)
+    config = _load_config(cp)
     existing_remotes = config.get("remotes")
     remotes: dict[str, RemoteEntry] = {}
     if existing_remotes:
@@ -263,8 +577,7 @@ def set_remote(
     entry["url"] = url
     remotes[name] = entry
     config["remotes"] = remotes
-
-    config_path.write_text(_dump_toml(config), encoding="utf-8")
+    cp.write_text(_dump_toml(config), encoding="utf-8")
     logger.info("✅ Remote %r set to %s", name, url)
 
 
@@ -272,31 +585,23 @@ def remove_remote(
     name: str,
     repo_root: pathlib.Path | None = None,
 ) -> None:
-    """Remove a named remote and all its tracking refs from ``.muse/``.
-
-    Deletes ``[remotes.<name>]`` from ``config.toml`` and removes the entire
-    ``.muse/remotes/<name>/`` directory tree (tracking head files). Raises
-    ``KeyError`` when the remote does not exist so callers can surface a clear
-    error message to the user.
+    """Remove a named remote and its tracking refs.
 
     Args:
-        name: Remote name to remove (e.g. ``"origin"``).
+        name: Remote name to remove.
         repo_root: Repository root. Defaults to ``Path.cwd()``.
 
     Raises:
         KeyError: If *name* is not a configured remote.
     """
-    config_path = _config_path(repo_root)
-    config = _load_config(config_path)
-
+    cp = _config_path(repo_root)
+    config = _load_config(cp)
     remotes = config.get("remotes")
     if remotes is None or name not in remotes:
         raise KeyError(name)
-
     del remotes[name]
     config["remotes"] = remotes
-
-    config_path.write_text(_dump_toml(config), encoding="utf-8")
+    cp.write_text(_dump_toml(config), encoding="utf-8")
     logger.info("✅ Remote %r removed from config", name)
 
     root = (repo_root or pathlib.Path.cwd()).resolve()
@@ -311,12 +616,7 @@ def rename_remote(
     new_name: str,
     repo_root: pathlib.Path | None = None,
 ) -> None:
-    """Rename a remote in ``.muse/config.toml`` and move its tracking refs.
-
-    Updates ``[remotes.<old_name>]`` → ``[remotes.<new_name>]`` in config and
-    moves ``.muse/remotes/<old_name>/`` → ``.muse/remotes/<new_name>/``.
-    Raises ``KeyError`` when *old_name* does not exist. Raises ``ValueError``
-    when *new_name* is already configured.
+    """Rename a remote and move its tracking refs.
 
     Args:
         old_name: Current remote name.
@@ -325,21 +625,18 @@ def rename_remote(
 
     Raises:
         KeyError: If *old_name* is not a configured remote.
-        ValueError: If *new_name* already exists as a remote.
+        ValueError: If *new_name* is already configured.
     """
-    config_path = _config_path(repo_root)
-    config = _load_config(config_path)
-
+    cp = _config_path(repo_root)
+    config = _load_config(cp)
     remotes = config.get("remotes")
     if remotes is None or old_name not in remotes:
         raise KeyError(old_name)
     if new_name in remotes:
         raise ValueError(new_name)
-
     remotes[new_name] = remotes.pop(old_name)
     config["remotes"] = remotes
-
-    config_path.write_text(_dump_toml(config), encoding="utf-8")
+    cp.write_text(_dump_toml(config), encoding="utf-8")
     logger.info("✅ Remote %r renamed to %r", old_name, new_name)
 
     root = (repo_root or pathlib.Path.cwd()).resolve()
@@ -351,10 +648,7 @@ def rename_remote(
 
 
 def list_remotes(repo_root: pathlib.Path | None = None) -> list[RemoteConfig]:
-    """Return all configured remotes as :class:`RemoteConfig` dicts.
-
-    Returns an empty list when the config file is absent or contains no
-    ``[remotes.*]`` sections. Sorted alphabetically by remote name.
+    """Return all configured remotes sorted alphabetically by name.
 
     Args:
         repo_root: Repository root. Defaults to ``Path.cwd()``.
@@ -366,14 +660,12 @@ def list_remotes(repo_root: pathlib.Path | None = None) -> list[RemoteConfig]:
     remotes = config.get("remotes")
     if remotes is None:
         return []
-
     result: list[RemoteConfig] = []
     for remote_name in sorted(remotes):
         entry = remotes[remote_name]
         url = entry.get("url", "")
         if url.strip():
             result.append(RemoteConfig(name=remote_name, url=url.strip()))
-
     return result
 
 
@@ -387,11 +679,7 @@ def _remote_head_path(
     branch: str,
     repo_root: pathlib.Path | None = None,
 ) -> pathlib.Path:
-    """Return the path to the remote tracking pointer file.
-
-    The file lives at ``.muse/remotes/<remote_name>/<branch>`` and contains
-    the last known commit_id on that remote branch.
-    """
+    """Return the path to the remote tracking pointer file."""
     root = (repo_root or pathlib.Path.cwd()).resolve()
     return root / _MUSE_DIR / "remotes" / remote_name / branch
 
@@ -403,8 +691,7 @@ def get_remote_head(
 ) -> str | None:
     """Return the last-known remote commit ID for *remote_name*/*branch*.
 
-    Returns ``None`` when the tracking pointer file does not exist (i.e. this
-    branch has never been pushed/pulled).
+    Returns ``None`` when the tracking pointer does not exist.
 
     Args:
         remote_name: Remote name (e.g. ``"origin"``).
@@ -429,11 +716,9 @@ def set_remote_head(
 ) -> None:
     """Write the remote tracking pointer for *remote_name*/*branch*.
 
-    Creates the ``.muse/remotes/<remote_name>/`` directory if needed.
-
     Args:
         remote_name: Remote name (e.g. ``"origin"``).
-        branch: Branch name (e.g. ``"main"``).
+        branch: Branch name.
         commit_id: Commit ID to record as the known remote HEAD.
         repo_root: Repository root. Defaults to ``Path.cwd()``.
     """
@@ -455,20 +740,14 @@ def set_upstream(
 ) -> None:
     """Record *remote_name* as the upstream remote for *branch*.
 
-    Writes ``branch = "<branch>"`` under ``[remotes.<remote_name>]`` in
-    ``.muse/config.toml``. This mirrors the git ``--set-upstream`` behaviour:
-    the local branch knows which remote branch to track for future push/pull.
-
     Args:
-        branch: Local (and remote) branch name (e.g. ``"main"``).
-        remote_name: Remote name (e.g. ``"origin"``).
+        branch: Local (and remote) branch name.
+        remote_name: Remote name.
         repo_root: Repository root. Defaults to ``Path.cwd()``.
     """
-    config_path = _config_path(repo_root)
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-
-    config = _load_config(config_path)
-
+    cp = _config_path(repo_root)
+    cp.parent.mkdir(parents=True, exist_ok=True)
+    config = _load_config(cp)
     existing_remotes = config.get("remotes")
     remotes: dict[str, RemoteEntry] = {}
     if existing_remotes:
@@ -483,8 +762,7 @@ def set_upstream(
     entry["branch"] = branch
     remotes[remote_name] = entry
     config["remotes"] = remotes
-
-    config_path.write_text(_dump_toml(config), encoding="utf-8")
+    cp.write_text(_dump_toml(config), encoding="utf-8")
     logger.info("✅ Upstream for branch %r set to %s/%r", branch, remote_name, branch)
 
 
@@ -494,25 +772,19 @@ def get_upstream(
 ) -> str | None:
     """Return the configured upstream remote name for *branch*, or ``None``.
 
-    Reads ``branch`` under every ``[remotes.*]`` section and returns the first
-    remote whose ``branch`` value matches *branch*.
-
     Args:
-        branch: Local branch name (e.g. ``"main"``).
+        branch: Local branch name.
         repo_root: Repository root. Defaults to ``Path.cwd()``.
 
     Returns:
-        Remote name string (e.g. ``"origin"``), or ``None`` when no upstream
-        is configured for *branch*.
+        Remote name string, or ``None``.
     """
     config = _load_config(_config_path(repo_root))
     remotes = config.get("remotes")
     if remotes is None:
         return None
-
     for rname, entry in remotes.items():
         tracked = entry.get("branch", "")
         if tracked.strip() == branch:
             return rname
-
     return None
