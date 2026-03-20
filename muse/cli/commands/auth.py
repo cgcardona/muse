@@ -207,7 +207,11 @@ def login(
     if identity_id:
         entry["id"] = identity_id
 
-    save_identity(hub_url, entry)
+    try:
+        save_identity(hub_url, entry)
+    except OSError as exc:
+        typer.echo(f"❌ Could not write credentials: {exc}")
+        raise typer.Exit(code=ExitCode.INTERNAL_ERROR) from exc
 
     display_name = name or "<unnamed>"
     typer.echo(

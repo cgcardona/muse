@@ -41,11 +41,19 @@ TOML with one section per hub hostname::
     token        = "eyJ..."
     capabilities = ["read:*", "write:midi", "commit"]
 
-Security
---------
-The file is created with mode 0o600 (user-readable only).  It is never
-read or written as part of a repository snapshot.  Every log call that
-references a token masks it as ``"Bearer ***"``.
+Security model
+--------------
+- ``~/.muse/`` is created with mode 0o700 (user-only directory).
+- ``~/.muse/identity.toml`` is written with mode 0o600 **from the first
+  byte** — using ``os.open()`` + ``os.fchmod()`` before any data is written,
+  eliminating the TOCTOU window that ``write_text()`` + ``chmod()`` creates.
+- Writes are atomic: data goes to a temp file in the same directory, then
+  ``os.replace()`` renames it over the target.  A kill signal during write
+  leaves the old file intact, never a partial file.
+- Symlink guard: if the target path is already a symlink, write is refused.
+  This blocks symlink-based credential-overwrite attacks.
+- All log calls that reference a token mask it as ``"Bearer ***"``.
+- The file is never read or written as part of a repository snapshot.
 """
 
 from __future__ import annotations
@@ -54,6 +62,7 @@ import logging
 import os
 import pathlib
 import stat
+import tempfile
 import tomllib
 from typing import TypedDict
 
@@ -114,35 +123,39 @@ def _hostname_from_url(url: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _toml_escape(value: str) -> str:
+    """Escape a string value for embedding in a TOML double-quoted string."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _dump_identity(identities: dict[str, IdentityEntry]) -> str:
     """Serialise a hostname → entry mapping to TOML text.
 
     All hostnames are quoted in the section header so that dotted names
     (e.g. ``musehub.ai``) are treated as literal keys, not nested tables.
+    All string values are TOML-escaped to prevent injection.
     """
     lines: list[str] = []
     for hostname in sorted(identities):
         entry = identities[hostname]
         # Always quote the section key — dotted names are literal, not nested.
-        escaped_host = hostname.replace("\\", "\\\\").replace('"', '\\"')
-        lines.append(f'["{escaped_host}"]')
+        lines.append(f'["{_toml_escape(hostname)}"]')
         t = entry.get("type", "")
         if t:
-            lines.append(f'type = "{t}"')
+            lines.append(f'type = "{_toml_escape(t)}"')
         name = entry.get("name", "")
         if name:
-            escaped_name = name.replace("\\", "\\\\").replace('"', '\\"')
-            lines.append(f'name = "{escaped_name}"')
+            lines.append(f'name = "{_toml_escape(name)}"')
         identity_id = entry.get("id", "")
         if identity_id:
-            lines.append(f'id = "{identity_id}"')
+            lines.append(f'id = "{_toml_escape(identity_id)}"')
         token = entry.get("token", "")
         if token:
-            escaped_tok = token.replace("\\", "\\\\").replace('"', '\\"')
-            lines.append(f'token = "{escaped_tok}"')
+            lines.append(f'token = "{_toml_escape(token)}"')
         caps = entry.get("capabilities") or []
         if caps:
-            caps_str = ", ".join(f'"{c}"' for c in caps)
+            # Each capability string is individually escaped.
+            caps_str = ", ".join(f'"{_toml_escape(c)}"' for c in caps)
             lines.append(f"capabilities = [{caps_str}]")
         lines.append("")
     return "\n".join(lines)
@@ -190,15 +203,55 @@ def _load_all(path: pathlib.Path) -> dict[str, IdentityEntry]:
 
 
 def _save_all(identities: dict[str, IdentityEntry], path: pathlib.Path) -> None:
-    """Write *identities* to *path* with mode 0o600."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    text = _dump_identity(identities)
-    path.write_text(text, encoding="utf-8")
-    # Restrict to user-readable only — tokens must not be group/world readable.
+    """Write *identities* to *path* securely.
+
+    Security guarantees
+    -------------------
+    1. **Symlink guard** — refuses to write if *path* is already a symlink,
+       preventing an attacker from pre-placing a symlink to a file they want
+       overwritten.
+    2. **0o700 directory** — ``~/.muse/`` is restricted to the owner so other
+       local users cannot list or traverse it.
+    3. **0o600 from byte zero** — the temp file is ``fchmod``-ed to 0o600
+       *before* any data is written, eliminating the TOCTOU window that
+       ``write_text()`` + ``chmod()`` creates.
+    4. **Atomic rename** — ``os.replace()`` swaps the temp file over the
+       target atomically; a kill signal during write leaves the old file intact.
+    """
+    dir_path = path.parent
+
+    # 1. Create ~/.muse/ with owner-only permissions (0o700).
+    dir_path.mkdir(parents=True, exist_ok=True)
     try:
-        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+        os.chmod(dir_path, stat.S_IRWXU)  # 0o700
     except OSError as exc:
-        logger.warning("⚠️ Could not restrict permissions on %s: %s", path, exc)
+        logger.warning("⚠️ Could not set permissions on %s: %s", dir_path, exc)
+
+    # 2. Symlink guard — never follow a symlink placed at the target path.
+    if path.is_symlink():
+        raise OSError(
+            f"Security: {path} is a symlink. "
+            "Refusing to write credentials to a symlink target."
+        )
+
+    text = _dump_identity(identities)
+
+    # 3. Write to a temp file in the same directory (same fs → atomic rename).
+    #    Set 0o600 via fchmod *before* writing any data.
+    fd, tmp_path_str = tempfile.mkstemp(dir=dir_path, prefix=".identity-tmp-")
+    tmp_path = pathlib.Path(tmp_path_str)
+    try:
+        os.fchmod(fd, stat.S_IRUSR | stat.S_IWUSR)  # 0o600 before any data
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        # 4. Atomic rename — old file stays intact if we crash before this.
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 # ---------------------------------------------------------------------------

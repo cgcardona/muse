@@ -49,10 +49,30 @@ _CONNECT_TIMEOUT = 8  # seconds for ping/status health check
 
 
 def _normalise_url(url: str) -> str:
-    """Ensure *url* has an https:// scheme if no scheme is present."""
+    """Normalise *url* to an https:// URL.
+
+    Adds ``https://`` when no scheme is present.  Raises ``ValueError`` when
+    an explicit ``http://`` scheme is given — sending a bearer token over
+    cleartext HTTP is never acceptable.
+
+    Args:
+        url: Raw user-supplied URL.
+
+    Returns:
+        Normalised ``https://`` URL without a trailing slash.
+
+    Raises:
+        ValueError: If the URL explicitly uses the ``http://`` scheme.
+    """
     stripped = url.strip().rstrip("/")
     if not stripped.startswith(("http://", "https://")):
         stripped = f"https://{stripped}"
+    if stripped.startswith("http://"):
+        host = stripped[len("http://"):]
+        raise ValueError(
+            f"Insecure URL rejected: {stripped!r}\n"
+            f"MuseHub requires HTTPS. Did you mean: https://{host}"
+        )
     return stripped
 
 
@@ -117,7 +137,11 @@ def connect(
         typer.echo("❌ Not inside a Muse repository. Run `muse init` first.")
         raise typer.Exit(code=ExitCode.REPO_NOT_FOUND)
 
-    normalised = _normalise_url(url)
+    try:
+        normalised = _normalise_url(url)
+    except ValueError as exc:
+        typer.echo(f"❌ {exc}")
+        raise typer.Exit(code=ExitCode.USER_ERROR) from exc
     hostname = _hub_hostname(normalised)
 
     # Check for an existing connection and warn before overwriting.
@@ -127,7 +151,8 @@ def connect(
         typer.echo(
             f"⚠️  This repo was connected to {existing_host}.\n"
             f"   Switching to {hostname}.\n"
-            f"   To keep the old credentials, run: muse auth logout --hub {existing_host}"
+            f"   Your credentials for {existing_host} remain in ~/.muse/identity.toml.\n"
+            f"   To remove them: muse auth logout --hub {existing_host}"
         )
 
     set_hub_url(normalised, root)
