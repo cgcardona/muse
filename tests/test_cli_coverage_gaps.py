@@ -21,7 +21,7 @@ def repo(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Pat
 
 
 def _write(repo: pathlib.Path, filename: str, content: str = "data") -> None:
-    (repo / "state" / filename).write_text(content)
+    (repo / filename).write_text(content)
 
 
 def _commit(msg: str = "commit") -> str | None:
@@ -71,8 +71,8 @@ class TestCheckoutGaps:
         runner.invoke(cli, ["commit", "-m", "second"])
 
         runner.invoke(cli, ["checkout", first_id])
-        assert (repo / "state" / "beat.mid").exists()
-        assert not (repo / "state" / "lead.mid").exists()
+        assert (repo / "beat.mid").exists()
+        assert not (repo / "lead.mid").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -129,12 +129,11 @@ class TestCommitGaps:
         result = runner.invoke(cli, ["commit"])
         assert result.exit_code != 0
 
-    def test_no_muse_work_dir_errors(self, repo: pathlib.Path) -> None:
-        import shutil
-        shutil.rmtree(repo / "state")
-        result = runner.invoke(cli, ["commit", "-m", "no workdir"])
+    def test_empty_repo_without_allow_empty_errors(self, repo: pathlib.Path) -> None:
+        # Working tree IS the repo root — always exists. An empty tree without
+        # --allow-empty should exit non-zero (nothing tracked to commit).
+        result = runner.invoke(cli, ["commit", "-m", "nothing here"])
         assert result.exit_code != 0
-        assert "state" in result.output
 
     def test_empty_workdir_without_allow_empty_errors(self, repo: pathlib.Path) -> None:
         result = runner.invoke(cli, ["commit", "-m", "empty"])
@@ -225,10 +224,10 @@ class TestStashGaps:
         _write(repo, "unsaved.mid", "wip")
 
         runner.invoke(cli, ["stash"])
-        assert not (repo / "state" / "unsaved.mid").exists()
+        assert not (repo / "unsaved.mid").exists()
 
         runner.invoke(cli, ["stash", "pop"])
-        assert (repo / "state" / "unsaved.mid").exists()
+        assert (repo / "unsaved.mid").exists()
 
     def test_stash_drop_removes_entry(self, repo: pathlib.Path) -> None:
         _write(repo, "beat.mid")

@@ -175,17 +175,15 @@ def add_worktree(
     if not branch_ref.exists():
         raise ValueError(f"Branch '{branch}' does not exist.")
 
-    # Create the worktree directory.
+    # Create the worktree directory — its root IS the working tree.
     wt_dir.mkdir(parents=True)
-    state_dir = wt_dir / "state"
-    state_dir.mkdir()
 
     # Write the worktree HEAD file.
     head_path = _worktree_head_path(repo_root, name)
     head_path.parent.mkdir(parents=True, exist_ok=True)
     head_path.write_text(f"refs/heads/{branch}\n", encoding="utf-8")
 
-    # Populate state/ from the branch snapshot.
+    # Populate the worktree from the branch snapshot.
     repo_json = json.loads((repo_root / ".muse" / "repo.json").read_text())
     commit_id = get_head_commit_id(repo_root, branch)
     if commit_id:
@@ -198,7 +196,7 @@ def add_worktree(
             if snap:
                 for rel_path, object_id in snap.manifest.items():
                     try:
-                        dest = contain_path(state_dir, rel_path)
+                        dest = contain_path(wt_dir, rel_path)
                     except ValueError as exc:
                         logger.warning("⚠️ Skipping unsafe path %r: %s", rel_path, exc)
                         continue

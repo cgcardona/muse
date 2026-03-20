@@ -79,7 +79,7 @@ def repo(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Pat
 @pytest.fixture
 def code_repo(repo: pathlib.Path) -> pathlib.Path:
     """Repo with two Python commits for analysis commands."""
-    work = repo / "state"
+    work = repo
     # Commit 1 — define compute_total and Invoice class.
     (work / "billing.py").write_text(textwrap.dedent("""\
         class Invoice:
@@ -853,7 +853,7 @@ class TestPatch:
             def send_email(address):
                 return f"Sending to {address}"
         """)
-        impl_file = code_repo / "state" / "send_email_impl.py"
+        impl_file = code_repo / "send_email_impl.py"
         impl_file.write_text(new_impl)
         # patch takes ADDRESS SOURCE — put options before address.
         result = runner.invoke(cli, [
@@ -863,7 +863,7 @@ class TestPatch:
 
     def test_patch_syntax_error_rejected(self, code_repo: pathlib.Path) -> None:
         bad_impl = "def broken(\n    not valid python at all{"
-        bad_file = code_repo / "state" / "bad.py"
+        bad_file = code_repo / "bad.py"
         bad_file.write_text(bad_impl)
         result = runner.invoke(cli, [
             "code", "patch", "--", "billing.py::send_email", str(bad_file),

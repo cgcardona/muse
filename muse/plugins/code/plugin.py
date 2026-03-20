@@ -14,7 +14,7 @@ Two commits that rename a function produce a ``ReplaceOp`` annotated
 
 Live State
 ----------
-``LiveState`` is either a ``pathlib.Path`` pointing to ``state/`` or a
+``LiveState`` is either a ``pathlib.Path`` pointing to the repository root or a
 ``SnapshotManifest`` dict.  The path form is used by the CLI; the dict form
 is used by in-memory merge and diff operations.
 
@@ -164,14 +164,14 @@ class CodePlugin:
     # ------------------------------------------------------------------
 
     def snapshot(self, live_state: LiveState) -> StateSnapshot:
-        """Capture the current ``state/`` directory as a snapshot dict.
+        """Capture the current working tree as a snapshot dict.
 
         Walks all regular files under *live_state*, hashing each one with
         SHA-256 (raw bytes).  Honours ``.museignore`` and always ignores
         known tool-generated directories (``__pycache__``, ``.git``, etc.).
 
         Args:
-            live_state: A ``pathlib.Path`` pointing to ``state/``, or an
+            live_state: A ``pathlib.Path`` pointing to the repository root, or an
                         existing ``SnapshotManifest`` dict (returned as-is).
 
         Returns:
@@ -182,13 +182,17 @@ class CodePlugin:
             return live_state
 
         workdir = live_state
-        # .museignore lives in the repo root (parent of state/).
-        repo_root = workdir.parent
+        # workdir IS the repository root; .museignore lives here.
+        repo_root = workdir
         patterns = resolve_patterns(load_ignore_config(repo_root), _DOMAIN_NAME)
 
         files: dict[str, str] = {}
         for p in sorted(workdir.rglob("*")):
             if not p.is_file():
+                continue
+            rel_parts = p.relative_to(workdir).parts
+            # Skip hidden files and files inside hidden directories (e.g. .muse/).
+            if any(part.startswith(".") for part in rel_parts):
                 continue
             # Skip always-ignored directories by checking path parts.
             if any(part in _ALWAYS_IGNORE_DIRS for part in p.parts):

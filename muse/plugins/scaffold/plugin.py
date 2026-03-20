@@ -97,20 +97,23 @@ class ScaffoldPlugin:
 
         Note:
             ``.museignore`` contract — ``.museignore`` lives in the repository
-            root (the parent of ``state/``).  Global patterns and patterns
+            root (the working tree root).  Global patterns and patterns
             under ``[domain.<name>]`` matching this plugin's domain are applied.
         """
         if isinstance(live_state, pathlib.Path):
             from muse.core.ignore import is_ignored, load_ignore_config, resolve_patterns
 
             workdir = live_state
-            repo_root = workdir.parent
+            repo_root = workdir
             patterns = resolve_patterns(load_ignore_config(repo_root), _DOMAIN_NAME)
             files: dict[str, str] = {}
             for p in sorted(workdir.rglob(_FILE_GLOB)):
                 if not p.is_file():
                     continue
                 rel = p.relative_to(workdir).as_posix()
+                # Skip hidden files and any file inside a hidden directory.
+                if any(part.startswith(".") for part in pathlib.Path(rel).parts):
+                    continue
                 if is_ignored(rel, patterns):
                     continue
                 raw = p.read_bytes()

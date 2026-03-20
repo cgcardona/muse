@@ -154,7 +154,7 @@ def invert(
         return
 
     midi_bytes = notes_to_midi_bytes(inverted, tpb)
-    workdir = root / "state"
+    workdir = root
     try:
         work_path = contain_path(workdir, track)
     except ValueError as exc:

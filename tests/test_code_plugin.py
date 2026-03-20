@@ -745,24 +745,21 @@ class TestCodePluginSnapshot:
     plugin = CodePlugin()
 
     def test_path_returns_manifest(self, tmp_path: pathlib.Path) -> None:
-        workdir = tmp_path / "state"
-        workdir.mkdir()
+        workdir = tmp_path
         (workdir / "app.py").write_text("x = 1\n")
         snap = self.plugin.snapshot(workdir)
         assert snap["domain"] == "code"
         assert "app.py" in snap["files"]
 
     def test_snapshot_stability(self, tmp_path: pathlib.Path) -> None:
-        workdir = tmp_path / "state"
-        workdir.mkdir()
+        workdir = tmp_path
         (workdir / "main.py").write_text("def f(): pass\n")
         s1 = self.plugin.snapshot(workdir)
         s2 = self.plugin.snapshot(workdir)
         assert s1 == s2
 
     def test_snapshot_uses_raw_bytes_hash(self, tmp_path: pathlib.Path) -> None:
-        workdir = tmp_path / "state"
-        workdir.mkdir()
+        workdir = tmp_path
         content = b"def add(a, b): return a + b\n"
         (workdir / "math.py").write_bytes(content)
         snap = self.plugin.snapshot(workdir)
@@ -770,8 +767,7 @@ class TestCodePluginSnapshot:
         assert snap["files"]["math.py"] == expected
 
     def test_museignore_respected(self, tmp_path: pathlib.Path) -> None:
-        workdir = tmp_path / "state"
-        workdir.mkdir()
+        workdir = tmp_path
         (workdir / "keep.py").write_text("x = 1\n")
         (workdir / "skip.log").write_text("log\n")
         ignore = tmp_path / ".museignore"
@@ -781,8 +777,7 @@ class TestCodePluginSnapshot:
         assert "skip.log" not in snap["files"]
 
     def test_pycache_always_ignored(self, tmp_path: pathlib.Path) -> None:
-        workdir = tmp_path / "state"
-        workdir.mkdir()
+        workdir = tmp_path
         cache = workdir / "__pycache__"
         cache.mkdir()
         (cache / "utils.cpython-312.pyc").write_bytes(b"\x00")
@@ -792,7 +787,7 @@ class TestCodePluginSnapshot:
         assert not any("__pycache__" in k for k in snap["files"])
 
     def test_nested_files_tracked(self, tmp_path: pathlib.Path) -> None:
-        workdir = tmp_path / "state"
+        workdir = tmp_path
         (workdir / "src").mkdir(parents=True)
         (workdir / "src" / "utils.py").write_text("pass\n")
         snap = self.plugin.snapshot(workdir)
@@ -857,8 +852,7 @@ class TestCodePluginDiffSemantic:
     ) -> tuple[pathlib.Path, pathlib.Path]:
         repo_root = tmp_path / "repo"
         repo_root.mkdir()
-        workdir = repo_root / "state"
-        workdir.mkdir()
+        workdir = repo_root
         return repo_root, workdir
 
     def test_add_function_produces_patch_op(self, tmp_path: pathlib.Path) -> None:
@@ -1138,16 +1132,14 @@ class TestCodePluginDrift:
     plugin = CodePlugin()
 
     def test_no_drift(self, tmp_path: pathlib.Path) -> None:
-        workdir = tmp_path / "state"
-        workdir.mkdir()
+        workdir = tmp_path
         (workdir / "app.py").write_text("x = 1\n")
         snap = self.plugin.snapshot(workdir)
         report = self.plugin.drift(snap, workdir)
         assert not report.has_drift
 
     def test_has_drift_after_edit(self, tmp_path: pathlib.Path) -> None:
-        workdir = tmp_path / "state"
-        workdir.mkdir()
+        workdir = tmp_path
         f = workdir / "app.py"
         f.write_text("x = 1\n")
         snap = self.plugin.snapshot(workdir)
@@ -1156,8 +1148,7 @@ class TestCodePluginDrift:
         assert report.has_drift
 
     def test_has_drift_after_add(self, tmp_path: pathlib.Path) -> None:
-        workdir = tmp_path / "state"
-        workdir.mkdir()
+        workdir = tmp_path
         (workdir / "a.py").write_text("a = 1\n")
         snap = self.plugin.snapshot(workdir)
         (workdir / "b.py").write_text("b = 2\n")
@@ -1165,8 +1156,7 @@ class TestCodePluginDrift:
         assert report.has_drift
 
     def test_has_drift_after_delete(self, tmp_path: pathlib.Path) -> None:
-        workdir = tmp_path / "state"
-        workdir.mkdir()
+        workdir = tmp_path
         f = workdir / "gone.py"
         f.write_text("x = 1\n")
         snap = self.plugin.snapshot(workdir)
@@ -1182,8 +1172,7 @@ class TestCodePluginDrift:
 
 def test_apply_returns_live_state_unchanged(tmp_path: pathlib.Path) -> None:
     plugin = CodePlugin()
-    workdir = tmp_path / "state"
-    workdir.mkdir()
+    workdir = tmp_path
     delta = plugin.diff(_make_manifest({}), _make_manifest({}))
     result = plugin.apply(delta, workdir)
     assert result is workdir

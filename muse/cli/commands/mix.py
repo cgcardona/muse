@@ -133,11 +133,8 @@ def mix(
 
     midi_bytes = notes_to_midi_bytes(mixed, tpb)
 
-    out_path = root / "state" / output
+    out_path = root / output
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    if not (root / "state").exists():
-        out_path = root / output
-        out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_bytes(midi_bytes)
 
     typer.echo(f"\n✅ Mixed {track_a} + {track_b} → {output}")

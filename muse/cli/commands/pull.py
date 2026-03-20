@@ -18,14 +18,11 @@ import datetime
 import json
 import logging
 import pathlib
-import shutil
-
 import typer
 
 from muse.cli.config import get_auth_token, get_remote, get_remote_head, get_upstream, set_remote_head
 from muse.core.errors import ExitCode
 from muse.core.merge_engine import find_merge_base, write_merge_state
-from muse.core.object_store import restore_object
 from muse.core.pack import apply_pack
 from muse.core.repo import require_repo
 from muse.core.snapshot import compute_commit_id, compute_snapshot_id
@@ -41,6 +38,7 @@ from muse.core.store import (
     write_snapshot,
 )
 from muse.core.transport import HttpTransport, TransportError
+from muse.core.workdir import apply_manifest
 from muse.domain import SnapshotManifest, StructuredMergePlugin
 from muse.plugins.registry import read_domain, resolve_plugin
 
@@ -61,13 +59,8 @@ def _read_repo_id(root: pathlib.Path) -> str:
 
 
 def _restore_from_manifest(root: pathlib.Path, manifest: dict[str, str]) -> None:
-    """Rebuild ``state/`` to exactly match *manifest*."""
-    workdir = root / "state"
-    if workdir.exists():
-        shutil.rmtree(workdir)
-    workdir.mkdir()
-    for rel_path, object_id in manifest.items():
-        restore_object(root, object_id, workdir / rel_path)
+    """Apply *manifest* to the working tree at *root*."""
+    apply_manifest(root, manifest)
 
 
 @app.callback(invoke_without_command=True)

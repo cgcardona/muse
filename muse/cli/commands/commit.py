@@ -110,16 +110,11 @@ def commit(
     branch, ref_path = _read_branch(root)
     parent_id = _read_parent_id(ref_path)
 
-    workdir = root / "state"
-    if not workdir.exists():
-        typer.echo("❌ No state/ directory found. Run 'muse init' first.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
-
     plugin = resolve_plugin(root)
-    snap = plugin.snapshot(workdir)
+    snap = plugin.snapshot(root)
     manifest = snap["files"]
     if not manifest and not allow_empty:
-        typer.echo("⚠️  state/ is empty — nothing to commit.")
+        typer.echo("⚠️  Nothing tracked — working tree is empty.")
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
     snapshot_id = compute_snapshot_id(manifest)
@@ -148,7 +143,7 @@ def commit(
         metadata["emotion"] = emotion
 
     for rel_path, object_id in manifest.items():
-        write_object_from_path(root, object_id, workdir / rel_path)
+        write_object_from_path(root, object_id, root / rel_path)
 
     write_snapshot(root, SnapshotRecord(snapshot_id=snapshot_id, manifest=manifest))
 

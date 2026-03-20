@@ -114,14 +114,13 @@ def read_merge_state(root: pathlib.Path) -> MergeState | None:
         return None
 
     raw_conflicts = data.get("conflict_paths", [])
-    workdir = root / "state"
     safe_conflict_paths: list[str] = []
     if isinstance(raw_conflicts, list):
         for c in raw_conflicts:
             try:
-                contained = contain_path(workdir, str(c))
+                contained = contain_path(root, str(c))
                 # Store as relative POSIX string for display; contain_path already validated it.
-                safe_conflict_paths.append(contained.relative_to(workdir.resolve()).as_posix())
+                safe_conflict_paths.append(contained.relative_to(root.resolve()).as_posix())
             except ValueError:
                 logger.warning(
                     "⚠️ Skipping unsafe conflict path %r from MERGE_STATE.json", c
@@ -206,11 +205,11 @@ def apply_resolution(
     rel_path: str,
     object_id: str,
 ) -> None:
-    """Restore a specific object version to ``state/<rel_path>``.
+    """Restore a specific object version to the working tree at ``<rel_path>``.
 
     Used by the ``muse merge --resolve`` workflow: after a user has chosen
     which version of a conflicting file to keep, this function writes that
-    version into the working directory so ``muse commit`` can snapshot it.
+    version into the working tree so ``muse commit`` can snapshot it.
 
     Args:
         root:      Repository root (parent of ``.muse/``).
@@ -223,8 +222,7 @@ def apply_resolution(
     from muse.core.object_store import read_object
 
     validate_object_id(object_id)
-    workdir = root / "state"
-    dest = contain_path(workdir, rel_path)
+    dest = contain_path(root, rel_path)
 
     content = read_object(root, object_id)
     if content is None:

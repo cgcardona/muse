@@ -49,7 +49,7 @@ def test_add_worktree_creates_directory(tmp_path: pathlib.Path) -> None:
     _add_branch(repo, "feat/audio")
     wt_path = add_worktree(repo, "feat-audio", "feat/audio")
     assert wt_path.exists()
-    assert (wt_path / "state").exists()
+    assert (wt_path).exists()
 
 
 def test_add_worktree_creates_metadata(tmp_path: pathlib.Path) -> None:

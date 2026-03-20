@@ -373,8 +373,7 @@ class TestMidiPluginApply:
         assert result["files"]["new.mid"] == "newhash"
 
     def test_apply_from_workdir_rescans(self, tmp_path: pathlib.Path) -> None:
-        workdir = tmp_path / "state"
-        workdir.mkdir()
+        workdir = tmp_path
         (workdir / "beat.mid").write_bytes(b"drums")
         delta: StructuredDelta = StructuredDelta(
             domain="midi", ops=[], summary="no changes",

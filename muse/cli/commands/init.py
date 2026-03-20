@@ -14,7 +14,9 @@ Layout::
         snapshots/          — snapshot manifests (JSON, one file per snapshot)
     .museattributes         — TOML merge strategy overrides (created in repo root)
     .museignore             — TOML ignore rules (created in repo root)
-    state/              — working tree (absent for --bare repos)
+
+The repository root IS the working tree.  There is no ``state/`` subdirectory.
+Bare repositories (``--bare``) have no working tree; they store only ``.muse/``.
 """
 
 from __future__ import annotations
@@ -323,8 +325,8 @@ domain = "{domain}"    # must match the "domain" field in .muse/repo.json
 @app.callback(invoke_without_command=True)
 def init(
     ctx: typer.Context,
-    bare: bool = typer.Option(False, "--bare", help="Initialise as a bare repository (no state/)."),
-    template: str | None = typer.Option(None, "--template", metavar="PATH", help="Copy PATH contents into state/."),
+    bare: bool = typer.Option(False, "--bare", help="Initialise as a bare repository (no working tree)."),
+    template: str | None = typer.Option(None, "--template", metavar="PATH", help="Copy PATH contents into the working tree."),
     default_branch: str = typer.Option("main", "--default-branch", metavar="BRANCH", help="Name of the initial branch."),
     force: bool = typer.Option(False, "--force", help="Re-initialise even if already a Muse repository."),
     domain: str = typer.Option("midi", "--domain", help="Domain plugin to use (e.g. midi). Must be registered in the plugin registry."),
@@ -400,16 +402,13 @@ def init(
         if not ignore_path.exists():
             ignore_path.write_text(_museignore_template(domain))
 
-        if not bare:
-            work_dir = cwd / "state"
-            work_dir.mkdir(exist_ok=True)
-            if template_path is not None:
-                for item in template_path.iterdir():
-                    dest = work_dir / item.name
-                    if item.is_dir():
-                        shutil.copytree(item, dest, dirs_exist_ok=True)
-                    else:
-                        shutil.copy2(item, dest)
+        if not bare and template_path is not None:
+            for item in template_path.iterdir():
+                dest = cwd / item.name
+                if item.is_dir():
+                    shutil.copytree(item, dest, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(item, dest)
 
     except PermissionError:
         typer.echo(f"❌ Permission denied: cannot write to {cwd}.")

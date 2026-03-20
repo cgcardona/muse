@@ -118,7 +118,7 @@ def patch(
 
     # Try state/ first (the Muse working directory), fall back to repo root.
     candidates = [
-        root / "state" / rel_path,
+        root / rel_path,
         root / rel_path,
     ]
     file_path: pathlib.Path | None = None

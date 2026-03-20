@@ -2,8 +2,8 @@
 
 Modes::
 
-    --soft   — move the branch pointer; leave state/ and index unchanged.
-    --hard   — move the branch pointer AND restore state/ from the target snapshot.
+    --soft   — move the branch pointer only; working tree is untouched.
+    --hard   — move the branch pointer AND restore the working tree from the target snapshot.
 """
 
 from __future__ import annotations
@@ -11,16 +11,15 @@ from __future__ import annotations
 import json
 import logging
 import pathlib
-import shutil
 
 import typer
 
 from muse.core.errors import ExitCode
-from muse.core.object_store import restore_object
 from muse.core.repo import require_repo
 from muse.core.store import read_snapshot, resolve_commit_ref
 from muse.core.reflog import append_reflog
-from muse.core.validation import contain_path, sanitize_display, validate_branch_name
+from muse.core.validation import sanitize_display, validate_branch_name
+from muse.core.workdir import apply_manifest
 
 logger = logging.getLogger(__name__)
 
@@ -74,17 +73,7 @@ def reset(
         if snapshot is None:
             typer.echo(f"❌ Snapshot {commit.snapshot_id[:8]} not found in object store.")
             raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
-        workdir = root / "state"
-        if workdir.exists():
-            shutil.rmtree(workdir)
-        workdir.mkdir()
-        for rel_path, object_id in snapshot.manifest.items():
-            try:
-                safe_dest = contain_path(workdir, rel_path)
-            except ValueError as exc:
-                logger.warning("⚠️ Skipping unsafe manifest path %r: %s", rel_path, exc)
-                continue
-            restore_object(root, object_id, safe_dest)
+        apply_manifest(root, snapshot.manifest)
         typer.echo(f"HEAD is now at {commit.commit_id[:8]} {sanitize_display(commit.message)}")
     else:
         typer.echo(f"Moved {sanitize_display(branch)} to {commit.commit_id[:8]}")

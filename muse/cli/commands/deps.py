@@ -209,7 +209,7 @@ def deps(
             raise typer.Exit(code=ExitCode.USER_ERROR)
 
         # Read from working tree.
-        candidates = [root / "state" / file_rel, root / file_rel]
+        candidates = [root / file_rel]
         src_path: pathlib.Path | None = None
         for c in candidates:
             if c.exists():

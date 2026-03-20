@@ -5,7 +5,7 @@ MuseHub repository into a new local directory.  After cloning:
 
 - A full ``.muse/`` directory is created with the remote's repo_id and domain.
 - The ``origin`` remote is configured to point at the source URL.
-- The default branch is checked out into ``state/``.
+- The default branch is checked out into the working tree (the cloned directory root).
 
 Usage
 -----
@@ -29,10 +29,10 @@ import typer
 
 from muse.cli.config import set_remote, set_remote_head, set_upstream
 from muse.core.errors import ExitCode
-from muse.core.object_store import restore_object
 from muse.core.pack import apply_pack
 from muse.core.store import get_all_commits, read_commit, read_snapshot
 from muse.core.transport import HttpTransport, TransportError
+from muse.core.workdir import apply_manifest
 
 logger = logging.getLogger(__name__)
 
@@ -89,23 +89,15 @@ def _init_muse_dir(
     (muse_dir / "refs" / "heads" / default_branch).write_text("")
     (muse_dir / "config.toml").write_text(_DEFAULT_CONFIG)
 
-    (target / "state").mkdir(exist_ok=True)
-
-
 def _restore_working_tree(root: pathlib.Path, commit_id: str) -> None:
-    """Restore ``state/`` to the snapshot referenced by *commit_id*."""
+    """Restore the working tree to the snapshot referenced by *commit_id*."""
     commit = read_commit(root, commit_id)
     if commit is None:
         return
     snap = read_snapshot(root, commit.snapshot_id)
     if snap is None:
         return
-    workdir = root / "state"
-    if workdir.exists():
-        shutil.rmtree(workdir)
-    workdir.mkdir()
-    for rel_path, object_id in snap.manifest.items():
-        restore_object(root, object_id, workdir / rel_path)
+    apply_manifest(root, snap.manifest)
 
 
 @app.callback(invoke_without_command=True)

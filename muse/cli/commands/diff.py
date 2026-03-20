@@ -80,7 +80,7 @@ def diff(
             files=get_head_snapshot_manifest(root, repo_id, branch) or {},
             domain=domain,
         )
-        target_snap = plugin.snapshot(root / "state")
+        target_snap = plugin.snapshot(root)
     elif commit_b is None:
         # Single ref provided: diff HEAD vs that ref's snapshot.
         base_snap = SnapshotManifest(

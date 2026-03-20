@@ -146,7 +146,7 @@ def transpose(
     midi_bytes = notes_to_midi_bytes(transposed, tpb)
 
     # Write back to the working tree.
-    work_path = root / "state" / track
+    work_path = root / track
     if not work_path.parent.exists():
         work_path = root / track
     work_path.write_bytes(midi_bytes)
