@@ -21,6 +21,7 @@ import pytest
 from muse.domain import (
     CRDTPlugin,
     DeleteOp,
+    DomainOp,
     InsertOp,
     MuseDomainPlugin,
     MutateOp,
@@ -49,11 +50,14 @@ from muse.plugins.bitcoin._query import (
 from muse.plugins.bitcoin._types import (
     AddressLabelRecord,
     AgentStrategyRecord,
+    CoinCategory,
+    CoinSelectAlgo,
     FeeEstimateRecord,
     LightningChannelRecord,
     OraclePriceTickRecord,
     PendingTxRecord,
     RoutingPolicyRecord,
+    ScriptType,
     UTXORecord,
 )
 from muse.plugins.bitcoin.plugin import (
@@ -76,7 +80,7 @@ def _make_utxo(
     txid: str = "abc" * 21 + "ab",
     vout: int = 0,
     amount_sat: int = 100_000,
-    script_type: str = "p2wpkh",
+    script_type: ScriptType = "p2wpkh",
     address: str = "bc1qtest",
     confirmations: int = 6,
     block_height: int | None = 850_000,
@@ -87,7 +91,7 @@ def _make_utxo(
         txid=txid,
         vout=vout,
         amount_sat=amount_sat,
-        script_type=script_type,  # type: ignore[arg-type]
+        script_type=script_type,
         address=address,
         confirmations=confirmations,
         block_height=block_height,
@@ -129,13 +133,13 @@ def _make_channel(
 def _make_label(
     address: str = "bc1qtest",
     label: str = "cold storage",
-    category: str = "income",
+    category: CoinCategory = "income",
     created_at: int = 1_700_000_000,
 ) -> AddressLabelRecord:
     return AddressLabelRecord(
         address=address,
         label=label,
-        category=category,  # type: ignore[arg-type]
+        category=category,
         created_at=created_at,
     )
 
@@ -148,7 +152,7 @@ def _make_strategy(
     dca_amount_sat: int | None = 500_000,
     dca_interval_blocks: int | None = 144,
     lightning_rebalance_threshold: float = 0.2,
-    coin_selection: str = "branch_and_bound",
+    coin_selection: CoinSelectAlgo = "branch_and_bound",
     simulation_mode: bool = False,
 ) -> AgentStrategyRecord:
     return AgentStrategyRecord(
@@ -159,7 +163,7 @@ def _make_strategy(
         dca_amount_sat=dca_amount_sat,
         dca_interval_blocks=dca_interval_blocks,
         lightning_rebalance_threshold=lightning_rebalance_threshold,
-        coin_selection=coin_selection,  # type: ignore[arg-type]
+        coin_selection=coin_selection,
         simulation_mode=simulation_mode,
     )
 
@@ -194,7 +198,17 @@ def _make_fee(
     )
 
 
-def _json_bytes(obj: object) -> bytes:
+def _json_bytes(
+    obj: (
+        list[UTXORecord]
+        | list[LightningChannelRecord]
+        | list[OraclePriceTickRecord]
+        | list[FeeEstimateRecord]
+        | list[PendingTxRecord]
+        | list[AddressLabelRecord]
+        | AgentStrategyRecord
+    ),
+) -> bytes:
     return json.dumps(obj, sort_keys=True).encode()
 
 
@@ -463,6 +477,7 @@ class TestDiffStrategy:
         old_s = _make_strategy(simulation_mode=False)
         new_s = _make_strategy(simulation_mode=True)
         ops = _diff_strategy("strategy/agent.json", _json_bytes(old_s), _json_bytes(new_s))
+        assert ops[0]["op"] == "mutate"
         assert ops[0]["fields"]["simulation_mode"]["old"] == "False"
         assert ops[0]["fields"]["simulation_mode"]["new"] == "True"
 
@@ -494,6 +509,7 @@ class TestDiffTimeSeries:
             "oracles/fees.json", _json_bytes([]), _json_bytes([fee]), "fees"
         )
         assert len(ops) == 1
+        assert ops[0]["op"] == "insert"
         assert "25" in ops[0]["content_summary"]
 
     def test_existing_tick_not_duplicated(self) -> None:
@@ -765,7 +781,7 @@ class TestMergeOps:
         self.snap = SnapshotManifest(files={}, domain="bitcoin")
 
     def test_non_conflicting_ops_clean_merge(self) -> None:
-        ours_ops = [
+        ours_ops: list[DomainOp] = [
             InsertOp(
                 op="insert",
                 address="wallet/utxos.json::aaa:0",
@@ -774,7 +790,7 @@ class TestMergeOps:
                 content_summary="received UTXO aaa:0",
             )
         ]
-        theirs_ops = [
+        theirs_ops: list[DomainOp] = [
             InsertOp(
                 op="insert",
                 address="wallet/utxos.json::bbb:0",
@@ -791,7 +807,7 @@ class TestMergeOps:
 
     def test_double_spend_detected_in_merge_ops(self) -> None:
         utxo_addr = "wallet/utxos.json::deadbeef:0"
-        ours_ops = [
+        ours_ops: list[DomainOp] = [
             DeleteOp(
                 op="delete",
                 address=utxo_addr,
@@ -800,7 +816,7 @@ class TestMergeOps:
                 content_summary="spent UTXO deadbeef:0",
             )
         ]
-        theirs_ops = [
+        theirs_ops: list[DomainOp] = [
             DeleteOp(
                 op="delete",
                 address=utxo_addr,
@@ -821,11 +837,11 @@ class TestMergeOps:
 
     def test_non_utxo_delete_not_flagged_as_double_spend(self) -> None:
         addr = "channels/channels.json::850000x1x0"
-        ours_ops = [
+        ours_ops: list[DomainOp] = [
             DeleteOp(op="delete", address=addr, position=None,
                      content_id="a" * 64, content_summary="channel closed")
         ]
-        theirs_ops = [
+        theirs_ops: list[DomainOp] = [
             DeleteOp(op="delete", address=addr, position=None,
                      content_id="a" * 64, content_summary="channel closed")
         ]
