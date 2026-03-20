@@ -168,8 +168,8 @@ def is_ignored(rel_posix: str, patterns: list[str]) -> bool:
     The last matching rule wins.  A negation rule (``!pattern``) can un-ignore
     a path that was matched by an earlier rule.
 
-    Directory-only patterns (trailing ``/``) are silently skipped because Muse
-    tracks files, not directories.
+    Directory patterns (trailing ``/``) match any file whose path starts with
+    that directory prefix — e.g. ``artifacts/`` ignores ``artifacts/demo.html``.
     """
     p = pathlib.PurePosixPath(rel_posix)
     ignored = False
@@ -177,11 +177,12 @@ def is_ignored(rel_posix: str, patterns: list[str]) -> bool:
         negate = pattern.startswith("!")
         pat = pattern[1:] if negate else pattern
 
-        # Directory-only patterns never match files.
         if pat.endswith("/"):
-            continue
-
-        if _matches(p, pat):
+            # Directory pattern: match any file inside that directory.
+            dir_prefix = pat  # e.g. "artifacts/"
+            if rel_posix.startswith(dir_prefix) or _matches(p, pat.rstrip("/") + "/**"):
+                ignored = not negate
+        elif _matches(p, pat):
             ignored = not negate
     return ignored
 

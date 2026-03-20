@@ -205,7 +205,10 @@ def _extract_tree_to(
             for member in tf.getmembers():
                 if not member.isfile():
                     continue
-                rel = member.name.lstrip("./")
+                # removeprefix strips only the literal "./" tar prefix, not
+                # individual characters — lstrip("./") was incorrectly turning
+                # ".cursorignore" into "cursorignore" and ".github/" into "github/".
+                rel = member.name.removeprefix("./")
                 if _should_exclude(rel):
                     continue
                 target = dest / rel
