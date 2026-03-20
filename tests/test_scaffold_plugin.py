@@ -18,13 +18,13 @@ class TestScaffoldPluginSnapshot:
     plugin = ScaffoldPlugin()
 
     def _make_repo(self, tmp_path: pathlib.Path) -> pathlib.Path:
-        workdir = tmp_path / "muse-work"
+        workdir = tmp_path / "state"
         workdir.mkdir()
         return tmp_path
 
     def test_snapshot_no_ignore_includes_all(self, tmp_path: pathlib.Path) -> None:
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         (workdir / "a.scaffold").write_text("data")
         (workdir / "b.scaffold").write_text("data")
 
@@ -34,7 +34,7 @@ class TestScaffoldPluginSnapshot:
 
     def test_snapshot_global_pattern_excluded(self, tmp_path: pathlib.Path) -> None:
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         (workdir / "keep.scaffold").write_text("keep")
         (workdir / "skip.scaffold").write_text("skip")
         (root / ".museignore").write_text('[global]\npatterns = ["skip.scaffold"]\n')
@@ -47,7 +47,7 @@ class TestScaffoldPluginSnapshot:
         self, tmp_path: pathlib.Path
     ) -> None:
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         (workdir / "keep.scaffold").write_text("keep")
         (workdir / "generated.scaffold").write_text("generated")
         (root / ".museignore").write_text(
@@ -62,7 +62,7 @@ class TestScaffoldPluginSnapshot:
         self, tmp_path: pathlib.Path
     ) -> None:
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         (workdir / "keep.scaffold").write_text("keep")
         # This pattern belongs to the "midi" domain — must NOT affect scaffold.
         (root / ".museignore").write_text(
@@ -74,7 +74,7 @@ class TestScaffoldPluginSnapshot:
 
     def test_snapshot_negation_un_ignores(self, tmp_path: pathlib.Path) -> None:
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         (workdir / "important.scaffold").write_text("keep me")
         (workdir / "other.scaffold").write_text("discard")
         (root / ".museignore").write_text(
@@ -89,7 +89,7 @@ class TestScaffoldPluginSnapshot:
         self, tmp_path: pathlib.Path
     ) -> None:
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         (workdir / "keep.scaffold").write_text("keep")
         (root / ".museignore").write_text(
             '[global]\npatterns = ["*.scaffold"]\n'
@@ -102,7 +102,7 @@ class TestScaffoldPluginSnapshot:
 
     def test_snapshot_empty_museignore(self, tmp_path: pathlib.Path) -> None:
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         (workdir / "a.scaffold").write_text("data")
         (root / ".museignore").write_text("# empty\n")
 
@@ -111,7 +111,7 @@ class TestScaffoldPluginSnapshot:
 
     def test_snapshot_domain_is_scaffold(self, tmp_path: pathlib.Path) -> None:
         root = self._make_repo(tmp_path)
-        workdir = root / "muse-work"
+        workdir = root / "state"
         (workdir / "a.scaffold").write_text("data")
 
         snap = self.plugin.snapshot(workdir)

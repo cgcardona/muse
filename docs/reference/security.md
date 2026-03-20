@@ -196,8 +196,8 @@ if not resolved.is_relative_to(base.resolve()):
 ### Symlink escape
 
 `contain_path` resolves symlinks before the containment check.  A symlink
-inside `muse-work/` that points to `/etc/passwd` would resolve to a path
-outside `muse-work/`, causing `contain_path` to raise before any data is
+inside `state/` that points to `/etc/passwd` would resolve to a path
+outside `state/`, causing `contain_path` to raise before any data is
 written.
 
 ### Where applied

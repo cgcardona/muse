@@ -141,7 +141,7 @@ def load_track_from_workdir(
     root: pathlib.Path,
     track_path: str,
 ) -> tuple[list[NoteInfo], int] | None:
-    """Load notes for *track_path* from ``muse-work/`` (live working tree).
+    """Load notes for *track_path* from ``state/`` (live working tree).
 
     Args:
         root:       Repository root.
@@ -150,7 +150,7 @@ def load_track_from_workdir(
     Returns:
         ``(notes, ticks_per_beat)`` on success, ``None`` when unreadable.
     """
-    work_path = root / "muse-work" / track_path
+    work_path = root / "state" / track_path
     if not work_path.exists():
         work_path = root / track_path
     if not work_path.exists():

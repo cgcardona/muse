@@ -26,7 +26,7 @@ class TestSnapshot:
         assert plugin.snapshot(snap) is snap
 
     def test_from_workdir(self, tmp_path: pathlib.Path) -> None:
-        workdir = tmp_path / "muse-work"
+        workdir = tmp_path / "state"
         workdir.mkdir()
         (workdir / "beat.mid").write_bytes(b"drums")
         snap = plugin.snapshot(workdir)
@@ -35,7 +35,7 @@ class TestSnapshot:
         assert snap["domain"] == "midi"
 
     def test_empty_workdir(self, tmp_path: pathlib.Path) -> None:
-        workdir = tmp_path / "muse-work"
+        workdir = tmp_path / "state"
         workdir.mkdir()
         snap = plugin.snapshot(workdir)
         assert snap["files"] == {}

@@ -260,7 +260,7 @@ class TestMergeEngineCoverageGaps:
         write_object(root, oid, content)
 
         apply_resolution(root, "track.mid", oid)
-        dest = root / "muse-work" / "track.mid"
+        dest = root / "state" / "track.mid"
         assert dest.exists()
         assert dest.read_bytes() == b"resolved content"
 

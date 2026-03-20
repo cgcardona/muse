@@ -18,7 +18,7 @@ Strategy
    the parent chain on each branch.
 
 For each Git commit the tool:
-- Extracts the commit's file tree into ``muse-work/`` using ``git archive``.
+- Extracts the commit's file tree into ``state/`` using ``git archive``.
 - Removes files that Muse should not snapshot (build artefacts, caches, IDE
   files, etc.) according to a hard-coded exclusion list that mirrors
   ``.museignore``.
@@ -80,7 +80,7 @@ _EXCLUDE_PREFIXES: tuple[str, ...] = (
     ".hypothesis/",
     ".github/",
     ".DS_Store",
-    "muse-work/",
+    "state/",
     "artifacts/",
     "__pycache__/",
 )
@@ -406,7 +406,7 @@ def _replay_branch(
                 meta["message"][:60],
             )
 
-        # Populate muse-work/ with this commit's tree.
+        # Populate state/ with this commit's tree.
         if not dry_run:
             _extract_tree_to(repo_root, git_sha, workdir)
 
@@ -473,7 +473,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     repo_root: pathlib.Path = args.repo_root.resolve()
-    workdir = repo_root / "muse-work"
+    workdir = repo_root / "state"
     dry_run: bool = args.dry_run
     verbose: bool = args.verbose
     branch_arg: str = args.branch

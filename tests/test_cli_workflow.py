@@ -21,7 +21,7 @@ def repo(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Pat
 
 
 def _write(repo: pathlib.Path, filename: str, content: str = "data") -> None:
-    (repo / "muse-work" / filename).write_text(content)
+    (repo / "state" / filename).write_text(content)
 
 
 class TestInit:
@@ -32,7 +32,7 @@ class TestInit:
         assert (tmp_path / ".muse").is_dir()
         assert (tmp_path / ".muse" / "HEAD").exists()
         assert (tmp_path / ".muse" / "repo.json").exists()
-        assert (tmp_path / "muse-work").is_dir()
+        assert (tmp_path / "state").is_dir()
 
     def test_reinit_requires_force(self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
@@ -45,7 +45,7 @@ class TestInit:
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(cli, ["init", "--bare"])
         assert result.exit_code == 0
-        assert not (tmp_path / "muse-work").exists()
+        assert not (tmp_path / "state").exists()
 
     def test_creates_museignore(self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
@@ -323,7 +323,7 @@ class TestStash:
         _write(repo, "lead.mid")
         result = runner.invoke(cli, ["stash"])
         assert result.exit_code == 0
-        assert not (repo / "muse-work" / "lead.mid").exists()
+        assert not (repo / "state" / "lead.mid").exists()
         result = runner.invoke(cli, ["stash", "pop"])
         assert result.exit_code == 0
-        assert (repo / "muse-work" / "lead.mid").exists()
+        assert (repo / "state" / "lead.mid").exists()

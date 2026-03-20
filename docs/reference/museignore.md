@@ -5,14 +5,14 @@
 
 `.museignore` tells Muse which files to exclude from every snapshot.
 It lives in the **repository root** (the directory that contains `.muse/` and
-`muse-work/`) and uses TOML syntax for consistency with `.muse/config.toml`
+`state/`) and uses TOML syntax for consistency with `.muse/config.toml`
 and `.museattributes`.
 
 ---
 
 ## Why it matters
 
-`muse commit` snapshots everything in `muse-work/`. Without `.museignore`,
+`muse commit` snapshots everything in `state/`. Without `.museignore`,
 OS artifacts (`.DS_Store`), DAW temp files (`*.bak`, `*.tmp`), rendered
 previews, and build outputs enter the content-addressed object store and
 contribute to diff noise on every commit.
@@ -27,8 +27,8 @@ what belongs in version history and what does not.
 ```
 my-project/
 ├── .muse/               ← VCS metadata
-├── muse-work/           ← tracked workspace (content here is snapshotted)
-├── .museignore          ← ignore rules (lives here, next to muse-work/)
+├── state/           ← tracked workspace (content here is snapshotted)
+├── .museignore          ← ignore rules (lives here, next to state/)
 └── .museattributes      ← merge strategies
 ```
 
@@ -119,7 +119,7 @@ Each string in a `patterns` array uses gitignore-compatible glob syntax:
 | `dir/*.ext` | Ignore matching files inside `dir/` at that exact depth |
 | `**/name` | Ignore `name` inside any subdirectory at any depth |
 | `name/` | Directory pattern — silently skipped (Muse tracks files, not directories) |
-| `/pattern` | Anchor to root — only matches at the top level of `muse-work/` |
+| `/pattern` | Anchor to root — only matches at the top level of `state/` |
 | `!pattern` | Negate — un-ignore a previously matched path |
 
 ### Patterns without a `/`
@@ -144,11 +144,11 @@ tracks/*.tmp       → ignores tracks/session.tmp
 
 ### Anchored patterns (leading `/`)
 
-Matched against the **full path from the root** — only the top level of `muse-work/`:
+Matched against the **full path from the root** — only the top level of `state/`:
 
 ```
 /renders/        → directory entry at root (directory patterns skipped for files)
-/scratch.mid     → ignores scratch.mid at the root of muse-work/
+/scratch.mid     → ignores scratch.mid at the root of state/
                    does NOT ignore tracks/scratch.mid
 ```
 

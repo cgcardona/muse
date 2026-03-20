@@ -5,7 +5,7 @@ MuseHub repository into a new local directory.  After cloning:
 
 - A full ``.muse/`` directory is created with the remote's repo_id and domain.
 - The ``origin`` remote is configured to point at the source URL.
-- The default branch is checked out into ``muse-work/``.
+- The default branch is checked out into ``state/``.
 
 Usage
 -----
@@ -89,18 +89,18 @@ def _init_muse_dir(
     (muse_dir / "refs" / "heads" / default_branch).write_text("")
     (muse_dir / "config.toml").write_text(_DEFAULT_CONFIG)
 
-    (target / "muse-work").mkdir(exist_ok=True)
+    (target / "state").mkdir(exist_ok=True)
 
 
 def _restore_working_tree(root: pathlib.Path, commit_id: str) -> None:
-    """Restore ``muse-work/`` to the snapshot referenced by *commit_id*."""
+    """Restore ``state/`` to the snapshot referenced by *commit_id*."""
     commit = read_commit(root, commit_id)
     if commit is None:
         return
     snap = read_snapshot(root, commit.snapshot_id)
     if snap is None:
         return
-    workdir = root / "muse-work"
+    workdir = root / "state"
     if workdir.exists():
         shutil.rmtree(workdir)
     workdir.mkdir()

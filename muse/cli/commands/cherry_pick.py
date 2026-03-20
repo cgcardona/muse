@@ -97,7 +97,7 @@ def cherry_pick(
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
     merged_manifest = result.merged["files"]
-    workdir = root / "muse-work"
+    workdir = root / "state"
     if workdir.exists():
         shutil.rmtree(workdir)
     workdir.mkdir()
@@ -110,7 +110,7 @@ def cherry_pick(
         restore_object(root, object_id, safe_dest)
 
     if no_commit:
-        typer.echo(f"Applied {target.commit_id[:8]} to muse-work/. Run 'muse commit' to record.")
+        typer.echo(f"Applied {target.commit_id[:8]} to state/. Run 'muse commit' to record.")
         return
 
     head_commit_id = get_head_commit_id(root, branch)

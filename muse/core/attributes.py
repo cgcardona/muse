@@ -1,7 +1,7 @@
 """Muse attributes — ``.museattributes`` TOML parser and per-path strategy resolver.
 
 ``.museattributes`` lives in the repository root (next to ``.muse/`` and
-``muse-work/``) and declares merge strategies for specific paths and
+``state/``) and declares merge strategies for specific paths and
 dimensions.  It uses TOML syntax with an optional ``[meta]`` section for
 domain declaration and an ordered ``[[rules]]`` array.
 
@@ -284,7 +284,7 @@ def load_attributes(
 
     Args:
         root:   Repository root directory (the directory that contains ``.muse/``
-                and ``muse-work/``).
+                and ``state/``).
         domain: Optional domain name from the active repository.  When provided
                 and the file contains ``[meta] domain``, a mismatch logs a
                 warning.  Pass ``None`` to skip domain validation.
