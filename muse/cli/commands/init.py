@@ -41,16 +41,20 @@ _DEFAULT_CONFIG = """\
 [user]
 name = ""
 email = ""
+type = "human"    # "human" | "agent"
 
-[auth]
-token = ""
+[hub]
+# url = "https://musehub.ai"
+# Run `muse hub connect <url>` to attach this repo to MuseHub.
+# Run `muse auth login` to authenticate.
+# Credentials are stored in ~/.muse/identity.toml — never here.
 
 [remotes]
 
 [domain]
 # Domain-specific configuration. Keys depend on the active domain.
 # Music examples:
-#   ticks_per_beat = 480
+#   ticks_per_beat = "480"
 # Genomics examples:
 #   reference_assembly = "GRCh38"
 """
@@ -62,16 +66,20 @@ bare = true
 [user]
 name = ""
 email = ""
+type = "human"    # "human" | "agent"
 
-[auth]
-token = ""
+[hub]
+# url = "https://musehub.ai"
+# Run `muse hub connect <url>` to attach this repo to MuseHub.
+# Run `muse auth login` to authenticate.
+# Credentials are stored in ~/.muse/identity.toml — never here.
 
 [remotes]
 
 [domain]
 # Domain-specific configuration. Keys depend on the active domain.
 # Music examples:
-#   ticks_per_beat = 480
+#   ticks_per_beat = "480"
 # Genomics examples:
 #   reference_assembly = "GRCh38"
 """
