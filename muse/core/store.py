@@ -55,6 +55,12 @@ import uuid
 from dataclasses import dataclass, field
 from typing import TypedDict
 
+from muse.core.validation import (
+    sanitize_glob_prefix,
+    validate_branch_name,
+    validate_ref_id,
+    validate_repo_id,
+)
 from muse.domain import SemVerBump, StructuredDelta
 
 logger = logging.getLogger(__name__)
@@ -256,13 +262,30 @@ class CommitRecord:
         try:
             committed_at = datetime.datetime.fromisoformat(d["committed_at"])
         except (ValueError, KeyError):
+            logger.warning(
+                "⚠️ Commit record has missing or unparseable committed_at; "
+                "substituting current time. The record may have been tampered with."
+            )
             committed_at = datetime.datetime.now(datetime.timezone.utc)
+
+        # Runtime type guards — JSON can contain anything; fail loud rather than
+        # silently carrying non-string IDs into path construction.
+        commit_id = d["commit_id"]
+        if not isinstance(commit_id, str):
+            raise TypeError(f"commit_id must be str, got {type(commit_id).__name__}")
+        snapshot_id = d["snapshot_id"]
+        if not isinstance(snapshot_id, str):
+            raise TypeError(f"snapshot_id must be str, got {type(snapshot_id).__name__}")
+        branch = d["branch"]
+        if not isinstance(branch, str):
+            raise TypeError(f"branch must be str, got {type(branch).__name__}")
+
         return cls(
-            commit_id=d["commit_id"],
-            repo_id=d["repo_id"],
-            branch=d["branch"],
-            snapshot_id=d["snapshot_id"],
-            message=d["message"],
+            commit_id=commit_id,
+            repo_id=d["repo_id"] if isinstance(d.get("repo_id"), str) else "",
+            branch=branch,
+            snapshot_id=snapshot_id,
+            message=d["message"] if isinstance(d.get("message"), str) else "",
             committed_at=committed_at,
             parent_commit_id=d.get("parent_commit_id"),
             parent2_commit_id=d.get("parent2_commit_id"),
@@ -363,6 +386,10 @@ def _snapshots_dir(repo_root: pathlib.Path) -> pathlib.Path:
 
 
 def _tags_dir(repo_root: pathlib.Path, repo_id: str) -> pathlib.Path:
+    # Validate repo_id to prevent path traversal via crafted IDs from remote data.
+    # Uses a best-effort guard (no path separators or dot-sequences).
+    if "/" in repo_id or "\\" in repo_id or ".." in repo_id or not repo_id:
+        raise ValueError(f"repo_id {repo_id!r} contains unsafe path components.")
     return repo_root / ".muse" / _TAGS_DIR / repo_id
 
 
@@ -391,13 +418,19 @@ def write_commit(repo_root: pathlib.Path, commit: CommitRecord) -> None:
 
 
 def read_commit(repo_root: pathlib.Path, commit_id: str) -> CommitRecord | None:
-    """Load a commit record by ID, or ``None`` if it does not exist."""
+    """Load a commit record by ID, or ``None`` if it does not exist.
+
+    Callers that accept user-supplied or remote-supplied commit IDs should
+    validate the ID with :func:`~muse.core.validation.validate_ref_id` before
+    calling this function.  This function itself accepts any string to support
+    internal uses with computed IDs.
+    """
     path = _commit_path(repo_root, commit_id)
     if not path.exists():
         return None
     try:
         return CommitRecord.from_dict(json.loads(path.read_text()))
-    except (json.JSONDecodeError, KeyError) as exc:
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
         logger.warning("⚠️ Corrupt commit file %s: %s", path, exc)
         return None
 
@@ -443,6 +476,7 @@ def update_commit_metadata(
 
 def get_head_commit_id(repo_root: pathlib.Path, branch: str) -> str | None:
     """Return the commit ID at HEAD of *branch*, or ``None`` for an empty branch."""
+    validate_branch_name(branch)
     ref_path = repo_root / ".muse" / "refs" / "heads" / branch
     if not ref_path.exists():
         return None
@@ -476,6 +510,9 @@ def resolve_commit_ref(
     *ref* may be:
     - ``None`` / ``"HEAD"`` — the most recent commit on *branch*.
     - A full or abbreviated commit SHA — resolved by prefix scan.
+
+    Performs a safe prefix scan (glob metacharacters stripped from *ref*) so
+    user-supplied references cannot glob the entire commits directory.
     """
     if ref is None or ref.upper() == "HEAD":
         commit_id = get_head_commit_id(repo_root, branch)
@@ -483,26 +520,38 @@ def resolve_commit_ref(
             return None
         return read_commit(repo_root, commit_id)
 
-    # Try exact match
-    commit = read_commit(repo_root, ref)
-    if commit is not None:
-        return commit
+    # Sanitize user-supplied ref before using it in any filesystem operation.
+    safe_ref = sanitize_glob_prefix(ref)
 
-    # Prefix scan
-    return _find_commit_by_prefix(repo_root, ref)
+    # Try exact match — only if it looks like a full 64-char hex ID.
+    try:
+        validate_ref_id(safe_ref)
+        commit = read_commit(repo_root, safe_ref)
+        if commit is not None:
+            return commit
+    except ValueError:
+        pass  # Not a full hex ID — fall through to prefix scan.
+
+    # Prefix scan with sanitized prefix.
+    return _find_commit_by_prefix(repo_root, safe_ref)
 
 
 def _find_commit_by_prefix(
     repo_root: pathlib.Path, prefix: str
 ) -> CommitRecord | None:
-    """Find the first commit whose ID starts with *prefix*."""
+    """Find the first commit whose ID starts with *prefix*.
+
+    Glob metacharacters are stripped from *prefix* before use to prevent
+    callers from turning a targeted lookup into an arbitrary directory scan.
+    """
     commits_dir = _commits_dir(repo_root)
     if not commits_dir.exists():
         return None
-    for path in commits_dir.glob(f"{prefix}*.json"):
+    safe_prefix = sanitize_glob_prefix(prefix)
+    for path in commits_dir.glob(f"{safe_prefix}*.json"):
         try:
             return CommitRecord.from_dict(json.loads(path.read_text()))
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError, TypeError):
             continue
     return None
 
@@ -514,11 +563,12 @@ def find_commits_by_prefix(
     commits_dir = _commits_dir(repo_root)
     if not commits_dir.exists():
         return []
+    safe_prefix = sanitize_glob_prefix(prefix)
     results: list[CommitRecord] = []
-    for path in commits_dir.glob(f"{prefix}*.json"):
+    for path in commits_dir.glob(f"{safe_prefix}*.json"):
         try:
             results.append(CommitRecord.from_dict(json.loads(path.read_text())))
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError, TypeError):
             continue
     return results
 
@@ -551,7 +601,7 @@ def get_all_commits(repo_root: pathlib.Path) -> list[CommitRecord]:
     for path in commits_dir.glob("*.json"):
         try:
             results.append(CommitRecord.from_dict(json.loads(path.read_text())))
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError, TypeError):
             continue
     return results
 
@@ -608,13 +658,19 @@ def write_snapshot(repo_root: pathlib.Path, snapshot: SnapshotRecord) -> None:
 
 
 def read_snapshot(repo_root: pathlib.Path, snapshot_id: str) -> SnapshotRecord | None:
-    """Load a snapshot record by ID, or ``None`` if it does not exist."""
+    """Load a snapshot record by ID, or ``None`` if it does not exist.
+
+    Callers that accept user-supplied or remote-supplied snapshot IDs should
+    validate the ID with :func:`~muse.core.validation.validate_ref_id` before
+    calling this function.  This function itself accepts any string to support
+    internal uses with computed IDs.
+    """
     path = _snapshot_path(repo_root, snapshot_id)
     if not path.exists():
         return None
     try:
         return SnapshotRecord.from_dict(json.loads(path.read_text()))
-    except (json.JSONDecodeError, KeyError) as exc:
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
         logger.warning("⚠️ Corrupt snapshot file %s: %s", path, exc)
         return None
 
@@ -688,7 +744,7 @@ def get_tags_for_commit(
             record = TagRecord.from_dict(json.loads(path.read_text()))
             if record.commit_id == commit_id:
                 results.append(record)
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError, TypeError):
             continue
     return results
 
@@ -702,7 +758,7 @@ def get_all_tags(repo_root: pathlib.Path, repo_id: str) -> list[TagRecord]:
     for path in tags_dir.glob("*.json"):
         try:
             results.append(TagRecord.from_dict(json.loads(path.read_text())))
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError, TypeError):
             continue
     return results
 
@@ -719,11 +775,40 @@ def store_pulled_commit(
 
     Idempotent — silently skips if the commit already exists. Returns
     ``True`` if the row was newly written, ``False`` if it already existed.
+
+    All ID fields from the remote payload are validated before any filesystem
+    operation to prevent path-traversal attacks via crafted remote responses.
     """
     commit_id = commit_data.get("commit_id") or ""
     if not commit_id:
         logger.warning("⚠️ store_pulled_commit: missing commit_id — skipping")
         return False
+
+    try:
+        validate_ref_id(commit_id)
+    except ValueError as exc:
+        logger.warning("⚠️ store_pulled_commit: invalid commit_id %r — %s", commit_id, exc)
+        return False
+
+    snapshot_id = commit_data.get("snapshot_id") or ""
+    if snapshot_id:
+        try:
+            validate_ref_id(snapshot_id)
+        except ValueError as exc:
+            logger.warning(
+                "⚠️ store_pulled_commit: invalid snapshot_id %r — %s", snapshot_id, exc
+            )
+            return False
+
+    branch = commit_data.get("branch") or ""
+    if branch:
+        try:
+            validate_branch_name(branch)
+        except ValueError as exc:
+            logger.warning(
+                "⚠️ store_pulled_commit: invalid branch %r — %s", branch, exc
+            )
+            return False
 
     if read_commit(repo_root, commit_id) is not None:
         logger.debug("⚠️ Pulled commit %s already exists — skipped", commit_id[:8])

@@ -45,8 +45,8 @@ class TestBuildCodeManifest:
     def test_empty_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _make_repo(pathlib.Path(tmp))
-            manifest = build_code_manifest("snap1", {}, root)
-            assert manifest["snapshot_id"] == "snap1"
+            manifest = build_code_manifest("s" * 64, {}, root)
+            assert manifest["snapshot_id"] == "s" * 64
             assert manifest["total_files"] == 0
             assert manifest["packages"] == []
             assert manifest["total_symbols"] == 0
@@ -56,7 +56,7 @@ class TestBuildCodeManifest:
             root = _make_repo(pathlib.Path(tmp))
             src = b"def foo():\n    return 1\n"
             h = _write_object(root, src)
-            manifest = build_code_manifest("snap1", {"src/utils.py": h}, root)
+            manifest = build_code_manifest("s" * 64, {"src/utils.py": h}, root)
             assert manifest["total_files"] == 1
             assert manifest["semantic_files"] >= 1
             assert len(manifest["packages"]) == 1
@@ -78,7 +78,7 @@ class TestBuildCodeManifest:
                 "src/b.py": h2,
                 "tests/c.py": h3,
             }
-            manifest = build_code_manifest("snap1", flat, root)
+            manifest = build_code_manifest("s" * 64, flat, root)
             assert manifest["total_files"] == 3
             packages = {pkg["package"] for pkg in manifest["packages"]}
             assert "src" in packages
@@ -89,15 +89,15 @@ class TestBuildCodeManifest:
             root = _make_repo(pathlib.Path(tmp))
             src = b"x = 1\n"
             h = _write_object(root, src)
-            m1 = build_code_manifest("snap1", {"a.py": h}, root)
-            m2 = build_code_manifest("snap1", {"a.py": h}, root)
+            m1 = build_code_manifest("s" * 64, {"a.py": h}, root)
+            m2 = build_code_manifest("s" * 64, {"a.py": h}, root)
             assert m1["manifest_hash"] == m2["manifest_hash"]
 
     def test_non_semantic_file_has_empty_ast_hash(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _make_repo(pathlib.Path(tmp))
             h = _write_object(root, b"some binary or text content")
-            manifest = build_code_manifest("snap1", {"README.md": h}, root)
+            manifest = build_code_manifest("s" * 64, {"README.md": h}, root)
             mod = manifest["packages"][0]["modules"][0]
             assert mod["ast_hash"] == ""
             assert mod["symbol_count"] == 0
@@ -173,13 +173,13 @@ class TestManifestPersistence:
             root = _make_repo(pathlib.Path(tmp))
             src = b"def my_fn():\n    pass\n"
             h = _write_object(root, src)
-            original = build_code_manifest("snap1", {"src/a.py": h}, root)
+            original = build_code_manifest("s" * 64, {"src/a.py": h}, root)
 
             write_code_manifest(root, original)
             loaded = read_code_manifest(root, original["manifest_hash"])
 
             assert loaded is not None
-            assert loaded["snapshot_id"] == "snap1"
+            assert loaded["snapshot_id"] == "s" * 64
             assert loaded["manifest_hash"] == original["manifest_hash"]
             assert len(loaded["packages"]) == len(original["packages"])
 
@@ -193,7 +193,7 @@ class TestManifestPersistence:
         with tempfile.TemporaryDirectory() as tmp:
             root = _make_repo(pathlib.Path(tmp))
             h = _write_object(root, b"x = 1\n")
-            manifest = build_code_manifest("snap1", {"a.py": h}, root)
+            manifest = build_code_manifest("s" * 64, {"a.py": h}, root)
             write_code_manifest(root, manifest)
             write_code_manifest(root, manifest)  # second write should not error
             loaded = read_code_manifest(root, manifest["manifest_hash"])

@@ -185,7 +185,7 @@ class TestDiffManifestsByBar:
         tm1 = build_track_manifest(notes1, "t.mid", "hash1", tpb)
         tm2 = build_track_manifest(notes2, "t.mid", "hash2", tpb)
 
-        base = MusicManifest(domain="midi", schema_version=2, snapshot_id="s1",
+        base = MusicManifest(domain="midi", schema_version=2, snapshot_id="1" * 64,
                               files={"t.mid": "hash1"}, tracks={"t.mid": tm1})
         target = MusicManifest(domain="midi", schema_version=2, snapshot_id="s2",
                                 files={"t.mid": "hash2"}, tracks={"t.mid": tm2})
@@ -194,7 +194,7 @@ class TestDiffManifestsByBar:
     def test_no_change_produces_empty_result(self) -> None:
         notes = [_note(60)]
         tm = build_track_manifest(notes, "t.mid", "hash1", 480)
-        base = MusicManifest(domain="midi", schema_version=2, snapshot_id="s1",
+        base = MusicManifest(domain="midi", schema_version=2, snapshot_id="1" * 64,
                               files={"t.mid": "hash1"}, tracks={"t.mid": tm})
         changed = diff_manifests_by_bar(base, base)
         assert changed == {}
@@ -216,7 +216,7 @@ class TestDiffManifestsByBar:
     def test_added_track_reported_with_sentinel(self) -> None:
         notes = [_note(60)]
         tm = build_track_manifest(notes, "new.mid", "hashN", 480)
-        base = MusicManifest(domain="midi", schema_version=2, snapshot_id="s1",
+        base = MusicManifest(domain="midi", schema_version=2, snapshot_id="1" * 64,
                               files={}, tracks={})
         target = MusicManifest(domain="midi", schema_version=2, snapshot_id="s2",
                                 files={"new.mid": "hashN"}, tracks={"new.mid": tm})

@@ -26,6 +26,7 @@ from muse.core.store import (
     write_commit,
     write_snapshot,
 )
+from muse.core.validation import contain_path, sanitize_display
 from muse.domain import SnapshotManifest
 from muse.plugins.registry import read_domain, resolve_plugin
 
@@ -101,7 +102,12 @@ def cherry_pick(
         shutil.rmtree(workdir)
     workdir.mkdir()
     for rel_path, object_id in merged_manifest.items():
-        restore_object(root, object_id, workdir / rel_path)
+        try:
+            safe_dest = contain_path(workdir, rel_path)
+        except ValueError as exc:
+            logger.warning("⚠️ Skipping unsafe manifest path %r: %s", rel_path, exc)
+            continue
+        restore_object(root, object_id, safe_dest)
 
     if no_commit:
         typer.echo(f"Applied {target.commit_id[:8]} to muse-work/. Run 'muse commit' to record.")
@@ -132,4 +138,4 @@ def cherry_pick(
         parent_commit_id=head_commit_id,
     ))
     (root / ".muse" / "refs" / "heads" / branch).write_text(commit_id)
-    typer.echo(f"[{branch} {commit_id[:8]}] {target.message}")
+    typer.echo(f"[{sanitize_display(branch)} {commit_id[:8]}] {sanitize_display(target.message)}")

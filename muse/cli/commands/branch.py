@@ -11,6 +11,7 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import get_head_commit_id
+from muse.core.validation import sanitize_display, validate_branch_name
 
 logger = logging.getLogger(__name__)
 
@@ -46,27 +47,37 @@ def branch(
     current = _read_current_branch(root)
 
     if delete:
+        try:
+            validate_branch_name(delete)
+        except ValueError as exc:
+            typer.echo(f"❌ Invalid branch name: {exc}")
+            raise typer.Exit(code=ExitCode.USER_ERROR)
         if delete == current:
-            typer.echo(f"❌ Cannot delete the currently checked-out branch '{delete}'.")
+            typer.echo(f"❌ Cannot delete the currently checked-out branch '{sanitize_display(delete)}'.")
             raise typer.Exit(code=ExitCode.USER_ERROR)
         ref_file = root / ".muse" / "refs" / "heads" / delete
         if not ref_file.exists():
-            typer.echo(f"❌ Branch '{delete}' not found.")
+            typer.echo(f"❌ Branch '{sanitize_display(delete)}' not found.")
             raise typer.Exit(code=ExitCode.USER_ERROR)
         ref_file.unlink()
-        typer.echo(f"Deleted branch {delete}.")
+        typer.echo(f"Deleted branch {sanitize_display(delete)}.")
         return
 
     if name:
+        try:
+            validate_branch_name(name)
+        except ValueError as exc:
+            typer.echo(f"❌ Invalid branch name: {exc}")
+            raise typer.Exit(code=ExitCode.USER_ERROR)
         ref_file = root / ".muse" / "refs" / "heads" / name
         if ref_file.exists():
-            typer.echo(f"❌ Branch '{name}' already exists.")
+            typer.echo(f"❌ Branch '{sanitize_display(name)}' already exists.")
             raise typer.Exit(code=ExitCode.USER_ERROR)
         # Point new branch at current HEAD commit
         current_commit = get_head_commit_id(root, current) or ""
         ref_file.parent.mkdir(parents=True, exist_ok=True)
         ref_file.write_text(current_commit)
-        typer.echo(f"Created branch {name}.")
+        typer.echo(f"Created branch {sanitize_display(name)}.")
         return
 
     # List branches

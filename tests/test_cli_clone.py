@@ -39,11 +39,11 @@ def _make_remote_info(
         repo_id=repo_id,
         domain=domain,
         default_branch=default_branch,
-        branch_heads={"main": "c1"} if branch_heads is None else branch_heads,
+        branch_heads={"main": "c" * 64} if branch_heads is None else branch_heads,
     )
 
 
-def _make_bundle(commit_id: str = "c1", branch: str = "main") -> PackBundle:
+def _make_bundle(commit_id: str = "c" * 64, branch: str = "main") -> PackBundle:
     content = b"cloned content"
     oid = _sha(content)
     return PackBundle(
@@ -52,7 +52,7 @@ def _make_bundle(commit_id: str = "c1", branch: str = "main") -> PackBundle:
                 "commit_id": commit_id,
                 "repo_id": "remote-repo-id",
                 "branch": branch,
-                "snapshot_id": "s1",
+                "snapshot_id": "1" * 64,
                 "message": "initial",
                 "committed_at": "2026-01-01T00:00:00+00:00",
                 "parent_commit_id": None,
@@ -75,7 +75,7 @@ def _make_bundle(commit_id: str = "c1", branch: str = "main") -> PackBundle:
         ],
         snapshots=[
             {
-                "snapshot_id": "s1",
+                "snapshot_id": "1" * 64,
                 "manifest": {"hello.txt": oid},
                 "created_at": "2026-01-01T00:00:00+00:00",
             }
@@ -162,8 +162,8 @@ class TestClone:
             )
 
         dest = tmp_path / "dest"
-        assert read_commit(dest, "c1") is not None
-        assert read_snapshot(dest, "s1") is not None
+        assert read_commit(dest, "c" * 64) is not None
+        assert read_snapshot(dest, "1" * 64) is not None
 
     def test_clone_propagates_domain(
         self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
@@ -265,9 +265,9 @@ class TestClone:
         monkeypatch.chdir(tmp_path)
         info = _make_remote_info(
             default_branch="main",
-            branch_heads={"main": "c1", "dev": "c2"},
+            branch_heads={"main": "c" * 64, "dev": "d" * 64},
         )
-        bundle = _make_bundle(commit_id="c2", branch="dev")
+        bundle = _make_bundle(commit_id="d" * 64, branch="dev")
         mock = _mock_transport(info, bundle)
 
         with unittest.mock.patch("muse.cli.commands.clone.HttpTransport", return_value=mock):

@@ -289,7 +289,7 @@ class TestMergeDispatch:
         _commit("add bass on main")
 
         fake_result = MergeResult(
-            merged=SnapshotManifest(files={"injected.mid": "abc"}, domain="midi"),
+            merged=SnapshotManifest(files={"injected.mid": "a" * 64}, domain="midi"),
             conflicts=[],
         )
         with patch("muse.cli.commands.merge.resolve_plugin") as mock_resolve:

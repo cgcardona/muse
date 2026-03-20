@@ -37,6 +37,7 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import resolve_commit_ref
+from muse.core.validation import sanitize_display
 from muse.plugins.midi._query import (
     NoteInfo,
     load_track,
@@ -95,6 +96,9 @@ def agent_map(
     Git cannot do this: it has no model of bars or note-level changes.
     Muse tracks note-level diffs at every commit, enabling per-bar blame.
     """
+    if depth < 1 or depth > 10_000:
+        typer.echo(f"❌ --depth must be between 1 and 10,000 (got {depth}).", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
@@ -127,9 +131,9 @@ def agent_map(
             if bar not in bar_attr:
                 bar_attr[bar] = BarAttribution(
                     bar=bar,
-                    author=commit.author or "unknown",
+                    author=sanitize_display(commit.author or "unknown"),
                     commit_id=commit.commit_id[:8],
-                    message=(commit.message or "").splitlines()[0][:60],
+                    message=sanitize_display((commit.message or "").splitlines()[0][:60]),
                 )
         prev_bars = cur_bars
 

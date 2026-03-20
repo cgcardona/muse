@@ -52,13 +52,52 @@ import urllib.error
 import urllib.request
 from typing import IO, Protocol
 
+import types
+import urllib.parse
+import urllib.response
+from typing import Protocol, runtime_checkable
+
 from muse.core.pack import FetchRequest, ObjectPayload, PackBundle, PushResult, RemoteInfo
 from muse.core.store import CommitDict, SnapshotDict
+from muse.core.validation import MAX_RESPONSE_BYTES
 from muse.domain import SemVerBump
 
 logger = logging.getLogger(__name__)
 
 _TIMEOUT_SECONDS = 60
+
+
+# ---------------------------------------------------------------------------
+# Response protocol — typed adapter for urllib response objects
+# ---------------------------------------------------------------------------
+
+
+class _HttpHeaders(Protocol):
+    """Minimal interface for HTTP response headers."""
+
+    def get(self, name: str, default: str = "") -> str: ...
+
+
+@runtime_checkable
+class _HttpResponse(Protocol):
+    """Structural interface for urllib HTTP response objects.
+
+    Defined as a Protocol so that ``_open_url`` can have a concrete, non-Any
+    return type without importing implementation-specific urllib internals.
+    """
+
+    headers: _HttpHeaders
+
+    def read(self, amt: int | None = None) -> bytes: ...
+
+    def __enter__(self) -> "_HttpResponse": ...
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: "types.TracebackType | None",
+    ) -> bool | None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +144,17 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
 # Build one opener that never follows redirects.  Used for every request
 # so that Authorization headers are never sent to an unintended recipient.
 _STRICT_OPENER = urllib.request.build_opener(_NoRedirectHandler())
+
+
+def _open_url(req: urllib.request.Request, timeout: int) -> _HttpResponse:
+    """Thin wrapper around ``_STRICT_OPENER.open`` — exists purely to give tests
+    a single, importable patch target instead of deep-patching the opener object.
+
+    Returns an ``_HttpResponse`` Protocol value so that callers can be fully
+    typed without depending on urllib's concrete ``addinfourl`` class.
+    """
+    resp: _HttpResponse = _STRICT_OPENER.open(req, timeout=timeout)
+    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +258,8 @@ class HttpTransport:
     ) -> urllib.request.Request:
         # Never send a bearer token over cleartext HTTP — the token would be
         # visible to any network observer on the path.
-        if token and not url.startswith("https://"):
+        # Use urlparse for a proper scheme check rather than a fragile prefix test.
+        if token and urllib.parse.urlparse(url).scheme != "https":
             raise TransportError(
                 f"Refusing to send credentials to a non-HTTPS URL: {url!r}. "
                 "Ensure the remote URL uses https://.",
@@ -237,8 +288,29 @@ class HttpTransport:
             :class:`TransportError` on non-2xx HTTP or any network error.
         """
         try:
-            with _STRICT_OPENER.open(req, timeout=_TIMEOUT_SECONDS) as resp:
-                body: bytes = resp.read()
+            with _open_url(req, _TIMEOUT_SECONDS) as resp:
+                # Enforce a hard cap before reading the body to defend against
+                # a malicious or compromised server sending an unbounded response.
+                content_length_str = resp.headers.get("Content-Length", "")
+                if content_length_str:
+                    try:
+                        declared = int(content_length_str)
+                        if declared > MAX_RESPONSE_BYTES:
+                            raise TransportError(
+                                f"Server Content-Length {declared} exceeds the "
+                                f"{MAX_RESPONSE_BYTES // (1024 * 1024)} MiB response cap.",
+                                0,
+                            )
+                    except ValueError:
+                        pass  # Unparseable Content-Length — fall through to streaming cap.
+                # Read one byte more than the cap so we can detect over-limit responses.
+                body: bytes = resp.read(MAX_RESPONSE_BYTES + 1)
+                if len(body) > MAX_RESPONSE_BYTES:
+                    raise TransportError(
+                        f"Response body exceeds the {MAX_RESPONSE_BYTES // (1024 * 1024)} MiB "
+                        "cap. The server may be sending unexpected data.",
+                        0,
+                    )
             return body
         except urllib.error.HTTPError as exc:
             try:
@@ -303,8 +375,26 @@ class HttpTransport:
 # ---------------------------------------------------------------------------
 
 
+def _assert_json_content(raw: bytes, endpoint: str) -> None:
+    """Raise TransportError if *raw* does not look like JSON.
+
+    A best-effort guard: checks that the first non-whitespace byte is ``{``
+    or ``[``, which is always true for valid JSON objects/arrays.  This
+    catches HTML error pages (e.g., proxy intercept pages) before json.loads
+    produces a misleading error.
+    """
+    stripped = raw.lstrip()
+    if stripped and stripped[0:1] not in (b"{", b"["):
+        raise TransportError(
+            f"Unexpected response from {endpoint!r}: expected JSON, "
+            f"got content starting with {stripped[:40]!r}.",
+            0,
+        )
+
+
 def _parse_remote_info(raw: bytes) -> RemoteInfo:
     """Parse ``GET /refs`` response bytes into a :class:`~muse.core.pack.RemoteInfo`."""
+    _assert_json_content(raw, "/refs")
     parsed = json.loads(raw)
     if not isinstance(parsed, dict):
         return RemoteInfo(
@@ -331,6 +421,7 @@ def _parse_remote_info(raw: bytes) -> RemoteInfo:
 
 def _parse_bundle(raw: bytes) -> PackBundle:
     """Parse ``POST /fetch`` response bytes into a :class:`~muse.core.pack.PackBundle`."""
+    _assert_json_content(raw, "/fetch")
     parsed = json.loads(raw)
     bundle: PackBundle = {}
     if not isinstance(parsed, dict):
@@ -380,6 +471,7 @@ def _parse_bundle(raw: bytes) -> PackBundle:
 
 def _parse_push_result(raw: bytes) -> PushResult:
     """Parse ``POST /push`` response bytes into a :class:`~muse.core.pack.PushResult`."""
+    _assert_json_content(raw, "/push")
     parsed = json.loads(raw)
     if not isinstance(parsed, dict):
         return PushResult(ok=False, message="Invalid server response", branch_heads={})

@@ -65,11 +65,11 @@ class TestFormatVersion:
     """CommitRecord.format_version tracks schema evolution."""
 
     def test_new_commit_has_format_version_5(self, repo: pathlib.Path) -> None:
-        c = _make_commit(repo, "abc123", "snap1", "msg")
+        c = _make_commit(repo, "abc123", "s" * 64, "msg")
         assert c.format_version == 5
 
     def test_format_version_round_trips_through_json_v5(self, repo: pathlib.Path) -> None:
-        _make_commit(repo, "abc123", "snap1", "msg")
+        _make_commit(repo, "abc123", "s" * 64, "msg")
         loaded = read_commit(repo, "abc123")
         assert loaded is not None
         assert loaded.format_version == 5
@@ -114,7 +114,7 @@ class TestFormatVersion:
         assert c.format_version == 2
 
     def test_format_version_field_is_integer(self, repo: pathlib.Path) -> None:
-        _make_commit(repo, "abc123", "snap1", "msg")
+        _make_commit(repo, "abc123", "s" * 64, "msg")
         loaded = read_commit(repo, "abc123")
         assert loaded is not None
         assert isinstance(loaded.format_version, int)
@@ -122,7 +122,7 @@ class TestFormatVersion:
 
 class TestWriteReadCommit:
     def test_roundtrip(self, repo: pathlib.Path) -> None:
-        c = _make_commit(repo, "abc123", "snap1", "Initial commit")
+        c = _make_commit(repo, "abc123", "s" * 64, "Initial commit")
         loaded = read_commit(repo, "abc123")
         assert loaded is not None
         assert loaded.commit_id == "abc123"
@@ -133,8 +133,8 @@ class TestWriteReadCommit:
         assert read_commit(repo, "nonexistent") is None
 
     def test_idempotent_write(self, repo: pathlib.Path) -> None:
-        _make_commit(repo, "abc123", "snap1", "First")
-        _make_commit(repo, "abc123", "snap1", "Second")  # Should not overwrite
+        _make_commit(repo, "abc123", "s" * 64, "First")
+        _make_commit(repo, "abc123", "s" * 64, "Second")  # Should not overwrite
         loaded = read_commit(repo, "abc123")
         assert loaded is not None
         assert loaded.message == "First"
@@ -144,7 +144,7 @@ class TestWriteReadCommit:
             commit_id="abc123",
             repo_id="test-repo",
             branch="main",
-            snapshot_id="snap1",
+            snapshot_id="s" * 64,
             message="With metadata",
             committed_at=datetime.datetime.now(datetime.timezone.utc),
             metadata={"section": "chorus", "emotion": "joyful"},
@@ -158,7 +158,7 @@ class TestWriteReadCommit:
 
 class TestUpdateCommitMetadata:
     def test_set_key(self, repo: pathlib.Path) -> None:
-        _make_commit(repo, "abc123", "snap1", "msg")
+        _make_commit(repo, "abc123", "s" * 64, "msg")
         result = update_commit_metadata(repo, "abc123", "tempo_bpm", 120.0)
         assert result is True
         loaded = read_commit(repo, "abc123")
@@ -171,8 +171,8 @@ class TestUpdateCommitMetadata:
 
 class TestWriteReadSnapshot:
     def test_roundtrip(self, repo: pathlib.Path) -> None:
-        s = _make_snapshot(repo, "snap1", {"tracks/drums.mid": "deadbeef"})
-        loaded = read_snapshot(repo, "snap1")
+        s = _make_snapshot(repo, "s" * 64, {"tracks/drums.mid": "deadbeef"})
+        loaded = read_snapshot(repo, "s" * 64)
         assert loaded is not None
         assert loaded.manifest == {"tracks/drums.mid": "deadbeef"}
 
@@ -189,14 +189,14 @@ class TestHeadQueries:
         assert get_head_commit_id(repo, "main") == "abc123"
 
     def test_get_head_snapshot_id(self, repo: pathlib.Path) -> None:
-        _make_commit(repo, "abc123", "snap1", "msg")
-        _make_snapshot(repo, "snap1", {"f.mid": "hash1"})
+        _make_commit(repo, "abc123", "s" * 64, "msg")
+        _make_snapshot(repo, "s" * 64, {"f.mid": "hash1"})
         (repo / ".muse" / "refs" / "heads" / "main").write_text("abc123")
-        assert get_head_snapshot_id(repo, "test-repo", "main") == "snap1"
+        assert get_head_snapshot_id(repo, "test-repo", "main") == "s" * 64
 
     def test_get_head_snapshot_manifest(self, repo: pathlib.Path) -> None:
-        _make_commit(repo, "abc123", "snap1", "msg")
-        _make_snapshot(repo, "snap1", {"f.mid": "hash1"})
+        _make_commit(repo, "abc123", "s" * 64, "msg")
+        _make_snapshot(repo, "s" * 64, {"f.mid": "hash1"})
         (repo / ".muse" / "refs" / "heads" / "main").write_text("abc123")
         manifest = get_head_snapshot_manifest(repo, "test-repo", "main")
         assert manifest == {"f.mid": "hash1"}
@@ -205,7 +205,7 @@ class TestHeadQueries:
 class TestGetCommitsForBranch:
     def test_chain(self, repo: pathlib.Path) -> None:
         _make_commit(repo, "root", "snap0", "Root")
-        _make_commit(repo, "child", "snap1", "Child", parent="root")
+        _make_commit(repo, "child", "s" * 64, "Child", parent="root")
         _make_commit(repo, "grandchild", "snap2", "Grandchild", parent="child")
         (repo / ".muse" / "refs" / "heads" / "main").write_text("grandchild")
 
@@ -218,7 +218,7 @@ class TestGetCommitsForBranch:
 
 class TestFindByPrefix:
     def test_finds_match(self, repo: pathlib.Path) -> None:
-        _make_commit(repo, "abcdef1234", "snap1", "msg")
+        _make_commit(repo, "abcdef1234", "s" * 64, "msg")
         results = find_commits_by_prefix(repo, "abcdef")
         assert len(results) == 1
         assert results[0].commit_id == "abcdef1234"
@@ -229,7 +229,7 @@ class TestFindByPrefix:
 
 class TestTags:
     def test_write_and_read(self, repo: pathlib.Path) -> None:
-        _make_commit(repo, "abc123", "snap1", "msg")
+        _make_commit(repo, "abc123", "s" * 64, "msg")
         write_tag(repo, TagRecord(
             tag_id="tag1",
             repo_id="test-repo",
@@ -241,7 +241,7 @@ class TestTags:
         assert tags[0].tag == "emotion:joyful"
 
     def test_get_all_tags(self, repo: pathlib.Path) -> None:
-        _make_commit(repo, "abc123", "snap1", "msg")
+        _make_commit(repo, "abc123", "s" * 64, "msg")
         write_tag(repo, TagRecord(tag_id="t1", repo_id="test-repo", commit_id="abc123", tag="stage:rough-mix"))
         write_tag(repo, TagRecord(tag_id="t2", repo_id="test-repo", commit_id="abc123", tag="key:Am"))
         all_tags = get_all_tags(repo, "test-repo")

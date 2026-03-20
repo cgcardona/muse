@@ -47,6 +47,7 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import CommitRecord, get_commits_for_branch, get_commit_snapshot_manifest, read_snapshot
+from muse.core.validation import sanitize_display
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +120,9 @@ def log(
     emotion: str | None = typer.Option(None, "--emotion", help="Filter by emotion metadata."),
 ) -> None:
     """Display commit history."""
+    if limit < 1:
+        typer.echo("❌ --max-count must be at least 1.", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = ref or _read_branch(root)
@@ -144,7 +148,8 @@ def log(
         if emotion and c.metadata.get("emotion") != emotion:
             continue
         filtered.append(c)
-        if len(filtered) >= limit:
+        # Guard against zero or negative limit causing unbounded traversal.
+        if limit > 0 and len(filtered) >= limit:
             break
 
     if not filtered:
@@ -157,26 +162,30 @@ def log(
         is_head = c.commit_id == head_commit_id
         ref_label = f" (HEAD -> {branch})" if is_head else ""
 
+        msg = sanitize_display(c.message)
+        author = sanitize_display(c.author)
+
         if oneline:
-            typer.echo(f"{c.commit_id[:8]}{ref_label} {c.message}")
+            typer.echo(f"{c.commit_id[:8]}{ref_label} {msg}")
 
         elif graph:
-            typer.echo(f"* {c.commit_id[:8]}{ref_label} {c.message}")
+            typer.echo(f"* {c.commit_id[:8]}{ref_label} {msg}")
 
         else:
             typer.echo(f"commit {c.commit_id[:8]}{ref_label}")
-            if c.author:
-                typer.echo(f"Author: {c.author}")
+            if author:
+                typer.echo(f"Author: {author}")
             typer.echo(f"Date:   {_format_date(c.committed_at)}")
             if c.sem_ver_bump and c.sem_ver_bump != "none":
                 typer.echo(f"SemVer: {c.sem_ver_bump.upper()}")
                 if c.breaking_changes:
-                    typer.echo(f"Breaking: {', '.join(c.breaking_changes[:3])}"
+                    safe_breaks = [sanitize_display(b) for b in c.breaking_changes[:3]]
+                    typer.echo(f"Breaking: {', '.join(safe_breaks)}"
                                + (f" +{len(c.breaking_changes) - 3} more" if len(c.breaking_changes) > 3 else ""))
             if c.metadata:
-                meta_parts = [f"{k}: {v}" for k, v in sorted(c.metadata.items())]
+                meta_parts = [f"{sanitize_display(k)}: {sanitize_display(v)}" for k, v in sorted(c.metadata.items())]
                 typer.echo(f"Meta:   {', '.join(meta_parts)}")
-            typer.echo(f"\n    {c.message}\n")
+            typer.echo(f"\n    {msg}\n")
 
             if stat or patch:
                 added, removed = _file_diff(root, c)

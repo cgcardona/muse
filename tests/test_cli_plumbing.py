@@ -212,8 +212,8 @@ class TestRevParse:
     def test_resolve_branch(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"data")
-        _make_snapshot(repo, "snap1", {"f": oid})
-        _make_commit(repo, "c" * 64, "snap1")
+        _make_snapshot(repo, "s" * 64, {"f": oid})
+        _make_commit(repo, "c" * 64, "s" * 64)
         _set_head(repo, "main", "c" * 64)
 
         result = runner.invoke(
@@ -228,8 +228,8 @@ class TestRevParse:
     def test_resolve_head(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"data")
-        _make_snapshot(repo, "snap1", {"f": oid})
-        _make_commit(repo, "d" * 64, "snap1")
+        _make_snapshot(repo, "s" * 64, {"f": oid})
+        _make_commit(repo, "d" * 64, "s" * 64)
         _set_head(repo, "main", "d" * 64)
 
         result = runner.invoke(
@@ -243,8 +243,8 @@ class TestRevParse:
     def test_resolve_text_format(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"data")
-        _make_snapshot(repo, "snap1", {"f": oid})
-        _make_commit(repo, "e" * 64, "snap1")
+        _make_snapshot(repo, "s" * 64, {"f": oid})
+        _make_commit(repo, "e" * 64, "s" * 64)
         _set_head(repo, "main", "e" * 64)
 
         result = runner.invoke(
@@ -274,8 +274,8 @@ class TestLsFiles:
     def test_lists_files_json(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"track data")
-        _make_snapshot(repo, "snap1", {"tracks/drums.mid": oid})
-        _make_commit(repo, "f" * 64, "snap1")
+        _make_snapshot(repo, "s" * 64, {"tracks/drums.mid": oid})
+        _make_commit(repo, "f" * 64, "s" * 64)
         _set_head(repo, "main", "f" * 64)
 
         result = runner.invoke(
@@ -291,8 +291,8 @@ class TestLsFiles:
     def test_lists_files_text(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"data")
-        _make_snapshot(repo, "snap1", {"a.txt": oid})
-        _make_commit(repo, "a" * 64, "snap1")
+        _make_snapshot(repo, "s" * 64, {"a.txt": oid})
+        _make_commit(repo, "a" * 64, "s" * 64)
         _set_head(repo, "main", "a" * 64)
 
         result = runner.invoke(
@@ -305,8 +305,8 @@ class TestLsFiles:
     def test_with_explicit_commit(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"data")
-        _make_snapshot(repo, "snap1", {"x.mid": oid})
-        _make_commit(repo, "1" * 64, "snap1")
+        _make_snapshot(repo, "s" * 64, {"x.mid": oid})
+        _make_commit(repo, "1" * 64, "s" * 64)
 
         result = runner.invoke(
             cli, ["plumbing", "ls-files", "--commit", "1" * 64],
@@ -334,8 +334,8 @@ class TestReadCommit:
     def test_reads_commit_json(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"data")
-        _make_snapshot(repo, "snap1", {"f": oid})
-        _make_commit(repo, "2" * 64, "snap1", message="my message")
+        _make_snapshot(repo, "s" * 64, {"f": oid})
+        _make_commit(repo, "2" * 64, "s" * 64, message="my message")
 
         result = runner.invoke(
             cli, ["plumbing", "read-commit", "2" * 64],
@@ -346,7 +346,7 @@ class TestReadCommit:
         data = json.loads(result.stdout)
         assert data["commit_id"] == "2" * 64
         assert data["message"] == "my message"
-        assert data["snapshot_id"] == "snap1"
+        assert data["snapshot_id"] == "s" * 64
 
     def test_missing_commit_errors(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
@@ -368,16 +368,16 @@ class TestReadSnapshot:
     def test_reads_snapshot_json(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"snap data")
-        _make_snapshot(repo, "mysnapshot", {"track.mid": oid})
+        _make_snapshot(repo, "9" * 64, {"track.mid": oid})
 
         result = runner.invoke(
-            cli, ["plumbing", "read-snapshot", "mysnapshot"],
+            cli, ["plumbing", "read-snapshot", "9" * 64],
             env=_repo_env(repo),
             catch_exceptions=False,
         )
         assert result.exit_code == 0, result.output
         data = json.loads(result.stdout)
-        assert data["snapshot_id"] == "mysnapshot"
+        assert data["snapshot_id"] == "9" * 64
         assert data["file_count"] == 1
         assert "track.mid" in data["manifest"]
 
@@ -399,13 +399,13 @@ class TestCommitTree:
     def test_creates_commit_from_snapshot(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"content")
-        _make_snapshot(repo, "snap1", {"file.txt": oid})
+        _make_snapshot(repo, "s" * 64, {"file.txt": oid})
 
         result = runner.invoke(
             cli,
             [
                 "plumbing", "commit-tree",
-                "--snapshot", "snap1",
+                "--snapshot", "s" * 64,
                 "--message", "plumbing commit",
                 "--author", "bot",
             ],
@@ -420,8 +420,8 @@ class TestCommitTree:
     def test_with_parent(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"data")
-        _make_snapshot(repo, "snap1", {"a": oid})
-        _make_commit(repo, "p" * 64, "snap1")
+        _make_snapshot(repo, "s" * 64, {"a": oid})
+        _make_commit(repo, "p" * 64, "s" * 64)
 
         _make_snapshot(repo, "snap2", {"b": oid})
         result = runner.invoke(
@@ -458,8 +458,8 @@ class TestUpdateRef:
     def test_creates_branch_ref(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"x")
-        _make_snapshot(repo, "s1", {"x": oid})
-        _make_commit(repo, "3" * 64, "s1")
+        _make_snapshot(repo, "1" * 64, {"x": oid})
+        _make_commit(repo, "3" * 64, "1" * 64)
 
         result = runner.invoke(
             cli,
@@ -477,9 +477,9 @@ class TestUpdateRef:
     def test_updates_existing_ref(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"y")
-        _make_snapshot(repo, "s1", {"y": oid})
-        _make_commit(repo, "4" * 64, "s1")
-        _make_commit(repo, "5" * 64, "s1", parent_commit_id="4" * 64)
+        _make_snapshot(repo, "1" * 64, {"y": oid})
+        _make_commit(repo, "4" * 64, "1" * 64)
+        _make_commit(repo, "5" * 64, "1" * 64, parent_commit_id="4" * 64)
         _set_head(repo, "main", "4" * 64)
 
         result = runner.invoke(
@@ -536,12 +536,12 @@ class TestCommitGraph:
     def test_linear_graph(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"data")
-        _make_snapshot(repo, "s1", {"f": oid})
-        _make_commit(repo, "c1" + "0" * 62, "s1", message="first")
+        _make_snapshot(repo, "1" * 64, {"f": oid})
+        _make_commit(repo, "c1" + "0" * 62, "1" * 64, message="first")
         _make_commit(
             repo,
             "c2" + "0" * 62,
-            "s1",
+            "1" * 64,
             message="second",
             parent_commit_id="c1" + "0" * 62,
         )
@@ -562,8 +562,8 @@ class TestCommitGraph:
     def test_text_format(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"data")
-        _make_snapshot(repo, "s1", {"f": oid})
-        _make_commit(repo, "e1" + "0" * 62, "s1")
+        _make_snapshot(repo, "1" * 64, {"f": oid})
+        _make_commit(repo, "e1" + "0" * 62, "1" * 64)
         _set_head(repo, "main", "e1" + "0" * 62)
 
         result = runner.invoke(
@@ -576,8 +576,8 @@ class TestCommitGraph:
     def test_explicit_tip(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"data")
-        _make_snapshot(repo, "s1", {"f": oid})
-        _make_commit(repo, "t1" + "0" * 62, "s1")
+        _make_snapshot(repo, "1" * 64, {"f": oid})
+        _make_commit(repo, "t1" + "0" * 62, "1" * 64)
 
         result = runner.invoke(
             cli, ["plumbing", "commit-graph", "--tip", "t1" + "0" * 62],
@@ -605,8 +605,8 @@ class TestPackObjects:
     def test_packs_head(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"pack me")
-        _make_snapshot(repo, "s1", {"f.mid": oid})
-        _make_commit(repo, "p" + "0" * 63, "s1")
+        _make_snapshot(repo, "1" * 64, {"f.mid": oid})
+        _make_commit(repo, "p" + "0" * 63, "1" * 64)
         _set_head(repo, "main", "p" + "0" * 63)
 
         result = runner.invoke(
@@ -622,9 +622,9 @@ class TestPackObjects:
     def test_packs_explicit_commit(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"explicit")
-        _make_snapshot(repo, "s1", {"g": oid})
+        _make_snapshot(repo, "1" * 64, {"g": oid})
         commit_id = "q" + "0" * 63
-        _make_commit(repo, commit_id, "s1")
+        _make_commit(repo, commit_id, "1" * 64)
 
         result = runner.invoke(
             cli, ["plumbing", "pack-objects", commit_id],
@@ -656,9 +656,9 @@ class TestUnpackObjects:
         dest = _init_repo(tmp_path / "dst")
 
         oid = _make_object(source, b"unpack me")
-        _make_snapshot(source, "s1", {"h.mid": oid})
+        _make_snapshot(source, "1" * 64, {"h.mid": oid})
         commit_id = "u" + "0" * 63
-        _make_commit(source, commit_id, "s1")
+        _make_commit(source, commit_id, "1" * 64)
 
         bundle = build_pack(source, [commit_id])
         bundle_json = json.dumps(bundle)
@@ -689,9 +689,9 @@ class TestUnpackObjects:
     def test_idempotent_unpack(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"idempotent")
-        _make_snapshot(repo, "s1", {"i.txt": oid})
+        _make_snapshot(repo, "1" * 64, {"i.txt": oid})
         commit_id = "i" + "0" * 63
-        _make_commit(repo, commit_id, "s1")
+        _make_commit(repo, commit_id, "1" * 64)
 
         bundle = build_pack(repo, [commit_id])
         bundle_json = json.dumps(bundle)

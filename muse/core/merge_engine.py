@@ -56,6 +56,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, TypedDict
 
+from muse.core.validation import contain_path, validate_object_id, validate_ref_id
+
 if TYPE_CHECKING:
     from muse.domain import MergeResult, MuseDomainPlugin
 
@@ -112,19 +114,42 @@ def read_merge_state(root: pathlib.Path) -> MergeState | None:
         return None
 
     raw_conflicts = data.get("conflict_paths", [])
-    conflict_paths: list[str] = (
-        [str(c) for c in raw_conflicts] if isinstance(raw_conflicts, list) else []
-    )
+    workdir = root / "muse-work"
+    safe_conflict_paths: list[str] = []
+    if isinstance(raw_conflicts, list):
+        for c in raw_conflicts:
+            try:
+                contained = contain_path(workdir, str(c))
+                # Store as relative POSIX string for display; contain_path already validated it.
+                safe_conflict_paths.append(contained.relative_to(workdir.resolve()).as_posix())
+            except ValueError:
+                logger.warning(
+                    "⚠️ Skipping unsafe conflict path %r from MERGE_STATE.json", c
+                )
+
+    def _validated_ref(key: str) -> str | None:
+        val = data.get(key)
+        if val is None:
+            return None
+        s = str(val)
+        try:
+            validate_ref_id(s)
+            return s
+        except ValueError:
+            logger.warning(
+                "⚠️ Invalid %s %r in MERGE_STATE.json — ignoring", key, s
+            )
+            return None
 
     def _str_or_none(key: str) -> str | None:
         val = data.get(key)
         return str(val) if val is not None else None
 
     return MergeState(
-        conflict_paths=conflict_paths,
-        base_commit=_str_or_none("base_commit"),
-        ours_commit=_str_or_none("ours_commit"),
-        theirs_commit=_str_or_none("theirs_commit"),
+        conflict_paths=safe_conflict_paths,
+        base_commit=_validated_ref("base_commit"),
+        ours_commit=_validated_ref("ours_commit"),
+        theirs_commit=_validated_ref("theirs_commit"),
         other_branch=_str_or_none("other_branch"),
     )
 
@@ -197,12 +222,15 @@ def apply_resolution(
     """
     from muse.core.object_store import read_object
 
+    validate_object_id(object_id)
+    workdir = root / "muse-work"
+    dest = contain_path(workdir, rel_path)
+
     content = read_object(root, object_id)
     if content is None:
         raise FileNotFoundError(
             f"Object {object_id[:8]} for '{rel_path}' not found in local store."
         )
-    dest = root / "muse-work" / rel_path
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(content)
     logger.debug("✅ Restored '%s' from object %s", rel_path, object_id[:8])
@@ -398,12 +426,20 @@ def find_merge_base(
     Returns:
         The LCA commit ID, or ``None`` if the commits share no common ancestor.
     """
+    from muse.core.errors import MuseCLIError
     from muse.core.store import read_commit
+
+    _MAX_ANCESTORS = 50_000
 
     def _all_ancestors(start: str) -> set[str]:
         visited: set[str] = set()
         queue: deque[str] = deque([start])
         while queue:
+            if len(visited) >= _MAX_ANCESTORS:
+                raise MuseCLIError(
+                    f"Ancestor graph exceeds {_MAX_ANCESTORS} commits during "
+                    "merge-base search. The repository DAG may be malformed."
+                )
             cid = queue.popleft()
             if cid in visited:
                 continue
@@ -422,6 +458,12 @@ def find_merge_base(
     visited_b: set[str] = set()
     queue_b: deque[str] = deque([commit_id_b])
     while queue_b:
+        if len(visited_b) >= _MAX_ANCESTORS:
+            logger.warning(
+                "⚠️ Ancestor graph exceeds %d commits during merge-base search — stopping",
+                _MAX_ANCESTORS,
+            )
+            return None
         cid = queue_b.popleft()
         if cid in visited_b:
             continue
