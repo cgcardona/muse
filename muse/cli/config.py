@@ -291,11 +291,20 @@ def set_hub_url(url: str, repo_root: pathlib.Path | None = None) -> None:
     """Write ``[hub] url`` to ``.muse/config.toml``.
 
     Preserves all other sections. Creates the config file if absent.
+    Rejects ``http://`` URLs — Muse never contacts a hub over cleartext HTTP.
 
     Args:
-        url: Hub URL (e.g. ``"https://musehub.ai"``).
+        url: Hub URL (must be ``https://``).
         repo_root: Repository root. Defaults to ``Path.cwd()``.
+
+    Raises:
+        ValueError: If *url* does not use the ``https://`` scheme.
     """
+    if not url.startswith("https://"):
+        raise ValueError(
+            f"Hub URL must use HTTPS. Got: {url!r}\n"
+            "Muse never connects to a hub over cleartext HTTP."
+        )
     cp = _config_path(repo_root)
     cp.parent.mkdir(parents=True, exist_ok=True)
     config = _load_config(cp)
@@ -448,11 +457,8 @@ def set_config_value(key: str, value: str, repo_root: pathlib.Path | None = None
     if namespace == "hub":
         if subkey != "url":
             raise ValueError(f"Unknown [hub] config key: {subkey!r}. Valid keys: url")
-        hub: HubConfig = config.get("hub") or {}
-        hub["url"] = value
-        config["hub"] = hub
-        cp.write_text(_dump_toml(config), encoding="utf-8")
-        logger.info("✅ hub.url = %r", value)
+        # Route through set_hub_url — it enforces the HTTPS requirement.
+        set_hub_url(value, repo_root)
         return
 
     # namespace == "domain"

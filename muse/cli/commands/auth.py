@@ -188,13 +188,27 @@ def login(
         )
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
-    # Resolve token
+    # Detect whether the token came from the --token CLI flag (not from the
+    # MUSE_TOKEN env var or the interactive prompt).  Tokens passed on the
+    # command line appear in shell history (~/.zsh_history), process listings
+    # (ps aux), and /proc/PID/cmdline on Linux.
+    token_from_cli_flag = token is not None and os.environ.get("MUSE_TOKEN") is None
+
+    # Resolve token: explicit --token / MUSE_TOKEN → interactive prompt.
     raw_token = token
     if not raw_token:
         raw_token = _prompt_token(hub_url)
     if not raw_token:
         typer.echo("❌ No token provided.")
         raise typer.Exit(code=ExitCode.USER_ERROR)
+
+    if token_from_cli_flag:
+        typer.echo(
+            "⚠️  Token passed via --token flag.\n"
+            "   It may appear in your shell history and process listings.\n"
+            "   For automation, prefer: MUSE_TOKEN=<token> muse auth login ...",
+            err=True,
+        )
 
     identity_type = _DEFAULT_AGENT_TYPE if agent else _DEFAULT_HUMAN_TYPE
 

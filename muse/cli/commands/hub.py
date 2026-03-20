@@ -25,9 +25,11 @@ Subcommands
 
 from __future__ import annotations
 
+import http.client
 import logging
 import urllib.error
 import urllib.request
+from typing import IO
 
 import typer
 
@@ -41,6 +43,40 @@ logger = logging.getLogger(__name__)
 app = typer.Typer(no_args_is_help=True)
 
 _CONNECT_TIMEOUT = 8  # seconds for ping/status health check
+
+
+# ---------------------------------------------------------------------------
+# Security — redirect refusal for ping
+# ---------------------------------------------------------------------------
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Refuse all HTTP redirects for the ping health check.
+
+    No credentials travel on the ping request, but silently following
+    redirects (potentially cross-scheme or cross-host) is misleading about
+    what was actually reached and normalises insecure redirect behavior.
+    """
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: http.client.HTTPMessage,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        raise urllib.error.HTTPError(
+            req.full_url,
+            code,
+            f"Redirect refused ({code}): hub redirected to {newurl!r}. Update the hub URL.",
+            headers,
+            fp,
+        )
+
+
+_PING_OPENER = urllib.request.build_opener(_NoRedirectHandler())
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +129,7 @@ def _ping_hub(url: str) -> tuple[bool, str]:
     health_url = f"{url.rstrip('/')}/health"
     try:
         req = urllib.request.Request(health_url, method="GET")
-        with urllib.request.urlopen(req, timeout=_CONNECT_TIMEOUT) as resp:
+        with _PING_OPENER.open(req, timeout=_CONNECT_TIMEOUT) as resp:
             status = resp.status
             if 200 <= status < 300:
                 return True, f"HTTP {status} OK"

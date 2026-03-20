@@ -58,12 +58,15 @@ Security model
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import logging
 import os
 import pathlib
 import stat
 import tempfile
 import tomllib
+from collections.abc import Generator
 from typing import TypedDict
 
 logger = logging.getLogger(__name__)
@@ -103,19 +106,36 @@ def get_identity_path() -> pathlib.Path:
 
 
 def _hostname_from_url(url: str) -> str:
-    """Extract the hostname from a URL or return the string as-is.
+    """Normalise *url* to a lowercase hostname suitable for use as a dict key.
+
+    Security properties
+    -------------------
+    - Strips the scheme (``https://``), so different scheme representations of
+      the same host resolve to the same key.
+    - Strips userinfo (``user:password@``) — embedded credentials in a URL are
+      never stored as part of the hostname key.
+    - Normalises to lowercase — DNS is case-insensitive, so ``MUSEHUB.AI``
+      and ``musehub.ai`` are the same host and must resolve to the same entry.
 
     Examples::
 
-        "https://musehub.ai/repos/x" → "musehub.ai"
-        "musehub.ai"                 → "musehub.ai"
-        "https://musehub.ai"         → "musehub.ai"
+        "https://musehub.ai/repos/x"      → "musehub.ai"
+        "https://admin:s3cr3t@musehub.ai" → "musehub.ai"
+        "MUSEHUB.AI"                       → "musehub.ai"
+        "https://musehub.ai"               → "musehub.ai"
+        "musehub.ai:8443"                  → "musehub.ai:8443"
     """
     stripped = url.strip().rstrip("/")
+    # Remove scheme.
     if "://" in stripped:
         stripped = stripped.split("://", 1)[1]
-    # Strip path component, keep only host[:port]
-    return stripped.split("/")[0]
+    # Remove userinfo (user:password@) — never embed credentials in the key.
+    if "@" in stripped:
+        stripped = stripped.rsplit("@", 1)[1]
+    # Keep only host[:port], strip any path.
+    hostname = stripped.split("/")[0]
+    # Normalise to lowercase — DNS is case-insensitive.
+    return hostname.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +194,14 @@ def _load_all(path: pathlib.Path) -> dict[str, IdentityEntry]:
         with path.open("rb") as fh:
             raw = tomllib.load(fh)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("⚠️ Failed to parse identity file %s: %s", path, exc)
+        # Log only the exception *type*, never its message — a TOML parse
+        # error surfaced by tomllib includes the offending line, which can
+        # contain a fragment of the token being written when the file is corrupt.
+        logger.warning(
+            "⚠️ Failed to parse identity file %s (%s — run `muse auth login` to re-authenticate)",
+            path,
+            type(exc).__name__,
+        )
         return {}
 
     result: dict[str, IdentityEntry] = {}
@@ -200,6 +227,40 @@ def _load_all(path: pathlib.Path) -> dict[str, IdentityEntry]:
         result[hostname] = entry
 
     return result
+
+
+@contextlib.contextmanager
+def _identity_write_lock() -> Generator[None, None, None]:
+    """Acquire an exclusive advisory write-lock on the identity store.
+
+    Uses a dedicated lock file (``~/.muse/.identity.lock``) so that the lock
+    survives the atomic rename of ``identity.toml`` itself.
+
+    Advisory (cooperative) locking protects all Muse processes that use this
+    lock against concurrent read-modify-write races.  Direct file edits by
+    external tools bypass the lock — that is acceptable; the user is then
+    responsible for data consistency.
+
+    POSIX-only (``fcntl.flock``).  The lock is blocking with no timeout;
+    CLI commands are short-lived and lock contention is expected to be brief.
+    """
+    lock_path = _IDENTITY_DIR / ".identity.lock"
+    _IDENTITY_DIR.mkdir(parents=True, exist_ok=True)
+    # Create the lock file with owner-only permissions; O_CLOEXEC prevents
+    # child processes from inheriting the file descriptor.
+    lock_fd = os.open(
+        str(lock_path),
+        os.O_CREAT | os.O_WRONLY | os.O_CLOEXEC,
+        stat.S_IRUSR | stat.S_IWUSR,
+    )
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+    finally:
+        os.close(lock_fd)
 
 
 def _save_all(identities: dict[str, IdentityEntry], path: pathlib.Path) -> None:
@@ -279,6 +340,10 @@ def load_identity(hub_url: str) -> IdentityEntry | None:
 def save_identity(hub_url: str, entry: IdentityEntry) -> None:
     """Store *entry* as the identity for *hub_url*.
 
+    The entire read-modify-write cycle is wrapped in an exclusive advisory
+    lock so that concurrent ``muse auth login`` calls (e.g. from parallel
+    agents) cannot race and overwrite each other's entries.
+
     Creates ``~/.muse/identity.toml`` with mode 0o600 if it does not exist.
 
     Args:
@@ -286,14 +351,18 @@ def save_identity(hub_url: str, entry: IdentityEntry) -> None:
         entry: Identity data to store.
     """
     hostname = _hostname_from_url(hub_url)
-    identities = _load_all(_IDENTITY_FILE)
-    identities[hostname] = entry
-    _save_all(identities, _IDENTITY_FILE)
+    with _identity_write_lock():
+        identities = _load_all(_IDENTITY_FILE)
+        identities[hostname] = entry
+        _save_all(identities, _IDENTITY_FILE)
     logger.info("✅ Identity for %s saved (Bearer ***)", hostname)
 
 
 def clear_identity(hub_url: str) -> bool:
     """Remove the stored identity for *hub_url*.
+
+    The entire read-modify-write cycle is wrapped in an exclusive advisory
+    lock (see :func:`save_identity`).
 
     Args:
         hub_url: Hub URL or bare hostname.
@@ -302,11 +371,12 @@ def clear_identity(hub_url: str) -> bool:
         ``True`` if an entry was removed, ``False`` if no entry existed.
     """
     hostname = _hostname_from_url(hub_url)
-    identities = _load_all(_IDENTITY_FILE)
-    if hostname not in identities:
-        return False
-    del identities[hostname]
-    _save_all(identities, _IDENTITY_FILE)
+    with _identity_write_lock():
+        identities = _load_all(_IDENTITY_FILE)
+        if hostname not in identities:
+            return False
+        del identities[hostname]
+        _save_all(identities, _IDENTITY_FILE)
     logger.info("✅ Identity for %s cleared", hostname)
     return True
 
