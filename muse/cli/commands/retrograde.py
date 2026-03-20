@@ -25,6 +25,7 @@ import pathlib
 import typer
 
 from muse.core.errors import ExitCode
+from muse.core.validation import contain_path
 from muse.core.repo import require_repo
 from muse.plugins.midi._query import NoteInfo, load_track_from_workdir, notes_to_midi_bytes
 from muse.plugins.midi.midi_diff import _pitch_name
@@ -90,9 +91,13 @@ def retrograde(
         return
 
     midi_bytes = notes_to_midi_bytes(retro, tpb)
-    work_path = root / "muse-work" / track
-    if not work_path.parent.exists():
-        work_path = root / track
+    workdir = root / "muse-work"
+    try:
+        work_path = contain_path(workdir, track)
+    except ValueError as exc:
+        typer.echo(f"❌ Invalid track path: {exc}")
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+    work_path.parent.mkdir(parents=True, exist_ok=True)
     work_path.write_bytes(midi_bytes)
 
     typer.echo(f"\n✅ Retrograded {track}")

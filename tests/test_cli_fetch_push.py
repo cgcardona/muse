@@ -58,13 +58,13 @@ def repo(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Pat
     content = b"hello"
     oid = _sha(content)
     write_object(tmp_path, oid, content)
-    snap = SnapshotRecord(snapshot_id="snap1", manifest={"file.txt": oid})
+    snap = SnapshotRecord(snapshot_id="s" * 64, manifest={"file.txt": oid})
     write_snapshot(tmp_path, snap)
     commit = CommitRecord(
         commit_id="commit1",
         repo_id="test-repo",
         branch="main",
-        snapshot_id="snap1",
+        snapshot_id="s" * 64,
         message="initial",
         committed_at=datetime.datetime.now(datetime.timezone.utc),
     )

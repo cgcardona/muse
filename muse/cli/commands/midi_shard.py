@@ -34,6 +34,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
+from muse.core.validation import contain_path
 from muse.plugins.midi._query import NoteInfo, load_track_from_workdir, notes_by_bar, notes_to_midi_bytes
 
 logger = logging.getLogger(__name__)
@@ -57,10 +58,11 @@ def _shard_notes(
         bar_offset = (lo_bar - 1) * 4 * tpb
         for bar_num in range(lo_bar, hi_bar + 1):
             for note in bars.get(bar_num, []):
+                rebased_tick = max(0, note.start_tick - bar_offset)
                 shard_notes.append(NoteInfo(
                     pitch=note.pitch,
                     velocity=note.velocity,
-                    start_tick=note.start_tick - bar_offset,
+                    start_tick=rebased_tick,
                     duration_ticks=note.duration_ticks,
                     channel=note.channel,
                     ticks_per_beat=note.ticks_per_beat,
@@ -150,7 +152,11 @@ def shard(
 
     shard_notes_list = _shard_notes(notes, bar_ranges)
 
-    out_dir = root / output_dir
+    try:
+        out_dir = contain_path(root, output_dir)
+    except ValueError as exc:
+        typer.echo(f"❌ Invalid --output-dir: {exc}")
+        raise typer.Exit(code=ExitCode.USER_ERROR)
     for idx, ((lo, hi), shard_notes) in enumerate(zip(bar_ranges, shard_notes_list)):
         out_name = f"{track_stem}_shard_{idx}.mid"
         out_path = out_dir / out_name

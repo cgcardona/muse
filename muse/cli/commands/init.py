@@ -30,6 +30,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import find_repo_root
+from muse.core.validation import validate_branch_name, validate_domain_name
 
 logger = logging.getLogger(__name__)
 
@@ -329,12 +330,24 @@ def init(
     domain: str = typer.Option("midi", "--domain", help="Domain plugin to use (e.g. midi). Must be registered in the plugin registry."),
 ) -> None:
     """Initialise a new Muse repository in the current directory."""
+    try:
+        validate_branch_name(default_branch)
+    except ValueError as exc:
+        typer.echo(f"❌ Invalid --default-branch: {exc}")
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
+    try:
+        validate_domain_name(domain)
+    except ValueError as exc:
+        typer.echo(f"❌ Invalid --domain: {exc}")
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
     cwd = pathlib.Path.cwd()
     muse_dir = cwd / ".muse"
 
     template_path: pathlib.Path | None = None
     if template is not None:
-        template_path = pathlib.Path(template)
+        template_path = pathlib.Path(template).resolve()
         if not template_path.is_dir():
             typer.echo(f"❌ Template path is not a directory: {template_path}")
             raise typer.Exit(code=ExitCode.USER_ERROR)

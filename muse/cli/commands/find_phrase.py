@@ -35,6 +35,7 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import resolve_commit_ref
+from muse.core.validation import sanitize_display
 from muse.plugins.midi._analysis import phrase_similarity
 from muse.plugins.midi._query import (
     NoteInfo,
@@ -98,6 +99,12 @@ def find_phrase(
     For agents: pipe the output (``--json``) into a decision loop to select the
     commit with the highest match score as the merge base for a cherry-pick.
     """
+    if depth < 1 or depth > 10_000:
+        typer.echo(f"❌ --depth must be between 1 and 10,000 (got {depth}).", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+    if not 0.0 <= min_score <= 1.0:
+        typer.echo(f"❌ --min-score must be between 0.0 and 1.0 (got {min_score}).", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
     root = require_repo()
 
     # Load query phrase
@@ -140,8 +147,8 @@ def find_phrase(
             matches.append(PhraseMatch(
                 score=score,
                 commit_id=commit.commit_id[:8],
-                author=commit.author or "unknown",
-                message=(commit.message or "").splitlines()[0][:60],
+                author=sanitize_display(commit.author or "unknown"),
+                message=sanitize_display((commit.message or "").splitlines()[0][:60]),
             ))
 
     matches.sort(key=lambda m: -m["score"])

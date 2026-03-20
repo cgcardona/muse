@@ -152,7 +152,7 @@ class TestFormatMatches:
 
     def test_single_match_formatted(self) -> None:
         m = QueryMatch(
-            commit_id="abc12345",
+            commit_id="a" * 64,
             author="gabriel",
             committed_at="2026-03-18T12:00:00+00:00",
             branch="main",
@@ -160,13 +160,13 @@ class TestFormatMatches:
             extra={},
         )
         out = format_matches([m])
-        assert "abc12345"[:8] in out
+        assert ("a" * 64)[:8] in out
         assert "gabriel" in out
         assert "my_function (added)" in out
 
     def test_agent_id_shown_when_present(self) -> None:
         m = QueryMatch(
-            commit_id="abc12345",
+            commit_id="a" * 64,
             author="bot",
             committed_at="2026-03-18T12:00:00+00:00",
             branch="main",

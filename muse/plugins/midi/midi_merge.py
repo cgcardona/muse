@@ -104,9 +104,12 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import logging
 from dataclasses import dataclass, field
 
 import mido
+
+logger = logging.getLogger(__name__)
 
 from muse.core.attributes import AttributeRule, resolve_strategy
 
@@ -307,6 +310,8 @@ type _MsgVal = int | str | list[int]
 
 def _msg_to_dict(msg: mido.Message) -> dict[str, _MsgVal]:
     """Serialise a mido Message to a JSON-compatible dict."""
+    from muse.core.validation import MAX_SYSEX_BYTES
+
     d: dict[str, _MsgVal] = {"type": msg.type}
     for attr in (
         "channel", "note", "velocity", "control", "value",
@@ -317,6 +322,14 @@ def _msg_to_dict(msg: mido.Message) -> dict[str, _MsgVal]:
         if hasattr(msg, attr):
             raw = getattr(msg, attr)
             if isinstance(raw, (bytes, bytearray)):
+                # Cap sysex / large byte payloads to prevent memory exhaustion
+                # when a crafted MIDI contains a giant sysex blob.
+                if len(raw) > MAX_SYSEX_BYTES:
+                    logger.warning(
+                        "⚠️ Sysex payload %d bytes exceeds cap (%d) — truncating",
+                        len(raw), MAX_SYSEX_BYTES,
+                    )
+                    raw = raw[:MAX_SYSEX_BYTES]
                 d[attr] = list(raw)
             elif isinstance(raw, str):
                 d[attr] = raw

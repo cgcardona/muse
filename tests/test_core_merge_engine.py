@@ -110,17 +110,20 @@ class TestApplyMerge:
 
 class TestMergeStateIO:
     def test_write_and_read(self, repo: pathlib.Path) -> None:
+        base_id = "b" * 64
+        ours_id = "1" * 64
+        theirs_id = "2" * 64
         write_merge_state(
             repo,
-            base_commit="base",
-            ours_commit="ours",
-            theirs_commit="theirs",
+            base_commit=base_id,
+            ours_commit=ours_id,
+            theirs_commit=theirs_id,
             conflict_paths=["a.mid", "b.mid"],
             other_branch="feature/x",
         )
         state = read_merge_state(repo)
         assert state is not None
-        assert state.base_commit == "base"
+        assert state.base_commit == base_id
         assert state.conflict_paths == ["a.mid", "b.mid"]
         assert state.other_branch == "feature/x"
 
@@ -128,7 +131,7 @@ class TestMergeStateIO:
         assert read_merge_state(repo) is None
 
     def test_clear(self, repo: pathlib.Path) -> None:
-        write_merge_state(repo, base_commit="b", ours_commit="o", theirs_commit="t", conflict_paths=[])
+        write_merge_state(repo, base_commit="b" * 64, ours_commit="c" * 64, theirs_commit="d" * 64, conflict_paths=[])
         clear_merge_state(repo)
         assert read_merge_state(repo) is None
 

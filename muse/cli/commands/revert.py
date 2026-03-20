@@ -22,6 +22,7 @@ from muse.core.store import (
     resolve_commit_ref,
     write_commit,
 )
+from muse.core.validation import contain_path, sanitize_display
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,12 @@ def revert(
         shutil.rmtree(workdir)
     workdir.mkdir()
     for rel_path, object_id in target_snapshot.manifest.items():
-        restore_object(root, object_id, workdir / rel_path)
+        try:
+            safe_dest = contain_path(workdir, rel_path)
+        except ValueError as exc:
+            logger.warning("⚠️ Skipping unsafe manifest path %r: %s", rel_path, exc)
+            continue
+        restore_object(root, object_id, safe_dest)
 
     if no_commit:
         typer.echo(f"Reverted changes from {target.commit_id[:8]} applied to muse-work/. Run 'muse commit' to record.")
@@ -106,4 +112,4 @@ def revert(
     ))
     (root / ".muse" / "refs" / "heads" / branch).write_text(commit_id)
 
-    typer.echo(f"[{branch} {commit_id[:8]}] {revert_message}")
+    typer.echo(f"[{sanitize_display(branch)} {commit_id[:8]}] {sanitize_display(revert_message)}")

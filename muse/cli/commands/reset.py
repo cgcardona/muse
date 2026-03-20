@@ -19,6 +19,7 @@ from muse.core.errors import ExitCode
 from muse.core.object_store import restore_object
 from muse.core.repo import require_repo
 from muse.core.store import read_snapshot, resolve_commit_ref
+from muse.core.validation import contain_path, sanitize_display, validate_branch_name
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,11 @@ def reset(
         typer.echo(f"❌ '{ref}' not found.")
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
+    try:
+        validate_branch_name(branch)
+    except ValueError as exc:
+        typer.echo(f"❌ Current branch name is invalid: {exc}")
+        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
     ref_file = root / ".muse" / "refs" / "heads" / branch
     ref_file.write_text(commit.commit_id)
 
@@ -64,7 +70,12 @@ def reset(
             shutil.rmtree(workdir)
         workdir.mkdir()
         for rel_path, object_id in snapshot.manifest.items():
-            restore_object(root, object_id, workdir / rel_path)
-        typer.echo(f"HEAD is now at {commit.commit_id[:8]} {commit.message}")
+            try:
+                safe_dest = contain_path(workdir, rel_path)
+            except ValueError as exc:
+                logger.warning("⚠️ Skipping unsafe manifest path %r: %s", rel_path, exc)
+                continue
+            restore_object(root, object_id, safe_dest)
+        typer.echo(f"HEAD is now at {commit.commit_id[:8]} {sanitize_display(commit.message)}")
     else:
-        typer.echo(f"Moved {branch} to {commit.commit_id[:8]}")
+        typer.echo(f"Moved {sanitize_display(branch)} to {commit.commit_id[:8]}")

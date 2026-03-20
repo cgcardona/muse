@@ -272,13 +272,13 @@ class TestCodeChecker:
             # No commits — check should return a report with 0 violations.
             from muse.core.store import CommitRecord, SnapshotRecord, write_commit, write_snapshot
             import datetime
-            snap = SnapshotRecord(snapshot_id="snap1", manifest={})
+            snap = SnapshotRecord(snapshot_id="s" * 64, manifest={})
             write_snapshot(root, snap)
             commit = CommitRecord(
                 commit_id="abc123",
                 repo_id="test",
                 branch="main",
-                snapshot_id="snap1",
+                snapshot_id="s" * 64,
                 message="init",
                 committed_at=datetime.datetime.now(datetime.timezone.utc),
             )

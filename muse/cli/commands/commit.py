@@ -38,6 +38,7 @@ from muse.core.store import (
     write_commit,
     write_snapshot,
 )
+from muse.core.validation import sanitize_display, validate_branch_name
 from muse.domain import SemVerBump, SnapshotManifest, StructuredDelta, infer_sem_ver_bump
 from muse.plugins.registry import read_domain, resolve_plugin
 
@@ -51,10 +52,21 @@ def _read_repo_id(root: pathlib.Path) -> str:
 
 
 def _read_branch(root: pathlib.Path) -> tuple[str, pathlib.Path]:
-    """Return (branch_name, ref_file_path)."""
+    """Return (branch_name, ref_file_path).
+
+    Guards against HEAD-poisoning attacks: the ref stored in HEAD must begin
+    with ``refs/heads/`` and the derived branch name must pass branch-name
+    validation before it is used as a path component.
+    """
     head_ref = (root / ".muse" / "HEAD").read_text().strip()
+    if not head_ref.startswith("refs/heads/"):
+        raise ValueError(
+            f"HEAD contains an unexpected ref format: {head_ref!r}. "
+            "Expected 'refs/heads/<branch>'."
+        )
     branch = head_ref.removeprefix("refs/heads/").strip()
-    ref_path = root / ".muse" / head_ref
+    validate_branch_name(branch)
+    ref_path = root / ".muse" / "refs" / "heads" / branch
     return branch, ref_path
 
 
@@ -166,10 +178,13 @@ def commit(
         structured_delta["breaking_changes"] = breaking_changes
 
     # Resolve agent provenance: CLI flags take priority over environment vars.
-    resolved_agent_id = agent_id or os.environ.get("MUSE_AGENT_ID", "")
-    resolved_model_id = model_id or os.environ.get("MUSE_MODEL_ID", "")
-    resolved_toolchain_id = toolchain_id or os.environ.get("MUSE_TOOLCHAIN_ID", "")
-    resolved_prompt_hash = os.environ.get("MUSE_PROMPT_HASH", "")
+    # Truncate to 256 chars to prevent environment injection of arbitrarily
+    # long or control-character-laden strings into commit records.
+    _MAX_PROV = 256
+    resolved_agent_id = (agent_id or os.environ.get("MUSE_AGENT_ID", ""))[:_MAX_PROV]
+    resolved_model_id = (model_id or os.environ.get("MUSE_MODEL_ID", ""))[:_MAX_PROV]
+    resolved_toolchain_id = (toolchain_id or os.environ.get("MUSE_TOOLCHAIN_ID", ""))[:_MAX_PROV]
+    resolved_prompt_hash = os.environ.get("MUSE_PROMPT_HASH", "")[:_MAX_PROV]
 
     signature = ""
     signer_key_id = ""
@@ -206,4 +221,4 @@ def commit(
     ref_path.parent.mkdir(parents=True, exist_ok=True)
     ref_path.write_text(commit_id)
 
-    typer.echo(f"[{branch} {commit_id[:8]}] {message or ''}")
+    typer.echo(f"[{sanitize_display(branch)} {commit_id[:8]}] {sanitize_display(message or '')}")
