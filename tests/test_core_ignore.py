@@ -268,9 +268,12 @@ class TestIsIgnored:
     def test_non_matching_not_ignored(self) -> None:
         assert not is_ignored("drums.mid", ["*.tmp"])
 
-    def test_directory_pattern_not_applied_to_file(self) -> None:
-        # Trailing / means directory-only; must not ignore a file.
-        assert not is_ignored("renders/mix.wav", ["renders/"])
+    def test_directory_pattern_ignores_files_inside(self) -> None:
+        # Trailing / means "this directory and all its contents" — files inside
+        # the directory are ignored, matching gitignore semantics.
+        assert is_ignored("renders/mix.wav", ["renders/"])
+        assert is_ignored("renders/deep/session.mid", ["renders/"])
+        assert not is_ignored("other/mix.wav", ["renders/"])
 
     def test_negation_un_ignores(self) -> None:
         patterns = ["*.bak", "!keep.bak"]
@@ -480,7 +483,7 @@ class TestMidiPluginSnapshotIgnore:
         snap = plugin.snapshot(workdir)
         assert "beat.mid" in snap["files"]
 
-    def test_snapshot_directory_pattern_does_not_exclude_file(
+    def test_snapshot_directory_pattern_excludes_files_inside(
         self, tmp_path: pathlib.Path
     ) -> None:
         from muse.plugins.midi.plugin import MidiPlugin
@@ -490,10 +493,9 @@ class TestMidiPluginSnapshotIgnore:
         renders = workdir / "renders"
         renders.mkdir()
         (renders / "mix.wav").write_text("audio")
-        # Directory-only pattern — should not exclude files.
+        # Directory pattern ignores all files inside it — gitignore semantics.
         (root / ".museignore").write_text('[global]\npatterns = ["renders/"]\n')
 
         plugin = MidiPlugin()
         snap = plugin.snapshot(workdir)
-        # The file is NOT excluded because trailing-/ patterns are directory-only.
-        assert "renders/mix.wav" in snap["files"]
+        assert "renders/mix.wav" not in snap["files"]
