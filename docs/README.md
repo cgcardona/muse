@@ -26,6 +26,13 @@ This directory contains the complete documentation for Muse — a domain-agnosti
 | Look up a named type | [Type Contracts](reference/type-contracts.md) |
 | Configure merge strategies | [`.museattributes` Reference](reference/muse-attributes.md) |
 | Exclude files from snapshots | [`.museignore` Reference](reference/museignore.md) |
+| Undo accidental resets | [Reflog Reference](reference/reflog.md) |
+| Remove unused blobs | [GC Reference](reference/gc.md) |
+| Export a versioned archive | [Archive Reference](reference/archive.md) |
+| Hunt regressions automatically | [Bisect Reference](reference/bisect.md) |
+| Attribute text file lines | [Blame Reference](reference/blame.md) |
+| Work on multiple branches at once | [Worktree Reference](reference/worktree.md) |
+| Compose multiple Muse repos | [Workspace Reference](reference/workspace.md) |
 | Watch the demo narration | [Demo Script](demo/demo-script.md) |
 
 ---
@@ -83,8 +90,22 @@ docs/
 │   ├── muse-attributes.md        — .museattributes TOML format reference:
 │   │                               [meta] domain, [[rules]] syntax, all five
 │   │                               strategies, multi-domain usage, examples
-│   └── museignore.md             — .museignore format: glob patterns, negation,
-│                                   dotfile exclusion rules
+│   ├── museignore.md             — .museignore format: glob patterns, negation,
+│   │                               dotfile exclusion rules
+│   ├── reflog.md                 — muse reflog: HEAD/branch movement history,
+│   │                               undo safety net, per-ref journals
+│   ├── gc.md                     — muse gc: reachability walk, dry-run, stats,
+│   │                               when and why to run garbage collection
+│   ├── archive.md                — muse archive: tar.gz/zip export, --prefix,
+│   │                               --ref, distribution without history
+│   ├── bisect.md                 — muse bisect: binary regression search,
+│   │                               start/bad/good/skip/run/log/reset, agent-safe
+│   ├── blame.md                  — muse blame: line-level text attribution,
+│   │                               porcelain JSON output, attribution algorithm
+│   ├── worktree.md               — muse worktree: parallel branch checkouts,
+│   │                               shared object store, agent-per-branch pattern
+│   └── workspace.md              — muse workspace: multi-repo composition,
+│                                   manifest, sync, coordinator/worker patterns
 │
 └── demo/
     ├── midi-demo.md              — MIDI domain demo walkthrough: all 31 semantic

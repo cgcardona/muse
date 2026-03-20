@@ -24,6 +24,7 @@ from muse.core.store import (
     read_snapshot,
     resolve_commit_ref,
 )
+from muse.core.reflog import append_reflog
 from muse.core.validation import contain_path, sanitize_display, validate_branch_name
 from muse.domain import SnapshotManifest
 from muse.plugins.registry import read_domain, resolve_plugin
@@ -135,6 +136,10 @@ def checkout(
         ref_file.parent.mkdir(parents=True, exist_ok=True)
         ref_file.write_text(current_commit)
         (muse_dir / "HEAD").write_text(f"refs/heads/{target}\n")
+        append_reflog(
+            root, target, old_id=None, new_id=current_commit or ("0" * 64),
+            author="user", operation=f"branch: created from {sanitize_display(current_branch)}",
+        )
         typer.echo(f"Switched to a new branch '{sanitize_display(target)}'")
         return
 
@@ -145,11 +150,18 @@ def checkout(
             typer.echo(f"Already on '{target}'")
             return
 
+        target_commit_id = get_head_commit_id(root, target) or ""
+        current_commit_id = get_head_commit_id(root, current_branch) or ""
         target_snapshot_id = get_head_snapshot_id(root, repo_id, target)
         if target_snapshot_id:
             _checkout_snapshot(root, target_snapshot_id, current_snapshot_id)
 
         (muse_dir / "HEAD").write_text(f"refs/heads/{target}\n")
+        append_reflog(
+            root, target, old_id=current_commit_id or None, new_id=target_commit_id or ("0" * 64),
+            author="user",
+            operation=f"checkout: moving from {sanitize_display(current_branch)} to {sanitize_display(target)}",
+        )
         typer.echo(f"Switched to branch '{target}'")
         return
 
@@ -159,6 +171,12 @@ def checkout(
         typer.echo(f"❌ '{target}' is not a branch or commit ID.")
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
+    current_commit_id = get_head_commit_id(root, current_branch) or ""
     _checkout_snapshot(root, commit.snapshot_id, current_snapshot_id)
     (muse_dir / "HEAD").write_text(commit.commit_id + "\n")
+    append_reflog(
+        root, current_branch, old_id=current_commit_id or None, new_id=commit.commit_id,
+        author="user",
+        operation=f"checkout: detaching HEAD at {commit.commit_id[:12]}",
+    )
     typer.echo(f"HEAD is now at {commit.commit_id[:8]} {sanitize_display(commit.message)}")

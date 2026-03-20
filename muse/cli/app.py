@@ -36,7 +36,9 @@ Tier 2 — Core Porcelain commands::
     show        branch      checkout    merge       reset
     revert      stash       cherry-pick tag         domains
     attributes  remote      clone       fetch       pull
-    push        check       annotate
+    push        check       annotate    blame
+    reflog      gc          archive     bisect
+    worktree    workspace
 
 Identity & hub fabric::
 
@@ -93,8 +95,10 @@ import typer
 from muse.cli.commands import (
     annotate,
     api_surface,
+    archive,
     attributes,
     auth,
+    bisect,
     blame,
     branch,
     cherry_pick,
@@ -109,6 +113,7 @@ from muse.cli.commands import (
     commit,
     compare,
     config_cmd,
+    core_blame,
     coupling,
     coverage,
     dead,
@@ -119,6 +124,7 @@ from muse.cli.commands import (
     fetch,
     find_symbol,
     forecast,
+    gc,
     grep,
     harmony,
     hotspots,
@@ -147,6 +153,7 @@ from muse.cli.commands import (
     query,
     query_history,
     reconcile,
+    reflog,
     remote,
     reserve,
     reset,
@@ -163,6 +170,8 @@ from muse.cli.commands import (
     breakage,
     transpose,
     velocity_profile,
+    worktree,
+    workspace,
     # New MIDI semantic porcelain — analysis
     agent_map,
     arpeggiate,
@@ -273,6 +282,15 @@ cli.add_typer(domains.app,      name="domains",     help="Domain plugin dashboar
 # Cross-domain
 cli.add_typer(check.app,        name="check",       help="[*] Domain-agnostic invariant check — dispatches to the active domain plugin.")
 cli.add_typer(annotate.app,     name="annotate",    help="[*] CRDT-backed commit annotations — reviewed-by (ORSet) and test-run counter (GCounter).")
+
+# VCS completeness — safety net, search, export, multi-repo
+cli.add_typer(core_blame.app,   name="blame",       help="Line-level attribution for any text file — which commit last changed each line.")
+cli.add_typer(reflog.app,       name="reflog",      help="Show the history of HEAD and branch-ref movements — the undo safety net.")
+cli.add_typer(gc.app,           name="gc",          help="Garbage-collect unreachable objects from the object store.")
+cli.add_typer(archive.app,      name="archive",     help="Export any historical snapshot as a portable tar.gz or zip archive.")
+cli.add_typer(bisect.app,       name="bisect",      help="Binary search through commit history to isolate the first bad commit.")
+cli.add_typer(worktree.app,     name="worktree",    help="Manage multiple simultaneous branch checkouts (one state/ per branch).")
+cli.add_typer(workspace.app,    name="workspace",   help="Compose and manage multi-repository workspaces.")
 
 # ---------------------------------------------------------------------------
 # Tier 3 — MIDI domain semantic commands (muse midi …)

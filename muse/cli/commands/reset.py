@@ -19,6 +19,7 @@ from muse.core.errors import ExitCode
 from muse.core.object_store import restore_object
 from muse.core.repo import require_repo
 from muse.core.store import read_snapshot, resolve_commit_ref
+from muse.core.reflog import append_reflog
 from muse.core.validation import contain_path, sanitize_display, validate_branch_name
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,15 @@ def reset(
         typer.echo(f"❌ Current branch name is invalid: {exc}")
         raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
     ref_file = root / ".muse" / "refs" / "heads" / branch
+    old_commit_id = ref_file.read_text().strip() if ref_file.exists() else None
     ref_file.write_text(commit.commit_id)
+
+    mode = "hard" if hard else "soft"
+    append_reflog(
+        root, branch, old_id=old_commit_id, new_id=commit.commit_id,
+        author="user",
+        operation=f"reset ({mode}): moving to {commit.commit_id[:12]}",
+    )
 
     if hard:
         snapshot = read_snapshot(root, commit.snapshot_id)
