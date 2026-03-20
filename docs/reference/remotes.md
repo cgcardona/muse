@@ -461,27 +461,29 @@ remote and branch automatically without additional arguments.
 
 ---
 
-## Token Lifecycle
+## Authentication
 
-1. Obtain a bearer token via MuseHub (`POST /auth/token` or the web UI).
-2. Store it in `.muse/config.toml`:
-   ```toml
-   [auth]
-   token = "muse_tok_..."
-   ```
-3. Add `.muse/config.toml` to `.gitignore` and `.museignore`:
-   ```toml
-   # .museignore [global]
-   patterns = [".muse/config.toml"]
-   ```
-4. The token is automatically picked up by `fetch`, `pull`, `push`, and
-   `ls-remote` via `muse.cli.config.get_auth_token()`.
-5. The token value is **never** written to any log line — only `"Bearer ***"`
-   appears in debug logs.
+Muse stores bearer tokens in `~/.muse/identity.toml` — a machine-scoped,
+`0o600` credential file that is never part of any repository snapshot.
+Credentials are **not** stored in `.muse/config.toml`.
+
+See [`docs/reference/auth.md`](auth.md) for the complete reference:
+
+- `muse auth login` — store a token
+- `muse auth whoami` — inspect stored identity
+- `muse auth logout` — remove a token
+- File format, permissions model, and security properties
+
+The bearer token is automatically picked up by `fetch`, `pull`, `push`, and
+`ls-remote` via `muse.core.identity.resolve_token()`.  The token value is
+**never** written to any log line — only `"Bearer ***"` appears in debug logs.
 
 ---
 
 *See also:*  
+- [`docs/reference/auth.md`](auth.md) — identity management (`muse auth`)
+- [`docs/reference/hub.md`](hub.md) — hub fabric connection (`muse hub`)
+- [`docs/reference/security.md`](security.md) — full security architecture
 - [`docs/reference/museignore.md`](museignore.md) — domain-scoped ignore rules  
 - [`docs/reference/muse-attributes.md`](muse-attributes.md) — merge strategy overrides  
 - [`docs/architecture/muse-vcs.md`](../architecture/muse-vcs.md) — system architecture
