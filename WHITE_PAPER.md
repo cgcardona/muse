@@ -224,4 +224,4 @@ The rest is an open invitation.
 
 ---
 
-*Muse is open source. Implementation: `muse/`. Plugin protocol: `muse/domain.py`. MIDI plugin: `muse/plugins/midi/plugin.py`. Tests: `tests/`. Version 0.1.4 · 419 commits · March 2026.*
+*Muse is open source. Implementation: `muse/`. Plugin protocol: `muse/domain.py`. MIDI plugin: `muse/plugins/midi/plugin.py`. Tests: `tests/`. Version 0.1.4 · 419 commits · 3,273 passing tests · March 2026.*

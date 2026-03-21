@@ -38,7 +38,7 @@ from muse.core.errors import ExitCode
 from muse.core.pack import build_pack
 from muse.core.repo import require_repo
 from muse.core.store import get_head_commit_id, read_current_branch
-from muse.core.transport import HttpTransport, TransportError
+from muse.core.transport import TransportError, make_transport
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ def push(
 
     bundle = build_pack(root, [local_head], have=have)
 
-    transport = HttpTransport()
+    transport = make_transport(url)
     try:
         result = transport.push_pack(url, token, bundle, push_branch, force)
     except TransportError as exc:

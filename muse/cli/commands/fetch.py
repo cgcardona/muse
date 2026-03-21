@@ -22,7 +22,7 @@ from muse.core.errors import ExitCode
 from muse.core.pack import apply_pack
 from muse.core.repo import require_repo
 from muse.core.store import get_all_commits, read_current_branch
-from muse.core.transport import HttpTransport, TransportError
+from muse.core.transport import TransportError, make_transport
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def fetch(
     current_branch = _current_branch(root)
     target_branch = branch or get_upstream(current_branch, root) or current_branch
 
-    transport = HttpTransport()
+    transport = make_transport(url)
 
     try:
         info = transport.fetch_remote_info(url, token)

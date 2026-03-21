@@ -1,16 +1,27 @@
-"""Muse transport layer — typed HTTP client for MuseHub communication.
+"""Muse transport layer — HTTP and local-filesystem remote communication.
 
 The :class:`MuseTransport` Protocol defines the interface between the Muse CLI
-and a remote host (e.g. MuseHub).  The CLI calls this Protocol; MuseHub
-implements the server side.
+and a remote host.  The CLI calls this Protocol; the implementation is chosen
+at runtime by :func:`make_transport` based on the URL scheme.
 
-:class:`HttpTransport` is the stdlib implementation using ``urllib.request``
-(synchronous, HTTP/1.1 + TLS).  The :class:`MuseTransport` Protocol seam
-means MuseHub can upgrade to HTTP/2 or gRPC on the server side without
-touching any CLI command code — only the ``HttpTransport`` class changes.
+Transport implementations
+--------------------------
 
-MuseHub API contract
---------------------
+:class:`HttpTransport`
+    Synchronous HTTPS transport using stdlib ``urllib.request``.  Used for
+    ``https://`` remote URLs (MuseHub server required).
+
+:class:`LocalFileTransport`
+    Zero-network transport for ``file://`` URLs.  Reads and writes directly
+    from the remote's ``.muse/`` directory on the local filesystem (or a
+    shared network mount).  No server is required — ideal for local testing,
+    monorepo setups, and offline workflows.
+
+Use :func:`make_transport` instead of constructing either class directly —
+it inspects the URL scheme and returns the appropriate implementation.
+
+MuseHub API contract (HttpTransport)
+-------------------------------------
 
 All endpoints live under the remote repository URL
 (e.g. ``https://hub.muse.io/repos/{repo_id}``).
@@ -34,13 +45,34 @@ repositories may work without a token.  The token is read from
 ``.muse/config.toml`` via :func:`muse.cli.config.get_auth_token` and is
 **never** written to any log line.
 
-Error codes
------------
+:class:`LocalFileTransport` ignores the ``token`` argument — local repos
+do not require authentication (access is controlled by filesystem permissions).
+
+Error codes (HttpTransport)
+----------------------------
 
     401  Unauthorized — invalid or missing token
     404  Not found — repo does not exist on the remote
     409  Conflict — push rejected (non-fast-forward without ``--force``)
     5xx  Server error
+
+Security model
+--------------
+
+HttpTransport:
+- Refuses all HTTP redirects (prevents credential leakage to other hosts).
+- Rejects non-HTTPS URLs when a token is present (prevents cleartext exposure).
+- Caps response bodies at ``MAX_RESPONSE_BYTES`` (64 MiB) to prevent OOM.
+- Validates JSON content-type before parsing.
+
+LocalFileTransport:
+- Calls ``.resolve()`` on all filesystem paths (canonicalises symlinks and
+  ``..`` components before any I/O).
+- Validates branch names with ``validate_branch_name`` (rejects null bytes,
+  backslashes, consecutive dots, and other path-traversal primitives).
+- Guards ref-file writes with ``contain_path`` (defence-in-depth: asserts the
+  computed path stays inside ``.muse/refs/heads/`` even after symlink resolution).
+- Never follows redirects, makes no network calls, and ignores the token arg.
 """
 
 from __future__ import annotations
@@ -48,18 +80,17 @@ from __future__ import annotations
 import http.client
 import json
 import logging
-import urllib.error
-import urllib.request
-from typing import IO, Protocol
-
+import pathlib
 import types
+import urllib.error
 import urllib.parse
+import urllib.request
 import urllib.response
-from typing import Protocol, runtime_checkable
+from typing import IO, Protocol, runtime_checkable
 
 from muse.core.pack import FetchRequest, ObjectPayload, PackBundle, PushResult, RemoteInfo
 from muse.core.store import CommitDict, SnapshotDict
-from muse.core.validation import MAX_RESPONSE_BYTES
+from muse.core.validation import MAX_RESPONSE_BYTES, contain_path, validate_branch_name
 from muse.domain import SemVerBump
 
 logger = logging.getLogger(__name__)
@@ -599,3 +630,307 @@ def _coerce_snapshot_dict(raw: dict[str, _WireVal]) -> SnapshotDict:
         manifest=manifest,
         created_at=_str(raw.get("created_at")),
     )
+
+
+# ---------------------------------------------------------------------------
+# LocalFileTransport helpers
+# ---------------------------------------------------------------------------
+
+
+def _is_ancestor(
+    candidate: str,
+    from_commit: str,
+    bundle_by_id: dict[str, CommitDict],
+    remote_root: pathlib.Path,
+    max_depth: int = 100_000,
+) -> bool:
+    """Return True if *candidate* is an ancestor of (or equal to) *from_commit*.
+
+    Walks the commit graph BFS-style starting from *from_commit*, consulting
+    *bundle_by_id* first (commits included in the push bundle) and falling back
+    to the existing commits on disk in *remote_root* (commits already present).
+
+    This two-source walk is necessary because ``build_pack()`` excludes commits
+    in the caller's ``have`` set from the bundle — those commits are already on
+    disk at the remote and must be consulted directly.
+
+    Args:
+        candidate:    The commit ID to search for (typically the remote's current HEAD).
+        from_commit:  Starting point of the BFS walk (typically the new tip being pushed).
+        bundle_by_id: Commits included in the push bundle, keyed by commit_id.
+        remote_root:  Root of the remote Muse repo (for reading pre-existing commits).
+        max_depth:    BFS depth cap — prevents unbounded walks on corrupt graphs.
+
+    Returns:
+        ``True`` if *candidate* is reachable from *from_commit*, ``False`` otherwise.
+    """
+    from muse.core.store import read_commit as _rc
+
+    seen: set[str] = set()
+    queue: list[str] = [from_commit]
+    depth = 0
+    while queue and depth < max_depth:
+        cid = queue.pop(0)
+        if cid in seen:
+            continue
+        seen.add(cid)
+        if cid == candidate:
+            return True
+        # Prefer bundle for unwritten commits; fall back to remote store.
+        parent1: str | None
+        parent2: str | None
+        if cid in bundle_by_id:
+            bc = bundle_by_id[cid]
+            p1_raw = bc.get("parent_commit_id")
+            p2_raw = bc.get("parent2_commit_id")
+            parent1 = p1_raw if isinstance(p1_raw, str) else None
+            parent2 = p2_raw if isinstance(p2_raw, str) else None
+        else:
+            rec = _rc(remote_root, cid)
+            if rec is None:
+                depth += 1
+                continue
+            parent1 = rec.parent_commit_id
+            parent2 = rec.parent2_commit_id
+        if parent1 and parent1 not in seen:
+            queue.append(parent1)
+        if parent2 and parent2 not in seen:
+            queue.append(parent2)
+        depth += 1
+    return False
+
+
+# ---------------------------------------------------------------------------
+# LocalFileTransport — push/pull between two repos on the same filesystem
+# ---------------------------------------------------------------------------
+
+
+class LocalFileTransport:
+    """Transport implementation for ``file://`` URLs.
+
+    Allows ``muse push file:///path/to/repo`` and ``muse pull`` between two
+    Muse repositories on the same filesystem (or a shared network mount)
+    without requiring a MuseHub server.
+
+    The remote path must be the root of an initialised Muse repository — it
+    must contain a ``.muse/`` directory.  No separate "bare repo" format is
+    required; Muse repositories are self-describing.
+
+    This transport never makes network calls.  All operations are synchronous
+    filesystem reads and writes, consistent with the rest of the Muse CLI.
+    """
+
+    @staticmethod
+    def _repo_root(url: str) -> pathlib.Path:
+        """Extract and validate the filesystem path from a ``file://`` URL.
+
+        Security guarantees:
+        - Rejects non-``file://`` schemes unconditionally.
+        - Calls ``.resolve()`` to canonicalize the path, dereferencing all
+          symlinks before any filesystem operations.  A symlink at the URL
+          target that points to a directory without a ``.muse/`` subdirectory
+          is rejected — the check is on the resolved, canonical path, not the
+          symlink itself.
+        - Verifies that ``.muse/`` exists at the resolved root, preventing
+          accidental pushes to arbitrary directories.
+        """
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme != "file":
+            raise TransportError(
+                f"LocalFileTransport requires a file:// URL, got: {url!r}", 0
+            )
+        # urllib.parse.urlparse on file:///abs/path gives netloc="" path="/abs/path".
+        # On Windows file://C:/path gives netloc="" path="/C:/path" — strip leading
+        # slash for Windows compatibility via pathlib.
+        path_str = parsed.netloc + parsed.path
+        # resolve() dereferences all symlinks and normalises ".." components.
+        # This is the defence against symlink-based path escape attempts.
+        root = pathlib.Path(path_str).resolve()
+        if not (root / ".muse").is_dir():
+            raise TransportError(
+                f"Remote path {root!r} does not contain a .muse/ directory. "
+                "Run 'muse init' in the target directory first.",
+                404,
+            )
+        return root
+
+    def fetch_remote_info(self, url: str, token: str | None) -> RemoteInfo:  # noqa: ARG002
+        """Read branch heads directly from the remote's ref files."""
+        from muse.core.store import get_all_branch_heads
+
+        remote_root = self._repo_root(url)
+        repo_json_path = remote_root / ".muse" / "repo.json"
+        try:
+            repo_data = json.loads(repo_json_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise TransportError(f"Cannot read remote repo.json: {exc}", 0) from exc
+
+        repo_id = str(repo_data.get("repo_id", ""))
+        domain = str(repo_data.get("domain", "midi"))
+        default_branch = str(repo_data.get("default_branch", "main"))
+
+        branch_heads = get_all_branch_heads(remote_root)
+
+        return RemoteInfo(
+            repo_id=repo_id,
+            domain=domain,
+            default_branch=default_branch,
+            branch_heads=branch_heads,
+        )
+
+    def fetch_pack(
+        self, url: str, token: str | None, want: list[str], have: list[str]  # noqa: ARG002
+    ) -> PackBundle:
+        """Build a PackBundle from the remote's local store."""
+        from muse.core.pack import build_pack
+
+        remote_root = self._repo_root(url)
+        have_set = set(have)
+        # Build a pack containing all wanted commits and their transitive deps,
+        # excluding anything the caller already has.
+        bundle = build_pack(remote_root, commit_ids=want, have=list(have_set))
+        return bundle
+
+    def push_pack(
+        self,
+        url: str,
+        token: str | None,  # noqa: ARG002
+        bundle: PackBundle,
+        branch: str,
+        force: bool,
+    ) -> PushResult:
+        """Write a PackBundle directly into the remote's local store.
+
+        Security guarantees:
+        - ``branch`` is validated with :func:`~muse.core.validation.validate_branch_name`
+          before any I/O.  Names containing path traversal components (`..`),
+          null bytes, backslashes, or other forbidden characters are rejected.
+        - The ref file path is further hardened with
+          :func:`~muse.core.validation.contain_path`, which resolves symlinks
+          and asserts the result stays inside ``.muse/refs/heads/``.  A branch
+          name that ``validate_branch_name`` would allow but that resolves
+          outside the expected directory (e.g. via a pre-placed symlink) is
+          rejected before any write occurs.
+        - A fast-forward check prevents overwriting diverged remote history
+          unless ``force=True`` is explicitly passed.
+        """
+        from muse.core.pack import apply_pack
+        from muse.core.store import get_all_branch_heads, get_head_commit_id
+
+        remote_root = self._repo_root(url)
+
+        try:
+            validate_branch_name(branch)
+        except ValueError as exc:
+            return PushResult(ok=False, message=str(exc), branch_heads={})
+
+        # Determine the new tip for the branch.
+        # Prefer an explicit branch_heads entry in the bundle (set by the push
+        # command when it knows the local HEAD).  Fall back to computing the
+        # leaf commit — the commit in the bundle that is not referenced as a
+        # parent of any other commit in the bundle, filtered to the branch.
+        # This handles bundles produced by build_pack(), which does not
+        # populate branch_heads.
+        bundle_heads = bundle.get("branch_heads") or {}
+        new_tip: str | None = bundle_heads.get(branch)
+        if new_tip is None:
+            bundle_commits_list = bundle.get("commits") or []
+            all_parent_ids: set[str] = set()
+            for bc in bundle_commits_list:
+                pid = bc.get("parent_commit_id")
+                if isinstance(pid, str):
+                    all_parent_ids.add(pid)
+                pid2 = bc.get("parent2_commit_id")
+                if isinstance(pid2, str):
+                    all_parent_ids.add(pid2)
+            # Leaf = commit whose ID is not a parent of any other bundle commit.
+            # Prefer commits whose branch field matches; otherwise take any leaf.
+            leaves_for_branch = [
+                bc["commit_id"]
+                for bc in bundle_commits_list
+                if bc.get("commit_id") not in all_parent_ids
+                and bc.get("branch") == branch
+                and isinstance(bc.get("commit_id"), str)
+            ]
+            any_leaves = [
+                bc["commit_id"]
+                for bc in bundle_commits_list
+                if bc.get("commit_id") not in all_parent_ids
+                and isinstance(bc.get("commit_id"), str)
+            ]
+            fallback: list[str | None] = [None]
+            new_tip = (leaves_for_branch or any_leaves or fallback)[0]
+
+        # Fast-forward check: the remote's current HEAD for this branch must be
+        # an ancestor of the tip commit in the bundle, unless --force is passed.
+        if not force and new_tip:
+            remote_tip = get_head_commit_id(remote_root, branch)
+            if remote_tip and remote_tip != new_tip:
+                # BFS from new_tip through bundle commits *and* existing remote
+                # commits to find whether remote_tip is a reachable ancestor.
+                # We cannot rely on bundle commits alone because build_pack()
+                # excludes commits the receiver already has (the "have" set).
+                bundle_by_id: dict[str, CommitDict] = {
+                    c["commit_id"]: c
+                    for c in (bundle.get("commits") or [])
+                    if isinstance(c.get("commit_id"), str)
+                }
+                if not _is_ancestor(remote_tip, new_tip, bundle_by_id, remote_root):
+                    return PushResult(
+                        ok=False,
+                        message=(
+                            f"Push rejected: remote branch '{branch}' has diverged. "
+                            "Pull and merge first, or use --force."
+                        ),
+                        branch_heads={},
+                    )
+
+        try:
+            apply_pack(remote_root, bundle)
+        except Exception as exc:  # noqa: BLE001
+            return PushResult(ok=False, message=f"Failed to apply pack: {exc}", branch_heads={})
+
+        # Update the remote branch ref to the new tip.
+        # contain_path() resolves symlinks and asserts the result stays inside
+        # .muse/refs/heads/ — defence-in-depth beyond validate_branch_name.
+        if new_tip:
+            heads_base = remote_root / ".muse" / "refs" / "heads"
+            try:
+                ref_path = contain_path(heads_base, branch)
+            except ValueError as exc:
+                return PushResult(
+                    ok=False,
+                    message=f"Rejected: branch ref path is unsafe — {exc}",
+                    branch_heads={},
+                )
+            ref_path.parent.mkdir(parents=True, exist_ok=True)
+            ref_path.write_text(new_tip, encoding="utf-8")
+            logger.info("✅ local-transport: updated %s → %s", branch, new_tip[:8])
+
+        return PushResult(
+            ok=True,
+            message=f"local push to {url!r} succeeded",
+            branch_heads=get_all_branch_heads(remote_root),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Factory — select transport based on URL scheme
+# ---------------------------------------------------------------------------
+
+
+def make_transport(url: str) -> "HttpTransport | LocalFileTransport":
+    """Return the appropriate transport for *url*.
+
+    - ``file://`` URLs → :class:`LocalFileTransport` (no server required)
+    - All other URLs  → :class:`HttpTransport` (requires MuseHub server)
+
+    Args:
+        url: Remote repository URL.
+
+    Returns:
+        A transport instance implementing :class:`MuseTransport`.
+    """
+    if urllib.parse.urlparse(url).scheme == "file":
+        return LocalFileTransport()
+    return HttpTransport()

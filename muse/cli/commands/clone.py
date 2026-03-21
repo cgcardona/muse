@@ -32,7 +32,7 @@ from muse.cli.config import set_remote, set_remote_head, set_upstream
 from muse.core.errors import ExitCode
 from muse.core.pack import apply_pack
 from muse.core.store import get_all_commits, read_commit, read_snapshot, write_head_branch
-from muse.core.transport import HttpTransport, TransportError
+from muse.core.transport import TransportError, make_transport
 from muse.core.workdir import apply_manifest
 
 logger = logging.getLogger(__name__)
@@ -124,7 +124,7 @@ def clone(
         typer.echo(f"❌ '{target}' is already a Muse repository.")
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
-    transport = HttpTransport()
+    transport = make_transport(url)
 
     # Fetch remote repository info (branch heads, domain, default branch).
     typer.echo(f"Cloning from {url} …")
