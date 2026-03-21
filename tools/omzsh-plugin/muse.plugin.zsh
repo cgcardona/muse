@@ -27,7 +27,7 @@ if ! is-at-least 5.0; then
 fi
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-: ${MUSE_PROMPT_ICONS:=1}
+: ${MUSE_PROMPT_ICONS:=0}
 : ${MUSE_DIRTY_TIMEOUT:=1}
 
 # Domain icon map. Override individual elements in ~/.zshrc before plugins=().
@@ -189,8 +189,8 @@ function muse_prompt_info() {
   (( MUSE_DIRTY )) && dirty=" %F{red}✗ ${MUSE_DIRTY_COUNT}%f"
 
   # Format: muse:(domain:branch)  — mirrors git:(branch) but adds the domain.
-  # The icon is prepended when MUSE_PROMPT_ICONS=1 (default).
-  if [[ "$MUSE_PROMPT_ICONS" != "0" ]]; then
+  # Set MUSE_PROMPT_ICONS=1 in ~/.zshrc to prepend a domain icon.
+  if [[ "$MUSE_PROMPT_ICONS" == "1" ]]; then
     local icon="${MUSE_DOMAIN_ICONS[$MUSE_DOMAIN]:-${MUSE_DOMAIN_ICONS[_default]}}"
     echo -n "%F{cyan}${icon} muse:(%F{magenta}${domain}:${branch}%F{cyan})%f${dirty}"
   else
