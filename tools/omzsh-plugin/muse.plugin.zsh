@@ -125,14 +125,11 @@ typeset -gi _MUSE_LAST_DIRTY_RC=0  # last exit code from the dirty check subproc
 
 function _muse_check_dirty() {
   local output rc count=0
-  print "[muse:dirty] running: muse status --porcelain in $MUSE_REPO_ROOT" >&2
   output=$(cd -- "$MUSE_REPO_ROOT" && \
-           timeout -- "${MUSE_DIRTY_TIMEOUT}" muse status --porcelain 2>&1)
+           timeout -- "${MUSE_DIRTY_TIMEOUT}" muse status --porcelain 2>/dev/null)
   rc=$?
   _MUSE_LAST_DIRTY_RC=$rc
-  print "[muse:dirty] rc=$rc  output=$(echo $output | head -c 200)" >&2
   if (( rc == 124 )); then
-    print "[muse:dirty] TIMED OUT — MUSE_DIRTY unchanged ($MUSE_DIRTY)" >&2
     return
   fi
   while IFS= read -r line; do
@@ -141,7 +138,6 @@ function _muse_check_dirty() {
   done <<< "$output"
   MUSE_DIRTY=$(( count > 0 ? 1 : 0 ))
   MUSE_DIRTY_COUNT=$count
-  print "[muse:dirty] MUSE_DIRTY=$MUSE_DIRTY  count=$count" >&2
 }
 
 # ── §2  Cache management ──────────────────────────────────────────────────────
@@ -179,7 +175,7 @@ function _muse_refresh_full() {
 # prompt blank rather than showing stale data from the previous directory.
 function _muse_hook_chpwd() {
   MUSE_REPO_ROOT=""; MUSE_BRANCH=""; MUSE_DIRTY=0; MUSE_DIRTY_COUNT=0
-  _muse_refresh
+  _muse_refresh 2>/dev/null
 }
 chpwd_functions+=(_muse_hook_chpwd)
 
@@ -191,8 +187,7 @@ preexec_functions+=(_muse_hook_preexec)
 
 # Before the prompt: full refresh only when a muse command just ran.
 function _muse_hook_precmd() {
-  print "[muse:precmd] _MUSE_CMD_RAN=$_MUSE_CMD_RAN" >&2
-  (( _MUSE_CMD_RAN )) && _muse_refresh_full
+  (( _MUSE_CMD_RAN )) && _muse_refresh_full 2>/dev/null
 }
 precmd_functions+=(_muse_hook_precmd)
 
@@ -209,9 +204,6 @@ precmd_functions+=(_muse_hook_precmd)
 # symbol. Yellow means "uncommitted changes exist"; magenta means clean.
 function muse_prompt_info() {
   [[ -z "$MUSE_REPO_ROOT" ]] && return
-
-  local _dbg_color; (( MUSE_DIRTY )) && _dbg_color=YELLOW || _dbg_color=MAGENTA
-  print "[muse:prompt] MUSE_DIRTY=$MUSE_DIRTY → color=$_dbg_color" >&2
 
   # Escape % so ZSH does not treat branch-name content as prompt directives.
   local branch="${MUSE_BRANCH//\%/%%}"
