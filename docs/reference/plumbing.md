@@ -557,6 +557,295 @@ muse plumbing update-ref main "$NEW"
 
 ---
 
+## merge-base
+
+Find the lowest common ancestor of two commits — the point at which two
+branches diverged.
+
+```sh
+muse plumbing merge-base <commit-a> <commit-b> [-f json|text]
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--format` | `-f` | `json` | Output format: `json` or `text` |
+
+Arguments accept full SHA-256 commit IDs, branch names, or `HEAD`.
+
+**JSON output:**
+
+```json
+{
+  "commit_a":   "<sha256>",
+  "commit_b":   "<sha256>",
+  "merge_base": "<sha256>"
+}
+```
+
+When no common ancestor exists, `merge_base` is `null` and `error` is set.
+
+| Exit | Meaning |
+|---|---|
+| 0 | Result computed (check `merge_base` for null vs. found) |
+| 1 | Ref cannot be resolved; bad `--format` |
+| 3 | DAG walk failed |
+
+---
+
+## snapshot-diff
+
+Compare two snapshots and categorise every changed path as added, modified,
+or deleted.
+
+```sh
+muse plumbing snapshot-diff <ref-a> <ref-b> [-f json|text] [-s]
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--format` | `-f` | `json` | Output format: `json` or `text` |
+| `--stat` | `-s` | false | Append a summary line in text mode |
+
+Arguments accept snapshot IDs, commit IDs, branch names, or `HEAD`.
+
+**JSON output:**
+
+```json
+{
+  "snapshot_a":    "<sha256>",
+  "snapshot_b":    "<sha256>",
+  "added":         [{"path": "new.mid",  "object_id": "<sha256>"}],
+  "modified":      [{"path": "main.mid", "object_id_a": "<sha256>", "object_id_b": "<sha256>"}],
+  "deleted":       [{"path": "old.mid",  "object_id": "<sha256>"}],
+  "total_changes": 3
+}
+```
+
+**Text output:**
+
+```
+A  new.mid
+M  main.mid
+D  old.mid
+```
+
+| Exit | Meaning |
+|---|---|
+| 0 | Diff computed (zero changes is a valid result) |
+| 1 | Ref cannot be resolved; bad `--format` |
+| 3 | I/O error reading snapshot records |
+
+---
+
+## domain-info
+
+Inspect the domain plugin active for this repository — its name, class,
+optional protocol capabilities, and full structural schema.
+
+```sh
+muse plumbing domain-info [-f json|text] [-a]
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--format` | `-f` | `json` | Output format: `json` or `text` |
+| `--all-domains` | `-a` | false | List every registered domain; no repo required |
+
+**JSON output:**
+
+```json
+{
+  "domain":       "midi",
+  "plugin_class": "MidiPlugin",
+  "capabilities": {
+    "structured_merge": true,
+    "crdt":             false,
+    "rerere":           false
+  },
+  "schema": {
+    "domain": "midi", "merge_mode": "three_way",
+    "dimensions": [...], "top_level": {...}
+  },
+  "registered_domains": ["bitcoin", "code", "midi", "scaffold"]
+}
+```
+
+| Exit | Meaning |
+|---|---|
+| 0 | Domain resolved and schema emitted |
+| 1 | Domain not registered; bad `--format` |
+| 3 | Plugin raised an error computing its schema |
+
+---
+
+## show-ref
+
+List all branch refs and the commit IDs they point to.
+
+```sh
+muse plumbing show-ref [-f json|text] [-p PATTERN] [-H] [-v REF]
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--format` | `-f` | `json` | Output format: `json` or `text` |
+| `--pattern` | `-p` | `""` | fnmatch glob to filter ref names |
+| `--head` | `-H` | false | Print only HEAD ref and commit ID |
+| `--verify` | `-v` | `""` | Silent existence check — exit 0 if found, 1 if not |
+
+**JSON output:**
+
+```json
+{
+  "refs": [
+    {"ref": "refs/heads/dev",  "commit_id": "<sha256>"},
+    {"ref": "refs/heads/main", "commit_id": "<sha256>"}
+  ],
+  "head":  {"ref": "refs/heads/main", "branch": "main", "commit_id": "<sha256>"},
+  "count": 2
+}
+```
+
+Use `--verify` in shell conditionals:
+
+```sh
+muse plumbing show-ref --verify refs/heads/my-branch && echo "branch exists"
+```
+
+| Exit | Meaning |
+|---|---|
+| 0 | Refs enumerated (or `--verify` ref exists) |
+| 1 | `--verify` ref absent; bad `--format` |
+| 3 | I/O error reading refs directory |
+
+---
+
+## check-ignore
+
+Test whether workspace paths are excluded by `.museignore` rules.
+
+```sh
+muse plumbing check-ignore <path>... [-f json|text] [-q] [-V]
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--format` | `-f` | `json` | Output format: `json` or `text` |
+| `--quiet` | `-q` | false | No output; exit 0 if all ignored, 1 otherwise |
+| `--verbose` | `-V` | false | Include matching pattern in text output |
+
+**JSON output:**
+
+```json
+{
+  "domain":          "midi",
+  "patterns_loaded": 4,
+  "results": [
+    {"path": "build/out.bin", "ignored": true,  "matching_pattern": "build/"},
+    {"path": "tracks/dr.mid", "ignored": false, "matching_pattern": null}
+  ]
+}
+```
+
+Last-match-wins: a negation rule (`!important.mid`) can un-ignore a path
+matched by an earlier rule.
+
+| Exit | Meaning |
+|---|---|
+| 0 | Results emitted (or `--quiet` with all ignored) |
+| 1 | `--quiet` with any non-ignored path; missing args |
+| 3 | TOML parse error in `.museignore` |
+
+---
+
+## check-attr
+
+Query merge-strategy attributes for workspace paths from `.museattributes`.
+
+```sh
+muse plumbing check-attr <path>... [-f json|text] [-d DIMENSION] [-A]
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--format` | `-f` | `json` | Output format: `json` or `text` |
+| `--dimension` | `-d` | `*` | Domain axis to query (e.g. `notes`, `tempo`) |
+| `--all-rules` | `-A` | false | Return every matching rule, not just first-match |
+
+**JSON output (default: first-match):**
+
+```json
+{
+  "domain":       "midi",
+  "rules_loaded": 3,
+  "dimension":    "*",
+  "results": [
+    {
+      "path":      "drums/kit.mid",
+      "dimension": "*",
+      "strategy":  "ours",
+      "rule": {"path_pattern": "drums/*", "strategy": "ours", "priority": 10, ...}
+    }
+  ]
+}
+```
+
+When no rule matches, `strategy` is `"auto"` and `rule` is `null`.
+
+| Exit | Meaning |
+|---|---|
+| 0 | Attributes resolved and emitted |
+| 1 | Missing args; bad `--format` |
+| 3 | TOML parse error in `.museattributes` |
+
+---
+
+## verify-object
+
+Re-hash stored objects to detect silent data corruption.
+
+```sh
+muse plumbing verify-object <object-id>... [-f json|text] [-q]
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--format` | `-f` | `json` | Output format: `json` or `text` |
+| `--quiet` | `-q` | false | No output; exit 0 if all OK, 1 otherwise |
+
+Objects are streamed in 64 KiB chunks — safe for very large blobs.
+
+**JSON output:**
+
+```json
+{
+  "results": [
+    {"object_id": "<sha256>", "ok": true,  "size_bytes": 4096, "error": null},
+    {"object_id": "<sha256>", "ok": false, "size_bytes": null,
+     "error": "object not found in store"}
+  ],
+  "all_ok":  false,
+  "checked": 2,
+  "failed":  1
+}
+```
+
+Compose with `show-ref` to verify every commit in a repo:
+
+```sh
+muse plumbing show-ref -f json \
+  | jq -r '.refs[].commit_id' \
+  | xargs muse plumbing verify-object
+```
+
+| Exit | Meaning |
+|---|---|
+| 0 | All objects verified successfully |
+| 1 | One or more objects failed; object not found; bad args |
+| 3 | Unexpected I/O error (disk read failure) |
+
+---
+
 ## Object ID Quick Reference
 
 All IDs in Muse are 64-character lowercase hex SHA-256 digests.  There are
