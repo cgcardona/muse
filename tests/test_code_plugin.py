@@ -56,6 +56,7 @@ import textwrap
 
 import pytest
 
+from muse._version import __version__
 from muse.core.object_store import write_object
 from muse.domain import (
     InsertOp,
@@ -1193,7 +1194,7 @@ class TestCodePluginSchema:
         assert self.plugin.schema()["merge_mode"] == "three_way"
 
     def test_schema_version(self) -> None:
-        assert self.plugin.schema()["schema_version"] == 1
+        assert self.plugin.schema()["schema_version"] == __version__
 
     def test_schema_dimensions(self) -> None:
         dims = self.plugin.schema()["dimensions"]

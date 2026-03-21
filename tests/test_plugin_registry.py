@@ -5,6 +5,7 @@ import pathlib
 
 import pytest
 
+from muse._version import __version__
 from muse.core.errors import MuseCLIError
 from muse.domain import MuseDomainPlugin
 from muse.plugins.midi.plugin import MidiPlugin
@@ -16,7 +17,7 @@ def _make_repo(tmp_path: pathlib.Path, domain: str = "midi") -> pathlib.Path:
     muse_dir = tmp_path / ".muse"
     muse_dir.mkdir()
     (muse_dir / "repo.json").write_text(
-        json.dumps({"repo_id": "test-id", "schema_version": "1", "domain": domain})
+        json.dumps({"repo_id": "test-id", "schema_version": __version__, "domain": domain})
     )
     return tmp_path
 

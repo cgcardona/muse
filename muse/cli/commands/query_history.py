@@ -49,6 +49,7 @@ import pathlib
 
 import typer
 
+from muse._version import __version__
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import (
@@ -210,7 +211,7 @@ def query_history(
     if as_json:
         typer.echo(json.dumps(
             {
-                "schema_version": 2,
+                "schema_version": __version__,
                 "to_commit": to_commit.commit_id[:8],
                 "from_commit": from_commit_id[:8] if from_commit_id else None,
                 "commits_scanned": len(commits),

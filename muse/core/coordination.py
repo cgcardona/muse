@@ -11,10 +11,10 @@ Layout::
       reservations/<uuid>.json   advisory symbol lease
       intents/<uuid>.json        declared operation before an edit
 
-Reservation schema (v1)::
+Reservation schema::
 
     {
-      "schema_version": 1,
+      "schema_version": "<muse package version>",
       "reservation_id": "<uuid>",
       "run_id": "<agent-supplied ID>",
       "branch": "<branch name>",
@@ -24,10 +24,10 @@ Reservation schema (v1)::
       "operation": null | "rename" | "move" | "extract" | "modify" | "delete"
     }
 
-Intent schema (v1)::
+Intent schema::
 
     {
-      "schema_version": 1,
+      "schema_version": "<muse package version>",
       "intent_id": "<uuid>",
       "reservation_id": "<uuid>",
       "run_id": "<agent-supplied ID>",
@@ -51,9 +51,9 @@ import logging
 import pathlib
 import uuid as _uuid_mod
 
-logger = logging.getLogger(__name__)
+from muse._version import __version__ as _SCHEMA_VERSION
 
-_SCHEMA_VERSION = 1
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------

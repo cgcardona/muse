@@ -17,6 +17,9 @@ import subprocess
 import sys
 
 _ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_ROOT))
+
+from muse._version import __version__  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +293,7 @@ def _load_domains() -> list[dict]:
             "active": "true",
             "capabilities": ["Typed Deltas", "Domain Schema", "OT Merge", "CRDT Primitives", "MidiRGA"],
             "schema": {
-                "schema_version": "1",
+                "schema_version": __version__,
                 "merge_mode": "three_way",
                 "description": "MIDI file versioning with 21-dimension structured merge — notes, CC, pitch bend, tempo, time signatures, and more. Each dimension merges independently. MidiRGA provides voice-aware CRDT ordering (bass→tenor→alto→soprano) for concurrent note edits.",
                 "dimensions": [
@@ -312,7 +315,7 @@ def _load_domains() -> list[dict]:
             "active": "true",
             "capabilities": ["Typed Deltas", "Domain Schema", "OT Merge", ".museattributes"],
             "schema": {
-                "schema_version": "1",
+                "schema_version": __version__,
                 "merge_mode": "symbol_ot",
                 "description": "Source-code versioning with symbol-level operational-transform merge. Tree-sitter parses 11 languages into ASTs; functions, classes, and imports merge independently. .museattributes gives per-path strategy control.",
                 "dimensions": [

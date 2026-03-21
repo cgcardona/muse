@@ -18,6 +18,7 @@ import tempfile
 
 import pytest
 
+from muse._version import __version__
 from muse.domain import (
     CRDTPlugin,
     DeleteOp,
@@ -745,7 +746,7 @@ class TestSchema:
         s = BitcoinPlugin().schema()
         assert isinstance(s, dict)
         assert s["domain"] == "bitcoin"
-        assert s["schema_version"] == 1
+        assert s["schema_version"] == __version__
 
     def test_schema_has_ten_dimensions(self) -> None:
         s = BitcoinPlugin().schema()
@@ -873,7 +874,7 @@ class TestCRDT:
     def test_to_crdt_state_preserves_files(self) -> None:
         crdt = self.plugin.to_crdt_state(self.base_snap)
         assert crdt["domain"] == "bitcoin"
-        assert crdt["schema_version"] == 1
+        assert crdt["schema_version"] == __version__
         assert "wallet/utxos.json" in crdt["files"]
 
     def test_from_crdt_state_returns_plain_snapshot(self) -> None:

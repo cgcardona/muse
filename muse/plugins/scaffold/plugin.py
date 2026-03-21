@@ -34,6 +34,7 @@ import hashlib
 import json
 import pathlib
 
+from muse._version import __version__
 from muse.core.crdts import ORSet, VectorClock
 from muse.core.diff_algorithms import snapshot_diff
 from muse.core.op_transform import merge_op_lists
@@ -324,7 +325,7 @@ class ScaffoldPlugin:
                 ),
             ],
             merge_mode="three_way",  # TODO: change to "crdt" if implementing CRDT convergent merge
-            schema_version=1,
+            schema_version=__version__,
         )
 
     # ------------------------------------------------------------------
@@ -438,7 +439,7 @@ class ScaffoldPlugin:
             domain=_DOMAIN_NAME,
             vclock=merged_vc.to_dict(),
             crdt_state={"labels": json.dumps(merged_labels.to_dict())},
-            schema_version=1,
+            schema_version=__version__,
         )
 
     def to_crdt_state(self, snapshot: StateSnapshot) -> CRDTSnapshotManifest:
@@ -458,7 +459,7 @@ class ScaffoldPlugin:
             domain=_DOMAIN_NAME,
             vclock=VectorClock().to_dict(),
             crdt_state={"labels": json.dumps(ORSet().to_dict())},
-            schema_version=1,
+            schema_version=__version__,
         )
 
     def from_crdt_state(self, crdt: CRDTSnapshotManifest) -> StateSnapshot:

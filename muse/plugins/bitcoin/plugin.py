@@ -55,6 +55,7 @@ import pathlib
 import stat as stat_mod
 from typing import Literal
 
+from muse._version import __version__
 from muse.core.crdts import AWMap, ORSet, VectorClock
 from muse.core.crdts.aw_map import AWMapDict
 from muse.core.crdts.or_set import ORSetDict
@@ -1258,7 +1259,7 @@ class BitcoinPlugin:
                 ),
             ],
             merge_mode="crdt",
-            schema_version=1,
+            schema_version=__version__,
         )
 
     # ------------------------------------------------------------------
@@ -1519,7 +1520,7 @@ class BitcoinPlugin:
             domain=_DOMAIN_NAME,
             vclock=merged_vc.to_dict(),
             crdt_state=crdt_state,
-            schema_version=1,
+            schema_version=__version__,
         )
 
     def to_crdt_state(self, snapshot: StateSnapshot) -> CRDTSnapshotManifest:
@@ -1558,7 +1559,7 @@ class BitcoinPlugin:
             domain=_DOMAIN_NAME,
             vclock=VectorClock().to_dict(),
             crdt_state=crdt_state,
-            schema_version=1,
+            schema_version=__version__,
         )
 
     def from_crdt_state(self, crdt: CRDTSnapshotManifest) -> StateSnapshot:

@@ -17,6 +17,7 @@ import unittest.mock
 import pytest
 from typer.testing import CliRunner
 
+from muse._version import __version__
 from muse.cli.app import cli
 from muse.cli.config import get_hub_url, set_hub_url
 from muse.core.identity import (
@@ -48,7 +49,7 @@ def repo(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Pat
     (muse_dir / "commits").mkdir()
     (muse_dir / "snapshots").mkdir()
     (muse_dir / "repo.json").write_text(
-        json.dumps({"repo_id": "test-repo", "schema_version": "1", "domain": "midi"})
+        json.dumps({"repo_id": "test-repo", "schema_version": __version__, "domain": "midi"})
     )
     (muse_dir / "HEAD").write_text("ref: refs/heads/main\n")
     (muse_dir / "config.toml").write_text(
@@ -155,7 +156,7 @@ class TestAuthLogin:
         muse_dir.mkdir()
         (muse_dir / "config.toml").write_text("")  # no [hub] section
         (muse_dir / "repo.json").write_text(
-            json.dumps({"repo_id": "r", "schema_version": "1", "domain": "midi"})
+            json.dumps({"repo_id": "r", "schema_version": __version__, "domain": "midi"})
         )
         (muse_dir / "HEAD").write_text("ref: refs/heads/main\n")
         monkeypatch.setenv("MUSE_REPO_ROOT", str(tmp_path))
@@ -323,7 +324,7 @@ class TestAuthLogout:
         muse_dir.mkdir()
         (muse_dir / "config.toml").write_text("")
         (muse_dir / "repo.json").write_text(
-            json.dumps({"repo_id": "r", "schema_version": "1", "domain": "midi"})
+            json.dumps({"repo_id": "r", "schema_version": __version__, "domain": "midi"})
         )
         (muse_dir / "HEAD").write_text("ref: refs/heads/main\n")
         monkeypatch.setenv("MUSE_REPO_ROOT", str(tmp_path))

@@ -13,6 +13,7 @@ import json
 
 import pytest
 
+from muse._version import __version__
 from muse.core.schema import DomainSchema
 from muse.domain import MuseDomainPlugin
 from muse.plugins.midi.plugin import MidiPlugin
@@ -85,8 +86,8 @@ class TestMidiPluginSchema:
     def test_domain_is_midi(self, midi_schema: DomainSchema) -> None:
         assert midi_schema["domain"] == "midi"
 
-    def test_schema_version_is_1(self, midi_schema: DomainSchema) -> None:
-        assert midi_schema["schema_version"] == 1
+    def test_schema_version_matches_package(self, midi_schema: DomainSchema) -> None:
+        assert midi_schema["schema_version"] == __version__
 
     def test_merge_mode_is_three_way(self, midi_schema: DomainSchema) -> None:
         assert midi_schema["merge_mode"] == "three_way"
