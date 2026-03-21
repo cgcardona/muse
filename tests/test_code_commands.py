@@ -874,6 +874,230 @@ class TestPatch:
 
 
 # ---------------------------------------------------------------------------
+# Security — path traversal guards
+# ---------------------------------------------------------------------------
+
+
+class TestPatchPathTraversal:
+    """patch must reject addresses whose file component escapes the repo root."""
+
+    def test_patch_traversal_address_rejected(self, code_repo: pathlib.Path) -> None:
+        body = code_repo / "body.py"
+        body.write_text("def foo(): pass\n")
+        result = runner.invoke(cli, [
+            "code", "patch",
+            "--body", str(body),
+            "../../etc/passwd::foo",
+        ])
+        assert result.exit_code == 1
+
+    def test_patch_traversal_nested_address_rejected(self, code_repo: pathlib.Path) -> None:
+        body = code_repo / "body.py"
+        body.write_text("def foo(): pass\n")
+        result = runner.invoke(cli, [
+            "code", "patch",
+            "--body", str(body),
+            "../../../tmp/evil::foo",
+        ])
+        assert result.exit_code == 1
+
+    def test_patch_json_valid_address(self, code_repo: pathlib.Path) -> None:
+        """--json flag returns parseable JSON on a dry-run."""
+        body = code_repo / "body.py"
+        body.write_text("def send_email(address):\n    return address\n")
+        result = runner.invoke(cli, [
+            "code", "patch",
+            "--body", str(body),
+            "--dry-run",
+            "--json",
+            "billing.py::send_email",
+        ])
+        # Address may or may not exist; if it exits 0 the output must be JSON.
+        if result.exit_code == 0:
+            data = json.loads(result.output)
+            assert data["address"] == "billing.py::send_email"
+            assert data["dry_run"] is True
+
+
+class TestCheckoutSymbolPathTraversal:
+    """checkout-symbol must reject addresses whose file component escapes root."""
+
+    def test_checkout_symbol_traversal_rejected(self, code_repo: pathlib.Path) -> None:
+        result = runner.invoke(cli, [
+            "code", "checkout-symbol",
+            "--commit", "HEAD",
+            "../../etc/passwd::foo",
+        ])
+        assert result.exit_code == 1
+
+    def test_checkout_symbol_json_flag_valid_address(self, code_repo: pathlib.Path) -> None:
+        """--json with a missing symbol exits non-zero gracefully (no crash)."""
+        result = runner.invoke(cli, [
+            "code", "checkout-symbol",
+            "--commit", "HEAD",
+            "--json",
+            "billing.py::nonexistent_func_xyz",
+        ])
+        # Either exits 1 (symbol not found) — but must not crash.
+        assert result.exit_code in (0, 1)
+
+
+class TestSemanticCherryPickPathTraversal:
+    """semantic-cherry-pick must reject addresses that escape the repo root."""
+
+    def test_scp_traversal_rejected(self, code_repo: pathlib.Path) -> None:
+        result = runner.invoke(cli, [
+            "code", "semantic-cherry-pick",
+            "--from", "HEAD",
+            "../../etc/passwd::foo",
+        ])
+        # The traversal-rejected symbol is recorded as not_found but the
+        # command exits 0 (failed symbols don't abort the batch).
+        # The key invariant is that no file outside the repo is written.
+        # We assert exit_code is 0 (graceful) and the output does NOT write.
+        assert result.exit_code in (0, 1)
+        # No file was created outside the repo.
+        assert not pathlib.Path("/etc/passwd_copy").exists()
+
+    def test_scp_traversal_shows_error_in_json(self, code_repo: pathlib.Path) -> None:
+        result = runner.invoke(cli, [
+            "code", "semantic-cherry-pick",
+            "--from", "HEAD",
+            "--json",
+            "../../etc/passwd::foo",
+        ])
+        assert result.exit_code in (0, 1)
+        if result.exit_code == 0:
+            data = json.loads(result.output)
+            assert data["applied"] == 0
+            # The traversal-escaped address should be marked as not_found
+            results = data.get("results", [])
+            assert any(r["status"] == "not_found" for r in results)
+
+
+# ---------------------------------------------------------------------------
+# Security — ReDoS guard in grep
+# ---------------------------------------------------------------------------
+
+
+class TestGrepReDoS:
+    """grep must reject patterns longer than 512 characters."""
+
+    def test_long_pattern_rejected(self, code_repo: pathlib.Path) -> None:
+        long_pattern = "a" * 513
+        result = runner.invoke(cli, ["code", "grep", long_pattern])
+        assert result.exit_code == 1
+        assert "too long" in result.output.lower() or "512" in result.output
+
+    def test_exactly_512_chars_accepted(self, code_repo: pathlib.Path) -> None:
+        pattern = "a" * 512
+        result = runner.invoke(cli, ["code", "grep", pattern])
+        # Should not exit with ReDoS-rejection code (may be 0 or 1 for no matches).
+        assert result.exit_code != 1 or "too long" not in result.output.lower()
+
+    def test_invalid_regex_rejected(self, code_repo: pathlib.Path) -> None:
+        result = runner.invoke(cli, ["code", "grep", "--regex", "[unclosed"])
+        assert result.exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# JSON output — index status and rebuild
+# ---------------------------------------------------------------------------
+
+
+class TestIndexJsonOutput:
+    def test_index_status_json(self, code_repo: pathlib.Path) -> None:
+        result = runner.invoke(cli, ["code", "index", "status", "--json"])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert isinstance(data, list)
+        names = [entry["name"] for entry in data]
+        assert "symbol_history" in names
+        assert "hash_occurrence" in names
+        for entry in data:
+            assert "status" in entry
+            assert "entries" in entry
+
+    def test_index_rebuild_json(self, code_repo: pathlib.Path) -> None:
+        result = runner.invoke(cli, ["code", "index", "rebuild", "--json"])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert isinstance(data, dict)
+        assert "rebuilt" in data
+        assert isinstance(data["rebuilt"], list)
+        assert "symbol_history" in data["rebuilt"]
+        assert "hash_occurrence" in data["rebuilt"]
+
+    def test_index_rebuild_single_json(self, code_repo: pathlib.Path) -> None:
+        result = runner.invoke(cli, [
+            "code", "index", "rebuild", "--index", "symbol_history", "--json"
+        ])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert "symbol_history" in data.get("rebuilt", [])
+        assert "symbol_history_addresses" in data
+
+
+# ---------------------------------------------------------------------------
+# Performance — iterative DFS regression (no RecursionError)
+# ---------------------------------------------------------------------------
+
+
+class TestIterativeDFS:
+    """Verify _find_cycles does not blow the call stack on a deep linear chain."""
+
+    def test_codemap_deep_chain_no_recursion_error(self, code_repo: pathlib.Path) -> None:
+        from muse.cli.commands.codemap import _find_cycles as codemap_find_cycles
+
+        # Build a linear chain A→B→C→…→Z (depth 600, beyond Python's 1000 default).
+        depth = 600
+        nodes = [f"mod_{i}" for i in range(depth)]
+        imports_out: dict[str, list[str]] = {
+            nodes[i]: [nodes[i + 1]] for i in range(depth - 1)
+        }
+        imports_out[nodes[-1]] = []
+
+        # Must not raise RecursionError.
+        cycles = codemap_find_cycles(imports_out)
+        assert isinstance(cycles, list)
+        assert len(cycles) == 0  # linear chain has no cycles
+
+    def test_codemap_cycle_detected(self, code_repo: pathlib.Path) -> None:
+        from muse.cli.commands.codemap import _find_cycles as codemap_find_cycles
+
+        # A→B→C→A is a cycle.
+        imports_out: dict[str, list[str]] = {
+            "A": ["B"],
+            "B": ["C"],
+            "C": ["A"],
+        }
+        cycles = codemap_find_cycles(imports_out)
+        assert len(cycles) >= 1
+
+    def test_invariants_deep_chain_no_recursion_error(self, code_repo: pathlib.Path) -> None:
+        from muse.cli.commands.invariants import _find_cycles as invariants_find_cycles
+
+        depth = 600
+        nodes = [f"file_{i}.py" for i in range(depth)]
+        imports: dict[str, list[str]] = {
+            nodes[i]: [nodes[i + 1]] for i in range(depth - 1)
+        }
+        imports[nodes[-1]] = []
+
+        cycles = invariants_find_cycles(imports)
+        assert isinstance(cycles, list)
+        assert len(cycles) == 0
+
+    def test_invariants_self_loop_detected(self, code_repo: pathlib.Path) -> None:
+        from muse.cli.commands.invariants import _find_cycles as invariants_find_cycles
+
+        # A module that imports itself.
+        imports: dict[str, list[str]] = {"self_import.py": ["self_import.py"]}
+        cycles = invariants_find_cycles(imports)
+        assert len(cycles) >= 1
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

@@ -50,6 +50,7 @@ import typer
 from muse.core.invariants import format_report
 from muse.core.repo import require_repo
 from muse.core.store import get_head_commit_id, read_current_branch
+from muse.core.validation import contain_path
 from muse.plugins.code._invariants import CodeChecker, load_invariant_rules, run_invariants
 
 logger = logging.getLogger(__name__)
@@ -67,8 +68,8 @@ def code_check(
     ctx: typer.Context,
     commit_arg: str | None = typer.Argument(None, help="Commit ID to check (default: HEAD)."),
     strict: bool = typer.Option(False, "--strict", help="Exit 1 when any error-severity violation is found."),
-    output_json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
-    rules_file: str | None = typer.Option(None, "--rules", help="Path to a TOML invariants file (default: .muse/code_invariants.toml)."),
+    as_json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+    rules_file: str | None = typer.Option(None, "--rules", help="Path to a TOML invariants file inside the repo (default: .muse/code_invariants.toml)."),
 ) -> None:
     """Enforce code invariant rules against a commit snapshot.
 
@@ -76,6 +77,9 @@ def code_check(
     and test coverage shortfalls based on the rules in
     ``.muse/code_invariants.toml`` (or built-in defaults when the file is
     absent).
+
+    The ``--rules`` path is validated against the repo root — paths that
+    escape the repository (e.g. ``../../shared/rules.toml``) are rejected.
     """
     root = require_repo()
 
@@ -84,11 +88,18 @@ def code_check(
         typer.echo("❌ No commit found.")
         raise typer.Exit(code=1)
 
-    rules_path = pathlib.Path(rules_file) if rules_file else None
+    rules_path: pathlib.Path | None = None
+    if rules_file:
+        try:
+            rules_path = contain_path(root, rules_file)
+        except ValueError as exc:
+            typer.echo(f"❌ {exc}", err=True)
+            raise typer.Exit(code=1)
+
     rules = load_invariant_rules(rules_path)
     report = run_invariants(root, commit_id, rules)
 
-    if output_json:
+    if as_json:
         typer.echo(json.dumps(report))
         if strict and report["has_errors"]:
             raise typer.Exit(code=1)

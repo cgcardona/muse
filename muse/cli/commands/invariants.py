@@ -171,27 +171,33 @@ def _build_import_map(root: pathlib.Path, manifest: dict[str, str]) -> dict[str,
 
 
 def _find_cycles(imports: dict[str, list[str]]) -> list[list[str]]:
-    """DFS cycle detection."""
+    """Iterative DFS cycle detection.
+
+    Uses an explicit stack instead of recursion so that deeply nested import
+    graphs (thousands of files in a chain) cannot exhaust Python's call stack.
+    O(V+E) — every node is visited at most once.
+    """
     cycles: list[list[str]] = []
     visited: set[str] = set()
-    in_stack: set[str] = set()
 
-    def dfs(node: str, path: list[str]) -> None:
-        if node in in_stack:
-            start = path.index(node)
-            cycles.append(path[start:] + [node])
-            return
-        if node in visited:
-            return
-        visited.add(node)
-        in_stack.add(node)
-        for n in imports.get(node, []):
-            dfs(n, path + [node])
-        in_stack.discard(node)
+    for start in imports:
+        if start in visited:
+            continue
+        # Each stack frame: (node, path-so-far, in-stack set for this path)
+        stack: list[tuple[str, list[str], set[str]]] = [(start, [], set())]
+        while stack:
+            node, path, in_stack = stack.pop()
+            if node in in_stack:
+                idx = path.index(node)
+                cycles.append(path[idx:] + [node])
+                continue
+            if node in visited:
+                continue
+            visited.add(node)
+            new_in_stack = in_stack | {node}
+            for neighbour in imports.get(node, []):
+                stack.append((neighbour, path + [node], new_in_stack))
 
-    for node in imports:
-        if node not in visited:
-            dfs(node, [])
     return cycles
 
 

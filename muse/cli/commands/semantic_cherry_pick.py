@@ -11,6 +11,11 @@ Multiple symbols can be cherry-picked in a single invocation.  They are
 applied left-to-right.  If any symbol fails to apply, the remaining are
 skipped and the error is reported.
 
+Security note: every file path extracted from ADDRESS arguments is validated
+via ``contain_path()`` before any disk access or directory creation.  Paths
+that escape the repo root (e.g. ``../../etc/shadow::foo``) are rejected and
+the symbol is recorded as ``not_found`` with an appropriate detail message.
+
 Usage::
 
     muse semantic-cherry-pick "src/billing.py::compute_total" --from abc12345
@@ -57,6 +62,7 @@ from muse.core.errors import ExitCode
 from muse.core.object_store import read_object
 from muse.core.repo import require_repo
 from muse.core.store import get_commit_snapshot_manifest, read_current_branch, resolve_commit_ref
+from muse.core.validation import contain_path
 from muse.plugins.code.ast_parser import parse_symbols
 
 logger = logging.getLogger(__name__)
@@ -111,6 +117,12 @@ def _apply_symbol(
 
     file_rel = address.split("::")[0]
 
+    # Validate the file path stays inside the repo root before any I/O.
+    try:
+        working_file = contain_path(root, file_rel)
+    except ValueError as exc:
+        return _PickResult(address, "not_found", str(exc))
+
     # Read historical blob.
     obj_id = src_manifest.get(file_rel)
     if obj_id is None:
@@ -127,13 +139,12 @@ def _apply_symbol(
 
     src_rec = src_tree.get(address)
     if src_rec is None:
-        return _PickResult(address, "not_found", f"symbol not found in source commit")
+        return _PickResult(address, "not_found", "symbol not found in source commit")
 
     src_lines_list = src_raw.decode("utf-8", errors="replace").splitlines(keepends=True)
     src_symbol_lines = src_lines_list[src_rec["lineno"] - 1:src_rec["end_lineno"]]
 
     # Read current working tree.
-    working_file = root / file_rel
     if not working_file.exists():
         # File doesn't exist in working tree — create it with just the symbol.
         if not dry_run:
