@@ -52,6 +52,7 @@ to `stderr`.  Exit codes follow the same convention as the plumbing layer:
 
 ## Established Core Porcelain
 
+<a id="init"></a>
 ### `init` — initialise a repository
 
 Create a fresh `.muse/` directory in the current folder.
@@ -72,6 +73,7 @@ muse init -d code          # short flag
 
 ---
 
+<a id="commit"></a>
 ### `commit` — record the working tree
 
 Snapshot the working tree and write a commit pointing to it.
@@ -113,6 +115,7 @@ domain plugin's assessment of the change.
 
 ---
 
+<a id="status"></a>
 ### `status` — show drift against HEAD
 
 ```
@@ -158,6 +161,7 @@ Added:
 
 ---
 
+<a id="log"></a>
 ### `log` — display commit history
 
 ```
@@ -196,6 +200,7 @@ muse log --format json
 
 ---
 
+<a id="diff"></a>
 ### `diff` — compare working tree or two commits
 
 ```
@@ -232,6 +237,7 @@ muse diff --format json
 
 ---
 
+<a id="show"></a>
 ### `show` — inspect a commit
 
 ```
@@ -289,6 +295,7 @@ muse show --stat HEAD        # files changed, not full diff
 
 ---
 
+<a id="branch"></a>
 ### `branch` — list, create, or delete branches
 
 ```
@@ -329,6 +336,7 @@ muse branch --format json        # structured list
 
 ---
 
+<a id="checkout"></a>
 ### `checkout` — switch branches or restore snapshot
 
 ```
@@ -363,6 +371,7 @@ check out the branch that is already active).
 
 ---
 
+<a id="merge"></a>
 ### `merge` — three-way merge
 
 ```
@@ -413,6 +422,7 @@ muse merge --format json
 
 ---
 
+<a id="rebase"></a>
 ### `rebase` — replay commits onto a new base
 
 Muse rebase replays a sequence of commits onto a new base using the same
@@ -477,6 +487,7 @@ and the `onto` base. Cleared automatically on successful completion or `--abort`
 
 ---
 
+<a id="reset"></a>
 ### `reset` — move HEAD to a prior commit
 
 ```
@@ -509,6 +520,7 @@ muse reset --format json
 
 ---
 
+<a id="revert"></a>
 ### `revert` — undo a commit by creating a new one
 
 Non-destructive: the original commit remains in history.  A new commit is
@@ -544,6 +556,7 @@ muse revert --format json
 
 ---
 
+<a id="cherry-pick"></a>
 ### `cherry-pick` — apply a single commit's changes
 
 ```
@@ -575,6 +588,7 @@ muse cherry-pick abc123 --format json
 
 ---
 
+<a id="stash"></a>
 ### `stash` — shelve and restore changes
 
 ```
@@ -625,6 +639,7 @@ muse stash drop 0
 
 ---
 
+<a id="tag"></a>
 ### `tag` — semantic tags on commits
 
 ```
@@ -671,6 +686,7 @@ muse tag show v1.0.0 --format json
 
 ---
 
+<a id="blame"></a>
 ### `blame` — line-level attribution
 
 ```
@@ -704,6 +720,7 @@ muse blame --format json song.mid
 
 ---
 
+<a id="reflog"></a>
 ### `reflog` — HEAD and branch movement history
 
 ```
@@ -746,6 +763,7 @@ what caused the ref movement: `"commit"`, `"merge"`, `"rebase"`, `"reset"`, `"ch
 
 ---
 
+<a id="rerere"></a>
 ### `rerere` — reuse recorded resolutions
 
 ```
@@ -763,6 +781,7 @@ muse rerere status           # show which conflicts have cached resolutions
 
 ---
 
+<a id="gc"></a>
 ### `gc` — garbage collect
 
 Removes objects that are not reachable from any branch or tag ref.  Orphaned
@@ -799,6 +818,7 @@ muse gc --format json
 
 ---
 
+<a id="archive"></a>
 ### `archive` — export a snapshot
 
 ```
@@ -822,6 +842,7 @@ prevented: entry paths are validated to stay within the prefix.
 
 ---
 
+<a id="bisect"></a>
 ### `bisect` — binary-search for a regression
 
 Muse bisect works on any domain — not just code. Use it to find which commit
@@ -859,6 +880,7 @@ The search converges in O(log N) steps regardless of domain.
 
 ---
 
+<a id="worktree"></a>
 ### `worktree` — multiple simultaneous checkouts
 
 ```
@@ -897,6 +919,7 @@ muse worktree prune
 
 ---
 
+<a id="clean"></a>
 ### `clean` — remove untracked files
 
 Scans the working tree against the HEAD snapshot and removes files not tracked
@@ -923,6 +946,7 @@ muse clean -f -d -x         # everything untracked + ignored + empty dirs
 
 ---
 
+<a id="describe"></a>
 ### `describe` — label by nearest tag
 
 Walks backward from a commit and finds the nearest tag.  Returns `<tag>~N`
@@ -961,6 +985,7 @@ muse describe --format json         # machine-readable
 
 ---
 
+<a id="shortlog"></a>
 ### `shortlog` — commit summary by author or agent
 
 Groups commits by `author` or `agent_id` and prints a count + message list.
@@ -1005,6 +1030,7 @@ muse shortlog --format json        # JSON for agent consumption
 
 ---
 
+<a id="verify"></a>
 ### `verify` — whole-repository integrity check
 
 Walks every reachable commit from every branch ref and performs a three-tier check:
@@ -1057,6 +1083,7 @@ muse verify --format json | jq '.failures'
 
 ---
 
+<a id="snapshot"></a>
 ### `snapshot` — explicit snapshot management
 
 A snapshot is Muse's fundamental unit of state: an immutable, content-addressed
@@ -1123,6 +1150,7 @@ muse snapshot export abc123 --prefix project/
 
 ---
 
+<a id="bundle"></a>
 ### `bundle` — offline commit transfer
 
 A bundle is a self-contained JSON file carrying commits, snapshots, and objects.
@@ -1169,6 +1197,7 @@ branch state automatically.
 
 ---
 
+<a id="content-grep"></a>
 ### `content-grep` — full-text search across tracked files
 
 Searches every file in the HEAD snapshot for a pattern.  Files are read from
@@ -1217,6 +1246,7 @@ muse content-grep --pattern "hit" --count
 
 ---
 
+<a id="whoami"></a>
 ### `whoami` — show the current identity
 
 A shortcut for `muse auth whoami`.
@@ -1277,6 +1307,7 @@ muse auth logout
 
 ---
 
+<a id="config"></a>
 ### `config` — repository configuration
 
 Read and write repository configuration stored in `.muse/config.toml`.

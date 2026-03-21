@@ -15,30 +15,30 @@ these internally.
 
 | Command | Purpose |
 |---|---|
-| [`hash-object`](#hash-object----compute-a-content-id) | Compute SHA-256 of a file; optionally store it |
-| [`cat-object`](#cat-object----read-a-stored-object) | Stream raw bytes or metadata for a stored object |
-| [`verify-object`](#verify-object----re-hash-stored-objects-to-detect-corruption) | Re-hash stored objects to detect corruption |
-| [`rev-parse`](#rev-parse----resolve-a-ref-to-a-commit-id) | Resolve branch name / HEAD / prefix → full commit ID |
-| [`read-commit`](#read-commit----print-full-commit-metadata) | Print full commit JSON record |
-| [`read-snapshot`](#read-snapshot----print-full-snapshot-metadata) | Print full snapshot JSON record |
-| [`ls-files`](#ls-files----list-files-in-a-snapshot) | List tracked files and their object IDs |
-| [`commit-tree`](#commit-tree----create-a-commit-from-a-snapshot-id) | Create a commit from an existing snapshot |
-| [`update-ref`](#update-ref----move-a-branch-to-a-commit) | Move or delete a branch ref |
-| [`commit-graph`](#commit-graph----emit-the-commit-dag) | BFS walk of the commit DAG |
-| [`merge-base`](#merge-base----find-the-common-ancestor-of-two-commits) | Find the lowest common ancestor of two commits |
-| [`snapshot-diff`](#snapshot-diff----diff-two-snapshot-manifests) | Diff two snapshots: added / modified / deleted |
-| [`pack-objects`](#pack-objects----bundle-commits-for-transport) | Bundle commits, snapshots, and objects into a PackBundle |
-| [`unpack-objects`](#unpack-objects----apply-a-bundle-to-the-local-store) | Apply a PackBundle to the local store |
-| [`verify-pack`](#verify-pack----verify-packbundle-integrity) | Three-tier integrity check for a PackBundle |
-| [`show-ref`](#show-ref----list-all-branch-refs) | List all branch refs and their commit IDs |
-| [`symbolic-ref`](#symbolic-ref----read-or-write-heads-symbolic-reference) | Read or write the HEAD symbolic reference |
-| [`for-each-ref`](#for-each-ref----iterate-all-refs-with-rich-commit-metadata) | Iterate refs with full commit metadata; sort and filter |
-| [`name-rev`](#name-rev----map-commit-ids-to-branch-relative-names) | Map commit IDs to `<branch>~N` names |
-| [`check-ref-format`](#check-ref-format----validate-branch-and-ref-names) | Validate branch/ref names against naming rules |
-| [`check-ignore`](#check-ignore----test-whether-paths-are-excluded-by-museignore) | Test whether paths match `.museignore` rules |
-| [`check-attr`](#check-attr----query-merge-strategy-attributes-for-paths) | Query `.museattributes` for merge strategies |
-| [`domain-info`](#domain-info----inspect-the-active-domain-plugin) | Inspect the active domain plugin and its schema |
-| [`ls-remote`](#ls-remote----list-refs-on-a-remote) | List refs on a remote without changing local state |
+| [`hash-object`](#hash-object) | Compute SHA-256 of a file; optionally store it |
+| [`cat-object`](#cat-object) | Stream raw bytes or metadata for a stored object |
+| [`verify-object`](#verify-object) | Re-hash stored objects to detect corruption |
+| [`rev-parse`](#rev-parse) | Resolve branch name / HEAD / prefix → full commit ID |
+| [`read-commit`](#read-commit) | Print full commit JSON record |
+| [`read-snapshot`](#read-snapshot) | Print full snapshot JSON record |
+| [`ls-files`](#ls-files) | List tracked files and their object IDs |
+| [`commit-tree`](#commit-tree) | Create a commit from an existing snapshot |
+| [`update-ref`](#update-ref) | Move or delete a branch ref |
+| [`commit-graph`](#commit-graph) | BFS walk of the commit DAG |
+| [`merge-base`](#merge-base) | Find the lowest common ancestor of two commits |
+| [`snapshot-diff`](#snapshot-diff) | Diff two snapshots: added / modified / deleted |
+| [`pack-objects`](#pack-objects) | Bundle commits, snapshots, and objects into a PackBundle |
+| [`unpack-objects`](#unpack-objects) | Apply a PackBundle to the local store |
+| [`verify-pack`](#verify-pack) | Three-tier integrity check for a PackBundle |
+| [`show-ref`](#show-ref) | List all branch refs and their commit IDs |
+| [`symbolic-ref`](#symbolic-ref) | Read or write the HEAD symbolic reference |
+| [`for-each-ref`](#for-each-ref) | Iterate refs with full commit metadata; sort and filter |
+| [`name-rev`](#name-rev) | Map commit IDs to `<branch>~N` names |
+| [`check-ref-format`](#check-ref-format) | Validate branch/ref names against naming rules |
+| [`check-ignore`](#check-ignore) | Test whether paths match `.museignore` rules |
+| [`check-attr`](#check-attr) | Query `.museattributes` for merge strategies |
+| [`domain-info`](#domain-info) | Inspect the active domain plugin and its schema |
+| [`ls-remote`](#ls-remote) | List refs on a remote without changing local state |
 
 ---
 
@@ -67,6 +67,7 @@ without inspecting exit codes.
 
 ## Command Reference
 
+<a id="hash-object"></a>
 ### `hash-object` — compute a content ID
 
 ```
@@ -105,6 +106,7 @@ a3f2...c8d1
 
 ---
 
+<a id="cat-object"></a>
 ### `cat-object` — read a stored object
 
 ```
@@ -136,6 +138,7 @@ is absent, the error goes to `stderr` (exit 1).
 
 ---
 
+<a id="rev-parse"></a>
 ### `rev-parse` — resolve a ref to a commit ID
 
 ```
@@ -176,6 +179,7 @@ a3f2...c8d1
 
 ---
 
+<a id="ls-files"></a>
 ### `ls-files` — list files in a snapshot
 
 ```
@@ -221,6 +225,7 @@ e5f6...b7c8	tracks/drums.mid
 
 ---
 
+<a id="read-commit"></a>
 ### `read-commit` — print full commit metadata
 
 ```
@@ -278,6 +283,7 @@ without inspecting `stderr`.
 
 ---
 
+<a id="read-snapshot"></a>
 ### `read-snapshot` — print full snapshot metadata
 
 ```
@@ -319,6 +325,7 @@ b7e4...f912  3 files  2026-03-21T12:00:00+00:00
 
 ---
 
+<a id="commit-tree"></a>
 ### `commit-tree` — create a commit from a snapshot ID
 
 ```
@@ -362,6 +369,7 @@ directly without a `jq` call: `NEW=$(muse plumbing commit-tree -s "$SNAP" -f tex
 
 ---
 
+<a id="update-ref"></a>
 ### `update-ref` — move a branch to a commit
 
 ```
@@ -410,6 +418,7 @@ it drop-in compatible with shell scripts that use exit code only.
 
 ---
 
+<a id="commit-graph"></a>
 ### `commit-graph` — emit the commit DAG
 
 ```
@@ -495,6 +504,7 @@ muse plumbing commit-graph --first-parent -f text
 
 ---
 
+<a id="pack-objects"></a>
 ### `pack-objects` — bundle commits for transport
 
 ```
@@ -532,6 +542,7 @@ transport (HTTP body, agent message, file).
 
 ---
 
+<a id="unpack-objects"></a>
 ### `unpack-objects` — apply a bundle to the local store
 
 ```
@@ -571,6 +582,7 @@ Wrote 12 commits, 12 snapshots, 47 objects (3 skipped).
 
 ---
 
+<a id="ls-remote"></a>
 ### `ls-remote` — list refs on a remote
 
 ```
@@ -674,6 +686,7 @@ muse plumbing update-ref main "$NEW"
 
 ---
 
+<a id="merge-base"></a>
 ### `merge-base` — find the common ancestor of two commits
 
 Find the lowest common ancestor of two commits — the point at which two
@@ -709,6 +722,7 @@ When no common ancestor exists, `merge_base` is `null` and `error` is set.
 
 ---
 
+<a id="snapshot-diff"></a>
 ### `snapshot-diff` — diff two snapshot manifests
 
 Compare two snapshots and categorise every changed path as added, modified,
@@ -754,6 +768,7 @@ D  old.mid
 
 ---
 
+<a id="domain-info"></a>
 ### `domain-info` — inspect the active domain plugin
 
 Inspect the domain plugin active for this repository — its name, class,
@@ -795,6 +810,7 @@ muse plumbing domain-info [-f json|text] [-a]
 
 ---
 
+<a id="show-ref"></a>
 ### `show-ref` — list all branch refs
 
 List all branch refs and the commit IDs they point to.
@@ -837,6 +853,7 @@ muse plumbing show-ref --verify refs/heads/my-branch && echo "branch exists"
 
 ---
 
+<a id="check-ignore"></a>
 ### `check-ignore` — test whether paths are excluded by `.museignore`
 
 Test whether workspace paths are excluded by `.museignore` rules.
@@ -875,6 +892,7 @@ matched by an earlier rule.
 
 ---
 
+<a id="check-attr"></a>
 ### `check-attr` — query merge-strategy attributes for paths
 
 Query merge-strategy attributes for workspace paths from `.museattributes`.
@@ -917,6 +935,7 @@ When no rule matches, `strategy` is `"auto"` and `rule` is `null`.
 
 ---
 
+<a id="verify-object"></a>
 ### `verify-object` — re-hash stored objects to detect corruption
 
 Re-hash stored objects to detect silent data corruption.
@@ -963,6 +982,7 @@ muse plumbing show-ref -f json \
 
 ---
 
+<a id="symbolic-ref"></a>
 ### `symbolic-ref` — read or write HEAD's symbolic reference
 
 In Muse, HEAD is always a symbolic reference — it always points to a branch,
@@ -1006,6 +1026,7 @@ muse plumbing symbolic-ref HEAD --set <branch> [-f json|text]
 
 ---
 
+<a id="for-each-ref"></a>
 ### `for-each-ref` — iterate all refs with rich commit metadata
 
 Enumerates every branch ref together with the full commit metadata it points to.
@@ -1059,6 +1080,7 @@ muse plumbing for-each-ref --sort committed_at --desc --count 3
 
 ---
 
+<a id="name-rev"></a>
 ### `name-rev` — map commit IDs to branch-relative names
 
 For each supplied commit ID, performs a single multi-source BFS from all branch
@@ -1113,6 +1135,7 @@ Every commit is visited at most once regardless of how many input IDs are suppli
 
 ---
 
+<a id="check-ref-format"></a>
 ### `check-ref-format` — validate branch and ref names
 
 Tests one or more names against Muse's branch-naming rules — the same
@@ -1163,6 +1186,7 @@ muse plumbing check-ref-format -q "$BRANCH" && git checkout -b "$BRANCH"
 
 ---
 
+<a id="verify-pack"></a>
 ### `verify-pack` — verify PackBundle integrity
 
 Reads a PackBundle JSON from stdin or `--file` and performs three-tier integrity
