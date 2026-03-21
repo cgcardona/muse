@@ -76,6 +76,7 @@ __all__ = [
     "StructuredMergePlugin",
     "CRDTSnapshotManifest",
     "CRDTPlugin",
+    "RererePlugin",
 ]
 
 if TYPE_CHECKING:
@@ -876,5 +877,76 @@ class CRDTPlugin(MuseDomainPlugin, Protocol):
         Returns:
             A plain :class:`StateSnapshot` with the visible (non-tombstoned)
             content.
+        """
+        ...
+
+
+# ---------------------------------------------------------------------------
+# Rerere optional extension — domain-aware conflict fingerprinting
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class RererePlugin(MuseDomainPlugin, Protocol):
+    """Optional extension for plugins that provide domain-aware rerere fingerprinting.
+
+    The default rerere fingerprint is::
+
+        SHA-256( min(ours_id, theirs_id) + ":" + max(ours_id, theirs_id) )
+
+    This is content-addressed and commutative, but it can fail to recognise
+    "the same conflict" when the two conflicting blobs differ by surrounding
+    context (e.g. tempo metadata in MIDI, or import ordering in code).
+
+    Plugins implementing this sub-protocol can return a richer fingerprint that
+    captures only the *semantically meaningful* parts of the conflict — allowing
+    rerere to recognise and replay resolutions across superficially different
+    but semantically identical conflicts.
+
+    The core engine detects support at runtime via::
+
+        isinstance(plugin, RererePlugin)
+
+    Plugins that do not implement this fall back to the default content
+    fingerprint automatically — no changes required to the core rerere engine.
+
+    Example: a MIDI plugin might compute::
+
+        SHA-256( sorted_note_events(ours) + ":" + sorted_note_events(theirs) )
+
+    so that a re-timed MIDI file that otherwise has the same musical conflict
+    matches an existing rerere record.
+    """
+
+    def conflict_fingerprint(
+        self,
+        path: str,
+        ours_id: str,
+        theirs_id: str,
+        repo_root: pathlib.Path,
+    ) -> str:
+        """Return a stable fingerprint identifying this conflict's semantic shape.
+
+        The returned string must be exactly 64 lowercase hex characters (the
+        same format as a SHA-256 digest).  If the implementation cannot produce
+        a valid fingerprint (e.g. the blob is not in the local store), it should
+        raise an exception — the caller will fall back to the default fingerprint.
+
+        The result must be:
+
+        - **Deterministic**: the same inputs always produce the same fingerprint.
+        - **Commutative**: ``fingerprint(p, a, b, root) == fingerprint(p, b, a, root)``
+          — the order of ours/theirs must not matter.
+        - **Collision-resistant**: different conflicts should produce different
+          fingerprints with high probability.
+
+        Args:
+            path:      Workspace-relative POSIX path of the conflicting file.
+            ours_id:   SHA-256 object ID of the "ours" blob.
+            theirs_id: SHA-256 object ID of the "theirs" blob.
+            repo_root: Repository root for loading blob content from the store.
+
+        Returns:
+            64-char lowercase hex fingerprint.
         """
         ...
