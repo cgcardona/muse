@@ -100,17 +100,22 @@ def _print_structured_delta(ops: list[DomainOp]) -> int:
             )
         elif op["op"] == "patch":
             child_ops = op["child_ops"]
-            # Classify the patch: all-inserts = new file, all-deletes = removed
-            # file, mixed = modification.  Use the right status prefix so the
-            # output reads like `git diff --name-status`.
-            all_insert = all(c["op"] == "insert" for c in child_ops)
-            all_delete = all(c["op"] == "delete" for c in child_ops)
-            if all_insert:
-                typer.echo(_green(f"A  {op['address']}"))
-            elif all_delete:
-                typer.echo(_red(f"D  {op['address']}"))
+            from_address = op.get("from_address")
+            if from_address:
+                # File was renamed AND edited simultaneously.
+                typer.echo(_cyan(f"R  {from_address} → {op['address']}"))
             else:
-                typer.echo(_yellow(f"M  {op['address']}"))
+                # Classify the patch: all-inserts = new file, all-deletes =
+                # removed file, mixed = modification.  Use the right status
+                # prefix so the output reads like `git diff --name-status`.
+                all_insert = all(c["op"] == "insert" for c in child_ops)
+                all_delete = all(c["op"] == "delete" for c in child_ops)
+                if all_insert:
+                    typer.echo(_green(f"A  {op['address']}"))
+                elif all_delete:
+                    typer.echo(_red(f"D  {op['address']}"))
+                else:
+                    typer.echo(_yellow(f"M  {op['address']}"))
             _print_child_ops(child_ops)
     return len(ops)
 
