@@ -83,6 +83,18 @@ def whoami(
         muse whoami --json || muse auth login --agent ...
         muse whoami --format json   # same as --json
 
+    Agents should pass ``--format json`` (or ``--json``) to receive a
+    machine-readable result::
+
+        {
+          "hub":          "https://musehub.ai",
+          "type":         "agent",
+          "name":         "muse-agent-001",
+          "id":           "<uuid>",
+          "token_set":    true,
+          "capabilities": ["read", "write"]
+        }
+
     Examples::
 
         muse whoami

@@ -76,7 +76,8 @@ def gc(
         muse gc --format json # machine-readable
     """
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{fmt}'. Choose text or json.", err=True)
+        from muse.core.validation import sanitize_display
+        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
         raise typer.Exit(code=1)
 
     repo_root = require_repo()

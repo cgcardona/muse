@@ -77,11 +77,21 @@ def show(
 
     Output is TOML by default.  Use ``--json`` or ``--format json`` for
     agent-friendly output.  Credentials are never included regardless of format.
+
+    JSON payload (top-level keys present only when set)::
+
+        {
+          "user":    {"name": "...", "email": "...", "type": "human|agent"},
+          "hub":     {"url": "https://musehub.ai"},
+          "remotes": {"origin": "https://..."},
+          "domain":  {"ticks_per_beat": "480"}
+        }
     """
     if fmt == "json":
         json_output = True
     elif fmt != "text":
-        typer.echo(f"❌ Unknown --format '{fmt}'. Choose text or json.", err=True)
+        from muse.core.validation import sanitize_display
+        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
     root = find_repo_root()

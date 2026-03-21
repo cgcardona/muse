@@ -139,7 +139,8 @@ def verify_pack(
     # Read input.
     if bundle_file:
         try:
-            raw = open(bundle_file, encoding="utf-8").read()
+            with open(bundle_file, encoding="utf-8") as fh:
+                raw = fh.read()
         except OSError as exc:
             typer.echo(json.dumps({"error": f"Cannot read file: {exc}"}))
             raise typer.Exit(code=ExitCode.INTERNAL_ERROR)

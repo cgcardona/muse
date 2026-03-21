@@ -38,6 +38,7 @@ from muse.core.store import (
     read_snapshot,
     write_commit,
 )
+from muse.core.validation import validate_object_id
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,9 @@ def _read_repo_id(root: pathlib.Path) -> str:
     return repo_id
 
 
+_FORMAT_CHOICES = ("json", "text")
+
+
 @app.callback(invoke_without_command=True)
 def commit_tree(
     ctx: typer.Context,
@@ -76,6 +80,9 @@ def commit_tree(
     branch: str | None = typer.Option(
         None, "--branch", "-b", help="Branch name to record (default: current branch)."
     ),
+    fmt: str = typer.Option(
+        "json", "--format", "-f", help="Output format: json (default) or text (bare commit_id)."
+    ),
 ) -> None:
     """Create a commit from an explicit snapshot ID.
 
@@ -83,8 +90,34 @@ def commit_tree(
     flag adds a parent commit (use once for linear history, twice for merge
     commits).  The commit is written to ``.muse/commits/`` but no branch ref
     is updated — use ``muse plumbing update-ref`` to advance a branch.
+
+    Output (``--format json``, default)::
+
+        {"commit_id": "<sha256>"}
+
+    Output (``--format text``)::
+
+        <sha256>
     """
+    if fmt not in _FORMAT_CHOICES:
+        typer.echo(
+            json.dumps({"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"})
+        )
+        raise typer.Exit(code=ExitCode.USER_ERROR)
     root = require_repo()
+
+    try:
+        validate_object_id(snapshot_id)
+    except ValueError as exc:
+        typer.echo(json.dumps({"error": f"Invalid snapshot ID: {exc}"}))
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
+    for pid in parent:
+        try:
+            validate_object_id(pid)
+        except ValueError as exc:
+            typer.echo(json.dumps({"error": f"Invalid parent commit ID: {exc}"}))
+            raise typer.Exit(code=ExitCode.USER_ERROR)
 
     snap = read_snapshot(root, snapshot_id)
     if snap is None:
@@ -119,5 +152,9 @@ def commit_tree(
         parent2_commit_id=parent[1] if len(parent) >= 2 else None,
     )
     write_commit(root, record)
+
+    if fmt == "text":
+        typer.echo(commit_id)
+        return
 
     typer.echo(json.dumps({"commit_id": commit_id}))

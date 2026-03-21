@@ -42,6 +42,7 @@ from muse.core.store import (
     read_commit,
     read_current_branch,
 )
+from muse.core.validation import validate_object_id
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,11 @@ def ls_files(
             typer.echo(json.dumps({"error": "No commits on current branch."}))
             raise typer.Exit(code=ExitCode.USER_ERROR)
     else:
+        try:
+            validate_object_id(commit)
+        except ValueError as exc:
+            typer.echo(json.dumps({"error": f"Invalid commit ID: {exc}"}))
+            raise typer.Exit(code=ExitCode.USER_ERROR)
         commit_id = commit
 
     commit_record = read_commit(root, commit_id)
