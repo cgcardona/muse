@@ -307,8 +307,7 @@ class TestLsRemote:
             "muse.cli.commands.plumbing.ls_remote.HttpTransport",
             return_value=transport_mock,
         ):
-            # --json option must precede positional arg in add_typer groups.
-            result = runner.invoke(cli, ["plumbing", "ls-remote", "--json", "origin"])
+            result = runner.invoke(cli, ["plumbing", "ls-remote", "--format", "json", "origin"])
 
         assert result.exit_code == 0
         data = json.loads(result.output)

@@ -71,12 +71,29 @@ def show(
         "--json",
         help="Emit JSON instead of TOML.",
     ),
+    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json (alias for --json)."),
 ) -> None:
     """Display the current repository configuration.
 
-    Output is TOML by default.  Use ``--json`` for agent-friendly output.
-    Credentials are never included regardless of format.
+    Output is TOML by default.  Use ``--json`` or ``--format json`` for
+    agent-friendly output.  Credentials are never included regardless of format.
+
+    JSON payload (top-level keys present only when set)::
+
+        {
+          "user":    {"name": "...", "email": "...", "type": "human|agent"},
+          "hub":     {"url": "https://musehub.ai"},
+          "remotes": {"origin": "https://..."},
+          "domain":  {"ticks_per_beat": "480"}
+        }
     """
+    if fmt == "json":
+        json_output = True
+    elif fmt != "text":
+        from muse.core.validation import sanitize_display
+        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
     root = find_repo_root()
 
     data = config_as_dict(root)

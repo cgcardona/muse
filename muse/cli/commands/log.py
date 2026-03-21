@@ -46,7 +46,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import CommitRecord, get_commit_snapshot_manifest, get_commits_for_branch, read_current_branch, read_snapshot
+from muse.core.store import CommitRecord, get_commit_snapshot_manifest, get_commits_for_branch, read_current_branch
 from muse.core.validation import sanitize_display
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ def log(
     oneline: bool = typer.Option(False, "--oneline", help="One line per commit."),
     graph: bool = typer.Option(False, "--graph", help="ASCII graph."),
     stat: bool = typer.Option(False, "--stat", help="Show file change summary."),
-    patch: bool = typer.Option(False, "--patch", "-p", help="Show file diff."),
+    patch: bool = typer.Option(False, "--patch", "-p", help="Show file change summary (added/removed/modified counts) alongside each commit."),
     limit: int = typer.Option(_DEFAULT_LIMIT, "-n", "--max-count", help="Limit number of commits."),
     since: str | None = typer.Option(None, "--since", help="Show commits after date."),
     until: str | None = typer.Option(None, "--until", help="Show commits before date."),
@@ -117,8 +117,18 @@ def log(
     section: str | None = typer.Option(None, "--section", help="Filter by section metadata."),
     track: str | None = typer.Option(None, "--track", help="Filter by track metadata."),
     emotion: str | None = typer.Option(None, "--emotion", help="Filter by emotion metadata."),
+    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
 ) -> None:
-    """Display commit history."""
+    """Display commit history.
+
+    Agents should pass ``--format json`` to receive a JSON array where each
+    element is a commit object with fields: ``commit_id``, ``branch``,
+    ``message``, ``author``, ``committed_at``, ``parent_commit_id``,
+    ``snapshot_id``, ``metadata``, and ``sem_ver_bump``.
+    """
+    if fmt not in ("text", "json"):
+        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
     if limit < 1:
         typer.echo("❌ --max-count must be at least 1.", err=True)
         raise typer.Exit(code=ExitCode.USER_ERROR)
@@ -152,7 +162,24 @@ def log(
             break
 
     if not filtered:
-        typer.echo("(no commits)")
+        if fmt == "json":
+            typer.echo("[]")
+        else:
+            typer.echo("(no commits)")
+        return
+
+    if fmt == "json":
+        typer.echo(json.dumps([{
+            "commit_id": c.commit_id,
+            "branch": c.branch,
+            "message": c.message,
+            "author": c.author,
+            "committed_at": c.committed_at.isoformat(),
+            "parent_commit_id": c.parent_commit_id,
+            "snapshot_id": c.snapshot_id,
+            "metadata": c.metadata,
+            "sem_ver_bump": c.sem_ver_bump,
+        } for c in filtered], indent=2, default=str))
         return
 
     head_commit_id = filtered[0].commit_id if filtered else None

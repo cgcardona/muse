@@ -859,6 +859,17 @@ def get_tags_for_commit(
     return results
 
 
+def delete_tag(repo_root: pathlib.Path, repo_id: str, tag_id: str) -> bool:
+    """Delete the tag file identified by *tag_id*; return True if it existed."""
+    tags_dir = _tags_dir(repo_root, repo_id)
+    path = tags_dir / f"{tag_id}.json"
+    if path.exists():
+        path.unlink()
+        logger.debug("🗑️ Deleted tag %s", tag_id)
+        return True
+    return False
+
+
 def get_all_tags(repo_root: pathlib.Path, repo_id: str) -> list[TagRecord]:
     """Return all tags in this repository."""
     tags_dir = _tags_dir(repo_root, repo_id)

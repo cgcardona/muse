@@ -10,7 +10,8 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import get_commit_snapshot_manifest, read_commit, read_current_branch, resolve_commit_ref
+from muse.core.store import get_commit_snapshot_manifest, read_commit, read_current_branch, read_snapshot, resolve_commit_ref
+from muse.core.validation import sanitize_display
 from muse.domain import DomainOp
 
 logger = logging.getLogger(__name__)
@@ -59,25 +60,47 @@ def show(
     stat: bool = typer.Option(True, "--stat/--no-stat", help="Show file change summary."),
     json_out: bool = typer.Option(False, "--json", help="Output as JSON."),
 ) -> None:
-    """Inspect a commit: metadata, diff, and files."""
+    """Inspect a commit: metadata, diff, and files.
+
+    Agents should pass ``--json`` to receive full commit metadata plus a file
+    change summary::
+
+        {
+          "commit_id":      "<sha256>",
+          "branch":         "main",
+          "message":        "Add verse melody",
+          "author":         "gabriel",
+          "committed_at":   "2026-03-21T12:00:00+00:00",
+          "snapshot_id":    "<sha256>",
+          "parent_commit_id": "<sha256> | null",
+          "files_added":    ["new_track.mid"],
+          "files_removed":  [],
+          "files_modified": ["tracks/bass.mid"]
+        }
+
+    Pass ``--no-stat`` to omit the ``files_added/removed/modified`` fields.
+    """
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{ref}' not found.")
+        typer.echo(f"❌ Commit '{sanitize_display(str(ref))}' not found.")
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
     if json_out:
         import json as json_mod
         commit_data = commit.to_dict()
         if stat:
-            cur = get_commit_snapshot_manifest(root, commit.commit_id) or {}
-            par: dict[str, str] = (
-                get_commit_snapshot_manifest(root, commit.parent_commit_id) or {}
-                if commit.parent_commit_id else {}
-            )
+            # Read current snapshot directly via snapshot_id (avoids re-reading
+            # the commit we already have in memory).
+            cur_snap = read_snapshot(root, commit.snapshot_id)
+            cur = cur_snap.manifest if cur_snap is not None else {}
+            par: dict[str, str] = {}
+            if commit.parent_commit_id:
+                par_manifest = get_commit_snapshot_manifest(root, commit.parent_commit_id)
+                par = par_manifest if par_manifest is not None else {}
             stats = {
                 "files_added": sorted(set(cur) - set(par)),
                 "files_removed": sorted(set(par) - set(cur)),
@@ -96,12 +119,12 @@ def show(
     if commit.parent2_commit_id:
         typer.echo(f"Parent: {commit.parent2_commit_id[:8]} (merge)")
     if commit.author:
-        typer.echo(f"Author: {commit.author}")
+        typer.echo(f"Author: {sanitize_display(commit.author)}")
     typer.echo(f"Date:   {commit.committed_at}")
     if commit.metadata:
         for k, v in sorted(commit.metadata.items()):
-            typer.echo(f"        {k}: {v}")
-    typer.echo(f"\n    {commit.message}\n")
+            typer.echo(f"        {sanitize_display(k)}: {sanitize_display(str(v))}")
+    typer.echo(f"\n    {sanitize_display(commit.message)}\n")
 
     if not stat:
         return

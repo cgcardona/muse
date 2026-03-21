@@ -40,18 +40,33 @@ logger = logging.getLogger(__name__)
 app = typer.Typer()
 
 
+_FORMAT_CHOICES = ("json", "text")
+
+
 @app.callback(invoke_without_command=True)
 def read_snapshot_cmd(
     ctx: typer.Context,
     snapshot_id: str = typer.Argument(..., help="SHA-256 snapshot ID (64 hex chars)."),
+    fmt: str = typer.Option(
+        "json", "--format", "-f", help="Output format: json (default) or text."
+    ),
 ) -> None:
-    """Emit full snapshot metadata as JSON.
+    """Emit full snapshot metadata as JSON (default) or a compact text summary.
 
     A snapshot holds the complete file manifest (path → object_id mapping)
     for a point in time.  Every commit references exactly one snapshot.
     Use ``muse plumbing ls-files --commit <id>`` if you want to look up a
     snapshot from a commit ID rather than from the snapshot ID directly.
+
+    Text format (``--format text``)::
+
+        <snapshot_id>  <file_count> files  <created_at>
     """
+    if fmt not in _FORMAT_CHOICES:
+        typer.echo(
+            json.dumps({"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"})
+        )
+        raise typer.Exit(code=ExitCode.USER_ERROR)
     try:
         validate_object_id(snapshot_id)
     except ValueError as exc:
@@ -66,6 +81,13 @@ def read_snapshot_cmd(
     if record is None:
         typer.echo(json.dumps({"error": f"Snapshot not found: {snapshot_id}"}))
         raise typer.Exit(code=ExitCode.USER_ERROR)
+
+    if fmt == "text":
+        typer.echo(
+            f"{record.snapshot_id[:12]}  {len(record.manifest)} files  "
+            f"{record.created_at.isoformat()}"
+        )
+        return
 
     output = {
         "snapshot_id": record.snapshot_id,

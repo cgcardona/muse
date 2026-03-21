@@ -224,12 +224,18 @@ e5f6...b7c8	tracks/drums.mid
 ### `read-commit` — print full commit metadata
 
 ```
-muse plumbing read-commit <commit-id>
+muse plumbing read-commit <commit-id> [-f json|text]
 ```
 
 Emits the complete JSON record for a commit.  Accepts a full 64-character ID
 or a unique prefix.  The schema is stable across Muse versions; use
 `format_version` to detect any future schema changes.
+
+**Flags**
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--format` | `-f` | `json` | `json` (full record) or `text` (compact one-liner) |
 
 **Output**
 
@@ -259,22 +265,34 @@ or a unique prefix.  The schema is stable across Muse versions; use
 }
 ```
 
-Error conditions also produce JSON on `stdout` so scripts can parse them
+**Output — `--format text`**
+
+```
+a3f2...c8d1  main  gabriel  2026-03-21T12:00:00+00:00  Add verse melody
+```
+
+Error conditions always produce JSON on `stdout` so scripts can parse them
 without inspecting `stderr`.
 
-**Exit codes:** 0 found · 1 not found, ambiguous prefix, or invalid ID format
+**Exit codes:** 0 found · 1 not found, ambiguous prefix, invalid ID format, or bad `--format`
 
 ---
 
 ### `read-snapshot` — print full snapshot metadata
 
 ```
-muse plumbing read-snapshot <snapshot-id>
+muse plumbing read-snapshot <snapshot-id> [-f json|text]
 ```
 
 Emits the complete JSON record for a snapshot.  Every commit references exactly
 one snapshot.  Use `ls-files --commit <id>` if you want to look up a snapshot
 from a commit ID rather than the snapshot ID directly.
+
+**Flags**
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--format` | `-f` | `json` | `json` (full manifest) or `text` (compact one-liner) |
 
 **Output**
 
@@ -291,20 +309,28 @@ from a commit ID rather than the snapshot ID directly.
 }
 ```
 
-**Exit codes:** 0 found · 1 not found or invalid ID format
+**Output — `--format text`**
+
+```
+b7e4...f912  3 files  2026-03-21T12:00:00+00:00
+```
+
+**Exit codes:** 0 found · 1 not found, invalid ID format, or bad `--format`
 
 ---
 
 ### `commit-tree` — create a commit from a snapshot ID
 
 ```
-muse plumbing commit-tree -s <snapshot-id> [-p <parent-id>]... [-m <message>] [-a <author>] [-b <branch>]
+muse plumbing commit-tree -s <snapshot-id> [-p <parent-id>]... [-m <message>] [-a <author>] [-b <branch>] [-f json|text]
 ```
 
-Low-level commit creation.  The snapshot must already exist in the store.  Use
-`--parent` / `-p` once for a linear commit and twice for a merge commit.  The
-commit is written to `.muse/commits/` but **no branch ref is updated** — use
-`update-ref` to advance a branch to the new commit.
+Low-level commit creation.  The snapshot must already exist in the store.  Both
+the snapshot ID and any parent IDs are validated as proper 64-character SHA-256
+hex strings before any I/O is attempted.  Use `--parent` / `-p` once for a
+linear commit and twice for a merge commit.  The commit is written to
+`.muse/commits/` but **no branch ref is updated** — use `update-ref` to advance
+a branch to the new commit.
 
 **Flags**
 
@@ -315,31 +341,43 @@ commit is written to `.muse/commits/` but **no branch ref is updated** — use
 | `--message` | `-m` | — | Commit message |
 | `--author` | `-a` | — | Author name |
 | `--branch` | `-b` | — | Branch name (default: current branch) |
+| `--format` | `-f` | `json` | `json` or `text` (bare commit ID) |
 
-**Output**
+**Output — JSON (default)**
 
 ```json
 {"commit_id": "a3f2...c8d1"}
 ```
 
-**Exit codes:** 0 commit written · 1 snapshot or parent not found, or `repo.json` unreadable · 3 write failure
+**Output — `--format text`**
+
+```
+a3f2...c8d1
+```
+
+The text form is ideal for shell pipelines where you want to capture the ID
+directly without a `jq` call: `NEW=$(muse plumbing commit-tree -s "$SNAP" -f text)`
+
+**Exit codes:** 0 commit written · 1 snapshot or parent not found, invalid ID format, or `repo.json` unreadable · 3 write failure
 
 ---
 
 ### `update-ref` — move a branch to a commit
 
 ```
-muse plumbing update-ref <branch> <commit-id> [--no-verify]
-muse plumbing update-ref <branch> --delete
+muse plumbing update-ref <branch> <commit-id> [--no-verify] [-f json|text]
+muse plumbing update-ref <branch> --delete [-f json|text]
 ```
 
 Directly writes (or deletes) a branch reference file under `.muse/refs/heads/`.
-By default, the commit must already exist in the local store (`--verify` is
-on); pass `--no-verify` to write the ref before the commit is stored — useful
-after an `unpack-objects` pipeline where objects arrive in dependency order.
-
+The branch name is validated with the same rules as `check-ref-format` before
+any file is written — path-traversal via crafted branch names is not possible.
 The commit ID format is always validated regardless of `--no-verify`, so a
 malformed ID can never corrupt the ref file.
+
+By default, the commit must already exist in the local store (`--verify` is on);
+pass `--no-verify` to write the ref before the commit is stored — useful after
+an `unpack-objects` pipeline where objects arrive in dependency order.
 
 **Flags**
 
@@ -347,8 +385,9 @@ malformed ID can never corrupt the ref file.
 |---|---|---|---|
 | `--delete` | `-d` | off | Delete the branch ref instead of updating it |
 | `--verify/--no-verify` | — | `--verify` | Require commit to exist in store |
+| `--format` | `-f` | `json` | `json` or `text` (silent on success — exits 0) |
 
-**Output — update**
+**Output — JSON (default), update**
 
 ```json
 {"branch": "main", "commit_id": "a3f2...c8d1", "previous": "ff01...23ab"}
@@ -356,13 +395,18 @@ malformed ID can never corrupt the ref file.
 
 `previous` is `null` when the branch had no prior commit.
 
-**Output — delete**
+**Output — JSON, delete**
 
 ```json
 {"branch": "feat/x", "deleted": true}
 ```
 
-**Exit codes:** 0 done · 1 commit not in store (with `--verify`), invalid ID, or `--delete` on non-existent ref · 3 file write failure
+**Output — `--format text`**
+
+Silent on success (exit 0).  Mirrors the behaviour of `git update-ref`, making
+it drop-in compatible with shell scripts that use exit code only.
+
+**Exit codes:** 0 done · 1 commit not in store (with `--verify`), invalid branch or commit ID, or `--delete` on non-existent ref · 3 file write failure
 
 ---
 
@@ -387,7 +431,7 @@ another.
 | `--max` | `-n` | 10 000 | Maximum commits to traverse |
 | `--count` | `-c` | off | Emit only the integer count, not the full node list |
 | `--first-parent` | `-1` | off | Follow only first-parent links — linear history, no merge parents |
-| `--ancestry-path` | `-a` | off | With `--stop-at`: restrict to commits on the direct path between tip and stop-at |
+| `--ancestry-path` | `-a` | off | With `--stop-at`: restrict to commits on the direct path between tip and stop-at (capped at 100 000 visited commits to guard against unbounded BFS) |
 | `--format` | `-f` | `json` | `json` or `text` (one ID per line) |
 
 **Output — JSON**
@@ -491,7 +535,7 @@ transport (HTTP body, agent message, file).
 ### `unpack-objects` — apply a bundle to the local store
 
 ```
-cat pack.json | muse plumbing unpack-objects
+cat pack.json | muse plumbing unpack-objects [-f json|text]
 muse plumbing pack-objects HEAD | muse plumbing unpack-objects
 ```
 
@@ -500,7 +544,13 @@ snapshots, and objects into `.muse/`.  Idempotent: objects already present in
 the store are silently skipped.  Partial packs from interrupted transfers are
 safe to re-apply.
 
-**Output**
+**Flags**
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--format` | `-f` | `json` | `json` (machine-readable counts) or `text` (human summary) |
+
+**Output — JSON (default)**
 
 ```json
 {
@@ -511,14 +561,20 @@ safe to re-apply.
 }
 ```
 
-**Exit codes:** 0 unpacked (all objects stored) · 1 invalid JSON from stdin · 3 write failure
+**Output — `--format text`**
+
+```
+Wrote 12 commits, 12 snapshots, 47 objects (3 skipped).
+```
+
+**Exit codes:** 0 unpacked (all objects stored) · 1 invalid JSON from stdin or bad `--format` · 3 write failure
 
 ---
 
 ### `ls-remote` — list refs on a remote
 
 ```
-muse plumbing ls-remote [<remote-or-url>] [-j]
+muse plumbing ls-remote [<remote-or-url>] [-f json|text]
 ```
 
 Contacts a remote and lists every branch HEAD without altering local state.
@@ -529,9 +585,9 @@ The `<remote-or-url>` argument is either a remote name configured with
 
 | Flag | Short | Default | Description |
 |---|---|---|---|
-| `--json` | `-j` | off | Emit structured JSON instead of tab-separated text |
+| `--format` | `-f` | `text` | `text` (tab-separated) or `json` (structured) |
 
-**Output — text (default)**
+**Output — `--format text` (default)**
 
 One line per branch, tab-separated.  The default branch is marked with ` *`.
 
@@ -540,7 +596,7 @@ a3f2...c8d1	main *
 b7e4...f912	feat/experiment
 ```
 
-**Output — `--json`**
+**Output — `--format json`**
 
 ```json
 {
@@ -554,7 +610,7 @@ b7e4...f912	feat/experiment
 }
 ```
 
-**Exit codes:** 0 remote contacted · 1 remote not configured or URL invalid · 3 transport error (network, HTTP error)
+**Exit codes:** 0 remote contacted · 1 remote not configured, URL invalid, or bad `--format` · 3 transport error (network, HTTP error)
 
 ---
 
@@ -573,7 +629,7 @@ muse plumbing commit-graph --tip "$TIP" --stop-at "$BASE" -f text
 
 ```sh
 # On the sender — pack everything the receiver doesn't have
-HAVE=$(muse plumbing ls-remote origin -f text | awk '{print "--have " $1}' | tr '\n' ' ')
+HAVE=$(muse plumbing ls-remote origin --format text | awk '{print "--have " $1}' | tr '\n' ' ')
 muse plumbing pack-objects HEAD $HAVE > bundle.json
 
 # On the receiver

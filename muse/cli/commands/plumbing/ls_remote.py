@@ -4,12 +4,12 @@ Plumbing command that contacts the remote and prints every branch and its
 current commit ID without modifying any local state.  Useful for scripting,
 agent coordination, and pre-flight checks before push/pull.
 
-Output format (default — one line per branch, ``*`` marks the default branch)::
+Output format (default ``--format text`` — one line per branch, ``*`` marks the default branch)::
 
     <commit_id>\\t<branch>
     <commit_id>\\t<branch> *
 
-Output format (--json)::
+Output format (``--format json``)::
 
     {
       "repo_id": "<uuid>",
@@ -22,7 +22,7 @@ Plumbing contract
 -----------------
 
 - Exit 0: remote contacted, refs printed.
-- Exit 1: remote not configured or URL looks invalid.
+- Exit 1: remote not configured, URL looks invalid, or unknown ``--format``.
 - Exit 3: transport error (network unreachable, HTTP error).
 """
 
@@ -44,6 +44,9 @@ logger = logging.getLogger(__name__)
 app = typer.Typer()
 
 
+_FORMAT_CHOICES = ("json", "text")
+
+
 @app.callback(invoke_without_command=True)
 def ls_remote(
     ctx: typer.Context,
@@ -51,16 +54,31 @@ def ls_remote(
         "origin",
         help="Remote name (e.g. 'origin') or a full URL. Defaults to 'origin'.",
     ),
-    output_json: bool = typer.Option(
-        False, "--json", "-j", help="Emit JSON for agent consumption."
+    fmt: str = typer.Option(
+        "text", "--format", "-f", help="Output format: text (default) or json."
     ),
 ) -> None:
     """List branches and commit IDs on a remote.
 
     Contacts the remote and prints each branch HEAD without altering any local
     state.  Pass a remote name (configured via ``muse remote add``) or a full
-    URL.  Use ``--json`` for structured output.
+    URL.
+
+    Agents should pass ``--format json`` to receive a machine-readable result::
+
+        {
+          "repo_id": "<uuid>",
+          "domain": "midi",
+          "default_branch": "main",
+          "branches": {"main": "<commit_id>", "feat/x": "<commit_id>"}
+        }
     """
+    if fmt not in _FORMAT_CHOICES:
+        typer.echo(
+            json.dumps({"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"})
+        )
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
     root = find_repo_root(pathlib.Path.cwd())
     token: str | None = None
 
@@ -88,7 +106,7 @@ def ls_remote(
         typer.echo(f"❌ Cannot reach remote: {exc}", err=True)
         raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
 
-    if output_json:
+    if fmt == "json":
         typer.echo(
             json.dumps(
                 {

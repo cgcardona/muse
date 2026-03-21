@@ -82,8 +82,17 @@ def merge(
         "--rerere-autoupdate/--no-rerere-autoupdate",
         help="Automatically apply cached rerere resolutions to matching conflicts (default: on).",
     ),
+    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
 ) -> None:
-    """Three-way merge a branch into the current branch."""
+    """Three-way merge a branch into the current branch.
+
+    Agents should pass ``--format json`` to receive a structured result with
+    ``status`` (merged|fast_forward|conflict|up_to_date), ``commit_id``,
+    ``branch``, ``current_branch``, and ``conflicts`` list.
+    """
+    if fmt not in ("text", "json"):
+        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     current_branch = _read_branch(root)
@@ -108,7 +117,11 @@ def merge(
     base_commit_id = find_merge_base(root, ours_commit_id, theirs_commit_id)
 
     if base_commit_id == theirs_commit_id:
-        typer.echo("Already up to date.")
+        if fmt == "json":
+            typer.echo(json.dumps({"status": "up_to_date", "commit_id": ours_commit_id,
+                                   "branch": branch, "current_branch": current_branch, "conflicts": []}))
+        else:
+            typer.echo("Already up to date.")
         return
 
     if base_commit_id == ours_commit_id and not no_ff:
@@ -128,7 +141,11 @@ def merge(
             author="user",
             operation=f"merge: fast-forward {sanitize_display(branch)} → {sanitize_display(current_branch)}",
         )
-        typer.echo(f"Fast-forward to {theirs_commit_id[:8]}")
+        if fmt == "json":
+            typer.echo(json.dumps({"status": "fast_forward", "commit_id": theirs_commit_id,
+                                   "branch": branch, "current_branch": current_branch, "conflicts": []}))
+        else:
+            typer.echo(f"Fast-forward to {theirs_commit_id[:8]}")
         return
 
     ours_manifest = get_head_snapshot_manifest(root, repo_id, current_branch) or {}
@@ -170,14 +187,17 @@ def merge(
     # Report any .museattributes auto-resolutions.
     if result.applied_strategies:
         for p, strategy in sorted(result.applied_strategies.items()):
+            safe_p = sanitize_display(p)
+            safe_strategy = sanitize_display(strategy)
             if strategy == "dimension-merge":
                 dim_detail = result.dimension_reports.get(p, {})
                 dim_summary = ", ".join(
-                    f"{d}={v}" for d, v in sorted(dim_detail.items())
+                    f"{sanitize_display(d)}={sanitize_display(str(v))}"
+                    for d, v in sorted(dim_detail.items())
                 )
-                typer.echo(f"  ✔ dimension-merge: {p} ({dim_summary})")
+                typer.echo(f"  ✔ dimension-merge: {safe_p} ({dim_summary})")
             elif strategy != "manual":
-                typer.echo(f"  ✔ [{strategy}] {p}")
+                typer.echo(f"  ✔ [{safe_strategy}] {safe_p}")
 
     if not result.is_clean:
         # Try to auto-resolve conflicts using cached rerere resolutions.
@@ -196,7 +216,7 @@ def merge(
                 plugin,
             )
             for p in sorted(rerere_resolved):
-                typer.echo(f"  ✔ [rerere] auto-resolved: {p}")
+                typer.echo(f"  ✔ [rerere] auto-resolved: {sanitize_display(p)}")
 
         if remaining_conflicts:
             write_merge_state(
@@ -207,10 +227,19 @@ def merge(
                 conflict_paths=remaining_conflicts,
                 other_branch=branch,
             )
-            typer.echo(f"❌ Merge conflict in {len(remaining_conflicts)} file(s):")
-            for p in sorted(remaining_conflicts):
-                typer.echo(f"  CONFLICT (both modified): {p}")
-            typer.echo('\nFix conflicts and run "muse commit" to complete the merge.')
+            if fmt == "json":
+                typer.echo(json.dumps({
+                    "status": "conflict",
+                    "commit_id": None,
+                    "branch": branch,
+                    "current_branch": current_branch,
+                    "conflicts": sorted(remaining_conflicts),
+                }))
+            else:
+                typer.echo(f"❌ Merge conflict in {len(remaining_conflicts)} file(s):")
+                for p in sorted(remaining_conflicts):
+                    typer.echo(f"  CONFLICT (both modified): {sanitize_display(p)}")
+                typer.echo('\nFix conflicts and run "muse commit" to complete the merge.')
             raise typer.Exit(code=ExitCode.USER_ERROR)
 
         # All conflicts resolved by rerere — rebuild result and fall through
@@ -263,4 +292,13 @@ def merge(
         operation=f"merge: {sanitize_display(branch)} into {sanitize_display(current_branch)}",
     )
 
-    typer.echo(f"Merged '{sanitize_display(branch)}' into '{sanitize_display(current_branch)}' ({commit_id[:8]})")
+    if fmt == "json":
+        typer.echo(json.dumps({
+            "status": "merged",
+            "commit_id": commit_id,
+            "branch": branch,
+            "current_branch": current_branch,
+            "conflicts": [],
+        }))
+    else:
+        typer.echo(f"Merged '{sanitize_display(branch)}' into '{sanitize_display(current_branch)}' ({commit_id[:8]})")

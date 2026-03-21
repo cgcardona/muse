@@ -40,8 +40,16 @@ def reset(
     ref: str = typer.Argument(..., help="Commit ID or branch to reset to."),
     hard: bool = typer.Option(False, "--hard", help="Reset branch pointer AND restore state/."),
     soft: bool = typer.Option(False, "--soft", help="Reset branch pointer only (default)."),
+    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
 ) -> None:
-    """Move HEAD to a prior commit."""
+    """Move HEAD to a prior commit.
+
+    Agents should pass ``--format json`` to receive ``{branch, old_commit_id,
+    new_commit_id, mode}`` rather than human-readable text.
+    """
+    if fmt not in ("text", "json"):
+        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
@@ -73,6 +81,15 @@ def reset(
             typer.echo(f"❌ Snapshot {commit.snapshot_id[:8]} not found in object store.")
             raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
         apply_manifest(root, snapshot.manifest)
+
+    if fmt == "json":
+        typer.echo(json.dumps({
+            "branch": branch,
+            "old_commit_id": old_commit_id,
+            "new_commit_id": commit.commit_id,
+            "mode": mode,
+        }))
+    elif hard:
         typer.echo(f"HEAD is now at {commit.commit_id[:8]} {sanitize_display(commit.message)}")
     else:
         typer.echo(f"Moved {sanitize_display(branch)} to {commit.commit_id[:8]}")

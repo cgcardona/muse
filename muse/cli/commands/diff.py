@@ -230,8 +230,23 @@ def diff(
     commit_b: str | None = typer.Argument(None, help="Target commit ID (default: working tree)."),
     stat: bool = typer.Option(False, "--stat", help="Show summary statistics only."),
     text: bool = typer.Option(False, "--text", help="Show line-level unified diff instead of semantic symbols."),
+    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
 ) -> None:
-    """Compare working tree against HEAD, or compare two commits."""
+    """Compare working tree against HEAD, or compare two commits.
+
+    Agents should pass ``--format json`` to receive a structured result::
+
+        {
+          "summary":       "3 changes",
+          "added":         ["path/to/new_file"],
+          "deleted":       ["path/to/removed_file"],
+          "modified":      ["path/to/changed_file"],
+          "total_changes": 3
+        }
+    """
+    if fmt not in ("text", "json"):
+        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
@@ -272,7 +287,7 @@ def diff(
             domain=domain,
         )
 
-    if text:
+    if text and fmt != "json":
         workdir = root if commit_a is None else None
         changed = _print_text_diff(
             base_snap["files"], target_snap["files"], root, workdir
@@ -282,6 +297,21 @@ def diff(
         return
 
     delta = plugin.diff(base_snap, target_snap, repo_root=root)
+
+    if fmt == "json":
+        added = [op["address"] for op in delta["ops"] if op["op"] == "insert"]
+        deleted = [op["address"] for op in delta["ops"] if op["op"] == "delete"]
+        modified = [op["address"] for op in delta["ops"]
+                    if op["op"] in ("replace", "patch", "mutate", "move")]
+        import json as _json
+        typer.echo(_json.dumps({
+            "summary": delta["summary"],
+            "added": sorted(added),
+            "deleted": sorted(deleted),
+            "modified": sorted(modified),
+            "total_changes": len(delta["ops"]),
+        }))
+        return
 
     if stat:
         typer.echo(delta["summary"] if delta["ops"] else "No differences.")

@@ -180,13 +180,23 @@ def _build_remaining(
     good_ids: list[str],
     skipped_ids: list[str],
 ) -> list[str]:
-    """Return commits between good and bad (exclusive of good, inclusive of bad)."""
+    """Return commits strictly between good and bad (exclusive of both endpoints).
+
+    Excludes ``bad_id`` itself — it is already the known-bad boundary.
+    Excludes good-reachable commits (already confirmed good).
+    Excludes skipped commits.
+
+    When this list has length 0, ``bad_id`` is the first bad commit.
+    When it has length 1, there is exactly one candidate to test — if it is
+    bad, it becomes the new ``bad_id`` and remaining collapses to 0; if it is
+    good, ``bad_id`` is confirmed as first-bad.
+    """
     ancestors_of_bad = _ancestors(repo_root, bad_id)
     good_reachable = _reachable_from_good(repo_root, good_ids)
     skipped = set(skipped_ids)
     return [
         cid for cid in ancestors_of_bad
-        if cid not in good_reachable and cid not in skipped
+        if cid not in good_reachable and cid not in skipped and cid != bad_id
     ]
 
 
@@ -258,12 +268,22 @@ def start_bisect(
         state["branch"] = branch
     _save_state(repo_root, state)
 
-    next_id = _midpoint(remaining)
     import math
-    steps = int(math.log2(len(remaining) + 1)) if remaining else 0
+    if not remaining:
+        # bad_id is immediately the first bad commit (no unknowns).
+        return BisectResult(
+            done=True,
+            first_bad=bad_id,
+            next_to_test=None,
+            remaining_count=0,
+            steps_remaining=0,
+            verdict="started",
+        )
+    next_id = _midpoint(remaining)
+    steps = int(math.log2(len(remaining) + 1))
     return BisectResult(
-        done=next_id is None,
-        first_bad=bad_id if next_id is None else None,
+        done=False,
+        first_bad=None,
         next_to_test=next_id,
         remaining_count=len(remaining),
         steps_remaining=steps,
@@ -313,8 +333,8 @@ def _apply_verdict(
         new_state["branch"] = state["branch"]
     _save_state(repo_root, new_state)
 
-    if len(remaining) <= 1:
-        # Done — bad_id is the first bad commit.
+    if len(remaining) == 0:
+        # No unknowns remain — bad_id is confirmed as the first bad commit.
         return BisectResult(
             done=True,
             first_bad=bad_id,

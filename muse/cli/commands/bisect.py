@@ -84,11 +84,11 @@ def _resolve_ref(root: pathlib.Path, ref: str | None) -> str:
 
 def _print_result(result: BisectResult) -> None:
     if result.done:
-        typer.echo(f"\n✅ First bad commit found: {result.first_bad}")
+        typer.echo(f"\n✅ First bad commit found: {sanitize_display(result.first_bad or '')}")
         typer.echo("   Run 'muse bisect reset' to end the session.")
     else:
         typer.echo(
-            f"Next to test: {result.next_to_test}  "
+            f"Next to test: {sanitize_display(result.next_to_test or '')}  "
             f"({result.remaining_count} remaining, ~{result.steps_remaining} step(s) left)"
         )
 
@@ -225,7 +225,7 @@ def bisect_log() -> None:
         return
     typer.echo("Bisect log:")
     for entry in entries:
-        typer.echo(f"  {entry}")
+        typer.echo(f"  {sanitize_display(entry)}")
 
 
 @app.command("reset")
