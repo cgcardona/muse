@@ -50,11 +50,14 @@ typeset -gi _MUSE_CMD_RAN=0     # 1 after any muse command runs
 
 # ── §1  Core detection (zero subprocesses) ───────────────────────────────────
 
-# Walk up from $PWD to find .muse/. Sets MUSE_REPO_ROOT. Pure ZSH.
+# Walk up from $PWD to find a valid Muse repo root. Sets MUSE_REPO_ROOT.
+# A valid repo requires .muse/repo.json — a bare .muse/ directory is not
+# enough. This prevents false positives from stray or partial .muse/ dirs
+# (e.g. a forgotten muse init in a parent directory).
 function _muse_find_root() {
   local dir="$PWD"
   while [[ "$dir" != "/" ]]; do
-    if [[ -d "$dir/.muse" ]]; then
+    if [[ -f "$dir/.muse/repo.json" ]]; then
       MUSE_REPO_ROOT="$dir"
       return 0
     fi
@@ -155,8 +158,10 @@ function _muse_refresh_full() {
 # ── §3  ZSH hooks ─────────────────────────────────────────────────────────────
 
 # On directory change: refresh head and domain; clear dirty (stale after cd).
+# Pre-clear MUSE_REPO_ROOT so any silent failure in _muse_refresh leaves the
+# prompt blank rather than showing stale data from the previous directory.
 function _muse_hook_chpwd() {
-  MUSE_DIRTY=0; MUSE_DIRTY_COUNT=0
+  MUSE_REPO_ROOT=""; MUSE_BRANCH=""; MUSE_DIRTY=0; MUSE_DIRTY_COUNT=0
   _muse_refresh 2>/dev/null
 }
 chpwd_functions+=(_muse_hook_chpwd)
@@ -198,7 +203,24 @@ function muse_prompt_info() {
   fi
 }
 
-# ── §5  Aliases ───────────────────────────────────────────────────────────────
+# ── §5  Debug ─────────────────────────────────────────────────────────────────
+
+# Print current plugin state. Run when the prompt looks wrong.
+#   muse_debug
+function muse_debug() {
+  print "MUSE_REPO_ROOT  = ${MUSE_REPO_ROOT:-(not set)}"
+  print "MUSE_BRANCH     = ${MUSE_BRANCH:-(not set)}"
+  print "MUSE_DOMAIN     = ${MUSE_DOMAIN:-(not set)}"
+  print "MUSE_DIRTY      = $MUSE_DIRTY  (count: $MUSE_DIRTY_COUNT)"
+  print "_MUSE_CMD_RAN   = $_MUSE_CMD_RAN"
+  print "PWD             = $PWD"
+  if [[ -n "$MUSE_REPO_ROOT" ]]; then
+    print "repo.json       = $MUSE_REPO_ROOT/.muse/repo.json"
+    print "HEAD            = $(< "$MUSE_REPO_ROOT/.muse/HEAD" 2>/dev/null || print '(missing)')"
+  fi
+}
+
+# ── §6  Aliases ───────────────────────────────────────────────────────────────
 alias mst='muse status'
 alias msts='muse status --short'
 alias mcm='muse commit -m'
@@ -215,13 +237,13 @@ alias mpull='muse pull'
 alias mpush='muse push'
 alias mrm='muse remote'
 
-# ── §6  Completion ────────────────────────────────────────────────────────────
+# ── §7  Completion ────────────────────────────────────────────────────────────
 if [[ -f "${0:A:h}/_muse" ]]; then
   fpath=("${0:A:h}" $fpath)
   autoload -Uz compinit
   compdef _muse muse 2>/dev/null
 fi
 
-# ── Init ──────────────────────────────────────────────────────────────────────
+# ── §8  Init ──────────────────────────────────────────────────────────────────
 # Warm head + domain on load so the first prompt is not blank.
 _muse_refresh 2>/dev/null
