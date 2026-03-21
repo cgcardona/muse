@@ -29,6 +29,13 @@ Tier 1 — Plumbing commands::
     muse plumbing pack-objects    Build a PackBundle JSON to stdout
     muse plumbing unpack-objects  Read PackBundle JSON from stdin, write to store
     muse plumbing ls-remote       List remote branch heads
+    muse plumbing merge-base      Find the lowest common ancestor of two commits
+    muse plumbing snapshot-diff   Diff two snapshot manifests (added/modified/deleted)
+    muse plumbing domain-info     Inspect active domain plugin and its capabilities
+    muse plumbing show-ref        List all branch refs and their commit IDs
+    muse plumbing check-ignore    Test paths against .museignore rules
+    muse plumbing check-attr      Query merge-strategy attributes for paths
+    muse plumbing verify-object   Re-hash stored objects to detect corruption
 
 Tier 2 — Core Porcelain commands::
 
@@ -198,17 +205,24 @@ from muse.cli.commands import (
 )
 from muse.cli.commands.plumbing import (
     cat_object,
+    check_attr,
+    check_ignore,
     commit_graph,
     commit_tree,
+    domain_info,
     hash_object,
     ls_files,
     ls_remote,
+    merge_base,
     pack_objects,
     read_commit,
     read_snapshot,
     rev_parse,
+    show_ref,
+    snapshot_diff,
     unpack_objects,
     update_ref,
+    verify_object,
 )
 
 # ---------------------------------------------------------------------------
@@ -248,6 +262,13 @@ plumbing_cli.add_typer(commit_graph.app,    name="commit-graph",   help="Emit th
 plumbing_cli.add_typer(pack_objects.app,    name="pack-objects",   help="Build a PackBundle JSON from wanted commits and write to stdout.")
 plumbing_cli.add_typer(unpack_objects.app,  name="unpack-objects", help="Read a PackBundle JSON from stdin and write to the local store.")
 plumbing_cli.add_typer(ls_remote.app,       name="ls-remote",      help="List branch heads on a remote without modifying local state.")
+plumbing_cli.add_typer(merge_base.app,      name="merge-base",     help="Find the lowest common ancestor of two commits.")
+plumbing_cli.add_typer(snapshot_diff.app,   name="snapshot-diff",  help="Diff two snapshot manifests: added, modified, deleted paths.")
+plumbing_cli.add_typer(domain_info.app,     name="domain-info",    help="Inspect active domain plugin capabilities and schema.")
+plumbing_cli.add_typer(show_ref.app,        name="show-ref",       help="List all branch refs and the commit IDs they point to.")
+plumbing_cli.add_typer(check_ignore.app,    name="check-ignore",   help="Test paths against .museignore rules.")
+plumbing_cli.add_typer(check_attr.app,      name="check-attr",     help="Query merge-strategy attributes for workspace paths.")
+plumbing_cli.add_typer(verify_object.app,   name="verify-object",  help="Re-hash stored objects to detect data corruption.")
 
 cli.add_typer(plumbing_cli, name="plumbing")
 
