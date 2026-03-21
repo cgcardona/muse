@@ -11,6 +11,37 @@ these internally.
 
 ---
 
+## Quick Index
+
+| Command | Purpose |
+|---|---|
+| [`hash-object`](#hash-object----compute-a-content-id) | Compute SHA-256 of a file; optionally store it |
+| [`cat-object`](#cat-object----read-a-stored-object) | Stream raw bytes or metadata for a stored object |
+| [`verify-object`](#verify-object----re-hash-stored-objects-to-detect-corruption) | Re-hash stored objects to detect corruption |
+| [`rev-parse`](#rev-parse----resolve-a-ref-to-a-commit-id) | Resolve branch name / HEAD / prefix → full commit ID |
+| [`read-commit`](#read-commit----print-full-commit-metadata) | Print full commit JSON record |
+| [`read-snapshot`](#read-snapshot----print-full-snapshot-metadata) | Print full snapshot JSON record |
+| [`ls-files`](#ls-files----list-files-in-a-snapshot) | List tracked files and their object IDs |
+| [`commit-tree`](#commit-tree----create-a-commit-from-a-snapshot-id) | Create a commit from an existing snapshot |
+| [`update-ref`](#update-ref----move-a-branch-to-a-commit) | Move or delete a branch ref |
+| [`commit-graph`](#commit-graph----emit-the-commit-dag) | BFS walk of the commit DAG |
+| [`merge-base`](#merge-base----find-the-common-ancestor-of-two-commits) | Find the lowest common ancestor of two commits |
+| [`snapshot-diff`](#snapshot-diff----diff-two-snapshot-manifests) | Diff two snapshots: added / modified / deleted |
+| [`pack-objects`](#pack-objects----bundle-commits-for-transport) | Bundle commits, snapshots, and objects into a PackBundle |
+| [`unpack-objects`](#unpack-objects----apply-a-bundle-to-the-local-store) | Apply a PackBundle to the local store |
+| [`verify-pack`](#verify-pack----verify-packbundle-integrity) | Three-tier integrity check for a PackBundle |
+| [`show-ref`](#show-ref----list-all-branch-refs) | List all branch refs and their commit IDs |
+| [`symbolic-ref`](#symbolic-ref----read-or-write-heads-symbolic-reference) | Read or write the HEAD symbolic reference |
+| [`for-each-ref`](#for-each-ref----iterate-all-refs-with-rich-commit-metadata) | Iterate refs with full commit metadata; sort and filter |
+| [`name-rev`](#name-rev----map-commit-ids-to-branch-relative-names) | Map commit IDs to `<branch>~N` names |
+| [`check-ref-format`](#check-ref-format----validate-branch-and-ref-names) | Validate branch/ref names against naming rules |
+| [`check-ignore`](#check-ignore----test-whether-paths-are-excluded-by-museignore) | Test whether paths match `.museignore` rules |
+| [`check-attr`](#check-attr----query-merge-strategy-attributes-for-paths) | Query `.museattributes` for merge strategies |
+| [`domain-info`](#domain-info----inspect-the-active-domain-plugin) | Inspect the active domain plugin and its schema |
+| [`ls-remote`](#ls-remote----list-refs-on-a-remote) | List refs on a remote without changing local state |
+
+---
+
 ## The Plumbing Contract
 
 Every plumbing command follows the same rules:
@@ -338,7 +369,7 @@ malformed ID can never corrupt the ref file.
 ### `commit-graph` — emit the commit DAG
 
 ```
-muse plumbing commit-graph [--tip <id>] [--stop-at <id>] [-n <max>] [-f json|text]
+muse plumbing commit-graph [--tip <id>] [--stop-at <id>] [-n <max>] [-c] [-1] [-a] [-f json|text]
 ```
 
 Performs a BFS walk from a tip commit (defaulting to HEAD), following both
@@ -354,6 +385,9 @@ another.
 | `--tip` | — | HEAD | Commit to start from |
 | `--stop-at` | — | — | Stop BFS at this commit (exclusive) |
 | `--max` | `-n` | 10 000 | Maximum commits to traverse |
+| `--count` | `-c` | off | Emit only the integer count, not the full node list |
+| `--first-parent` | `-1` | off | Follow only first-parent links — linear history, no merge parents |
+| `--ancestry-path` | `-a` | off | With `--stop-at`: restrict to commits on the direct path between tip and stop-at |
 | `--format` | `-f` | `json` | `json` or `text` (one ID per line) |
 
 **Output — JSON**
@@ -378,15 +412,42 @@ another.
 }
 ```
 
-`truncated` is `true` when the graph was cut off by `--max`.  Use `--stop-at`
-to compute the commits on a feature branch since it diverged from `main`:
+`truncated` is `true` when the graph was cut off by `--max`.
 
-```sh
-BASE=$(muse plumbing rev-parse main -f text)
-muse plumbing commit-graph --stop-at "$BASE" -f text
+**Output — `--count`**
+
+```json
+{"tip": "a3f2...c8d1", "count": 42}
 ```
 
-**Exit codes:** 0 graph emitted · 1 tip commit not found or bad `--format`
+`--count` suppresses the `commits` array entirely, making it suitable for fast
+cardinality checks without loading commit metadata.
+
+**Examples**
+
+Commits on a feature branch since it diverged from `main`:
+
+```sh
+BASE=$(muse plumbing merge-base feat/x main -f text)
+muse plumbing commit-graph --tip feat/x --stop-at "$BASE" -f text
+```
+
+Count commits in a feature branch:
+
+```sh
+muse plumbing commit-graph \
+  --tip $(muse plumbing rev-parse feat/x -f text) \
+  --stop-at $(muse plumbing merge-base feat/x dev -f text) \
+  --count
+```
+
+Linear history only (skip merge parents):
+
+```sh
+muse plumbing commit-graph --first-parent -f text
+```
+
+**Exit codes:** 0 graph emitted · 1 tip commit not found, `--ancestry-path` without `--stop-at`, or bad `--format`
 
 ---
 
@@ -415,7 +476,7 @@ the packer which commits the receiver already has; objects reachable only from
 {
   "commits":      [...],
   "snapshots":    [...],
-  "objects":      [{"object_id": "...", "data_b64": "..."}],
+  "objects":      [{"object_id": "...", "content_b64": "..."}],
   "branch_heads": {"main": "a3f2...c8d1"}
 }
 ```
@@ -557,7 +618,7 @@ muse plumbing update-ref main "$NEW"
 
 ---
 
-## merge-base
+### `merge-base` — find the common ancestor of two commits
 
 Find the lowest common ancestor of two commits — the point at which two
 branches diverged.
@@ -592,7 +653,7 @@ When no common ancestor exists, `merge_base` is `null` and `error` is set.
 
 ---
 
-## snapshot-diff
+### `snapshot-diff` — diff two snapshot manifests
 
 Compare two snapshots and categorise every changed path as added, modified,
 or deleted.
@@ -637,7 +698,7 @@ D  old.mid
 
 ---
 
-## domain-info
+### `domain-info` — inspect the active domain plugin
 
 Inspect the domain plugin active for this repository — its name, class,
 optional protocol capabilities, and full structural schema.
@@ -678,7 +739,7 @@ muse plumbing domain-info [-f json|text] [-a]
 
 ---
 
-## show-ref
+### `show-ref` — list all branch refs
 
 List all branch refs and the commit IDs they point to.
 
@@ -720,7 +781,7 @@ muse plumbing show-ref --verify refs/heads/my-branch && echo "branch exists"
 
 ---
 
-## check-ignore
+### `check-ignore` — test whether paths are excluded by `.museignore`
 
 Test whether workspace paths are excluded by `.museignore` rules.
 
@@ -758,7 +819,7 @@ matched by an earlier rule.
 
 ---
 
-## check-attr
+### `check-attr` — query merge-strategy attributes for paths
 
 Query merge-strategy attributes for workspace paths from `.museattributes`.
 
@@ -800,7 +861,7 @@ When no rule matches, `strategy` is `"auto"` and `rule` is `null`.
 
 ---
 
-## verify-object
+### `verify-object` — re-hash stored objects to detect corruption
 
 Re-hash stored objects to detect silent data corruption.
 
@@ -846,7 +907,7 @@ muse plumbing show-ref -f json \
 
 ---
 
-## symbolic-ref — read or write HEAD's symbolic reference
+### `symbolic-ref` — read or write HEAD's symbolic reference
 
 In Muse, HEAD is always a symbolic reference — it always points to a branch,
 never directly to a commit.  `symbolic-ref` reads which branch HEAD tracks or,
@@ -889,7 +950,7 @@ muse plumbing symbolic-ref HEAD --set <branch> [-f json|text]
 
 ---
 
-## for-each-ref — iterate all refs with rich metadata
+### `for-each-ref` — iterate all refs with rich commit metadata
 
 Enumerates every branch ref together with the full commit metadata it points to.
 Supports sorting by any commit field and glob-pattern filtering, making it
@@ -942,11 +1003,13 @@ muse plumbing for-each-ref --sort committed_at --desc --count 3
 
 ---
 
-## name-rev — map commit IDs to branch-relative names
+### `name-rev` — map commit IDs to branch-relative names
 
 For each supplied commit ID, performs a single multi-source BFS from all branch
 tips and reports the closest branch and hop distance.  Results are expressed as
-`<branch>~N` (where N=0 means the commit IS the branch tip).
+`<branch>~N` — where N is the number of parent hops from the tip.  When N is 0
+(the commit is the exact branch tip) the name is the bare branch name with no
+`~0` suffix.
 
 ```sh
 muse plumbing name-rev <commit-id>... [-n] [-u <string>] [-f json|text]
@@ -994,7 +1057,7 @@ Every commit is visited at most once regardless of how many input IDs are suppli
 
 ---
 
-## check-ref-format — validate branch and ref names
+### `check-ref-format` — validate branch and ref names
 
 Tests one or more names against Muse's branch-naming rules — the same
 validation used by `muse branch` and `muse plumbing update-ref`.  Use in
@@ -1044,7 +1107,7 @@ muse plumbing check-ref-format -q "$BRANCH" && git checkout -b "$BRANCH"
 
 ---
 
-## verify-pack — verify PackBundle integrity
+### `verify-pack` — verify PackBundle integrity
 
 Reads a PackBundle JSON from stdin or `--file` and performs three-tier integrity
 checking:
@@ -1107,30 +1170,69 @@ muse plumbing pack-objects main | muse plumbing verify-pack -q \
 
 ---
 
-## commit-graph — emit the commit DAG
+---
 
-The `commit-graph` command gained three new flags this release:
+## Composability Patterns — Advanced
 
-| Flag | Short | Description |
-|---|---|---|
-| `--count` | `-c` | Emit only the integer count, not the full node list |
-| `--first-parent` | `-1` | Follow only first-parent links (linear, no merge parents) |
-| `--ancestry-path` | `-a` | With `--stop-at`: restrict to commits on the direct path between tip and stop-at |
-
-**Count commits in a feature branch since diverging from dev:**
+### Name every commit reachable from a branch
 
 ```sh
-muse plumbing commit-graph \
-  --tip $(muse plumbing rev-parse feat/my-branch -f text) \
-  --stop-at $(muse plumbing merge-base feat/my-branch dev -f text) \
-  --count
-# → {"tip": "<sha256>", "count": 7}
+# Get all commit IDs on feat/x since it diverged from dev
+BASE=$(muse plumbing merge-base feat/x dev -f text)
+muse plumbing commit-graph --tip feat/x --stop-at "$BASE" -f text \
+  | xargs muse plumbing name-rev --name-only
 ```
 
-**Linear history only (no merge commits):**
+### Audit all refs with full metadata and filter by recency
 
 ```sh
-muse plumbing commit-graph --first-parent -f text
+# List all branches modified in 2026, sorted newest-first
+muse plumbing for-each-ref --sort committed_at --desc \
+  | jq '.refs[] | select(.committed_at | startswith("2026"))'
+```
+
+### Validate a branch name before creating it
+
+```sh
+BRANCH="feat/my-feature"
+muse plumbing check-ref-format -q "$BRANCH" \
+  && echo "Name is valid — safe to branch" \
+  || echo "Invalid branch name"
+```
+
+### Verify a bundle before shipping
+
+```sh
+muse plumbing pack-objects main | tee bundle.json | muse plumbing verify-pack -q \
+  && echo "bundle is clean — safe to push" \
+  || echo "bundle has integrity failures — do not push"
+```
+
+### Switch active branch via plumbing
+
+```sh
+# Check where HEAD is now
+muse plumbing symbolic-ref HEAD -f text        # → refs/heads/main
+# Redirect HEAD to dev
+muse plumbing symbolic-ref HEAD --set dev
+muse plumbing rev-parse HEAD -f text           # → tip of dev
+```
+
+### Find stale branches (no commits in the last 30 days)
+
+```sh
+# Requires `date` and `jq`
+CUTOFF=$(date -u -v-30d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+         || date -u --date="30 days ago" +%Y-%m-%dT%H:%M:%SZ)
+muse plumbing for-each-ref -f json \
+  | jq --arg c "$CUTOFF" '.refs[] | select(.committed_at < $c) | .branch'
+```
+
+### Check which files changed between two branches
+
+```sh
+BASE=$(muse plumbing merge-base main feat/x -f text)
+muse plumbing snapshot-diff "$BASE" feat/x --format text --stat
 ```
 
 ---
