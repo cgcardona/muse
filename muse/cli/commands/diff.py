@@ -28,6 +28,37 @@ def _read_repo_id(root: pathlib.Path) -> str:
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
+_MAX_INLINE_CHILDREN = 12
+
+
+def _print_child_ops(child_ops: list[DomainOp]) -> None:
+    """Render symbol-level child ops with tree connectors.
+
+    Shows up to ``_MAX_INLINE_CHILDREN`` entries inline; summarises the rest
+    on a single trailing line so the output stays readable for large files.
+    """
+    visible = child_ops[:_MAX_INLINE_CHILDREN]
+    overflow = len(child_ops) - len(visible)
+
+    for i, cop in enumerate(visible):
+        is_last = (i == len(visible) - 1) and overflow == 0
+        connector = "└─" if is_last else "├─"
+        if cop["op"] == "insert":
+            typer.echo(f"   {connector} {cop['content_summary']}")
+        elif cop["op"] == "delete":
+            typer.echo(f"   {connector} {cop['content_summary']}")
+        elif cop["op"] == "replace":
+            typer.echo(f"   {connector} {cop['new_summary']}")
+        elif cop["op"] == "move":
+            typer.echo(
+                f"   {connector} {cop['address']}  "
+                f"({cop['from_position']} → {cop['to_position']})"
+            )
+
+    if overflow > 0:
+        typer.echo(f"   └─ … and {overflow} more")
+
+
 def _print_structured_delta(ops: list[DomainOp]) -> int:
     """Print a structured delta op-by-op. Returns the number of ops printed.
 
@@ -46,9 +77,15 @@ def _print_structured_delta(ops: list[DomainOp]) -> int:
                 f"R  {op['address']}  ({op['from_position']} → {op['to_position']})"
             )
         elif op["op"] == "patch":
-            typer.echo(f"M  {op['address']}")
-            if op["child_summary"]:
-                typer.echo(f"   └─ {op['child_summary']}")
+            child_ops = op["child_ops"]
+            # Classify the patch: all-inserts = new file, all-deletes = removed
+            # file, mixed = modification.  Use the right status prefix so the
+            # output reads like `git diff --name-status`.
+            all_insert = all(c["op"] == "insert" for c in child_ops)
+            all_delete = all(c["op"] == "delete" for c in child_ops)
+            prefix = "A" if all_insert else ("D" if all_delete else "M")
+            typer.echo(f"{prefix}  {op['address']}")
+            _print_child_ops(child_ops)
     return len(ops)
 
 
