@@ -155,7 +155,10 @@ def diff_symbol_trees(
             address=rem_addr,
             position=None,
             content_id=rec["content_id"],
-            content_summary=f"removed {rec['kind']} {rec['name']}",
+            content_summary=(
+                f"removed {rec['kind']} {rec['name']}"
+                f"  L{rec['lineno']}–{rec['end_lineno']}"
+            ),
         ))
 
     # ── Pass 3: plain additions ────────────────────────────────────────────
@@ -166,7 +169,10 @@ def diff_symbol_trees(
             address=add_addr,
             position=None,
             content_id=rec["content_id"],
-            content_summary=f"added {rec['kind']} {rec['name']}",
+            content_summary=(
+                f"added {rec['kind']} {rec['name']}"
+                f"  L{rec['lineno']}–{rec['end_lineno']}"
+            ),
         ))
 
     # ── Pass 4: modifications ──────────────────────────────────────────────
@@ -176,18 +182,16 @@ def diff_symbol_trees(
         if base_rec["content_id"] == tgt_rec["content_id"]:
             continue  # unchanged
 
+        loc = f"  L{tgt_rec['lineno']}–{tgt_rec['end_lineno']}"
         if base_rec["body_hash"] == tgt_rec["body_hash"]:
-            # Body unchanged — signature changed (type annotations, defaults…).
             old_summary = f"{base_rec['kind']} {base_rec['name']} (signature changed)"
-            new_summary = f"{tgt_rec['kind']} {tgt_rec['name']} (signature updated)"
+            new_summary = f"{tgt_rec['kind']} {tgt_rec['name']} (signature updated){loc}"
         elif base_rec["signature_id"] == tgt_rec["signature_id"]:
-            # Signature unchanged — implementation changed.
             old_summary = f"{base_rec['kind']} {base_rec['name']} (implementation)"
-            new_summary = f"{tgt_rec['kind']} {tgt_rec['name']} (implementation changed)"
+            new_summary = f"{tgt_rec['kind']} {tgt_rec['name']} (implementation changed){loc}"
         else:
-            # Both signature and body changed.
             old_summary = f"{base_rec['kind']} {base_rec['name']}"
-            new_summary = f"{tgt_rec['kind']} {tgt_rec['name']} (modified)"
+            new_summary = f"{tgt_rec['kind']} {tgt_rec['name']} (modified){loc}"
 
         ops.append(ReplaceOp(
             op="replace",
@@ -272,7 +276,10 @@ def build_diff_ops(
                     address=addr,
                     position=None,
                     content_id=rec["content_id"],
-                    content_summary=f"added {rec['kind']} {rec['name']}",
+                    content_summary=(
+                        f"added {rec['kind']} {rec['name']}"
+                        f"  L{rec['lineno']}–{rec['end_lineno']}"
+                    ),
                 )
                 for addr, rec in sorted(tree.items())
             ]
@@ -298,7 +305,10 @@ def build_diff_ops(
                     address=addr,
                     position=None,
                     content_id=rec["content_id"],
-                    content_summary=f"removed {rec['kind']} {rec['name']}",
+                    content_summary=(
+                        f"removed {rec['kind']} {rec['name']}"
+                        f"  L{rec['lineno']}–{rec['end_lineno']}"
+                    ),
                 )
                 for addr, rec in sorted(tree.items())
             ]
@@ -347,7 +357,18 @@ def build_diff_ops(
     for old_path, new_path in sorted(move_map.items()):
         old_tree = base_trees.get(old_path, {})
         new_tree = target_trees.get(new_path, {})
-        child_ops = diff_symbol_trees(old_tree, new_tree)
+        # Strip the file-path prefix (everything up to and including "::") so
+        # that "math_utils.py::add" and "core_math.py::add" both normalise to
+        # "add" and land in the *common* bucket of diff_symbol_trees.  Without
+        # this, every symbol looks deleted-and-added, producing spurious
+        # "moved to <name>" entries for functions that are actually unchanged.
+        old_tree_norm: SymbolTree = {
+            addr.split("::", 1)[-1]: rec for addr, rec in old_tree.items()
+        }
+        new_tree_norm: SymbolTree = {
+            addr.split("::", 1)[-1]: rec for addr, rec in new_tree.items()
+        }
+        child_ops = diff_symbol_trees(old_tree_norm, new_tree_norm)
 
         n_added = sum(1 for o in child_ops if o["op"] == "insert")
         n_removed = sum(1 for o in child_ops if o["op"] == "delete")
