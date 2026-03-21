@@ -420,7 +420,13 @@ def test_e2e_publish_capabilities_auto_from_midi_plugin(repo: pathlib.Path) -> N
 
 
 def test_e2e_publish_400_sequential_calls_stable(repo: pathlib.Path) -> None:
-    """E2E stress: 400 sequential publish invocations all succeed within 30s."""
+    """E2E stress: 400 sequential publish invocations all succeed.
+
+    The wall-clock budget is intentionally generous (120s) to accommodate
+    GitHub Actions' shared runners, which can be 3-4× slower than a
+    developer laptop.  The assertion guards against catastrophic regressions
+    (infinite loops, exponential backoff bugs) rather than raw throughput.
+    """
     with unittest.mock.patch("urllib.request.urlopen", return_value=_mock_ok()):
         start = time.monotonic()
         for i in range(400):
@@ -428,4 +434,4 @@ def test_e2e_publish_400_sequential_calls_stable(repo: pathlib.Path) -> None:
             assert result.exit_code == 0, f"Run {i} failed: {result.output}"
         elapsed = time.monotonic() - start
 
-    assert elapsed < 30.0, f"400 CLI invocations took {elapsed:.1f}s"
+    assert elapsed < 120.0, f"400 CLI invocations took {elapsed:.1f}s"
