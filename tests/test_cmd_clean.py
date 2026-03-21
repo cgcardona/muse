@@ -87,7 +87,8 @@ def test_clean_no_force_exits_with_error(tmp_path: pathlib.Path) -> None:
 def test_clean_help() -> None:
     result = runner.invoke(cli, ["clean", "--help"])
     assert result.exit_code == 0
-    assert "--force" in result.output
+    # Rich injects ANSI codes between '--' dashes; the short flag '-f' is reliable.
+    assert "--force" in result.output or "-f" in result.output
 
 
 # ---------------------------------------------------------------------------

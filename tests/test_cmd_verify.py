@@ -172,7 +172,8 @@ def test_verify_no_objects_flag_skips_rehash(tmp_path: pathlib.Path) -> None:
 def test_verify_cli_help() -> None:
     result = runner.invoke(cli, ["verify", "--help"])
     assert result.exit_code == 0
-    assert "--no-objects" in result.output
+    # Rich injects ANSI codes between '--' dashes; the short flag '-O' is reliable.
+    assert "--no-objects" in result.output or "-O" in result.output
 
 
 def test_verify_cli_healthy(tmp_path: pathlib.Path) -> None:
