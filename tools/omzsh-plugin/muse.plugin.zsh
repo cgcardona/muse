@@ -189,9 +189,16 @@ function _muse_hook_preexec() {
 }
 preexec_functions+=(_muse_hook_preexec)
 
-# Before the prompt: full refresh only when a muse command just ran.
+# Before every prompt: refresh dirty state so any file change (touch, vim,
+# cp, etc.) is reflected immediately — same model as the git plugin.
+# After a muse command: full refresh (head + domain + dirty).
+# Otherwise: dirty-only refresh when inside a repo.
 function _muse_hook_precmd() {
-  (( _MUSE_CMD_RAN )) && _muse_refresh_full
+  if (( _MUSE_CMD_RAN )); then
+    _muse_refresh_full
+  elif [[ -n "$MUSE_REPO_ROOT" ]]; then
+    _muse_check_dirty
+  fi
 }
 precmd_functions+=(_muse_hook_precmd)
 
