@@ -122,14 +122,16 @@ PYEOF
 # Check dirty state. Runs with timeout; called on cd, shell load, and after
 # any muse command. MUSE_DIRTY_TIMEOUT (default 5s) caps the wait.
 typeset -gi _MUSE_LAST_DIRTY_RC=0  # last exit code from the dirty check subprocess
+typeset -gi _MUSE_REFRESHING=0    # re-entry guard: 1 while a refresh is in progress
 
 function _muse_check_dirty() {
   local output rc count=0
   print "[dirty:1] called. MUSE_REPO_ROOT=$MUSE_REPO_ROOT MUSE_BRANCH=$MUSE_BRANCH" >&2
-  # env -C changes cwd at the OS level, bypassing ZSH's cd builtin.
-  # Using cd here would fire chpwd_functions inside the subshell, causing
-  # infinite recursion: chpwd → _muse_refresh → _muse_check_dirty → cd → chpwd…
-  output=$(env -C "$MUSE_REPO_ROOT" \
+  # Run in a ZSH subshell (not env) so muse is found via PATH/aliases/venv.
+  # The cd here would normally re-fire chpwd_functions inside the subshell and
+  # recurse infinitely, but _muse_hook_chpwd's re-entry guard (_MUSE_REFRESHING)
+  # is inherited by subshells and blocks any nested call immediately.
+  output=$(cd -- "$MUSE_REPO_ROOT" && \
            timeout -- "${MUSE_DIRTY_TIMEOUT}" muse status --porcelain 2>/dev/null)
   rc=$?
   _MUSE_LAST_DIRTY_RC=$rc
@@ -181,10 +183,17 @@ function _muse_refresh_full() {
 # Pre-clear MUSE_REPO_ROOT so any silent failure in _muse_refresh leaves the
 # prompt blank rather than showing stale data from the previous directory.
 function _muse_hook_chpwd() {
+  # Guard: ZSH fires chpwd_functions inside $(…) subshells too. Without this,
+  # the cd inside _muse_check_dirty triggers this hook inside the subshell,
+  # which calls _muse_refresh → _muse_check_dirty → cd → chpwd → ∞.
+  # Subshells inherit _MUSE_REFRESHING, so the guard stops nested calls cold.
+  (( _MUSE_REFRESHING )) && return
+  _MUSE_REFRESHING=1
   print "[chpwd:1] cd into $PWD — resetting state" >&2
   MUSE_REPO_ROOT=""; MUSE_BRANCH=""; MUSE_DIRTY=0; MUSE_DIRTY_COUNT=0
   _muse_refresh
   print "[chpwd:2] after refresh: dirty=$MUSE_DIRTY branch=$MUSE_BRANCH" >&2
+  _MUSE_REFRESHING=0
 }
 chpwd_functions+=(_muse_hook_chpwd)
 
