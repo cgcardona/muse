@@ -1239,3 +1239,341 @@ class TestDeltaSummary:
         ops: list[DomainOp] = [PatchOp(op="patch", address="f.py", child_ops=child, child_domain="code_symbols", child_summary="2 added")]
         summary = delta_summary(ops)
         assert "symbol" in summary
+
+
+# ---------------------------------------------------------------------------
+# Markdown adapter
+# ---------------------------------------------------------------------------
+
+
+class TestMarkdownAdapter:
+    """ATX heading extraction via tree-sitter-markdown."""
+
+    def _parse(self, src: str) -> SymbolTree:
+        from muse.plugins.code.ast_parser import MarkdownAdapter
+        adapter = MarkdownAdapter()
+        if adapter._parser is None:
+            pytest.skip("tree-sitter-markdown not available")
+        return adapter.parse_symbols(src.encode(), "README.md")
+
+    def test_h1_extracted(self) -> None:
+        syms = self._parse("# Hello World\n")
+        assert any("h1: Hello World" in k for k in syms), f"keys: {list(syms)}"
+
+    def test_h2_extracted(self) -> None:
+        syms = self._parse("# Title\n\n## Section Two\n")
+        assert any("h2: Section Two" in k for k in syms)
+
+    def test_multiple_headings(self) -> None:
+        src = "# Top\n\n## Alpha\n\n## Beta\n\n### Deep\n"
+        syms = self._parse(src)
+        kinds = {r["kind"] for r in syms.values()}
+        assert "section" in kinds
+        assert len(syms) >= 4
+
+    def test_section_lineno(self) -> None:
+        src = "# First\n\n## Second\n"
+        syms = self._parse(src)
+        second = next((r for r in syms.values() if "Second" in r["name"]), None)
+        assert second is not None
+        assert second["lineno"] == 3
+
+    def test_content_id_changes_with_text(self) -> None:
+        s1 = self._parse("# Hello\n")
+        s2 = self._parse("# World\n")
+        ids1 = {r["content_id"] for r in s1.values()}
+        ids2 = {r["content_id"] for r in s2.values()}
+        assert ids1 != ids2
+
+    def test_adapter_for_path_md(self) -> None:
+        from muse.plugins.code.ast_parser import MarkdownAdapter
+        adapter = adapter_for_path("docs/README.md")
+        assert isinstance(adapter, MarkdownAdapter)
+
+    def test_adapter_for_path_rst(self) -> None:
+        from muse.plugins.code.ast_parser import MarkdownAdapter
+        adapter = adapter_for_path("notes.rst")
+        assert isinstance(adapter, MarkdownAdapter)
+
+
+# ---------------------------------------------------------------------------
+# HTML adapter
+# ---------------------------------------------------------------------------
+
+
+class TestHtmlAdapter:
+    """Semantic element and id-bearing element extraction via tree-sitter-html."""
+
+    def _parse(self, src: str) -> SymbolTree:
+        from muse.plugins.code.ast_parser import HtmlAdapter
+        adapter = HtmlAdapter()
+        if adapter._parser is None:
+            pytest.skip("tree-sitter-html not available")
+        return adapter.parse_symbols(src.encode(), "index.html")
+
+    def test_id_bearing_div_extracted(self) -> None:
+        syms = self._parse('<html><body><div id="hero">x</div></body></html>')
+        assert any("div#hero" in k for k in syms), f"keys: {list(syms)}"
+
+    def test_semantic_section_extracted(self) -> None:
+        syms = self._parse('<html><body><section>content</section></body></html>')
+        assert any("section" in k for k in syms)
+
+    def test_h1_heading_extracted(self) -> None:
+        syms = self._parse('<html><body><h1>Title</h1></body></html>')
+        assert any("h1" in k for k in syms)
+
+    def test_generic_div_without_id_skipped(self) -> None:
+        syms = self._parse('<html><body><div>plain</div></body></html>')
+        assert not any("div" in k for k in syms), f"unexpected: {list(syms)}"
+
+    def test_multiple_ids(self) -> None:
+        src = '<html><body><section id="intro">a</section><section id="outro">b</section></body></html>'
+        syms = self._parse(src)
+        assert any("section#intro" in k for k in syms)
+        assert any("section#outro" in k for k in syms)
+
+    def test_adapter_for_path_html(self) -> None:
+        from muse.plugins.code.ast_parser import HtmlAdapter
+        assert isinstance(adapter_for_path("page.html"), HtmlAdapter)
+
+    def test_adapter_for_path_htm(self) -> None:
+        from muse.plugins.code.ast_parser import HtmlAdapter
+        assert isinstance(adapter_for_path("legacy.htm"), HtmlAdapter)
+
+
+# ---------------------------------------------------------------------------
+# CSS adapter
+# ---------------------------------------------------------------------------
+
+
+class TestCssAdapter:
+    """Rule-set, @keyframes, and @media extraction via tree-sitter-css."""
+
+    def _parse(self, src: str, path: str = "styles.css") -> SymbolTree:
+        adapter = adapter_for_path(path)
+        # If the CSS grammar is unavailable the adapter degrades to FallbackAdapter.
+        if isinstance(adapter, FallbackAdapter):
+            pytest.skip("tree-sitter-css not available")
+        return adapter.parse_symbols(src.encode(), path)
+
+    def test_rule_set_extracted(self) -> None:
+        syms = self._parse(".btn { color: red; }")
+        assert len(syms) >= 1
+        kinds = {r["kind"] for r in syms.values()}
+        assert "rule" in kinds
+
+    def test_keyframes_extracted(self) -> None:
+        syms = self._parse("@keyframes spin { from { transform: rotate(0deg); } }")
+        assert any("spin" in r["name"] for r in syms.values()), f"symbols: {list(syms)}"
+
+    def test_multiple_rules(self) -> None:
+        src = ".a { color: red; }\n.b { color: blue; }"
+        syms = self._parse(src)
+        assert len(syms) >= 2
+
+    def test_scss_extension_uses_css_parser(self) -> None:
+        syms = self._parse(".mixin { display: flex; }", path="app.scss")
+        assert len(syms) >= 1
+
+    def test_content_id_differs_for_different_rules(self) -> None:
+        s1 = self._parse(".a { color: red; }")
+        s2 = self._parse(".b { color: blue; }")
+        ids1 = {r["content_id"] for r in s1.values()}
+        ids2 = {r["content_id"] for r in s2.values()}
+        assert ids1 != ids2
+
+
+# ---------------------------------------------------------------------------
+# JS/TS: arrow functions and async detection
+# ---------------------------------------------------------------------------
+
+
+class TestJSArrowFunctions:
+    """Arrow functions and function expressions bound to const/let."""
+
+    def _parse(self, src: str, path: str = "mod.js") -> SymbolTree:
+        adapter = adapter_for_path(path)
+        if isinstance(adapter, FallbackAdapter):
+            pytest.skip("tree-sitter-javascript not available")
+        return adapter.parse_symbols(src.encode(), path)
+
+    def test_const_arrow_function(self) -> None:
+        syms = self._parse("const greet = (name) => `Hello ${name}`;\n")
+        assert any("greet" in k for k in syms), f"keys: {list(syms)}"
+
+    def test_const_function_expression(self) -> None:
+        syms = self._parse("const add = function(a, b) { return a + b; };\n")
+        assert any("add" in k for k in syms)
+
+    def test_ts_arrow_function(self) -> None:
+        syms = self._parse(
+            "const greet = (name: string): string => `Hello ${name}`;\n",
+            path="mod.ts",
+        )
+        assert any("greet" in k for k in syms)
+
+    def test_class_method_still_extracted(self) -> None:
+        syms = self._parse("class Foo { bar() { return 1; } }\n")
+        assert any("bar" in k for k in syms)
+
+    def test_async_function_detected(self) -> None:
+        syms = self._parse("async function fetchData() { return await fetch('/'); }\n")
+        kinds = {r["kind"] for r in syms.values() if "fetchData" in r["name"]}
+        assert "async_function" in kinds, f"kinds: {kinds}"
+
+
+# ---------------------------------------------------------------------------
+# Go: const and var spec extraction
+# ---------------------------------------------------------------------------
+
+
+class TestGoConstVar:
+    def _parse(self, src: str) -> SymbolTree:
+        adapter = adapter_for_path("main.go")
+        if isinstance(adapter, FallbackAdapter):
+            pytest.skip("tree-sitter-go not available")
+        return adapter.parse_symbols(src.encode(), "main.go")
+
+    def test_const_extracted(self) -> None:
+        syms = self._parse("package main\nconst MaxRetries = 3\n")
+        assert any("MaxRetries" in k for k in syms), f"keys: {list(syms)}"
+
+    def test_var_extracted(self) -> None:
+        syms = self._parse("package main\nvar ErrNotFound = errors.New(\"not found\")\n")
+        assert any("ErrNotFound" in k for k in syms)
+
+    def test_const_kind_is_variable(self) -> None:
+        syms = self._parse("package main\nconst Timeout = 30\n")
+        records = [r for r in syms.values() if "Timeout" in r["name"]]
+        assert records
+        assert records[0]["kind"] == "variable"
+
+
+# ---------------------------------------------------------------------------
+# Rust: static, const, type alias, mod
+# ---------------------------------------------------------------------------
+
+
+class TestRustExtended:
+    def _parse(self, src: str) -> SymbolTree:
+        adapter = adapter_for_path("lib.rs")
+        if isinstance(adapter, FallbackAdapter):
+            pytest.skip("tree-sitter-rust not available")
+        return adapter.parse_symbols(src.encode(), "lib.rs")
+
+    def test_static_extracted(self) -> None:
+        syms = self._parse("static MAX: usize = 100;\n")
+        assert any("MAX" in k for k in syms), f"keys: {list(syms)}"
+
+    def test_const_extracted(self) -> None:
+        syms = self._parse("const TIMEOUT: u64 = 30;\n")
+        assert any("TIMEOUT" in k for k in syms)
+
+    def test_type_alias_extracted(self) -> None:
+        syms = self._parse("type Result<T> = std::result::Result<T, Error>;\n")
+        assert any("Result" in k for k in syms)
+
+    def test_mod_extracted(self) -> None:
+        syms = self._parse("mod utils { pub fn helper() {} }\n")
+        assert any("utils" in k for k in syms)
+
+
+# ---------------------------------------------------------------------------
+# C: struct and enum extraction
+# ---------------------------------------------------------------------------
+
+
+class TestCStructEnum:
+    def _parse(self, src: str) -> SymbolTree:
+        adapter = adapter_for_path("main.c")
+        if isinstance(adapter, FallbackAdapter):
+            pytest.skip("tree-sitter-c not available")
+        return adapter.parse_symbols(src.encode(), "main.c")
+
+    def test_struct_extracted(self) -> None:
+        syms = self._parse("struct Point { int x; int y; };\n")
+        assert any("Point" in k for k in syms), f"keys: {list(syms)}"
+
+    def test_enum_extracted(self) -> None:
+        syms = self._parse("enum Color { RED, GREEN, BLUE };\n")
+        assert any("Color" in k for k in syms)
+
+    def test_struct_kind(self) -> None:
+        syms = self._parse("struct Node { int val; struct Node *next; };\n")
+        records = [r for r in syms.values() if "Node" in r["name"]]
+        assert records
+        assert records[0]["kind"] == "class"
+
+
+# ---------------------------------------------------------------------------
+# C#: property and record extraction
+# ---------------------------------------------------------------------------
+
+
+class TestCSharpExtended:
+    def _parse(self, src: str) -> SymbolTree:
+        adapter = adapter_for_path("Model.cs")
+        if isinstance(adapter, FallbackAdapter):
+            pytest.skip("tree-sitter-c-sharp not available")
+        return adapter.parse_symbols(src.encode(), "Model.cs")
+
+    def test_property_extracted(self) -> None:
+        syms = self._parse(
+            "class User { public string Name { get; set; } }\n"
+        )
+        assert any("Name" in k for k in syms), f"keys: {list(syms)}"
+
+    def test_record_extracted(self) -> None:
+        syms = self._parse("public record Point(int X, int Y);\n")
+        assert any("Point" in k for k in syms)
+
+    def test_property_kind(self) -> None:
+        syms = self._parse(
+            "class C { public int Age { get; set; } }\n"
+        )
+        records = [r for r in syms.values() if "Age" in r["name"]]
+        assert records
+        assert records[0]["kind"] == "variable"
+
+
+# ---------------------------------------------------------------------------
+# Java: annotation type and record extraction
+# ---------------------------------------------------------------------------
+
+
+class TestJavaExtended:
+    def _parse(self, src: str) -> SymbolTree:
+        adapter = adapter_for_path("Main.java")
+        if isinstance(adapter, FallbackAdapter):
+            pytest.skip("tree-sitter-java not available")
+        return adapter.parse_symbols(src.encode(), "Main.java")
+
+    def test_annotation_type_extracted(self) -> None:
+        syms = self._parse("public @interface Cacheable { String value() default \"\"; }\n")
+        assert any("Cacheable" in k for k in syms), f"keys: {list(syms)}"
+
+    def test_record_extracted(self) -> None:
+        syms = self._parse("public record Point(int x, int y) {}\n")
+        assert any("Point" in k for k in syms)
+
+
+# ---------------------------------------------------------------------------
+# Kotlin: object declaration and property extraction
+# ---------------------------------------------------------------------------
+
+
+class TestKotlinExtended:
+    def _parse(self, src: str) -> SymbolTree:
+        adapter = adapter_for_path("Main.kt")
+        if isinstance(adapter, FallbackAdapter):
+            pytest.skip("tree-sitter-kotlin not available")
+        return adapter.parse_symbols(src.encode(), "Main.kt")
+
+    def test_object_declaration_extracted(self) -> None:
+        syms = self._parse("object Singleton { fun greet() = println(\"hi\") }\n")
+        assert any("Singleton" in k for k in syms), f"keys: {list(syms)}"
+
+    def test_property_declaration_extracted(self) -> None:
+        syms = self._parse("val MAX_SIZE: Int = 100\n")
+        assert any("MAX_SIZE" in k for k in syms)

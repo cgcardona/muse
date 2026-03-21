@@ -9,15 +9,25 @@ Language support matrix
   stdlib :mod:`ast` module.  Content IDs are hashes of normalized (unparsed)
   AST text — insensitive to whitespace, comments, and formatting.
 - **JavaScript / TypeScript** (``*.js``, ``*.jsx``, ``*.mjs``, ``*.cjs``,
-  ``*.ts``, ``*.tsx``): tree-sitter based.
+  ``*.ts``, ``*.tsx``): tree-sitter based.  Async functions, arrow functions
+  bound to ``const``/``let``, and module-level variables are all extracted.
 - **Go** (``*.go``): tree-sitter based.  Method qualified names carry the
-  receiver type (e.g. ``Dog.Bark``).
+  receiver type (e.g. ``Dog.Bark``).  Package-level ``const``/``var`` included.
 - **Rust** (``*.rs``): tree-sitter based.  Functions inside ``impl`` blocks
-  are qualified with the implementing type (e.g. ``Dog.bark``).
+  are qualified with the implementing type (e.g. ``Dog.bark``).  ``static``,
+  ``const``, type aliases, and ``mod`` declarations are extracted.
 - **Java** (``*.java``), **C#** (``*.cs``): tree-sitter based.
 - **C** (``*.c``, ``*.h``), **C++** (``*.cpp``, ``*.cc``, ``*.cxx``,
-  ``*.hpp``, ``*.hxx``): tree-sitter based.
+  ``*.hpp``, ``*.hxx``): tree-sitter based.  Structs and enums extracted.
 - **Ruby** (``*.rb``), **Kotlin** (``*.kt``, ``*.kts``): tree-sitter based.
+- **Swift** (``*.swift``): tree-sitter based; requires ``py-tree-sitter-swift``
+  (degrades to file-level tracking if the package is unavailable).
+- **Markdown** (``*.md``, ``*.rst``, ``*.txt``): ATX headings extracted as
+  ``section`` symbols; requires ``tree-sitter-markdown``.
+- **CSS / SCSS** (``*.css``, ``*.scss``): rule-sets, keyframes, and media
+  queries extracted; requires ``tree-sitter-css``.
+- **HTML** (``*.html``, ``*.htm``): semantic elements and id-bearing elements
+  extracted; requires ``tree-sitter-html``.
 
 Symbol addresses
 ----------------
@@ -86,6 +96,8 @@ SymbolKind = Literal[
     "async_method",
     "variable",
     "import",
+    "section",   # Markdown ATX/setext heading; HTML semantic element
+    "rule",      # CSS/SCSS rule-set (keyed by selector string)
 ]
 
 
@@ -445,6 +457,217 @@ class FallbackAdapter:
 
 
 # ---------------------------------------------------------------------------
+# Markdown adapter — ATX heading extraction via tree-sitter-markdown
+# ---------------------------------------------------------------------------
+
+_MD_HEADING_MARKERS: dict[str, int] = {
+    "atx_h1_marker": 1,
+    "atx_h2_marker": 2,
+    "atx_h3_marker": 3,
+    "atx_h4_marker": 4,
+    "atx_h5_marker": 5,
+    "atx_h6_marker": 6,
+}
+
+
+class MarkdownAdapter:
+    """Extract ATX headings as ``section`` symbols from Markdown/text files.
+
+    Each heading becomes an addressable symbol so that diffs report
+    "Section X changed" rather than "file changed".  Requires the
+    ``tree-sitter-markdown`` package; degrades to empty symbol tree without it.
+    """
+
+    _EXTENSIONS: frozenset[str] = frozenset({".md", ".rst", ".txt"})
+
+    def __init__(self) -> None:
+        self._parser: Parser | None = None
+        try:
+            import tree_sitter_markdown as _md
+            lang = Language(_md.language())
+            self._parser = Parser(lang)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("tree-sitter-markdown unavailable — Markdown file-level only: %s", exc)
+
+    def supported_extensions(self) -> frozenset[str]:
+        return self._EXTENSIONS
+
+    def parse_symbols(self, source: bytes, file_path: str) -> SymbolTree:
+        if self._parser is None:
+            return {}
+        try:
+            tree = self._parser.parse(source)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Markdown parse error in %s: %s", file_path, exc)
+            return {}
+        symbols: SymbolTree = {}
+        self._walk(tree.root_node, source, file_path, symbols)
+        return symbols
+
+    def _walk(self, node: Node, src: bytes, file_path: str, out: SymbolTree) -> None:
+        """Recursively find atx_heading nodes and emit section records."""
+        if node.type == "atx_heading":
+            self._emit_heading(node, src, file_path, out)
+        for child in node.children:
+            self._walk(child, src, file_path, out)
+
+    def _emit_heading(
+        self, node: Node, src: bytes, file_path: str, out: SymbolTree
+    ) -> None:
+        level = 0
+        inline_text = ""
+        for child in node.children:
+            if child.type in _MD_HEADING_MARKERS:
+                level = _MD_HEADING_MARKERS[child.type]
+            elif child.type == "inline":
+                inline_text = _node_text(src, child).decode("utf-8", errors="replace").strip()
+        if not inline_text or not level:
+            return
+        name = f"h{level}: {inline_text}"
+        lineno = node.start_point[0] + 1
+        addr = f"{file_path}::{name}"
+        node_bytes = _node_text(src, node)
+        out[addr] = SymbolRecord(
+            kind="section",
+            name=name,
+            qualified_name=name,
+            content_id=_sha256_bytes(_norm_ws(node_bytes)),
+            body_hash=_sha256(inline_text),
+            signature_id=_sha256(name),
+            metadata_id="",
+            canonical_key=_canonical_key(file_path, "", "section", name, lineno),
+            lineno=lineno,
+            end_lineno=node.end_point[0] + 1,
+        )
+
+    def file_content_id(self, source: bytes) -> str:
+        return _sha256_bytes(source)
+
+
+# ---------------------------------------------------------------------------
+# HTML adapter — semantic element and id-bearing element extraction
+# ---------------------------------------------------------------------------
+
+_HTML_SEMANTIC_TAGS: frozenset[str] = frozenset({
+    "main", "header", "footer", "nav", "article", "section", "aside",
+    "h1", "h2", "h3", "h4", "h5", "h6", "form", "dialog", "figure",
+})
+
+
+class HtmlAdapter:
+    """Extract named HTML elements as symbols.
+
+    Emits a symbol for:
+    - Heading elements (h1–h6): ``section`` kind, name = ``h1: heading text``
+    - Elements with an ``id`` attribute: ``section`` kind, name = ``tag#id``
+    - Semantic structural elements (section, article, main, nav, …) without
+      an id: ``section`` kind, name = ``tag`` + line number to disambiguate.
+
+    Requires ``tree-sitter-html``; degrades to empty symbol tree without it.
+    """
+
+    _EXTENSIONS: frozenset[str] = frozenset({".html", ".htm"})
+
+    def __init__(self) -> None:
+        self._parser: Parser | None = None
+        try:
+            import tree_sitter_html as _html
+            lang = Language(_html.language())
+            self._parser = Parser(lang)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("tree-sitter-html unavailable — HTML file-level only: %s", exc)
+
+    def supported_extensions(self) -> frozenset[str]:
+        return self._EXTENSIONS
+
+    def parse_symbols(self, source: bytes, file_path: str) -> SymbolTree:
+        if self._parser is None:
+            return {}
+        try:
+            tree = self._parser.parse(source)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("HTML parse error in %s: %s", file_path, exc)
+            return {}
+        symbols: SymbolTree = {}
+        self._walk(tree.root_node, source, file_path, symbols)
+        return symbols
+
+    def _walk(self, node: Node, src: bytes, file_path: str, out: SymbolTree) -> None:
+        if node.type == "element":
+            self._try_emit(node, src, file_path, out)
+        for child in node.children:
+            self._walk(child, src, file_path, out)
+
+    def _try_emit(
+        self, node: Node, src: bytes, file_path: str, out: SymbolTree
+    ) -> None:
+        start_tag = next((c for c in node.children if c.type == "start_tag"), None)
+        if start_tag is None:
+            return
+        tag_node = start_tag.child_by_field_name("name")
+        if tag_node is None:
+            # Fallback: first named child of start_tag with type tag_name
+            tag_node = next((c for c in start_tag.named_children if c.type == "tag_name"), None)
+        if tag_node is None:
+            return
+        tag = _node_text(src, tag_node).decode("utf-8", errors="replace").lower()
+        element_id = self._find_id_attr(start_tag, src)
+        lineno = node.start_point[0] + 1
+
+        is_heading = tag in {"h1", "h2", "h3", "h4", "h5", "h6"}
+        is_semantic = tag in _HTML_SEMANTIC_TAGS
+
+        if not (is_heading or is_semantic or element_id):
+            return
+
+        if element_id:
+            name = f"{tag}#{element_id}"
+        elif is_heading:
+            # Extract visible text from heading
+            text_parts = [
+                _node_text(src, c).decode("utf-8", errors="replace").strip()
+                for c in node.named_children
+                if c.type == "text"
+            ]
+            heading_text = " ".join(text_parts).strip() or tag
+            name = f"{tag}: {heading_text}"
+        else:
+            name = f"{tag}@{lineno}"
+
+        addr = f"{file_path}::{name}"
+        node_bytes = _node_text(src, node)
+        out[addr] = SymbolRecord(
+            kind="section",
+            name=name,
+            qualified_name=name,
+            content_id=_sha256_bytes(_norm_ws(node_bytes)),
+            body_hash=_sha256_bytes(_norm_ws(node_bytes)),
+            signature_id=_sha256(name),
+            metadata_id="",
+            canonical_key=_canonical_key(file_path, "", "section", name, lineno),
+            lineno=lineno,
+            end_lineno=node.end_point[0] + 1,
+        )
+
+    def _find_id_attr(self, start_tag: Node, src: bytes) -> str:
+        """Return the value of the ``id`` attribute on *start_tag*, or ``""``."""
+        for attr in start_tag.named_children:
+            if attr.type != "attribute":
+                continue
+            children = attr.named_children
+            if not children:
+                continue
+            attr_name = _node_text(src, children[0]).decode("utf-8", errors="replace").strip()
+            if attr_name == "id" and len(children) >= 2:
+                val = _node_text(src, children[-1]).decode("utf-8", errors="replace")
+                return val.strip('"\'').strip()
+        return ""
+
+    def file_content_id(self, source: bytes) -> str:
+        return _sha256_bytes(source)
+
+
+# ---------------------------------------------------------------------------
 # tree-sitter adapter — shared infrastructure for all non-Python languages
 # ---------------------------------------------------------------------------
 
@@ -513,6 +736,7 @@ class LangSpec(TypedDict):
     class_node_types: frozenset[str]      # Ancestor types that scope methods
     class_name_field: str  # Field name for the class name (e.g. ``"name"`` or ``"type"``)
     receiver_capture: str  # Capture name for Go-style method receivers; ``""`` to skip
+    async_node_child: str  # Direct child type marking async (``"async"`` for JS/TS; ``""`` to skip)
 
 
 class TreeSitterAdapter:
@@ -561,6 +785,13 @@ class TreeSitterAdapter:
                     "utf-8", errors="replace"
                 )
                 kind = self._spec["kind_map"].get(sym_node.type, "function")
+
+                # Promote function/method to async variant when the node has
+                # an "async" keyword as a direct child (JS, TS, Swift, etc.).
+                async_child = self._spec["async_node_child"]
+                if async_child and kind in ("function", "method"):
+                    if any(c.type == async_child for c in sym_node.children[:3]):
+                        kind = "async_function" if kind == "function" else "async_method"
 
                 # Build qualified name — walking ancestor chain for methods.
                 qualified = _qualified_name_ts(
@@ -690,15 +921,23 @@ _JS_SPEC: LangSpec = {
     "extensions": frozenset({".js", ".jsx", ".mjs", ".cjs"}),
     "module_name": "tree_sitter_javascript",
     "lang_func": "language",
-    # Note: tree-sitter-javascript uses "class" for both class declarations and
-    # named class expressions.  "class_expression" is not a valid node type.
+    # tree-sitter-javascript uses "class" for named class expressions.
+    # Arrow functions and function expressions assigned to variables are
+    # captured via variable_declarator so that `const greet = () => {}` is
+    # a first-class symbol.
     "query_str": (
         "(function_declaration name: (identifier) @name) @sym\n"
         "(function_expression name: (identifier) @name) @sym\n"
         "(generator_function_declaration name: (identifier) @name) @sym\n"
         "(class_declaration name: (identifier) @name) @sym\n"
         "(class name: (identifier) @name) @sym\n"
-        "(method_definition name: (property_identifier) @name) @sym"
+        "(method_definition name: (property_identifier) @name) @sym\n"
+        "(variable_declarator name: (identifier) @name"
+        " value: (arrow_function)) @sym\n"
+        "(variable_declarator name: (identifier) @name"
+        " value: (function_expression)) @sym\n"
+        "(variable_declarator name: (identifier) @name"
+        " value: (generator_function)) @sym"
     ),
     "kind_map": {
         "function_declaration": "function",
@@ -707,10 +946,13 @@ _JS_SPEC: LangSpec = {
         "class_declaration": "class",
         "class": "class",
         "method_definition": "method",
+        "variable_declarator": "function",
     },
     "class_node_types": frozenset({"class_declaration", "class"}),
     "class_name_field": "name",
     "receiver_capture": "",
+    # async keyword appears as a direct child token on function/method nodes.
+    "async_node_child": "async",
 }
 
 _TS_QUERY = (
@@ -724,7 +966,13 @@ _TS_QUERY = (
     "(method_definition name: (property_identifier) @name) @sym\n"
     "(interface_declaration name: (type_identifier) @name) @sym\n"
     "(type_alias_declaration name: (type_identifier) @name) @sym\n"
-    "(enum_declaration name: (identifier) @name) @sym"
+    "(enum_declaration name: (identifier) @name) @sym\n"
+    "(variable_declarator name: (identifier) @name"
+    " value: (arrow_function)) @sym\n"
+    "(variable_declarator name: (identifier) @name"
+    " value: (function_expression)) @sym\n"
+    "(variable_declarator name: (identifier) @name"
+    " value: (generator_function)) @sym"
 )
 
 _TS_KIND_MAP: dict[str, SymbolKind] = {
@@ -738,6 +986,7 @@ _TS_KIND_MAP: dict[str, SymbolKind] = {
     "interface_declaration": "class",
     "type_alias_declaration": "variable",
     "enum_declaration": "class",
+    "variable_declarator": "function",
 }
 
 _TS_CLASS_NODES: frozenset[str] = frozenset(
@@ -753,6 +1002,7 @@ _TS_SPEC: LangSpec = {
     "class_node_types": _TS_CLASS_NODES,
     "class_name_field": "name",
     "receiver_capture": "",
+    "async_node_child": "async",
 }
 
 _TSX_SPEC: LangSpec = {
@@ -764,6 +1014,7 @@ _TSX_SPEC: LangSpec = {
     "class_node_types": _TS_CLASS_NODES,
     "class_name_field": "name",
     "receiver_capture": "",
+    "async_node_child": "async",
 }
 
 _GO_SPEC: LangSpec = {
@@ -776,16 +1027,22 @@ _GO_SPEC: LangSpec = {
         "  receiver: (parameter_list\n"
         "    (parameter_declaration type: _ @recv))\n"
         "  name: (field_identifier) @name) @sym\n"
-        "(type_spec name: (type_identifier) @name) @sym"
+        "(type_spec name: (type_identifier) @name) @sym\n"
+        # Package-level const and var groups — each spec/value_spec carries names.
+        "(const_spec name: (identifier) @name) @sym\n"
+        "(var_spec name: (identifier) @name) @sym"
     ),
     "kind_map": {
         "function_declaration": "function",
         "method_declaration": "method",
         "type_spec": "class",
+        "const_spec": "variable",
+        "var_spec": "variable",
     },
     "class_node_types": frozenset(),
     "class_name_field": "name",
     "receiver_capture": "recv",
+    "async_node_child": "",
 }
 
 _RUST_SPEC: LangSpec = {
@@ -796,18 +1053,27 @@ _RUST_SPEC: LangSpec = {
         "(function_item name: (identifier) @name) @sym\n"
         "(struct_item name: (type_identifier) @name) @sym\n"
         "(enum_item name: (type_identifier) @name) @sym\n"
-        "(trait_item name: (type_identifier) @name) @sym"
+        "(trait_item name: (type_identifier) @name) @sym\n"
+        "(type_item name: (type_identifier) @name) @sym\n"
+        "(mod_item name: (identifier) @name) @sym\n"
+        "(static_item name: (identifier) @name) @sym\n"
+        "(const_item name: (identifier) @name) @sym"
     ),
     "kind_map": {
         "function_item": "function",
         "struct_item": "class",
         "enum_item": "class",
         "trait_item": "class",
+        "type_item": "variable",
+        "mod_item": "class",
+        "static_item": "variable",
+        "const_item": "variable",
     },
     # impl_item scopes methods; its implementing type is in the "type" field.
     "class_node_types": frozenset({"impl_item"}),
     "class_name_field": "type",
     "receiver_capture": "",
+    "async_node_child": "",
 }
 
 _JAVA_SPEC: LangSpec = {
@@ -819,7 +1085,9 @@ _JAVA_SPEC: LangSpec = {
         "(constructor_declaration name: (identifier) @name) @sym\n"
         "(class_declaration name: (identifier) @name) @sym\n"
         "(interface_declaration name: (identifier) @name) @sym\n"
-        "(enum_declaration name: (identifier) @name) @sym"
+        "(enum_declaration name: (identifier) @name) @sym\n"
+        "(annotation_type_declaration name: (identifier) @name) @sym\n"
+        "(record_declaration name: (identifier) @name) @sym"
     ),
     "kind_map": {
         "method_declaration": "method",
@@ -827,10 +1095,15 @@ _JAVA_SPEC: LangSpec = {
         "class_declaration": "class",
         "interface_declaration": "class",
         "enum_declaration": "class",
+        "annotation_type_declaration": "class",
+        "record_declaration": "class",
     },
-    "class_node_types": frozenset({"class_declaration", "interface_declaration"}),
+    "class_node_types": frozenset(
+        {"class_declaration", "interface_declaration", "enum_declaration", "record_declaration"}
+    ),
     "class_name_field": "name",
     "receiver_capture": "",
+    "async_node_child": "",
 }
 
 _C_SPEC: LangSpec = {
@@ -840,12 +1113,20 @@ _C_SPEC: LangSpec = {
     "query_str": (
         "(function_definition\n"
         "  declarator: (function_declarator\n"
-        "    declarator: (identifier) @name)) @sym"
+        "    declarator: (identifier) @name)) @sym\n"
+        # Structs and enums defined via typedef or direct declaration.
+        "(struct_specifier name: (type_identifier) @name) @sym\n"
+        "(enum_specifier name: (type_identifier) @name) @sym"
     ),
-    "kind_map": {"function_definition": "function"},
+    "kind_map": {
+        "function_definition": "function",
+        "struct_specifier": "class",
+        "enum_specifier": "class",
+    },
     "class_node_types": frozenset(),
     "class_name_field": "name",
     "receiver_capture": "",
+    "async_node_child": "",
 }
 
 _CPP_SPEC: LangSpec = {
@@ -853,20 +1134,31 @@ _CPP_SPEC: LangSpec = {
     "module_name": "tree_sitter_cpp",
     "lang_func": "language",
     "query_str": (
+        # Plain function definitions (top-level or namespaced).
         "(function_definition\n"
         "  declarator: (function_declarator\n"
         "    declarator: (identifier) @name)) @sym\n"
+        # Out-of-class method definitions: void Dog::bark() {}
+        "(function_definition\n"
+        "  declarator: (function_declarator\n"
+        "    declarator: (qualified_identifier\n"
+        "      name: (identifier) @name))) @sym\n"
         "(class_specifier name: (type_identifier) @name) @sym\n"
-        "(struct_specifier name: (type_identifier) @name) @sym"
+        "(struct_specifier name: (type_identifier) @name) @sym\n"
+        "(enum_specifier name: (type_identifier) @name) @sym\n"
+        "(namespace_definition (namespace_identifier) @name) @sym"
     ),
     "kind_map": {
         "function_definition": "function",
         "class_specifier": "class",
         "struct_specifier": "class",
+        "enum_specifier": "class",
+        "namespace_definition": "class",
     },
     "class_node_types": frozenset({"class_specifier", "struct_specifier"}),
     "class_name_field": "name",
     "receiver_capture": "",
+    "async_node_child": "",
 }
 
 _CS_SPEC: LangSpec = {
@@ -879,7 +1171,9 @@ _CS_SPEC: LangSpec = {
         "(class_declaration name: (identifier) @name) @sym\n"
         "(interface_declaration name: (identifier) @name) @sym\n"
         "(enum_declaration name: (identifier) @name) @sym\n"
-        "(struct_declaration name: (identifier) @name) @sym"
+        "(struct_declaration name: (identifier) @name) @sym\n"
+        "(record_declaration name: (identifier) @name) @sym\n"
+        "(property_declaration name: (identifier) @name) @sym"
     ),
     "kind_map": {
         "method_declaration": "method",
@@ -888,12 +1182,15 @@ _CS_SPEC: LangSpec = {
         "interface_declaration": "class",
         "enum_declaration": "class",
         "struct_declaration": "class",
+        "record_declaration": "class",
+        "property_declaration": "variable",
     },
     "class_node_types": frozenset(
-        {"class_declaration", "interface_declaration", "struct_declaration"}
+        {"class_declaration", "interface_declaration", "struct_declaration", "record_declaration"}
     ),
     "class_name_field": "name",
     "receiver_capture": "",
+    "async_node_child": "",
 }
 
 _RUBY_SPEC: LangSpec = {
@@ -904,37 +1201,105 @@ _RUBY_SPEC: LangSpec = {
         "(method name: (identifier) @name) @sym\n"
         "(singleton_method name: (identifier) @name) @sym\n"
         "(class name: (constant) @name) @sym\n"
-        "(module name: (constant) @name) @sym"
+        "(module name: (constant) @name) @sym\n"
+        "(singleton_class value: (self) @name) @sym"
     ),
     "kind_map": {
         "method": "method",
         "singleton_method": "method",
         "class": "class",
         "module": "class",
+        "singleton_class": "class",
     },
     "class_node_types": frozenset({"class", "module"}),
     "class_name_field": "name",
     "receiver_capture": "",
+    "async_node_child": "",
 }
 
 _KT_SPEC: LangSpec = {
     "extensions": frozenset({".kt", ".kts"}),
     "module_name": "tree_sitter_kotlin",
     "lang_func": "language",
+    # Kotlin uses plain `identifier` for all names (no type_identifier or
+    # simple_identifier variants at this grammar version).
     "query_str": (
         "(function_declaration (identifier) @name) @sym\n"
-        "(class_declaration (identifier) @name) @sym"
+        "(class_declaration (identifier) @name) @sym\n"
+        "(object_declaration (identifier) @name) @sym\n"
+        "(property_declaration (variable_declaration"
+        " (identifier) @name)) @sym"
     ),
     "kind_map": {
         "function_declaration": "function",
         "class_declaration": "class",
+        "object_declaration": "class",
+        "property_declaration": "variable",
     },
     # Kotlin methods are function_declaration nodes inside class_body.
     # child_by_field_name("name") is None for Kotlin classes; _class_name_from
     # falls back to the first identifier-typed named child automatically.
-    "class_node_types": frozenset({"class_declaration"}),
+    "class_node_types": frozenset({"class_declaration", "object_declaration"}),
     "class_name_field": "name",
     "receiver_capture": "",
+    "async_node_child": "",
+}
+
+# Swift: requires py-tree-sitter-swift (builds from source).  _make_ts_adapter
+# degrades to FallbackAdapter if the package is not available.
+_SWIFT_SPEC: LangSpec = {
+    "extensions": frozenset({".swift"}),
+    "module_name": "py_tree_sitter_swift",
+    "lang_func": "language",
+    "query_str": (
+        "(function_declaration name: (simple_identifier) @name) @sym\n"
+        "(class_declaration name: (type_identifier) @name) @sym\n"
+        "(struct_declaration name: (type_identifier) @name) @sym\n"
+        "(enum_declaration name: (type_identifier) @name) @sym\n"
+        "(protocol_declaration name: (type_identifier) @name) @sym\n"
+        "(typealias_declaration name: (type_identifier) @name) @sym\n"
+        "(computed_property (simple_identifier) @name) @sym\n"
+        "(init_declaration) @sym"
+    ),
+    "kind_map": {
+        "function_declaration": "function",
+        "class_declaration": "class",
+        "struct_declaration": "class",
+        "enum_declaration": "class",
+        "protocol_declaration": "class",
+        "typealias_declaration": "variable",
+        "computed_property": "variable",
+        "init_declaration": "function",
+    },
+    "class_node_types": frozenset(
+        {"class_declaration", "struct_declaration", "enum_declaration"}
+    ),
+    "class_name_field": "name",
+    "receiver_capture": "",
+    "async_node_child": "async",
+}
+
+# CSS/SCSS: selectors of rule-sets, @keyframes names, and @media conditions
+# become addressable symbols so that diffs report "selector changed" vs
+# "file changed".
+_CSS_SPEC: LangSpec = {
+    "extensions": frozenset({".css", ".scss"}),
+    "module_name": "tree_sitter_css",
+    "lang_func": "language",
+    "query_str": (
+        "(rule_set (selectors) @name) @sym\n"
+        "(keyframes_statement (keyframes_name) @name) @sym\n"
+        "(media_statement (keyword_query) @name) @sym"
+    ),
+    "kind_map": {
+        "rule_set": "rule",
+        "keyframes_statement": "rule",
+        "media_statement": "rule",
+    },
+    "class_node_types": frozenset(),
+    "class_name_field": "name",
+    "receiver_capture": "",
+    "async_node_child": "",
 }
 
 #: All tree-sitter language specs, loaded in registration order.
@@ -950,6 +1315,8 @@ _TS_LANG_SPECS: list[LangSpec] = [
     _CS_SPEC,
     _RUBY_SPEC,
     _KT_SPEC,
+    _SWIFT_SPEC,
+    _CSS_SPEC,
 ]
 
 
@@ -958,10 +1325,12 @@ _TS_LANG_SPECS: list[LangSpec] = [
 # ---------------------------------------------------------------------------
 
 _PYTHON = PythonAdapter()
+_MARKDOWN = MarkdownAdapter()
+_HTML = HtmlAdapter()
 _FALLBACK = FallbackAdapter(frozenset())
 
 #: Adapters checked in order; first match wins.
-ADAPTERS: list[LanguageAdapter] = [_PYTHON]
+ADAPTERS: list[LanguageAdapter] = [_PYTHON, _MARKDOWN, _HTML]
 
 # Build and register tree-sitter adapters.  _make_ts_adapter degrades to
 # FallbackAdapter if a grammar package isn't installed.
@@ -989,7 +1358,7 @@ SOURCE_EXTENSIONS: frozenset[str] = frozenset({
     ".sh", ".bash", ".zsh",
     ".toml", ".yaml", ".yml", ".json", ".jsonc",
     ".md", ".rst", ".txt",
-    ".css", ".scss", ".html",
+    ".css", ".scss", ".html", ".htm",
     ".sql",
     ".proto",
     ".tf",
@@ -1082,4 +1451,6 @@ def validate_syntax(source: bytes, file_path: str) -> str | None:
     if isinstance(adapter, TreeSitterAdapter):
         return adapter.validate_source(source)
 
+    # MarkdownAdapter and HtmlAdapter use tree-sitter internally when available
+    # but do not expose validation — no syntax errors to report for prose files.
     return None
