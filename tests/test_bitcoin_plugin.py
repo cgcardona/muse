@@ -49,11 +49,14 @@ from muse.plugins.bitcoin._query import (
 from muse.plugins.bitcoin._types import (
     AddressLabelRecord,
     AgentStrategyRecord,
+    CoinCategory,
+    CoinSelectAlgo,
     FeeEstimateRecord,
     LightningChannelRecord,
     OraclePriceTickRecord,
     PendingTxRecord,
     RoutingPolicyRecord,
+    ScriptType,
     UTXORecord,
 )
 from muse.plugins.bitcoin.plugin import (
@@ -76,7 +79,7 @@ def _make_utxo(
     txid: str = "abc" * 21 + "ab",
     vout: int = 0,
     amount_sat: int = 100_000,
-    script_type: str = "p2wpkh",
+    script_type: ScriptType = "p2wpkh",
     address: str = "bc1qtest",
     confirmations: int = 6,
     block_height: int | None = 850_000,
@@ -87,7 +90,7 @@ def _make_utxo(
         txid=txid,
         vout=vout,
         amount_sat=amount_sat,
-        script_type=script_type,  # type: ignore[arg-type]
+        script_type=script_type,
         address=address,
         confirmations=confirmations,
         block_height=block_height,
@@ -129,13 +132,13 @@ def _make_channel(
 def _make_label(
     address: str = "bc1qtest",
     label: str = "cold storage",
-    category: str = "income",
+    category: CoinCategory = "income",
     created_at: int = 1_700_000_000,
 ) -> AddressLabelRecord:
     return AddressLabelRecord(
         address=address,
         label=label,
-        category=category,  # type: ignore[arg-type]
+        category=category,
         created_at=created_at,
     )
 
@@ -148,7 +151,7 @@ def _make_strategy(
     dca_amount_sat: int | None = 500_000,
     dca_interval_blocks: int | None = 144,
     lightning_rebalance_threshold: float = 0.2,
-    coin_selection: str = "branch_and_bound",
+    coin_selection: CoinSelectAlgo = "branch_and_bound",
     simulation_mode: bool = False,
 ) -> AgentStrategyRecord:
     return AgentStrategyRecord(
@@ -159,7 +162,7 @@ def _make_strategy(
         dca_amount_sat=dca_amount_sat,
         dca_interval_blocks=dca_interval_blocks,
         lightning_rebalance_threshold=lightning_rebalance_threshold,
-        coin_selection=coin_selection,  # type: ignore[arg-type]
+        coin_selection=coin_selection,
         simulation_mode=simulation_mode,
     )
 
@@ -194,7 +197,19 @@ def _make_fee(
     )
 
 
-def _json_bytes(obj: object) -> bytes:
+_AnyBitcoinRecord = (
+    UTXORecord
+    | LightningChannelRecord
+    | AddressLabelRecord
+    | AgentStrategyRecord
+    | FeeEstimateRecord
+    | RoutingPolicyRecord
+    | PendingTxRecord
+    | OraclePriceTickRecord
+)
+
+
+def _json_bytes(obj: _AnyBitcoinRecord | list[_AnyBitcoinRecord]) -> bytes:
     return json.dumps(obj, sort_keys=True).encode()
 
 
