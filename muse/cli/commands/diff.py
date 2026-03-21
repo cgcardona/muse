@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 import logging
 import pathlib
@@ -9,6 +10,7 @@ import pathlib
 import typer
 
 from muse.core.errors import ExitCode
+from muse.core.object_store import read_object
 from muse.core.repo import require_repo
 from muse.core.store import get_commit_snapshot_manifest, get_head_snapshot_manifest, read_current_branch, resolve_commit_ref
 from muse.core.validation import sanitize_display
@@ -157,12 +159,77 @@ def _print_structured_delta(ops: list[DomainOp]) -> int:
     return len(ops)
 
 
+def _print_text_diff(
+    base_files: dict[str, str],
+    target_files: dict[str, str],
+    root: pathlib.Path,
+    workdir: pathlib.Path | None,
+) -> int:
+    """Print a coloured unified diff for every changed file. Returns change count."""
+    base_paths = set(base_files)
+    target_paths = set(target_files)
+    changed = (
+        sorted(target_paths - base_paths)          # added
+        + sorted(base_paths - target_paths)        # removed
+        + sorted(                                   # modified
+            p for p in base_paths & target_paths
+            if base_files[p] != target_files[p]
+        )
+    )
+
+    for path in changed:
+        # Read base content.
+        if path in base_files:
+            raw_base = read_object(root, base_files[path])
+            base_lines = raw_base.decode("utf-8", errors="replace").splitlines(keepends=True) if raw_base else []
+            base_label = f"a/{path}"
+        else:
+            base_lines = []
+            base_label = "/dev/null"
+
+        # Read target content (object store first, then disk for working tree).
+        if path in target_files:
+            raw_target = read_object(root, target_files[path])
+            if raw_target is None and workdir is not None:
+                disk = workdir / path
+                if disk.is_file():
+                    raw_target = disk.read_bytes()
+            target_lines = raw_target.decode("utf-8", errors="replace").splitlines(keepends=True) if raw_target else []
+            target_label = f"b/{path}"
+        else:
+            target_lines = []
+            target_label = "/dev/null"
+
+        hunks = list(difflib.unified_diff(
+            base_lines, target_lines,
+            fromfile=base_label, tofile=target_label,
+            lineterm="",
+        ))
+        if not hunks:
+            continue
+
+        for line in hunks:
+            if line.startswith("---") or line.startswith("+++"):
+                typer.echo(typer.style(line, bold=True))
+            elif line.startswith("@@"):
+                typer.echo(_cyan(line))
+            elif line.startswith("+"):
+                typer.echo(_green(line))
+            elif line.startswith("-"):
+                typer.echo(_red(line))
+            else:
+                typer.echo(line)
+
+    return len(changed)
+
+
 @app.callback(invoke_without_command=True)
 def diff(
     ctx: typer.Context,
     commit_a: str | None = typer.Argument(None, help="Base commit ID (default: HEAD)."),
     commit_b: str | None = typer.Argument(None, help="Target commit ID (default: working tree)."),
     stat: bool = typer.Option(False, "--stat", help="Show summary statistics only."),
+    text: bool = typer.Option(False, "--text", help="Show line-level unified diff instead of semantic symbols."),
 ) -> None:
     """Compare working tree against HEAD, or compare two commits."""
     root = require_repo()
@@ -204,6 +271,15 @@ def diff(
             files=_resolve_manifest(commit_b),
             domain=domain,
         )
+
+    if text:
+        workdir = root if commit_a is None else None
+        changed = _print_text_diff(
+            base_snap["files"], target_snap["files"], root, workdir
+        )
+        if changed == 0:
+            typer.echo("No differences.")
+        return
 
     delta = plugin.diff(base_snap, target_snap, repo_root=root)
 
