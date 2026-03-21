@@ -28,7 +28,7 @@ fi
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 : ${MUSE_PROMPT_ICONS:=0}
-: ${MUSE_DIRTY_TIMEOUT:=1}
+: ${MUSE_DIRTY_TIMEOUT:=5}
 
 # Domain icon map. Override individual elements in ~/.zshrc before plugins=().
 typeset -gA MUSE_DOMAIN_ICONS
@@ -118,12 +118,16 @@ PYEOF
   : ${MUSE_DOMAIN:=midi}
 }
 
-# Check dirty state. Runs with timeout; only called after a muse command.
+# Check dirty state. Runs with timeout; called on cd, shell load, and after
+# any muse command. MUSE_DIRTY_TIMEOUT (default 5s) caps the wait.
+typeset -gi _MUSE_LAST_DIRTY_RC=0  # last exit code from the dirty check subprocess
+
 function _muse_check_dirty() {
   local output rc count=0
   output=$(cd -- "$MUSE_REPO_ROOT" && \
            timeout -- "${MUSE_DIRTY_TIMEOUT}" muse status --porcelain 2>/dev/null)
   rc=$?
+  _MUSE_LAST_DIRTY_RC=$rc
   if (( rc == 124 )); then
     # Timeout — leave previous dirty state in place rather than lying.
     return
@@ -217,15 +221,20 @@ function muse_prompt_info() {
 # Print current plugin state. Run when the prompt looks wrong.
 #   muse_debug
 function muse_debug() {
-  print "MUSE_REPO_ROOT  = ${MUSE_REPO_ROOT:-(not set)}"
-  print "MUSE_BRANCH     = ${MUSE_BRANCH:-(not set)}"
-  print "MUSE_DOMAIN     = ${MUSE_DOMAIN:-(not set)}"
-  print "MUSE_DIRTY      = $MUSE_DIRTY  (count: $MUSE_DIRTY_COUNT)"
-  print "_MUSE_CMD_RAN   = $_MUSE_CMD_RAN"
-  print "PWD             = $PWD"
+  print "MUSE_REPO_ROOT       = ${MUSE_REPO_ROOT:-(not set)}"
+  print "MUSE_BRANCH          = ${MUSE_BRANCH:-(not set)}"
+  print "MUSE_DOMAIN          = ${MUSE_DOMAIN:-(not set)}"
+  print "MUSE_DIRTY           = $MUSE_DIRTY  (count: $MUSE_DIRTY_COUNT)"
+  print "MUSE_DIRTY_TIMEOUT   = ${MUSE_DIRTY_TIMEOUT}s"
+  print "_MUSE_LAST_DIRTY_RC  = $_MUSE_LAST_DIRTY_RC  (124 = timed out)"
+  print "_MUSE_CMD_RAN        = $_MUSE_CMD_RAN"
+  print "PWD                  = $PWD"
   if [[ -n "$MUSE_REPO_ROOT" ]]; then
-    print "repo.json       = $MUSE_REPO_ROOT/.muse/repo.json"
-    print "HEAD            = $(< "$MUSE_REPO_ROOT/.muse/HEAD" 2>/dev/null || print '(missing)')"
+    print "repo.json            = $MUSE_REPO_ROOT/.muse/repo.json"
+    print "HEAD                 = $(< "$MUSE_REPO_ROOT/.muse/HEAD" 2>/dev/null || print '(missing)')"
+    print "--- muse status --porcelain (live, timed) ---"
+    time (cd -- "$MUSE_REPO_ROOT" && muse status --porcelain 2>&1)
+    print "--------------------------------------------"
   fi
 }
 
