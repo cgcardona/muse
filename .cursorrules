@@ -35,8 +35,9 @@ Full task lifecycle:
    pytest tests/ -v                                                     # all green
    ```
 5. Open a PR against `dev` via `gh pr create` or the GitHub MCP tool.
-6. Merge immediately (`squash` for feature→dev, `merge` for dev→main).
-7. Delete remote branch, delete local branch, `git pull origin dev`.
+6. **Wait for CI to go green.** Do not merge while any check is yellow (pending) or red (failing). Fix the branch and push again if CI fails — never merge around a failure.
+7. Merge only when CI is green (`squash` for feature→dev, `merge` for dev→main).
+8. Delete remote branch, delete local branch, `git pull origin dev`.
 
 ## GitHub interactions — MCP first
 
@@ -139,9 +140,14 @@ Run locally before opening any PR — in this exact order:
 - [ ] Affected docs updated in the same commit
 - [ ] No secrets, no `print()`, no orphaned imports
 
+Before merging a PR:
+
+- [ ] All GitHub Actions checks are **green** — never merge on yellow (pending) or red (failing)
+
 ## Anti-patterns (never do these)
 
 - Working directly on `dev` or `main`.
+- Merging a PR while CI is yellow (pending) or red (failing) — wait for green.
 - `Any`, `object`, bare collections, `cast()`, `# type: ignore` — absolute bans.
 - `Optional[X]`, `List[X]`, `Dict[K,V]` — use modern syntax.
 - `async`/`await` anywhere in `muse/` — the CLI is synchronous by design.
