@@ -16,7 +16,7 @@ def _make_repo(tmp_path: pathlib.Path, domain: str = "midi") -> pathlib.Path:
     muse_dir = tmp_path / ".muse"
     muse_dir.mkdir()
     (muse_dir / "repo.json").write_text(
-        json.dumps({"repo_id": "test-id", "schema_version": "2", "domain": domain})
+        json.dumps({"repo_id": "test-id", "schema_version": "1", "domain": domain})
     )
     return tmp_path
 

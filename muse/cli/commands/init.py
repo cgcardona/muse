@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 app = typer.Typer()
 
-_SCHEMA_VERSION = "2"
+_SCHEMA_VERSION = "1"
 
 _DEFAULT_CONFIG = """\
 [user]
