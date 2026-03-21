@@ -46,7 +46,7 @@ def ls_remote(
         help="Remote name (e.g. 'origin') or a full URL. Defaults to 'origin'.",
     ),
     output_json: bool = typer.Option(
-        False, "--json", help="Emit JSON for agent consumption."
+        False, "--json", "-j", help="Emit JSON for agent consumption."
     ),
 ) -> None:
     """List branches and commit IDs on a remote.

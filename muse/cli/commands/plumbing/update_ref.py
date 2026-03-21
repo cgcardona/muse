@@ -15,7 +15,8 @@ Plumbing contract
 -----------------
 
 - Exit 0: ref updated.
-- Exit 1: commit not found in the store, or ``--delete`` on a non-existent ref.
+- Exit 1: commit not found in the store, invalid commit ID format, or
+  ``--delete`` on a non-existent ref.
 - Exit 3: file write failure.
 """
 
@@ -30,6 +31,7 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import get_head_commit_id, read_commit
+from muse.core.validation import validate_object_id
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +75,17 @@ def update_ref(
         return
 
     if commit_id is None:
-        typer.echo(json.dumps({"error": "commit_id is required unless --delete is used."}))
+        typer.echo(
+            json.dumps({"error": "commit_id is required unless --delete is used."})
+        )
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
+    # Always validate the format — writing a malformed ID to a ref file would
+    # silently corrupt the repository regardless of the --verify flag.
+    try:
+        validate_object_id(commit_id)
+    except ValueError as exc:
+        typer.echo(json.dumps({"error": f"Invalid commit ID: {exc}"}))
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
     if verify and read_commit(root, commit_id) is None:
@@ -83,13 +95,17 @@ def update_ref(
     previous = get_head_commit_id(root, branch)
     try:
         ref_path.parent.mkdir(parents=True, exist_ok=True)
-        ref_path.write_text(commit_id)
+        ref_path.write_text(commit_id, encoding="utf-8")
     except OSError as exc:
         typer.echo(json.dumps({"error": str(exc)}))
         raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
 
-    typer.echo(json.dumps({
-        "branch": branch,
-        "commit_id": commit_id,
-        "previous": previous,
-    }))
+    typer.echo(
+        json.dumps(
+            {
+                "branch": branch,
+                "commit_id": commit_id,
+                "previous": previous,
+            }
+        )
+    )

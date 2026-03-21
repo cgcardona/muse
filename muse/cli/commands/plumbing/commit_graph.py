@@ -17,7 +17,8 @@ Output::
           "message": "Add verse melody",
           "branch": "main",
           "committed_at": "2026-03-18T12:00:00+00:00",
-          "snapshot_id": "<sha256>"
+          "snapshot_id": "<sha256>",
+          "author": ""
         },
         ...
       ]
@@ -27,15 +28,15 @@ Plumbing contract
 -----------------
 
 - Exit 0: graph emitted.
-- Exit 1: tip commit not found.
+- Exit 1: tip commit not found, or unknown --format value.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import pathlib
 from collections import deque
+from typing import TypedDict
 
 import typer
 
@@ -48,10 +49,18 @@ logger = logging.getLogger(__name__)
 app = typer.Typer()
 
 _DEFAULT_MAX = 10_000
+_FORMAT_CHOICES = ("json", "text")
 
 
-def _current_branch(root: pathlib.Path) -> str:
-    return read_current_branch(root)
+class _CommitNode(TypedDict):
+    commit_id: str
+    parent_commit_id: str | None
+    parent2_commit_id: str | None
+    message: str
+    branch: str
+    committed_at: str
+    snapshot_id: str
+    author: str
 
 
 @app.callback(invoke_without_command=True)
@@ -70,9 +79,12 @@ def commit_graph(
     max_commits: int = typer.Option(
         _DEFAULT_MAX,
         "--max",
+        "-n",
         help=f"Maximum commits to traverse (default: {_DEFAULT_MAX}).",
     ),
-    fmt: str = typer.Option("json", "--format", help="Output format: json or text (one ID per line)."),
+    fmt: str = typer.Option(
+        "json", "--format", "-f", help="Output format: json or text (one ID per line)."
+    ),
 ) -> None:
     """Emit the commit DAG reachable from a tip commit.
 
@@ -81,10 +93,17 @@ def commit_graph(
     ancestors are excluded — useful for computing the commits in a branch
     since it diverged from another.
     """
+    if fmt not in _FORMAT_CHOICES:
+        typer.echo(
+            f"❌ Unknown format {fmt!r}. Valid choices: {', '.join(_FORMAT_CHOICES)}",
+            err=True,
+        )
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
     root = require_repo()
 
     if tip is None:
-        branch = _current_branch(root)
+        branch = read_current_branch(root)
         tip = get_head_commit_id(root, branch)
         if tip is None:
             typer.echo(json.dumps({"error": "No commits on current branch."}))
@@ -94,14 +113,10 @@ def commit_graph(
         typer.echo(json.dumps({"error": f"Tip commit not found: {tip}"}))
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
-    # BFS: collect all commits reachable from tip, stopping at stop_at.
-    stop_set: set[str] = set()
-    if stop_at:
-        stop_set.add(stop_at)
-
+    stop_set: set[str] = {stop_at} if stop_at else set()
     visited: set[str] = set()
     queue: deque[str] = deque([tip])
-    nodes: list[dict[str, str | None]] = []
+    nodes: list[_CommitNode] = []
 
     while queue and len(nodes) < max_commits:
         cid = queue.popleft()
@@ -111,16 +126,18 @@ def commit_graph(
         record = read_commit(root, cid)
         if record is None:
             continue
-        nodes.append({
-            "commit_id": record.commit_id,
-            "parent_commit_id": record.parent_commit_id,
-            "parent2_commit_id": record.parent2_commit_id,
-            "message": record.message,
-            "branch": record.branch,
-            "committed_at": record.committed_at.isoformat(),
-            "snapshot_id": record.snapshot_id,
-            "author": record.author,
-        })
+        nodes.append(
+            _CommitNode(
+                commit_id=record.commit_id,
+                parent_commit_id=record.parent_commit_id,
+                parent2_commit_id=record.parent2_commit_id,
+                message=record.message,
+                branch=record.branch,
+                committed_at=record.committed_at.isoformat(),
+                snapshot_id=record.snapshot_id,
+                author=record.author,
+            )
+        )
         if record.parent_commit_id:
             queue.append(record.parent_commit_id)
         if record.parent2_commit_id:
@@ -131,9 +148,14 @@ def commit_graph(
             typer.echo(node["commit_id"])
         return
 
-    typer.echo(json.dumps({
-        "tip": tip,
-        "count": len(nodes),
-        "truncated": len(nodes) >= max_commits,
-        "commits": nodes,
-    }, indent=2))
+    typer.echo(
+        json.dumps(
+            {
+                "tip": tip,
+                "count": len(nodes),
+                "truncated": len(nodes) >= max_commits,
+                "commits": nodes,
+            },
+            indent=2,
+        )
+    )
