@@ -47,7 +47,7 @@ from __future__ import annotations
 
 import pathlib
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, Protocol, TypedDict, runtime_checkable
+from typing import TYPE_CHECKING, Literal, NotRequired, Protocol, TypedDict, runtime_checkable
 
 # Public re-exports so callers can do ``from muse.domain import MutateOp`` etc.
 __all__ = [
@@ -276,6 +276,11 @@ class PatchOp(TypedDict):
     ``child_domain`` identifies the sub-element domain (e.g. ``"midi_notes"``
     for note-level ops inside a ``.mid`` file). ``child_summary`` is a
     human-readable description of the child changes for ``muse show``.
+
+    When ``from_address`` is present the container was simultaneously renamed
+    (moved from that path) *and* modified.  ``address`` is the new path;
+    ``from_address`` is the old path.  The child_ops list contains the
+    semantic diff between the old and new symbol trees.
     """
 
     op: Literal["patch"]
@@ -283,6 +288,7 @@ class PatchOp(TypedDict):
     child_ops: list[DomainOp]
     child_domain: str
     child_summary: str
+    from_address: NotRequired[DomainAddress]
 
 
 #: Union of all operation types — the atoms of a ``StructuredDelta``.

@@ -737,6 +737,145 @@ class TestBuildDiffOps:
         assert "a.py" in patch_addrs or "b.py" in patch_addrs
 
 
+class TestFileMoveAndEdit:
+    """Regression: a file renamed+edited must be emitted as a single move+edit PatchOp.
+
+    Before the fix, Muse emitted an all-delete PatchOp for the old path and
+    an all-insert PatchOp for the new path — showing a spurious delete+add
+    rather than a move+edit.  After the fix, the two are collapsed into a
+    single PatchOp carrying ``from_address`` and symbol-level child diffs.
+    """
+
+    def _func(
+        self,
+        addr: str,
+        content_id: str,
+        body_hash: str | None = None,
+        signature_id: str | None = None,
+        name: str = "f",
+    ) -> tuple[str, SymbolRecord]:
+        return addr, SymbolRecord(
+            kind="function",
+            name=name,
+            qualified_name=name,
+            content_id=content_id,
+            body_hash=body_hash or content_id,
+            signature_id=signature_id or content_id,
+            lineno=1,
+            end_lineno=3,
+        )
+
+    def test_move_and_edit_collapses_to_single_patch(self) -> None:
+        """File renamed utils.py→helpers.py with one symbol changed must emit one PatchOp."""
+        shared_body = _sha256("def unchanged(): pass")
+        base_tree: SymbolTree = {
+            "utils.py::unchanged": SymbolRecord(
+                kind="function", name="unchanged", qualified_name="unchanged",
+                content_id=shared_body, body_hash=shared_body, signature_id=shared_body,
+                lineno=1, end_lineno=2,
+            ),
+            "utils.py::modified": SymbolRecord(
+                kind="function", name="modified", qualified_name="modified",
+                content_id="old_cid", body_hash="old_body", signature_id="old_sig",
+                lineno=3, end_lineno=5,
+            ),
+        }
+        target_tree: SymbolTree = {
+            "helpers.py::unchanged": SymbolRecord(
+                kind="function", name="unchanged", qualified_name="unchanged",
+                content_id=shared_body, body_hash=shared_body, signature_id=shared_body,
+                lineno=1, end_lineno=2,
+            ),
+            "helpers.py::modified": SymbolRecord(
+                kind="function", name="modified", qualified_name="modified",
+                content_id="new_cid", body_hash="new_body", signature_id="new_sig",
+                lineno=3, end_lineno=5,
+            ),
+        }
+        ops = build_diff_ops(
+            base_files={"utils.py": "hash_old"},
+            target_files={"helpers.py": "hash_new"},
+            base_trees={"utils.py": base_tree},
+            target_trees={"helpers.py": target_tree},
+        )
+        assert len(ops) == 1, f"Expected 1 op, got {len(ops)}: {[o['op'] for o in ops]}"
+        assert ops[0]["op"] == "patch"
+        assert ops[0]["address"] == "helpers.py"
+        assert ops[0].get("from_address") == "utils.py"
+
+    def test_move_and_edit_child_ops_show_symbol_diff(self) -> None:
+        """Child ops of a move+edit PatchOp must reflect symbol-level changes only."""
+        shared_body = _sha256("def keep(): pass")
+        base_tree: SymbolTree = {
+            "a.py::keep": SymbolRecord(
+                kind="function", name="keep", qualified_name="keep",
+                content_id=shared_body, body_hash=shared_body, signature_id=shared_body,
+                lineno=1, end_lineno=2,
+            ),
+            "a.py::gone": SymbolRecord(
+                kind="function", name="gone", qualified_name="gone",
+                content_id="cid_gone", body_hash="body_gone", signature_id="sig_gone",
+                lineno=3, end_lineno=5,
+            ),
+        }
+        target_tree: SymbolTree = {
+            "b.py::keep": SymbolRecord(
+                kind="function", name="keep", qualified_name="keep",
+                content_id=shared_body, body_hash=shared_body, signature_id=shared_body,
+                lineno=1, end_lineno=2,
+            ),
+            "b.py::new_fn": SymbolRecord(
+                kind="function", name="new_fn", qualified_name="new_fn",
+                content_id="cid_new", body_hash="body_new", signature_id="sig_new",
+                lineno=3, end_lineno=5,
+            ),
+        }
+        ops = build_diff_ops(
+            base_files={"a.py": "hash_a"},
+            target_files={"b.py": "hash_b"},
+            base_trees={"a.py": base_tree},
+            target_trees={"b.py": target_tree},
+        )
+        assert len(ops) == 1
+        patch = ops[0]
+        assert patch["op"] == "patch"
+        child_op_types = {c["op"] for c in patch["child_ops"]}
+        # "gone" was deleted, "new_fn" was inserted; "keep" is unchanged → no op.
+        assert "delete" in child_op_types
+        assert "insert" in child_op_types
+
+    def test_no_false_positive_unrelated_files(self) -> None:
+        """Two files with no symbol overlap must NOT be collapsed into a move+edit."""
+        ops = build_diff_ops(
+            base_files={"old.py": "hash_old"},
+            target_files={"new.py": "hash_new"},
+            base_trees={
+                "old.py": {
+                    "old.py::alpha": SymbolRecord(
+                        kind="function", name="alpha", qualified_name="alpha",
+                        content_id="cid_a", body_hash="body_a", signature_id="sig_a",
+                        lineno=1, end_lineno=2,
+                    )
+                }
+            },
+            target_trees={
+                "new.py": {
+                    "new.py::omega": SymbolRecord(
+                        kind="function", name="omega", qualified_name="omega",
+                        content_id="cid_o", body_hash="body_o", signature_id="sig_o",
+                        lineno=1, end_lineno=2,
+                    )
+                }
+            },
+        )
+        # No overlap → separate delete + insert ops, NOT a move+edit.
+        assert len(ops) == 2
+        op_types = {o["op"] for o in ops}
+        assert op_types == {"patch"}  # Both are PatchOps wrapping single-symbol trees.
+        for op in ops:
+            assert op.get("from_address") is None
+
+
 # ---------------------------------------------------------------------------
 # CodePlugin — snapshot
 # ---------------------------------------------------------------------------

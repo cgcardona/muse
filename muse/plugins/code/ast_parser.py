@@ -78,9 +78,12 @@ import importlib
 import logging
 import pathlib
 import re
-from typing import Literal, Protocol, TypedDict, runtime_checkable
+import sys
+import types as _types
+from typing import TYPE_CHECKING, Literal, Protocol, TypedDict, runtime_checkable
 
-from tree_sitter import Language, Node, Parser, Query, QueryCursor
+if TYPE_CHECKING:
+    from tree_sitter import Language, Node, Parser, Query, QueryCursor
 
 logger = logging.getLogger(__name__)
 
@@ -483,6 +486,7 @@ class MarkdownAdapter:
     def __init__(self) -> None:
         self._parser: Parser | None = None
         try:
+            from tree_sitter import Language, Parser
             import tree_sitter_markdown as _md
             lang = Language(_md.language())
             self._parser = Parser(lang)
@@ -571,6 +575,7 @@ class HtmlAdapter:
     def __init__(self) -> None:
         self._parser: Parser | None = None
         try:
+            from tree_sitter import Language, Parser
             import tree_sitter_html as _html
             lang = Language(_html.language())
             self._parser = Parser(lang)
@@ -756,17 +761,17 @@ class TreeSitterAdapter:
         self,
         spec: LangSpec,
         parser: Parser,
-        language: Language,
+        query: Query,
     ) -> None:
         self._spec = spec
         self._parser = parser
-        self._language = language
-        self._query = Query(language, spec["query_str"])
+        self._query = query
 
     def supported_extensions(self) -> frozenset[str]:
         return self._spec["extensions"]
 
     def parse_symbols(self, source: bytes, file_path: str) -> SymbolTree:
+        from tree_sitter import QueryCursor
         try:
             tree = self._parser.parse(source)
             cursor = QueryCursor(self._query)
@@ -895,14 +900,19 @@ def _make_ts_adapter(spec: LangSpec) -> LanguageAdapter:
 
     Importing the grammar capsule is deferred to this factory so that a
     missing or incompatible grammar package degrades gracefully rather than
-    preventing the entire plugin from loading.
+    preventing the entire plugin from loading.  tree_sitter itself is also
+    imported here — not at module level — so that importing ast_parser does
+    not pay the C-extension load cost unless semantic analysis is actually
+    requested.
     """
     try:
+        from tree_sitter import Language, Parser, Query
         mod = importlib.import_module(spec["module_name"])
         raw_lang = getattr(mod, spec["lang_func"])()
         lang = Language(raw_lang)
         parser = Parser(lang)
-        return TreeSitterAdapter(spec, parser, lang)
+        query = Query(lang, spec["query_str"])
+        return TreeSitterAdapter(spec, parser, query)
     except Exception as exc:  # noqa: BLE001
         logger.debug(
             "tree-sitter grammar %s.%s unavailable — using file-level fallback: %s",
@@ -1324,23 +1334,62 @@ _TS_LANG_SPECS: list[LangSpec] = [
 # Adapter registry and public helpers
 # ---------------------------------------------------------------------------
 
-_PYTHON = PythonAdapter()
-_MARKDOWN = MarkdownAdapter()
-_HTML = HtmlAdapter()
-_FALLBACK = FallbackAdapter(frozenset())
+#: Fallback adapter for file types without a registered adapter — always cheap.
+_FALLBACK: FallbackAdapter = FallbackAdapter(frozenset())
 
-#: Adapters checked in order; first match wins.
-ADAPTERS: list[LanguageAdapter] = [_PYTHON, _MARKDOWN, _HTML]
+#: Internal caches — populated on first call to :func:`_adapters`.
+_ADAPTERS_CACHE: list[LanguageAdapter] | None = None
+_SEM_EXT_CACHE: frozenset[str] | None = None
 
-# Build and register tree-sitter adapters.  _make_ts_adapter degrades to
-# FallbackAdapter if a grammar package isn't installed.
-for _spec in _TS_LANG_SPECS:
-    ADAPTERS.append(_make_ts_adapter(_spec))
 
-#: File extensions that receive semantic (AST-based) symbol extraction.
-SEMANTIC_EXTENSIONS: frozenset[str] = frozenset().union(
-    *(a.supported_extensions() for a in ADAPTERS if not isinstance(a, FallbackAdapter))
-)
+def _adapters() -> list[LanguageAdapter]:
+    """Return the global adapter list, building it on first call.
+
+    Tree-sitter grammar packages are imported here — not at module level —
+    so that importing :mod:`ast_parser` costs nothing for commands that do
+    not perform semantic analysis (e.g. ``muse init``, ``muse log``).
+    """
+    global _ADAPTERS_CACHE, _SEM_EXT_CACHE
+    if _ADAPTERS_CACHE is None:
+        result: list[LanguageAdapter] = [
+            PythonAdapter(),
+            MarkdownAdapter(),
+            HtmlAdapter(),
+        ]
+        for spec in _TS_LANG_SPECS:
+            result.append(_make_ts_adapter(spec))
+        _ADAPTERS_CACHE = result
+        _SEM_EXT_CACHE = frozenset().union(
+            *(a.supported_extensions() for a in result if not isinstance(a, FallbackAdapter))
+        )
+        # Promote computed values to real module attributes so subsequent
+        # attribute lookups bypass __getattr__ and become O(1) dict access.
+        _mod: _types.ModuleType = sys.modules[__name__]
+        setattr(_mod, "ADAPTERS", result)
+        setattr(_mod, "SEMANTIC_EXTENSIONS", _SEM_EXT_CACHE)
+    return _ADAPTERS_CACHE
+
+
+def _semantic_extensions() -> frozenset[str]:
+    """Return the set of extensions with AST-level support, building it on first call."""
+    _adapters()
+    if _SEM_EXT_CACHE is None:
+        return frozenset()
+    return _SEM_EXT_CACHE
+
+
+def __getattr__(name: str) -> list[LanguageAdapter] | frozenset[str]:
+    """Lazy module attributes — ADAPTERS and SEMANTIC_EXTENSIONS.
+
+    Both are computed on first access (which triggers adapter building) and
+    then cached as real module attributes so subsequent lookups are O(1).
+    """
+    if name == "ADAPTERS":
+        return _adapters()
+    if name == "SEMANTIC_EXTENSIONS":
+        return _semantic_extensions()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 #: Source extensions tracked as first-class files (raw-bytes identity for
 #: languages without an AST adapter, AST identity for Python).
@@ -1379,7 +1428,7 @@ def adapter_for_path(file_path: str) -> LanguageAdapter:
         set contains the file's lowercase suffix.
     """
     suffix = pathlib.PurePosixPath(file_path).suffix.lower()
-    for adapter in ADAPTERS:
+    for adapter in _adapters():
         if suffix in adapter.supported_extensions():
             return adapter
     return _FALLBACK
