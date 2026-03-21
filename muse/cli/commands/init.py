@@ -56,11 +56,11 @@ type = "human"    # "human" | "agent"
 [remotes]
 
 [domain]
-# Domain-specific configuration. Keys depend on the active domain.
-# Music examples:
-#   ticks_per_beat = "480"
-# Genomics examples:
-#   reference_assembly = "GRCh38"
+# Domain-specific configuration. Keys depend on the active domain plugin.
+# Code examples:
+#   language = "python"
+#   formatter = "black"
+#   linter = "ruff"
 """
 
 _BARE_CONFIG = """\
@@ -81,11 +81,11 @@ type = "human"    # "human" | "agent"
 [remotes]
 
 [domain]
-# Domain-specific configuration. Keys depend on the active domain.
-# Music examples:
-#   ticks_per_beat = "480"
-# Genomics examples:
-#   reference_assembly = "GRCh38"
+# Domain-specific configuration. Keys depend on the active domain plugin.
+# Code examples:
+#   language = "python"
+#   formatter = "black"
+#   linter = "ruff"
 """
 
 
