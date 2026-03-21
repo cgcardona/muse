@@ -21,6 +21,14 @@ dependencies = [
     "tree-sitter-c-sharp>=0.23.1",
     "tree-sitter-ruby>=0.23.1",
     "tree-sitter-kotlin>=1.1.0",
+    # Prose and web language grammars.
+    "tree-sitter-markdown>=0.5.1",
+    "tree-sitter-html>=0.23.2",
+    "tree-sitter-css>=0.25.0",
+    # Swift: py-tree-sitter-swift must be built from source; omitted here to
+    # avoid breaking CI on machines without Xcode CLT.  Install manually with:
+    #   pip install py-tree-sitter-swift
+    # The adapter degrades gracefully to file-level tracking without it.
 ]
 
 [project.scripts]
@@ -108,6 +116,10 @@ module = [
     "tree_sitter_c_sharp",
     "tree_sitter_ruby",
     "tree_sitter_kotlin",
+    "tree_sitter_markdown",
+    "tree_sitter_html",
+    "tree_sitter_css",
+    "py_tree_sitter_swift",
 ]
 ignore_missing_imports = true
 
