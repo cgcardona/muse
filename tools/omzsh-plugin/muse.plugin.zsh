@@ -73,8 +73,8 @@ function _muse_parse_head() {
   fi
   local raw
   raw=$(<"$head_file")
-  if [[ "$raw" == "ref: refs/heads/"* ]]; then
-    local branch="${raw#ref: refs/heads/}"
+  if [[ "$raw" == "refs/heads/"* ]]; then
+    local branch="${raw#refs/heads/}"
     # Reject anything that could inject prompt escapes or path components.
     if [[ "$branch" =~ '^[[:alnum:]/_.-]+$' ]]; then
       MUSE_BRANCH="$branch"
