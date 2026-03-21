@@ -303,11 +303,26 @@ _JsonLeaf = str | int | float | bool | None
 
 
 class _DimensionDef(TypedDict):
+    """One semantic dimension exported by a domain plugin.
+
+    Dimensions are the axes of multidimensional state that Muse tracks
+    independently — e.g. "notes", "pitch_bend", "tempo_map" for the MIDI
+    domain; "geometry", "materials" for a spatial domain.
+    """
+
     name: str
     description: str
 
 
 class _Capabilities(TypedDict, total=False):
+    """Capability manifest sent to MuseHub on domain publish.
+
+    All fields are optional at the transport level (``total=False``), but
+    ``merge_semantics`` should always be provided for meaningful marketplace
+    display.  When derived from a plugin ``schema()``, ``dimensions`` and
+    ``merge_semantics`` are always populated.
+    """
+
     dimensions: list[_DimensionDef]
     artifact_types: list[str]
     merge_semantics: str
@@ -315,6 +330,13 @@ class _Capabilities(TypedDict, total=False):
 
 
 class _PublishPayload(TypedDict):
+    """Wire payload for ``POST /api/v1/domains`` on MuseHub.
+
+    All fields are required.  ``capabilities`` may be an empty ``_Capabilities``
+    dict when the plugin does not yet implement ``schema()`` — the marketplace
+    will show it with no dimension list until re-published.
+    """
+
     author_slug: str
     slug: str
     display_name: str
@@ -325,21 +347,42 @@ class _PublishPayload(TypedDict):
 
 
 class _PublishResponse(TypedDict, total=False):
+    """Parsed response body from ``POST /api/v1/domains``.
+
+    ``scoped_id`` is the canonical marketplace identifier in the form
+    ``@author_slug/slug``.  ``manifest_hash`` is the SHA-256 of the
+    serialised capability manifest, used for change detection on re-publish.
+    """
+
     domain_id: str
     scoped_id: str
     manifest_hash: str
 
 
 def _post_json(url: str, payload: _PublishPayload, token: str) -> _PublishResponse:
-    """HTTP POST *payload* as JSON to *url* with a Bearer token.
+    """HTTP POST *payload* as JSON to *url* authenticated with *token*.
+
+    Uses :mod:`urllib.request` (no third-party dependencies) with a
+    ``Content-Type: application/json`` body and ``Authorization: Bearer``
+    header.  The timeout is :data:`_PUBLISH_TIMEOUT` seconds.
+
+    Args:
+        url:     Full endpoint URL including scheme (e.g. ``https://musehub.ai/api/v1/domains``).
+        payload: Typed publish payload — serialised verbatim to JSON.
+        token:   Bearer token from ``~/.muse/identity.toml`` via ``get_auth_token()``.
 
     Returns:
-        Parsed JSON response body.
+        Parsed ``_PublishResponse`` with ``domain_id``, ``scoped_id``, and
+        ``manifest_hash`` from the server.  Missing keys are returned as empty
+        strings rather than raising ``KeyError``.
 
     Raises:
-        urllib.error.HTTPError: on non-2xx responses.
-        urllib.error.URLError:  on network/connection failures.
-        ValueError:             on non-JSON response body.
+        urllib.error.HTTPError: on non-2xx HTTP responses (409 conflict, 401
+            unauthorized, 5xx server errors).  Caller should inspect ``exc.code``
+            to produce user-friendly messages.
+        urllib.error.URLError:  on DNS resolution failure or connection refused.
+        ValueError:             when the response body is not a JSON object (e.g.
+            plain-text error page from a proxy).
     """
     body = json.dumps(payload).encode()
     req = urllib.request.Request(
