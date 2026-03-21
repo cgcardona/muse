@@ -23,6 +23,7 @@ from muse.core.merge_engine import (
     write_merge_state,
 )
 from muse.core.repo import require_repo
+from muse.core.rerere import auto_apply as rerere_auto_apply
 from muse.core.snapshot import compute_commit_id, compute_snapshot_id
 from muse.core.store import (
     CommitRecord,
@@ -38,7 +39,7 @@ from muse.core.store import (
 from muse.core.reflog import append_reflog
 from muse.core.validation import sanitize_display, validate_branch_name
 from muse.core.workdir import apply_manifest
-from muse.domain import SnapshotManifest, StructuredMergePlugin
+from muse.domain import MergeResult, SnapshotManifest, StructuredMergePlugin
 from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,11 @@ def merge(
     branch: str = typer.Argument(..., help="Branch to merge into the current branch."),
     no_ff: bool = typer.Option(False, "--no-ff", help="Always create a merge commit, even for fast-forward."),
     message: str | None = typer.Option(None, "-m", "--message", help="Override the merge commit message."),
+    rerere_autoupdate: bool = typer.Option(
+        True,
+        "--rerere-autoupdate/--no-rerere-autoupdate",
+        help="Automatically apply cached rerere resolutions to matching conflicts (default: on).",
+    ),
 ) -> None:
     """Three-way merge a branch into the current branch."""
     root = require_repo()
@@ -174,19 +180,51 @@ def merge(
                 typer.echo(f"  ✔ [{strategy}] {p}")
 
     if not result.is_clean:
-        write_merge_state(
-            root,
-            base_commit=base_commit_id or "",
-            ours_commit=ours_commit_id,
-            theirs_commit=theirs_commit_id,
-            conflict_paths=result.conflicts,
-            other_branch=branch,
+        # Try to auto-resolve conflicts using cached rerere resolutions.
+        # Paths with no cached resolution get a preimage recorded so the
+        # user's manual resolution can be saved when they run muse commit.
+        rerere_resolved: dict[str, str] = {}
+        remaining_conflicts = result.conflicts
+
+        if rerere_autoupdate:
+            rerere_resolved, remaining_conflicts = rerere_auto_apply(
+                root,
+                result.conflicts,
+                ours_manifest,
+                theirs_manifest,
+                domain,
+                plugin,
+            )
+            for p in sorted(rerere_resolved):
+                typer.echo(f"  ✔ [rerere] auto-resolved: {p}")
+
+        if remaining_conflicts:
+            write_merge_state(
+                root,
+                base_commit=base_commit_id or "",
+                ours_commit=ours_commit_id,
+                theirs_commit=theirs_commit_id,
+                conflict_paths=remaining_conflicts,
+                other_branch=branch,
+            )
+            typer.echo(f"❌ Merge conflict in {len(remaining_conflicts)} file(s):")
+            for p in sorted(remaining_conflicts):
+                typer.echo(f"  CONFLICT (both modified): {p}")
+            typer.echo('\nFix conflicts and run "muse commit" to complete the merge.')
+            raise typer.Exit(code=ExitCode.USER_ERROR)
+
+        # All conflicts resolved by rerere — rebuild result and fall through
+        # to the clean-merge path so a merge commit is created normally.
+        merged_files = dict(result.merged["files"])
+        merged_files.update(rerere_resolved)
+        result = MergeResult(
+            merged=SnapshotManifest(files=merged_files, domain=domain),
+            conflicts=[],
+            applied_strategies=result.applied_strategies,
+            dimension_reports=result.dimension_reports,
+            op_log=result.op_log,
+            conflict_records=result.conflict_records,
         )
-        typer.echo(f"❌ Merge conflict in {len(result.conflicts)} file(s):")
-        for p in sorted(result.conflicts):
-            typer.echo(f"  CONFLICT (both modified): {p}")
-        typer.echo('\nFix conflicts and run "muse commit" to complete the merge.')
-        raise typer.Exit(code=ExitCode.USER_ERROR)
 
     merged_manifest = result.merged["files"]
     _restore_from_manifest(root, merged_manifest)
