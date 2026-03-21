@@ -10,7 +10,7 @@ keep the prompt accurate.
 
 | File | Purpose |
 |------|---------|
-| `tools/omzsh-plugin/muse.plugin.zsh` | Main plugin (~175 lines) |
+| `tools/omzsh-plugin/muse.plugin.zsh` | Main plugin (~230 lines) |
 | `tools/omzsh-plugin/_muse` | ZSH completion function |
 | `tools/install-omzsh-plugin.sh` | Symlink installer |
 
@@ -26,21 +26,37 @@ PROMPT='%~ $(muse_prompt_info) %# '
 `muse_prompt_info` emits nothing outside a Muse repo. Inside one it emits:
 
 ```
-%F{magenta}<icon> <branch>%f[ %F{red}✗ <count>%f]
+%F{cyan}muse:(%F{magenta}<domain>:<branch>%F{cyan})%f[ %F{red}✗ <count>%f]
 ```
 
-The dirty segment (`✗ N`) only appears after a `muse` command has run in the
-current shell, because the dirty check requires spawning a subprocess.
+This mirrors the Git plugin's `git:(branch)` format, extended with the domain
+name — the key differentiator from a single-domain VCS.
 
-### Domain icons
+### Examples
 
-| Domain | Default icon | Config key |
-|--------|-------------|-----------|
+| Output | Meaning |
+|--------|---------|
+| `muse:(midi:main)` | `midi` domain, branch `main` |
+| `muse:(bitcoin:lightning)` | `bitcoin` domain, branch `lightning` |
+| `muse:(code:feature/x)` | `code` domain, branch `feature/x` |
+| `muse:(midi:a1b2c3d4)` | detached HEAD — short SHA shown |
+| `muse:(midi:main) ✗ 3` | dirty working tree, 3 changed paths |
+
+The dirty segment only appears after a `muse` command runs in the current shell.
+
+### Domain icons (optional)
+
+Icons are off by default. Set `MUSE_PROMPT_ICONS=1` to prepend one:
+
+| Domain | Icon | Config key |
+|--------|------|-----------|
 | `midi` | `♪` | `MUSE_DOMAIN_ICONS[midi]` |
 | `code` | `⌥` | `MUSE_DOMAIN_ICONS[code]` |
 | `bitcoin` | `₿` | `MUSE_DOMAIN_ICONS[bitcoin]` |
 | `scaffold` | `⬡` | `MUSE_DOMAIN_ICONS[scaffold]` |
 | (unknown) | `◈` | `MUSE_DOMAIN_ICONS[_default]` |
+
+With icons on, the prompt becomes `♪ muse:(midi:main)`.
 
 ---
 
@@ -50,7 +66,7 @@ current shell, because the dirty check requires spawning a subprocess.
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `MUSE_PROMPT_ICONS` | `1` | `0` renders `[domain]` instead of icon |
+| `MUSE_PROMPT_ICONS` | `0` | `1` prepends a domain icon before `muse:(…)` |
 | `MUSE_DIRTY_TIMEOUT` | `1` | Seconds before dirty check aborts |
 
 ### State (read-only, exported by plugin)
@@ -130,10 +146,16 @@ All branch/tag/remote lookups use ZSH glob patterns against `.muse/refs/` and
 ### Branch name injection
 
 `.muse/HEAD` is read with a pure ZSH `$(<file)` — no subprocess. Muse writes
-the symbolic ref as `refs/heads/<branch>` (no `ref:` prefix). The result is
-validated with `[[ "$branch" =~ '^[[:alnum:]/_.-]+$' ]]`. Any branch name that
-contains characters outside this set (including `%`, `$`, backticks, quotes) is
-replaced with `?`. Valid branch names are additionally `%`-escaped
+HEAD in one of two self-describing forms (set by `muse/core/store.py`):
+
+```
+ref: refs/heads/<branch>   — on a branch
+commit: <sha256>           — detached HEAD
+```
+
+The branch name is validated with `[[ "$branch" =~ '^[[:alnum:]/_.-]+$' ]]`.
+Any name containing characters outside this set (including `%`, `$`, backticks,
+quotes) is replaced with `?`. Valid names are additionally `%`-escaped
 (`${branch//\%/%%}`) before insertion into the prompt string, so ZSH never
 interprets them as prompt directives.
 
@@ -152,8 +174,7 @@ flag. `timeout -- ...` follows the same pattern.
 
 ### No `eval`
 
-No user-supplied data is ever passed to `eval`. The post-hook system from the
-original plugin that `eval`-ed `MUSE_POST_*_CMD` variables has been removed.
+No user-supplied data is ever passed to `eval`.
 
 ### Completion safety
 
@@ -177,6 +198,13 @@ Add to `~/.zshrc`:
 
 ```zsh
 plugins=(git muse)
+```
+
+Then add the prompt segment:
+
+```zsh
+# Append to your existing PROMPT, or set a new one:
+PROMPT+='$(muse_prompt_info) '
 ```
 
 Then reload:

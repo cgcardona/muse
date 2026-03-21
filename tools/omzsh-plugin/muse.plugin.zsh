@@ -27,7 +27,7 @@ if ! is-at-least 5.0; then
 fi
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-: ${MUSE_PROMPT_ICONS:=1}
+: ${MUSE_PROMPT_ICONS:=0}
 : ${MUSE_DIRTY_TIMEOUT:=1}
 
 # Domain icon map. Override individual elements in ~/.zshrc before plugins=().
@@ -77,8 +77,8 @@ function _muse_parse_head() {
   fi
   local raw
   raw=$(<"$head_file")
-  if [[ "$raw" == "refs/heads/"* ]]; then
-    local branch="${raw#refs/heads/}"
+  if [[ "$raw" == "ref: refs/heads/"* ]]; then
+    local branch="${raw#ref: refs/heads/}"
     # Reject anything that could inject prompt escapes or path components.
     if [[ "$branch" =~ '^[[:alnum:]/_.-]+$' ]]; then
       MUSE_BRANCH="$branch"
@@ -181,16 +181,21 @@ precmd_functions+=(_muse_hook_precmd)
 function muse_prompt_info() {
   [[ -z "$MUSE_REPO_ROOT" ]] && return
 
-  local icon="${MUSE_DOMAIN_ICONS[$MUSE_DOMAIN]:-${MUSE_DOMAIN_ICONS[_default]}}"
-  [[ "$MUSE_PROMPT_ICONS" == "0" ]] && icon="[$MUSE_DOMAIN]"
-
   # Escape % so ZSH does not treat branch-name content as prompt directives.
   local branch="${MUSE_BRANCH//\%/%%}"
+  local domain="${MUSE_DOMAIN//\%/%%}"
 
   local dirty=""
   (( MUSE_DIRTY )) && dirty=" %F{red}✗ ${MUSE_DIRTY_COUNT}%f"
 
-  echo -n "%F{magenta}${icon} ${branch}%f${dirty}"
+  # Format: muse:(domain:branch)  — mirrors git:(branch) but adds the domain.
+  # Set MUSE_PROMPT_ICONS=1 in ~/.zshrc to prepend a domain icon.
+  if [[ "$MUSE_PROMPT_ICONS" == "1" ]]; then
+    local icon="${MUSE_DOMAIN_ICONS[$MUSE_DOMAIN]:-${MUSE_DOMAIN_ICONS[_default]}}"
+    echo -n "%F{cyan}${icon} muse:(%F{magenta}${domain}:${branch}%F{cyan})%f${dirty}"
+  else
+    echo -n "%F{cyan}muse:(%F{magenta}${domain}:${branch}%F{cyan})%f${dirty}"
+  fi
 }
 
 # ── §5  Aliases ───────────────────────────────────────────────────────────────
