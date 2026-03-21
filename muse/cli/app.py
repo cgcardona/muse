@@ -113,11 +113,13 @@ from muse.cli.commands import (
     bisect,
     blame,
     branch,
+    bundle,
     cat,
     cherry_pick,
     checkout,
     checkout_symbol,
     check,
+    clean,
     clone,
     clones,
     codemap,
@@ -131,12 +133,14 @@ from muse.cli.commands import (
     coverage,
     dead,
     deps,
+    describe,
     detect_refactor,
     diff,
     domains,
     fetch,
     find_symbol,
     forecast,
+    content_grep,
     gc,
     grep,
     harmony,
@@ -165,6 +169,7 @@ from muse.cli.commands import (
     push,
     query,
     query_history,
+    rebase,
     reconcile,
     reflog,
     remote,
@@ -174,7 +179,9 @@ from muse.cli.commands import (
     revert,
     semantic_cherry_pick,
     shard,
+    shortlog,
     show,
+    snapshot_cmd,
     stable,
     stash,
     status,
@@ -183,7 +190,9 @@ from muse.cli.commands import (
     tag,
     breakage,
     transpose,
+    verify,
     velocity_profile,
+    whoami,
     worktree,
     workspace,
     # New MIDI semantic porcelain — analysis
@@ -336,6 +345,17 @@ cli.add_typer(archive.app,      name="archive",     help="Export any historical 
 cli.add_typer(bisect.app,       name="bisect",      help="Binary search through commit history to isolate the first bad commit.")
 cli.add_typer(worktree.app,     name="worktree",    help="Manage multiple simultaneous branch checkouts (one state/ per branch).")
 cli.add_typer(workspace.app,    name="workspace",   help="Compose and manage multi-repository workspaces.")
+
+# New porcelain gap-fill commands
+cli.add_typer(rebase.app,       name="rebase",      help="Replay commits from the current branch onto a new base.")
+cli.add_typer(clean.app,        name="clean",       help="Remove untracked files from the working tree.")
+cli.add_typer(describe.app,     name="describe",    help="Label a commit by its nearest tag and hop distance.")
+cli.add_typer(shortlog.app,     name="shortlog",    help="Commit summary grouped by author or agent.")
+cli.add_typer(verify.app,       name="verify",      help="Whole-repository integrity check — re-hash objects and verify DAG.")
+cli.add_typer(snapshot_cmd.app, name="snapshot",    help="Explicit snapshot management — capture, list, show, and export.")
+cli.add_typer(bundle.app,           name="bundle",          help="Pack and unpack commits into a single portable bundle file.")
+cli.add_typer(content_grep.app,     name="content-grep",    help="Full-text search across tracked file content (raw bytes, regex).")
+cli.add_typer(whoami.app,           name="whoami",          help="Show the current identity (shortcut for muse auth whoami).")
 
 # ---------------------------------------------------------------------------
 # Tier 3 — MIDI domain semantic commands (muse midi …)
