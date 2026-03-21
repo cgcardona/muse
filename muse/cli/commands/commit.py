@@ -24,8 +24,9 @@ import pathlib
 import typer
 
 from muse.core.errors import ExitCode
-from muse.core.merge_engine import read_merge_state
+from muse.core.merge_engine import clear_merge_state, read_merge_state
 from muse.core.object_store import write_object_from_path
+from muse.core.rerere import record_resolutions as rerere_record_resolutions
 from muse.core.provenance import make_agent_identity, read_agent_key, sign_commit_hmac
 from muse.core.repo import require_repo
 from muse.core.snapshot import compute_commit_id, compute_snapshot_id
@@ -92,6 +93,7 @@ def commit(
 
     root = require_repo()
 
+    # Read merge state before any writes — needed for rerere recording below.
     merge_state = read_merge_state(root)
     if merge_state is not None and merge_state.conflict_paths:
         typer.echo("❌ You have unresolved merge conflicts. Resolve them before committing.")
@@ -218,5 +220,31 @@ def commit(
         author=author or "unknown",
         operation=f"commit: {sanitize_display(message or '(no message)')}",
     )
+
+    # If this commit completed a conflicted merge, record how each conflict was
+    # resolved so rerere can replay it on future identical conflicts.
+    if merge_state is not None and merge_state.ours_commit and merge_state.theirs_commit:
+        from muse.core.store import read_commit as _read_commit, read_snapshot as _read_snap
+
+        def _manifest_for(cid: str) -> dict[str, str]:
+            cr = _read_commit(root, cid)
+            if cr is None:
+                return {}
+            snap = _read_snap(root, cr.snapshot_id)
+            return snap.manifest if snap else {}
+
+        ours_manifest = _manifest_for(merge_state.ours_commit)
+        theirs_manifest = _manifest_for(merge_state.theirs_commit)
+        domain = read_domain(root)
+        rerere_record_resolutions(
+            root,
+            list(merge_state.conflict_paths),
+            ours_manifest,
+            theirs_manifest,
+            manifest,
+            domain,
+            plugin,
+        )
+        clear_merge_state(root)
 
     typer.echo(f"[{sanitize_display(branch)} {commit_id[:8]}] {sanitize_display(message or '')}")

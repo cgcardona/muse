@@ -37,7 +37,7 @@ Tier 2 — Core Porcelain commands::
     revert      stash       cherry-pick tag         domains
     attributes  remote      clone       fetch       pull
     push        check       annotate    blame
-    reflog      gc          archive     bisect
+    reflog      rerere      gc          archive     bisect
     worktree    workspace
 
 Identity & hub fabric::
@@ -156,6 +156,7 @@ from muse.cli.commands import (
     reconcile,
     reflog,
     remote,
+    rerere,
     reserve,
     reset,
     revert,
@@ -293,6 +294,7 @@ cli.add_typer(annotate.app,     name="annotate",    help="[*] CRDT-backed commit
 # VCS completeness — safety net, search, export, multi-repo
 cli.add_typer(core_blame.app,   name="blame",       help="Line-level attribution for any text file — which commit last changed each line.")
 cli.add_typer(reflog.app,       name="reflog",      help="Show the history of HEAD and branch-ref movements — the undo safety net.")
+cli.add_typer(rerere.app,       name="rerere",      help="Reuse recorded conflict resolutions — auto-apply cached fixes on future merges.")
 cli.add_typer(gc.app,           name="gc",          help="Garbage-collect unreachable objects from the object store.")
 cli.add_typer(archive.app,      name="archive",     help="Export any historical snapshot as a portable tar.gz or zip archive.")
 cli.add_typer(bisect.app,       name="bisect",      help="Binary search through commit history to isolate the first bad commit.")
