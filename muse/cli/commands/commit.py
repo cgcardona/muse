@@ -1,16 +1,25 @@
-"""muse commit — record the current state/ state as a new version.
+"""``muse commit`` — record the current workspace state as a new version.
 
 Algorithm
 ---------
 1. Resolve repo root (walk up for ``.muse/``).
-2. Read repo_id from ``.muse/repo.json``, current branch from ``.muse/HEAD``.
-3. Walk ``state/`` and hash each file → snapshot manifest.
-4. If HEAD snapshot_id == current snapshot_id → "nothing to commit".
-5. Compute deterministic commit_id = sha256(parents | snapshot | message | ts).
-6. Write blob objects to ``.muse/objects/``.
+2. Read ``repo_id`` from ``.muse/repo.json`` and the current branch from
+   ``.muse/HEAD``.
+3. Invoke ``plugin.snapshot(root)`` to collect the workspace manifest
+   (domain-specific; the MIDI plugin walks MIDI/MusicXML files in ``state/``).
+4. If the computed ``snapshot_id`` matches HEAD → "nothing to commit".
+5. Compute a deterministic ``commit_id`` = SHA-256 of (parents | snapshot |
+   message | timestamp).
+6. Write content-addressed blob objects to ``.muse/objects/``.
 7. Write snapshot JSON to ``.muse/snapshots/<snapshot_id>.json``.
 8. Write commit JSON to ``.muse/commits/<commit_id>.json``.
-9. Advance ``.muse/refs/heads/<branch>`` to the new commit_id.
+9. Advance ``.muse/refs/heads/<branch>`` to the new ``commit_id``.
+
+Exit codes::
+
+    0 — commit created (or nothing to commit)
+    1 — validation error (no message, merge conflict, …)
+    3 — I/O error
 """
 
 from __future__ import annotations
@@ -85,8 +94,18 @@ def commit(
     model_id: str | None = typer.Option(None, "--model-id", help="Model identifier for AI agents (overrides MUSE_MODEL_ID env var)."),
     toolchain_id: str | None = typer.Option(None, "--toolchain-id", help="Toolchain string (overrides MUSE_TOOLCHAIN_ID env var)."),
     sign: bool = typer.Option(False, "--sign", help="HMAC-sign the commit using the agent's stored key (requires --agent-id or MUSE_AGENT_ID)."),
+    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
 ) -> None:
-    """Record the current state/ state as a new version."""
+    """Record the current state/ state as a new version.
+
+    Agents should pass ``--format json`` to receive a machine-readable result
+    with ``commit_id``, ``branch``, ``snapshot_id``, ``message``,
+    ``parent_commit_id``, and ``committed_at`` fields.
+    """
+    if fmt not in ("text", "json"):
+        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
     if message is None and not allow_empty:
         typer.echo("❌ Provide a commit message with -m MESSAGE.")
         raise typer.Exit(code=ExitCode.USER_ERROR)
@@ -98,7 +117,7 @@ def commit(
     if merge_state is not None and merge_state.conflict_paths:
         typer.echo("❌ You have unresolved merge conflicts. Resolve them before committing.")
         for p in sorted(merge_state.conflict_paths):
-            typer.echo(f"  both modified: {p}")
+            typer.echo(f"  both modified: {sanitize_display(p)}")
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
     repo_id = _read_repo_id(root)
@@ -247,4 +266,16 @@ def commit(
         )
         clear_merge_state(root)
 
-    typer.echo(f"[{sanitize_display(branch)} {commit_id[:8]}] {sanitize_display(message or '')}")
+    if fmt == "json":
+        typer.echo(json.dumps({
+            "commit_id": commit_id,
+            "branch": branch,
+            "snapshot_id": snapshot_id,
+            "message": message or "",
+            "parent_commit_id": parent_id,
+            "committed_at": committed_at.isoformat(),
+            "author": author or "",
+            "sem_ver_bump": sem_ver_bump,
+        }))
+    else:
+        typer.echo(f"[{sanitize_display(branch)} {commit_id[:8]}] {sanitize_display(message or '')}")

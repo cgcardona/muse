@@ -300,6 +300,9 @@ def bundle_verify(
     for obj in bundle.get("objects", []):
         obj_id = obj["object_id"]
         content_b64 = obj["content_b64"]
+        if not obj_id or not content_b64:
+            failures.append("objects list: entry has empty object_id or content_b64")
+            continue
         try:
             raw = base64.b64decode(content_b64)
         except Exception:
@@ -315,8 +318,8 @@ def bundle_verify(
 
     # Check snapshots reference objects in the bundle.
     for snap_dict in bundle.get("snapshots", []):
-        snap_id = snap_dict["snapshot_id"]
-        manifest = snap_dict["manifest"]
+        snap_id = snap_dict.get("snapshot_id", "")
+        manifest = snap_dict.get("manifest", {})
         for rel_path, obj_id in manifest.items():
             if obj_id not in bundle_obj_ids:
                 failures.append(

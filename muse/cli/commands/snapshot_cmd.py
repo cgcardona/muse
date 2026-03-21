@@ -50,6 +50,39 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
+_HEX_CHARS = frozenset("0123456789abcdef")
+
+
+def _safe_arcname(prefix: str, rel_path: str) -> str | None:
+    """Build an archive entry name that cannot escape the archive root (zip-slip guard).
+
+    Returns ``None`` when *rel_path* resolves outside the intended prefix, in
+    which case the caller should skip that entry.  ``prefix`` must not contain
+    ``..`` segments; the caller is responsible for validating it.
+    """
+    # Normalise the prefix: strip trailing slashes, reject traversal.
+    clean_prefix = prefix.rstrip("/").strip() if prefix else ""
+    if ".." in clean_prefix.split("/"):
+        return None
+
+    # Normalise rel_path: must be purely relative, no .. segments.
+    resolved = pathlib.PurePosixPath(rel_path)
+    if resolved.is_absolute():
+        return None
+    parts = resolved.parts
+    if ".." in parts:
+        return None
+    safe_rel = str(resolved)
+
+    return (clean_prefix + "/" + safe_rel) if clean_prefix else safe_rel
+
+
+def _validate_snapshot_id_prefix(snapshot_id: str) -> str:
+    """Return a glob-safe prefix from *snapshot_id* (hex chars only, max 64)."""
+    # Strip any non-hex characters so the prefix cannot inject glob metacharacters.
+    clean = "".join(c for c in snapshot_id[:64] if c in _HEX_CHARS)
+    return clean
+
 
 def _list_all_snapshots(root: pathlib.Path) -> list[SnapshotRecord]:
     """Return all stored snapshots sorted newest-first."""
@@ -74,14 +107,18 @@ def _build_tar(
     output_path: pathlib.Path,
     prefix: str,
 ) -> int:
+    """Write a tar.gz archive from *manifest*; return the number of files written."""
     count = 0
     with tarfile.open(output_path, "w:gz") as tar:
         for rel_path, object_id in sorted(manifest.items()):
+            arcname = _safe_arcname(prefix, rel_path)
+            if arcname is None:
+                logger.warning("⚠️ Skipping unsafe path in manifest: %s", rel_path)
+                continue
             obj = object_path(root, object_id)
             if not obj.exists():
                 logger.warning("⚠️ Missing object %s for %s — skipping", object_id[:12], rel_path)
                 continue
-            arcname = (prefix.rstrip("/") + "/" + rel_path) if prefix else rel_path
             tar.add(str(obj), arcname=arcname, recursive=False)
             count += 1
     return count
@@ -93,14 +130,18 @@ def _build_zip(
     output_path: pathlib.Path,
     prefix: str,
 ) -> int:
+    """Write a zip archive from *manifest*; return the number of files written."""
     count = 0
     with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for rel_path, object_id in sorted(manifest.items()):
+            arcname = _safe_arcname(prefix, rel_path)
+            if arcname is None:
+                logger.warning("⚠️ Skipping unsafe path in manifest: %s", rel_path)
+                continue
             obj = object_path(root, object_id)
             if not obj.exists():
                 logger.warning("⚠️ Missing object %s for %s — skipping", object_id[:12], rel_path)
                 continue
-            arcname = (prefix.rstrip("/") + "/" + rel_path) if prefix else rel_path
             zf.write(str(obj), arcname=arcname)
             count += 1
     return count
@@ -242,11 +283,11 @@ def snapshot_show(
 
     root = require_repo()
 
-    # Try full ID first, then prefix scan.
+    # Try full ID first, then prefix scan with a glob-safe prefix.
     snap = read_snapshot(root, snapshot_id)
     if snap is None:
         snaps_dir = root / ".muse" / "snapshots"
-        safe_prefix = snapshot_id[:64]
+        safe_prefix = _validate_snapshot_id_prefix(snapshot_id)
         for p in snaps_dir.glob(f"{safe_prefix}*.json"):
             try:
                 snap = SnapshotRecord.from_dict(
@@ -310,7 +351,7 @@ def snapshot_export(
     snap = read_snapshot(root, snapshot_id)
     if snap is None:
         snaps_dir = root / ".muse" / "snapshots"
-        safe_prefix = snapshot_id[:64]
+        safe_prefix = _validate_snapshot_id_prefix(snapshot_id)
         for p in snaps_dir.glob(f"{safe_prefix}*.json"):
             try:
                 snap = SnapshotRecord.from_dict(

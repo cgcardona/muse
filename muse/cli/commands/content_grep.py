@@ -1,8 +1,14 @@
 """``muse content-grep`` — full-text search across tracked files.
 
 Searches the content of every tracked file in a commit's snapshot for a
-pattern.  Files are loaded from the content-addressed object store and
-streamed in 64 KiB chunks to keep memory usage constant for large blobs.
+pattern.  Each file is read from the content-addressed object store in full
+(bounded by the store's MAX_FILE_BYTES limit, typically 256 MiB).  Binary
+files are detected by scanning the first 8 KiB for null bytes and silently
+skipped.  Files that cannot be decoded as UTF-8 are also skipped.
+
+Regex safety: patterns are compiled with a 500-character length limit to
+prevent catastrophic backtracking (ReDoS).  Use ``re.escape`` in scripts
+if you need to match literal strings with special characters.
 
 Binary files are detected by scanning the first 8 KiB for null bytes and
 silently skipped.  Files that cannot be decoded as UTF-8 are also skipped.
@@ -14,11 +20,11 @@ the raw byte-level text search is used.
 
 Usage::
 
-    muse grep --pattern "Cm7"                     # literal substring
-    muse grep --pattern "tempo:\\s+\\d+"          # regex
-    muse grep --pattern "TODO" --ignore-case      # case-insensitive
-    muse grep --pattern "chorus" --files-only     # only file paths
-    muse grep --pattern "bass" --ref feat/audio   # search a branch tip
+    muse content-grep --pattern "Cm7"                     # literal substring
+    muse content-grep --pattern "tempo:\\s+\\d+"          # regex
+    muse content-grep --pattern "TODO" --ignore-case      # case-insensitive
+    muse content-grep --pattern "chorus" --files-only     # only file paths
+    muse content-grep --pattern "bass" --ref feat/audio   # search a branch tip
 
 Exit codes::
 
@@ -31,6 +37,7 @@ from __future__ import annotations
 
 import json
 import logging
+import pathlib
 import re
 from typing import Annotated, TypedDict
 
@@ -54,6 +61,7 @@ logger = logging.getLogger(__name__)
 app = typer.Typer(help="Full-text search across tracked files in a snapshot.")
 
 _BINARY_CHUNK = 8192
+_MAX_PATTERN_LEN = 500  # reject patterns that could cause catastrophic backtracking
 
 
 class GrepMatch(TypedDict):
@@ -118,9 +126,6 @@ def _search_object(
                 matches.append(GrepMatch(line_number=lineno, text=line.rstrip("\r")))
 
     return total, matches
-
-
-import pathlib
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -201,6 +206,15 @@ def grep(
         typer.echo(f"❌ Snapshot {commit.snapshot_id[:12]} not found.", err=True)
         raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
 
+    # Guard against patterns so long they risk catastrophic backtracking.
+    if len(pattern) > _MAX_PATTERN_LEN:
+        typer.echo(
+            f"❌ Pattern too long ({len(pattern)} chars, max {_MAX_PATTERN_LEN}). "
+            "Use a shorter pattern or re.escape() for literal matches.",
+            err=True,
+        )
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
     # Compile regex.
     flags = re.IGNORECASE if ignore_case else 0
     try:
@@ -230,10 +244,11 @@ def grep(
         typer.echo(json.dumps(file_results, indent=2))
     else:
         for fr in file_results:
+            safe_path = sanitize_display(fr["path"])
             if files_only:
-                typer.echo(fr["path"])
+                typer.echo(safe_path)
             elif count_mode:
-                typer.echo(f"{fr['path']}:{fr['match_count']}")
+                typer.echo(f"{safe_path}:{fr['match_count']}")
             else:
                 for m in fr["matches"]:
-                    typer.echo(f"{fr['path']}:{m['line_number']}:{m['text']}")
+                    typer.echo(f"{safe_path}:{m['line_number']}:{sanitize_display(m['text'])}")

@@ -40,7 +40,6 @@ import json
 import logging
 import pathlib
 import sys
-from typing import Callable
 
 import typer
 
@@ -87,8 +86,19 @@ def status(
     short: bool = typer.Option(False, "--short", "-s", help="Condensed output."),
     porcelain: bool = typer.Option(False, "--porcelain", help="Machine-readable output (no color)."),
     branch_only: bool = typer.Option(False, "--branch", "-b", help="Show branch info only."),
+    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
 ) -> None:
-    """Show working-tree drift against HEAD."""
+    """Show working-tree drift against HEAD.
+
+    Agents should pass ``--format json`` to receive structured output with
+    ``branch``, ``clean`` (bool), and ``added``, ``modified``, ``deleted``
+    file lists.
+    """
+    if fmt not in ("text", "json"):
+        from muse.core.validation import sanitize_display as _sd
+        typer.echo(f"❌ Unknown --format '{_sd(fmt)}'. Choose text or json.", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
     root = require_repo()
     try:
         branch = read_current_branch(root)
@@ -102,18 +112,22 @@ def status(
     # would otherwise each trigger independently.
     repo_id, domain = _read_repo_meta(root)
 
-    if porcelain:
-        typer.echo(f"## {branch}")
-    elif not short:
-        typer.echo(f"On branch {branch}")
+    # JSON mode prints everything at once at the end — skip all partial prints.
+    if fmt != "json":
+        if porcelain:
+            typer.echo(f"## {branch}")
+        elif not short:
+            typer.echo(f"On branch {branch}")
 
     # --branch: print only the branch header then exit, regardless of mode.
     if branch_only:
+        if fmt == "json":
+            typer.echo(json.dumps({"branch": branch}))
         return
 
     # Compute isatty once; it is a syscall and must not be repeated per line.
     # Porcelain output is never colored, even on a TTY.
-    is_tty = sys.stdout.isatty() and not porcelain
+    is_tty = sys.stdout.isatty() and not porcelain and fmt != "json"
 
     def _color(text: str, color: str) -> str:
         return typer.style(text, fg=color, bold=True) if is_tty else text
@@ -128,7 +142,20 @@ def status(
     modified: set[str] = {op["address"] for op in delta["ops"] if op["op"] in ("replace", "patch")}
     deleted: set[str] = {op["address"] for op in delta["ops"] if op["op"] == "delete"}
 
-    if not (added or modified or deleted):
+    clean = not (added or modified or deleted)
+
+    # --format json: always wins, no color, fully structured.
+    if fmt == "json":
+        typer.echo(json.dumps({
+            "branch": branch,
+            "clean": clean,
+            "added": sorted(added),
+            "modified": sorted(modified),
+            "deleted": sorted(deleted),
+        }))
+        return
+
+    if clean:
         if not short and not porcelain:
             typer.echo("\nNothing to commit, working tree clean")
         return

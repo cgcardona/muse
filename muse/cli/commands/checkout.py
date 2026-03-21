@@ -112,8 +112,17 @@ def checkout(
     target: str = typer.Argument(..., help="Branch name or commit ID to check out."),
     create: bool = typer.Option(False, "-b", "--create", help="Create a new branch."),
     force: bool = typer.Option(False, "--force", "-f", help="Discard uncommitted changes."),
+    fmt: str = typer.Option("text", "--format", help="Output format: text or json."),
 ) -> None:
-    """Switch branches or restore working tree from a commit."""
+    """Switch branches or restore working tree from a commit.
+
+    Agents should pass ``--format json`` to get a machine-readable result with
+    ``action`` (created|switched|detached), ``branch``, and ``commit_id``.
+    """
+    if fmt not in ("text", "json"):
+        from muse.core.validation import sanitize_display as _sd
+        typer.echo(f"❌ Unknown --format '{_sd(fmt)}'. Choose text or json.", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     current_branch = _read_current_branch(root)
@@ -139,14 +148,27 @@ def checkout(
             root, target, old_id=None, new_id=current_commit or ("0" * 64),
             author="user", operation=f"branch: created from {sanitize_display(current_branch)}",
         )
-        typer.echo(f"Switched to a new branch '{sanitize_display(target)}'")
+        if fmt == "json":
+            typer.echo(json.dumps({"action": "created", "branch": target, "commit_id": current_commit}))
+        else:
+            typer.echo(f"Switched to a new branch '{sanitize_display(target)}'")
         return
 
-    # Check if target is a known branch
+    # Check if target is a known branch — validate name before using as path component.
+    try:
+        validate_branch_name(target)
+    except ValueError as exc:
+        typer.echo(f"❌ Invalid branch name: {exc}", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
     ref_file = muse_dir / "refs" / "heads" / target
     if ref_file.exists():
         if target == current_branch:
-            typer.echo(f"Already on '{target}'")
+            if fmt == "json":
+                typer.echo(json.dumps({"action": "already_on", "branch": target,
+                                       "commit_id": get_head_commit_id(root, target) or ""}))
+            else:
+                typer.echo(f"Already on '{sanitize_display(target)}'")
             return
 
         target_commit_id = get_head_commit_id(root, target) or ""
@@ -161,7 +183,10 @@ def checkout(
             author="user",
             operation=f"checkout: moving from {sanitize_display(current_branch)} to {sanitize_display(target)}",
         )
-        typer.echo(f"Switched to branch '{target}'")
+        if fmt == "json":
+            typer.echo(json.dumps({"action": "switched", "branch": target, "commit_id": target_commit_id}))
+        else:
+            typer.echo(f"Switched to branch '{sanitize_display(target)}'")
         return
 
     # Try as a commit ID (detached HEAD)
@@ -178,4 +203,7 @@ def checkout(
         author="user",
         operation=f"checkout: detaching HEAD at {commit.commit_id[:12]}",
     )
-    typer.echo(f"HEAD is now at {commit.commit_id[:8]} {sanitize_display(commit.message)}")
+    if fmt == "json":
+        typer.echo(json.dumps({"action": "detached", "branch": None, "commit_id": commit.commit_id}))
+    else:
+        typer.echo(f"HEAD is now at {commit.commit_id[:8]} {sanitize_display(commit.message)}")

@@ -11,6 +11,7 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import get_commit_snapshot_manifest, read_commit, read_current_branch, resolve_commit_ref
+from muse.core.validation import sanitize_display
 from muse.domain import DomainOp
 
 logger = logging.getLogger(__name__)
@@ -66,7 +67,7 @@ def show(
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{ref}' not found.")
+        typer.echo(f"❌ Commit '{sanitize_display(str(ref))}' not found.")
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
     if json_out:
@@ -96,12 +97,12 @@ def show(
     if commit.parent2_commit_id:
         typer.echo(f"Parent: {commit.parent2_commit_id[:8]} (merge)")
     if commit.author:
-        typer.echo(f"Author: {commit.author}")
+        typer.echo(f"Author: {sanitize_display(commit.author)}")
     typer.echo(f"Date:   {commit.committed_at}")
     if commit.metadata:
         for k, v in sorted(commit.metadata.items()):
-            typer.echo(f"        {k}: {v}")
-    typer.echo(f"\n    {commit.message}\n")
+            typer.echo(f"        {sanitize_display(k)}: {sanitize_display(str(v))}")
+    typer.echo(f"\n    {sanitize_display(commit.message)}\n")
 
     if not stat:
         return

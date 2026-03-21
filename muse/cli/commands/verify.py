@@ -35,6 +35,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
+from muse.core.validation import sanitize_display
 from muse.core.verify import run_verify
 
 logger = logging.getLogger(__name__)
@@ -74,7 +75,7 @@ def verify(
         muse verify --format json | jq '.failures'
     """
     if fmt not in {"text", "json"}:
-        typer.echo(f"❌ Unknown --format '{fmt}'. Choose text or json.", err=True)
+        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
     root = require_repo()
