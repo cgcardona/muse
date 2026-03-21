@@ -42,6 +42,7 @@ import sys
 
 import typer
 
+from muse.core.store import read_current_branch
 from muse.core.query_engine import format_matches, walk_history
 from muse.core.repo import require_repo
 from muse.plugins.code._code_query import build_evaluator
@@ -52,8 +53,7 @@ app = typer.Typer()
 
 
 def _current_branch(root: pathlib.Path) -> str:
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    return head_ref.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 @app.callback(invoke_without_command=True)

@@ -35,7 +35,7 @@ def _make_repo(
         (muse / d).mkdir(parents=True, exist_ok=True)
 
     (muse / "repo.json").write_text(json.dumps({"repo_id": "test-repo"}))
-    (muse / "HEAD").write_text("refs/heads/main\n")
+    (muse / "HEAD").write_text("ref: refs/heads/main\n")
 
     content = b"hello world\n"
     sha = _sha256(content)
@@ -463,7 +463,7 @@ class TestWorktreeCli:
         for d in ("objects", "commits", "snapshots", "refs/heads"):
             (muse / d).mkdir(parents=True, exist_ok=True)
         (muse / "repo.json").write_text(json.dumps({"repo_id": "test"}))
-        (muse / "HEAD").write_text("refs/heads/main\n")
+        (muse / "HEAD").write_text("ref: refs/heads/main\n")
         (muse / "refs" / "heads" / "main").write_text("0" * 64)
         monkeypatch.chdir(repo_dir)
         return repo_dir

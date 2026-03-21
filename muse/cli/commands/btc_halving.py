@@ -34,11 +34,11 @@ import logging
 
 import typer
 
+from muse.core.store import read_current_branch
 from muse.core.repo import require_repo
 from muse.plugins.bitcoin._loader import (
     load_utxos,
     load_utxos_from_workdir,
-    read_current_branch,
     read_repo_id,
 )
 from muse.plugins.bitcoin._query import (

@@ -29,7 +29,7 @@ def repo(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Pat
     (muse_dir / "repo.json").write_text(
         json.dumps({"repo_id": "test-repo", "schema_version": "2", "domain": "midi"})
     )
-    (muse_dir / "HEAD").write_text("refs/heads/main\n")
+    (muse_dir / "HEAD").write_text("ref: refs/heads/main\n")
     (muse_dir / "refs" / "heads" / "main").write_text("")
     (muse_dir / "config.toml").write_text("")
     monkeypatch.setenv("MUSE_REPO_ROOT", str(tmp_path))

@@ -30,7 +30,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import resolve_commit_ref
+from muse.core.store import read_current_branch, resolve_commit_ref
 from muse.plugins.midi._analysis import RhythmAnalysis, analyze_rhythm
 from muse.plugins.midi._query import load_track, load_track_from_workdir
 
@@ -45,7 +45,7 @@ def _read_repo_id(root: pathlib.Path) -> str:
 
 
 def _read_branch(root: pathlib.Path) -> str:
-    return (root / ".muse" / "HEAD").read_text().strip().removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 def _quant_label(score: float) -> str:

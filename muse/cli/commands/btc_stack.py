@@ -35,11 +35,10 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import get_commits_for_branch, get_head_commit_id
+from muse.core.store import get_commits_for_branch, get_head_commit_id, read_current_branch
 from muse.plugins.bitcoin._loader import (
     load_prices,
     load_utxos,
-    read_current_branch,
     read_repo_id,
 )
 from muse.plugins.bitcoin._query import (

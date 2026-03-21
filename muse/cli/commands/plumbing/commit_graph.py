@@ -41,7 +41,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import get_head_commit_id, read_commit
+from muse.core.store import get_head_commit_id, read_commit, read_current_branch
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +51,7 @@ _DEFAULT_MAX = 10_000
 
 
 def _current_branch(root: pathlib.Path) -> str:
-    head = (root / ".muse" / "HEAD").read_text().strip()
-    return head.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 @app.callback(invoke_without_command=True)

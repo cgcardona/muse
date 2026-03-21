@@ -12,7 +12,7 @@ Layout
         tags/<repo_id>/<tag_id>.json — tag records
         objects/<sha2>/<sha62>       — content-addressed blobs (via object_store.py)
         refs/heads/<branch>          — branch HEAD pointers (plain text commit IDs)
-        HEAD                         — symbolic ref: "refs/heads/main"
+        HEAD                         — "ref: refs/heads/main" | "commit: <sha256>"
         repo.json                    — repository identity
 
 Commit JSON schema
@@ -51,9 +51,10 @@ import datetime
 import json
 import logging
 import pathlib
+import re
 import uuid
 from dataclasses import dataclass, field
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from muse.core.validation import (
     sanitize_glob_prefix,
@@ -68,6 +69,106 @@ logger = logging.getLogger(__name__)
 _COMMITS_DIR = "commits"
 _SNAPSHOTS_DIR = "snapshots"
 _TAGS_DIR = "tags"
+
+# ---------------------------------------------------------------------------
+# HEAD file — typed I/O
+# ---------------------------------------------------------------------------
+#
+# Muse HEAD format
+# ----------------
+# The ``.muse/HEAD`` file is always one of two self-describing forms:
+#
+#   ref: refs/heads/<branch>    — symbolic ref; HEAD points to a branch
+#   commit: <sha256>            — detached HEAD; HEAD points to a commit
+#
+# The ``ref:`` prefix is adopted from Git because it is the right design:
+# a file that can hold two semantically different things should say which
+# one it holds.  The ``commit:`` prefix for detached HEAD is a Muse
+# extension — Git uses a bare SHA, which is ambiguous (SHA-1? SHA-256?).
+# Muse makes the hash algorithm implicit in the prefix, leaving the door
+# open for future algorithm identifiers without changing the parsing rule.
+#
+# There is no backward-compatibility layer; every write site uses
+# ``write_head_branch`` / ``write_head_commit`` and every read site uses
+# ``read_head`` / ``read_current_branch``.
+
+
+class SymbolicHead(TypedDict):
+    """HEAD points to a named branch."""
+
+    kind: Literal["branch"]
+    branch: str
+
+
+class DetachedHead(TypedDict):
+    """HEAD points directly to a commit (detached HEAD state)."""
+
+    kind: Literal["commit"]
+    commit_id: str
+
+
+HeadState = SymbolicHead | DetachedHead
+
+
+def read_head(repo_root: pathlib.Path) -> HeadState:
+    """Parse ``.muse/HEAD`` and return a typed :data:`HeadState`.
+
+    Raises :exc:`ValueError` for any content that does not match the two
+    expected forms so callers never receive an ambiguous raw string.
+    """
+    raw = (repo_root / ".muse" / "HEAD").read_text().strip()
+    if raw.startswith("ref: refs/heads/"):
+        branch = raw.removeprefix("ref: refs/heads/").strip()
+        validate_branch_name(branch)
+        return SymbolicHead(kind="branch", branch=branch)
+    if raw.startswith("commit: "):
+        commit_id = raw.removeprefix("commit: ").strip()
+        if not re.fullmatch(r"[0-9a-f]{64}", commit_id):
+            raise ValueError(f"Malformed commit ID in HEAD: {commit_id!r}")
+        return DetachedHead(kind="commit", commit_id=commit_id)
+    raise ValueError(
+        f"Malformed HEAD: {raw!r}. "
+        "Expected 'ref: refs/heads/<branch>' or 'commit: <sha256>'."
+    )
+
+
+def read_current_branch(repo_root: pathlib.Path) -> str:
+    """Return the currently checked-out branch name.
+
+    Raises :exc:`ValueError` when the repository is in detached HEAD state
+    so callers that cannot operate without a branch get a clear error
+    rather than silently receiving a commit ID as a branch name.
+    """
+    state = read_head(repo_root)
+    if state["kind"] != "branch":
+        raise ValueError(
+            "Repository is in detached HEAD state. "
+            "Run 'muse checkout <branch>' to return to a branch."
+        )
+    return state["branch"]
+
+
+def write_head_branch(repo_root: pathlib.Path, branch: str) -> None:
+    """Write a symbolic ref to ``.muse/HEAD``.
+
+    Format: ``ref: refs/heads/<branch>`` — self-describing; the ``ref:``
+    prefix unambiguously identifies the entry as a symbolic reference.
+    """
+    validate_branch_name(branch)
+    (repo_root / ".muse" / "HEAD").write_text(f"ref: refs/heads/{branch}\n")
+
+
+def write_head_commit(repo_root: pathlib.Path, commit_id: str) -> None:
+    """Write a direct commit reference to ``.muse/HEAD`` (detached HEAD).
+
+    Format: ``commit: <sha256>`` — the ``commit:`` prefix is a Muse
+    extension that makes the entry self-describing in all states.  Unlike
+    Git (which stores a bare hash), this makes the hash type explicit and
+    leaves room for future algorithm prefixes without parsing heuristics.
+    """
+    if not re.fullmatch(r"[0-9a-f]{64}", commit_id):
+        raise ValueError(f"commit_id must be a 64-char hex string, got: {commit_id!r}")
+    (repo_root / ".muse" / "HEAD").write_text(f"commit: {commit_id}\n")
 
 
 # ---------------------------------------------------------------------------

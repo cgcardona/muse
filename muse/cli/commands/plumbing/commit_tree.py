@@ -32,7 +32,7 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.snapshot import compute_commit_id
-from muse.core.store import CommitRecord, read_commit, read_snapshot, write_commit
+from muse.core.store import CommitRecord, read_commit, read_current_branch, read_snapshot, write_commit
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +45,7 @@ def _read_repo_id(root: pathlib.Path) -> str:
 
 
 def _current_branch(root: pathlib.Path) -> str:
-    head = (root / ".muse" / "HEAD").read_text().strip()
-    return head.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 @app.callback(invoke_without_command=True)

@@ -32,6 +32,7 @@ from muse.core.store import (
     TagRecord,
     get_all_tags,
     get_tags_for_commit,
+    read_current_branch,
     resolve_commit_ref,
     write_tag,
 )
@@ -50,8 +51,7 @@ app.add_typer(remove_app, name="remove", help="Remove a tag from a commit.")
 
 
 def _read_branch(root: pathlib.Path) -> str:
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    return head_ref.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 def _read_repo_id(root: pathlib.Path) -> str:

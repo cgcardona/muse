@@ -66,6 +66,10 @@ function _muse_find_root() {
 
 # Read branch from .muse/HEAD without forking. Validates before storing.
 # Branch names are restricted to [a-zA-Z0-9/_.-] to prevent prompt injection.
+#
+# Muse HEAD format (canonical, written by muse/core/store.py):
+#   ref: refs/heads/<branch>   — on a branch (symbolic ref)
+#   commit: <sha256>           — detached HEAD (direct commit reference)
 function _muse_parse_head() {
   local head_file="$MUSE_REPO_ROOT/.muse/HEAD"
   if [[ ! -f "$head_file" ]]; then
@@ -81,8 +85,9 @@ function _muse_parse_head() {
     else
       MUSE_BRANCH="?"
     fi
-  elif [[ "$raw" =~ '^[0-9a-f]{64}$' ]]; then
-    MUSE_BRANCH="${raw:0:8}"  # detached HEAD
+  elif [[ "$raw" == "commit: "* ]]; then
+    local sha="${raw#commit: }"
+    MUSE_BRANCH="${sha:0:8}"  # detached HEAD — show short SHA
   else
     MUSE_BRANCH="?"
   fi

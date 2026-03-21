@@ -32,7 +32,7 @@ def _make_linear_repo(tmp_path: pathlib.Path, n: int = 8) -> list[str]:
     for d in ("objects", "commits", "snapshots", "refs/heads"):
         (muse / d).mkdir(parents=True, exist_ok=True)
     (muse / "repo.json").write_text(json.dumps({"repo_id": "test"}))
-    (muse / "HEAD").write_text("refs/heads/main\n")
+    (muse / "HEAD").write_text("ref: refs/heads/main\n")
 
     commit_ids: list[str] = []
     parent: str | None = None

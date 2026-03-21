@@ -176,7 +176,7 @@ class TestStoreGaps:
         muse = tmp_path / ".muse"
         for d in ("commits", "snapshots", "objects", "refs/heads"):
             (muse / d).mkdir(parents=True)
-        (muse / "HEAD").write_text("refs/heads/main\n")
+        (muse / "HEAD").write_text("ref: refs/heads/main\n")
         (muse / "repo.json").write_text(json.dumps({"repo_id": "test-repo"}))
         (muse / "refs" / "heads" / "main").write_text("")
         return tmp_path

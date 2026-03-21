@@ -43,7 +43,7 @@ from muse.core.bisect import (
 )
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import get_head_commit_id, resolve_commit_ref
+from muse.core.store import get_head_commit_id, read_current_branch, resolve_commit_ref
 from muse.core.validation import sanitize_display
 
 logger = logging.getLogger(__name__)
@@ -58,8 +58,7 @@ import pathlib
 
 
 def _read_branch(root: pathlib.Path) -> str:
-    head = (root / ".muse" / "HEAD").read_text().strip()
-    return head.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 def _read_repo_id(root: pathlib.Path) -> str:

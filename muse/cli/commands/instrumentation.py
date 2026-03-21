@@ -36,7 +36,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import resolve_commit_ref
+from muse.core.store import read_current_branch, resolve_commit_ref
 from muse.plugins.midi._query import NoteInfo, load_track, load_track_from_workdir
 from muse.plugins.midi.midi_diff import _pitch_name
 
@@ -89,7 +89,7 @@ def _read_repo_id(root: pathlib.Path) -> str:
 
 
 def _read_branch(root: pathlib.Path) -> str:
-    return (root / ".muse" / "HEAD").read_text().strip().removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 @app.callback(invoke_without_command=True)

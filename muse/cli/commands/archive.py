@@ -33,7 +33,7 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.object_store import object_path
 from muse.core.repo import require_repo
-from muse.core.store import get_head_commit_id, read_commit, read_snapshot, resolve_commit_ref
+from muse.core.store import get_head_commit_id, read_commit, read_current_branch, read_snapshot, resolve_commit_ref
 from muse.core.validation import contain_path, sanitize_display
 
 logger = logging.getLogger(__name__)
@@ -48,8 +48,7 @@ def _read_repo_id(root: pathlib.Path) -> str:
 
 
 def _read_branch(root: pathlib.Path) -> str:
-    head = (root / ".muse" / "HEAD").read_text().strip()
-    return head.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 def _build_tar(

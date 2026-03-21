@@ -32,6 +32,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import find_repo_root
+from muse.core.store import write_head_branch
 from muse.core.validation import validate_branch_name, validate_domain_name
 
 logger = logging.getLogger(__name__)
@@ -384,7 +385,7 @@ def init(
             repo_meta["bare"] = True
         (muse_dir / "repo.json").write_text(json.dumps(repo_meta, indent=2) + "\n")
 
-        (muse_dir / "HEAD").write_text(f"refs/heads/{default_branch}\n")
+        write_head_branch(muse_dir.parent, default_branch)
 
         ref_file = muse_dir / "refs" / "heads" / default_branch
         if not ref_file.exists() or force:
