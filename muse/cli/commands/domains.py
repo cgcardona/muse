@@ -601,6 +601,9 @@ def domains(
 
     Use ``--json`` for machine-readable output.
     """
+    if ctx.invoked_subcommand is not None:
+        return
+
     if new is not None:
         _scaffold_new_domain(new)
         return
