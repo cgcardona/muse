@@ -126,7 +126,10 @@ typeset -gi _MUSE_LAST_DIRTY_RC=0  # last exit code from the dirty check subproc
 function _muse_check_dirty() {
   local output rc count=0
   print "[dirty:1] called. MUSE_REPO_ROOT=$MUSE_REPO_ROOT MUSE_BRANCH=$MUSE_BRANCH" >&2
-  output=$(cd -- "$MUSE_REPO_ROOT" && \
+  # env -C changes cwd at the OS level, bypassing ZSH's cd builtin.
+  # Using cd here would fire chpwd_functions inside the subshell, causing
+  # infinite recursion: chpwd → _muse_refresh → _muse_check_dirty → cd → chpwd…
+  output=$(env -C "$MUSE_REPO_ROOT" \
            timeout -- "${MUSE_DIRTY_TIMEOUT}" muse status --porcelain 2>/dev/null)
   rc=$?
   _MUSE_LAST_DIRTY_RC=$rc
