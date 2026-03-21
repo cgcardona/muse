@@ -101,6 +101,7 @@ from muse.cli.commands import (
     bisect,
     blame,
     branch,
+    cat,
     cherry_pick,
     checkout,
     checkout_symbol,
@@ -273,6 +274,7 @@ cli.add_typer(commit.app,       name="commit",      help="Record the current wor
 cli.add_typer(status.app,       name="status",      help="Show working-tree drift against HEAD.")
 cli.add_typer(log.app,          name="log",         help="Display commit history.")
 cli.add_typer(diff.app,         name="diff",        help="Compare working tree against HEAD, or two commits.")
+cli.add_typer(cat.app,          name="cat",         help="Print the source of a single symbol: 'muse cat file.py::ClassName.method'.")
 cli.add_typer(show.app,         name="show",        help="Inspect a commit: metadata, diff, files.")
 cli.add_typer(branch.app,       name="branch",      help="List, create, or delete branches.")
 cli.add_typer(checkout.app,     name="checkout",    help="Switch branches or restore working tree from a commit.")
@@ -356,6 +358,7 @@ code_cli = typer.Typer(
     context_settings=_HELP_SETTINGS,
 )
 
+code_cli.add_typer(cat.app,                  name="cat",                  help="Print the source of a single symbol: 'muse code cat file.py::ClassName.method'.")
 code_cli.add_typer(symbols.app,              name="symbols",              help="List every semantic symbol (function, class, method…) in a snapshot.")
 code_cli.add_typer(symbol_log.app,           name="symbol-log",           help="Track a single symbol through the full commit history.")
 code_cli.add_typer(detect_refactor.app,      name="detect-refactor",      help="Detect semantic refactoring operations (renames, moves, extractions) across commits.")
