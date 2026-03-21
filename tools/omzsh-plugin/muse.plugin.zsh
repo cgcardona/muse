@@ -29,6 +29,7 @@ fi
 # ── Configuration ─────────────────────────────────────────────────────────────
 : ${MUSE_PROMPT_ICONS:=0}
 : ${MUSE_DIRTY_TIMEOUT:=5}
+: ${MUSE_DEBUG:=0}          # set to 1 to print timestamped trace to stderr
 
 # Domain icon map. Override individual elements in ~/.zshrc before plugins=().
 typeset -gA MUSE_DOMAIN_ICONS
@@ -146,17 +147,24 @@ function _muse_check_dirty() {
 # One muse subprocess (status --porcelain) runs every time — same model as the
 # git plugin. The timeout in _muse_check_dirty keeps it bounded.
 function _muse_refresh() {
+  (( MUSE_DEBUG )) && print "[muse] _muse_refresh start  $(date +%T.%3N)" >&2
   if ! _muse_find_root; then
     MUSE_DOMAIN="midi"; MUSE_BRANCH=""; MUSE_DIRTY=0; MUSE_DIRTY_COUNT=0
+    (( MUSE_DEBUG )) && print "[muse] _muse_find_root: no repo" >&2
     return 1
   fi
+  (( MUSE_DEBUG )) && print "[muse] root=$MUSE_REPO_ROOT" >&2
   _muse_parse_head
+  (( MUSE_DEBUG )) && print "[muse] head done  branch=$MUSE_BRANCH  $(date +%T.%3N)" >&2
   _muse_parse_domain
+  (( MUSE_DEBUG )) && print "[muse] domain done  domain=$MUSE_DOMAIN  $(date +%T.%3N)" >&2
   _muse_check_dirty
+  (( MUSE_DEBUG )) && print "[muse] dirty done  dirty=$MUSE_DIRTY rc=$_MUSE_LAST_DIRTY_RC  $(date +%T.%3N)" >&2
 }
 
 # Post-command refresh: same as _muse_refresh but resets the command flag.
 function _muse_refresh_full() {
+  (( MUSE_DEBUG )) && print "[muse] _muse_refresh_full (cmd_ran=$_MUSE_CMD_RAN)" >&2
   _muse_refresh || return
   _MUSE_CMD_RAN=0
 }
