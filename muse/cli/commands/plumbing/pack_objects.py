@@ -19,7 +19,8 @@ Plumbing contract
 -----------------
 
 - Exit 0: pack written to stdout.
-- Exit 1: a wanted commit not found.
+- Exit 1: a wanted commit not found or HEAD has no commits.
+- Exit 3: I/O error reading objects or snapshots from the local store.
 """
 
 from __future__ import annotations

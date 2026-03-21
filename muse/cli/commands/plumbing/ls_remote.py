@@ -4,13 +4,19 @@ Plumbing command that contacts the remote and prints every branch and its
 current commit ID without modifying any local state.  Useful for scripting,
 agent coordination, and pre-flight checks before push/pull.
 
-Output format (default)::
+Output format (default — one line per branch, ``*`` marks the default branch)::
 
     <commit_id>\\t<branch>
+    <commit_id>\\t<branch> *
 
 Output format (--json)::
 
-    {"branches": {"main": "<commit_id>", ...}, "repo_id": "...", "domain": "..."}
+    {
+      "repo_id": "<uuid>",
+      "domain": "midi",
+      "default_branch": "main",
+      "branches": {"main": "<commit_id>", "feat/x": "<commit_id>"}
+    }
 
 Plumbing contract
 -----------------

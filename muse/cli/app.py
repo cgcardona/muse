@@ -29,6 +29,18 @@ Tier 1 — Plumbing commands::
     muse plumbing pack-objects    Build a PackBundle JSON to stdout
     muse plumbing unpack-objects  Read PackBundle JSON from stdin, write to store
     muse plumbing ls-remote       List remote branch heads
+    muse plumbing merge-base      Find the lowest common ancestor of two commits
+    muse plumbing snapshot-diff   Diff two snapshot manifests (added/modified/deleted)
+    muse plumbing domain-info     Inspect active domain plugin and its capabilities
+    muse plumbing show-ref        List all branch refs and their commit IDs
+    muse plumbing check-ignore    Test paths against .museignore rules
+    muse plumbing check-attr      Query merge-strategy attributes for paths
+    muse plumbing verify-object   Re-hash stored objects to detect corruption
+    muse plumbing symbolic-ref    Read or write HEAD's symbolic branch reference
+    muse plumbing for-each-ref    Iterate all refs with rich commit metadata
+    muse plumbing name-rev        Map commit IDs to descriptive branch-relative names
+    muse plumbing check-ref-format  Validate branch/ref names against naming rules
+    muse plumbing verify-pack     Verify the integrity of a PackBundle
 
 Tier 2 — Core Porcelain commands::
 
@@ -198,17 +210,29 @@ from muse.cli.commands import (
 )
 from muse.cli.commands.plumbing import (
     cat_object,
+    check_attr,
+    check_ignore,
+    check_ref_format,
     commit_graph,
     commit_tree,
+    domain_info,
+    for_each_ref,
     hash_object,
     ls_files,
     ls_remote,
+    merge_base,
+    name_rev,
     pack_objects,
     read_commit,
     read_snapshot,
     rev_parse,
+    show_ref,
+    snapshot_diff,
+    symbolic_ref,
     unpack_objects,
     update_ref,
+    verify_object,
+    verify_pack,
 )
 
 # ---------------------------------------------------------------------------
@@ -248,6 +272,18 @@ plumbing_cli.add_typer(commit_graph.app,    name="commit-graph",   help="Emit th
 plumbing_cli.add_typer(pack_objects.app,    name="pack-objects",   help="Build a PackBundle JSON from wanted commits and write to stdout.")
 plumbing_cli.add_typer(unpack_objects.app,  name="unpack-objects", help="Read a PackBundle JSON from stdin and write to the local store.")
 plumbing_cli.add_typer(ls_remote.app,       name="ls-remote",      help="List branch heads on a remote without modifying local state.")
+plumbing_cli.add_typer(merge_base.app,      name="merge-base",     help="Find the lowest common ancestor of two commits.")
+plumbing_cli.add_typer(snapshot_diff.app,   name="snapshot-diff",  help="Diff two snapshot manifests: added, modified, deleted paths.")
+plumbing_cli.add_typer(domain_info.app,     name="domain-info",    help="Inspect active domain plugin capabilities and schema.")
+plumbing_cli.add_typer(show_ref.app,        name="show-ref",       help="List all branch refs and the commit IDs they point to.")
+plumbing_cli.add_typer(check_ignore.app,    name="check-ignore",   help="Test paths against .museignore rules.")
+plumbing_cli.add_typer(check_attr.app,      name="check-attr",     help="Query merge-strategy attributes for workspace paths.")
+plumbing_cli.add_typer(verify_object.app,   name="verify-object",    help="Re-hash stored objects to detect data corruption.")
+plumbing_cli.add_typer(symbolic_ref.app,    name="symbolic-ref",     help="Read or write HEAD's symbolic branch reference.")
+plumbing_cli.add_typer(for_each_ref.app,    name="for-each-ref",     help="Iterate all refs with rich commit metadata.")
+plumbing_cli.add_typer(name_rev.app,        name="name-rev",         help="Map commit IDs to descriptive branch-relative names.")
+plumbing_cli.add_typer(check_ref_format.app, name="check-ref-format", help="Validate branch/ref names against Muse naming rules.")
+plumbing_cli.add_typer(verify_pack.app,     name="verify-pack",      help="Verify the integrity of a PackBundle JSON.")
 
 cli.add_typer(plumbing_cli, name="plumbing")
 
