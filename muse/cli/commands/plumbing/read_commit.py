@@ -31,7 +31,7 @@ Plumbing contract
 -----------------
 
 - Exit 0: commit found and printed.
-- Exit 1: commit not found.
+- Exit 1: commit not found, ambiguous prefix, or invalid commit ID format.
 """
 
 from __future__ import annotations
@@ -44,6 +44,7 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import find_commits_by_prefix, read_commit
+from muse.core.validation import validate_object_id
 
 logger = logging.getLogger(__name__)
 
@@ -65,17 +66,29 @@ def read_commit_cmd(
     """
     root = require_repo()
 
-    record = read_commit(root, commit_id)
-    if record is None and len(commit_id) < 64:
+    record = None
+
+    if len(commit_id) == 64:
+        try:
+            validate_object_id(commit_id)
+        except ValueError as exc:
+            # JSON to stdout so scripts that parse this command's output can
+            # detect the error without switching to stderr.
+            typer.echo(json.dumps({"error": f"Invalid commit ID: {exc}"}))
+            raise typer.Exit(code=ExitCode.USER_ERROR)
+        record = read_commit(root, commit_id)
+    else:
         matches = find_commits_by_prefix(root, commit_id)
         if len(matches) == 1:
             record = matches[0]
         elif len(matches) > 1:
             typer.echo(
-                json.dumps({
-                    "error": "ambiguous prefix",
-                    "candidates": [m.commit_id for m in matches],
-                })
+                json.dumps(
+                    {
+                        "error": "ambiguous prefix",
+                        "candidates": [m.commit_id for m in matches],
+                    }
+                )
             )
             raise typer.Exit(code=ExitCode.USER_ERROR)
 

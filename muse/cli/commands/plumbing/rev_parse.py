@@ -15,14 +15,13 @@ Plumbing contract
 -----------------
 
 - Exit 0: ref resolved successfully.
-- Exit 1: ref not found or is ambiguous.
+- Exit 1: ref not found, ambiguous, or unknown --format value.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import pathlib
 
 import typer
 
@@ -39,14 +38,7 @@ logger = logging.getLogger(__name__)
 
 app = typer.Typer()
 
-
-def _read_repo_id(root: pathlib.Path) -> str:
-    import json as _json
-    return str(_json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
-
-
-def _read_current_branch(root: pathlib.Path) -> str:
-    return read_current_branch(root)
+_FORMAT_CHOICES = ("json", "text")
 
 
 @app.callback(invoke_without_command=True)
@@ -56,7 +48,9 @@ def rev_parse(
         ...,
         help="Ref to resolve: branch name, 'HEAD', or commit ID prefix.",
     ),
-    fmt: str = typer.Option("json", "--format", help="Output format: json or text."),
+    fmt: str = typer.Option(
+        "json", "--format", "-f", help="Output format: json or text."
+    ),
 ) -> None:
     """Resolve a branch name, HEAD, or SHA prefix to a full commit ID.
 
@@ -64,16 +58,24 @@ def rev_parse(
     scripts and agent pipelines before passing them to other plumbing
     commands.
     """
+    if fmt not in _FORMAT_CHOICES:
+        typer.echo(
+            f"❌ Unknown format {fmt!r}. Valid choices: {', '.join(_FORMAT_CHOICES)}",
+            err=True,
+        )
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
     root = require_repo()
 
     commit_id: str | None = None
 
-    # HEAD → resolve to current branch then to commit.
     if ref.upper() == "HEAD":
-        branch = _read_current_branch(root)
+        branch = read_current_branch(root)
         commit_id = get_head_commit_id(root, branch)
         if commit_id is None:
-            typer.echo(json.dumps({"ref": ref, "commit_id": None, "error": "HEAD has no commits"}))
+            typer.echo(
+                json.dumps({"ref": ref, "commit_id": None, "error": "HEAD has no commits"})
+            )
             raise typer.Exit(code=ExitCode.USER_ERROR)
     else:
         # Try as branch name first.
@@ -87,16 +89,18 @@ def rev_parse(
                 if record is not None:
                     commit_id = record.commit_id
             else:
-                # Abbreviated SHA prefix.
                 matches = find_commits_by_prefix(root, ref)
                 if len(matches) == 1:
                     commit_id = matches[0].commit_id
                 elif len(matches) > 1:
-                    ambiguous = [m.commit_id for m in matches]
                     typer.echo(
                         json.dumps(
-                            {"ref": ref, "commit_id": None,
-                             "error": "ambiguous", "candidates": ambiguous}
+                            {
+                                "ref": ref,
+                                "commit_id": None,
+                                "error": "ambiguous",
+                                "candidates": [m.commit_id for m in matches],
+                            }
                         )
                     )
                     raise typer.Exit(code=ExitCode.USER_ERROR)

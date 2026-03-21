@@ -8,6 +8,7 @@ Output (JSON, default)::
     {
       "commit_id": "<sha256>",
       "snapshot_id": "<sha256>",
+      "file_count": 3,
       "files": [
         {"path": "tracks/drums.mid", "object_id": "<sha256>"},
         ...
@@ -16,35 +17,37 @@ Output (JSON, default)::
 
 Output (--format text)::
 
-    <object_id>  <path>
+    <object_id>\\t<path>
     ...
 
 Plumbing contract
 -----------------
 
 - Exit 0: manifest listed successfully.
-- Exit 1: commit or snapshot not found.
+- Exit 1: commit or snapshot not found, or unknown --format value.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import pathlib
 
 import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import get_commit_snapshot_manifest, get_head_commit_id, read_commit, read_current_branch
+from muse.core.store import (
+    get_commit_snapshot_manifest,
+    get_head_commit_id,
+    read_commit,
+    read_current_branch,
+)
 
 logger = logging.getLogger(__name__)
 
 app = typer.Typer()
 
-
-def _current_branch(root: pathlib.Path) -> str:
-    return read_current_branch(root)
+_FORMAT_CHOICES = ("json", "text")
 
 
 @app.callback(invoke_without_command=True)
@@ -53,7 +56,9 @@ def ls_files(
     commit: str | None = typer.Option(
         None, "--commit", "-c", help="Commit ID to read (default: HEAD)."
     ),
-    fmt: str = typer.Option("json", "--format", help="Output format: json or text."),
+    fmt: str = typer.Option(
+        "json", "--format", "-f", help="Output format: json or text."
+    ),
 ) -> None:
     """List all tracked files and their object IDs in a snapshot.
 
@@ -61,10 +66,17 @@ def ls_files(
     the given commit (or HEAD) and prints each tracked file path together
     with its content-addressed object ID.
     """
+    if fmt not in _FORMAT_CHOICES:
+        typer.echo(
+            f"❌ Unknown format {fmt!r}. Valid choices: {', '.join(_FORMAT_CHOICES)}",
+            err=True,
+        )
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
     root = require_repo()
 
     if commit is None:
-        branch = _current_branch(root)
+        branch = read_current_branch(root)
         commit_id = get_head_commit_id(root, branch)
         if commit_id is None:
             typer.echo(json.dumps({"error": "No commits on current branch."}))
@@ -82,19 +94,21 @@ def ls_files(
         typer.echo(json.dumps({"error": f"Snapshot not found for commit: {commit_id}"}))
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
-    files = [
-        {"path": p, "object_id": oid}
-        for p, oid in sorted(manifest.items())
-    ]
+    files = [{"path": p, "object_id": oid} for p, oid in sorted(manifest.items())]
 
     if fmt == "text":
         for entry in files:
             typer.echo(f"{entry['object_id']}\t{entry['path']}")
         return
 
-    typer.echo(json.dumps({
-        "commit_id": commit_id,
-        "snapshot_id": commit_record.snapshot_id,
-        "file_count": len(files),
-        "files": files,
-    }, indent=2))
+    typer.echo(
+        json.dumps(
+            {
+                "commit_id": commit_id,
+                "snapshot_id": commit_record.snapshot_id,
+                "file_count": len(files),
+                "files": files,
+            },
+            indent=2,
+        )
+    )
