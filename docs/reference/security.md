@@ -347,7 +347,7 @@ SafeET.parse("score.xml")  # fully typed, XXE-safe
 
 ## HTTP Transport Hardening
 
-**Module:** `muse/core/transport.py`
+**Module:** `muse/core/transport.py` — `HttpTransport`
 
 ### Redirect refusal
 
@@ -378,6 +378,65 @@ response body.
 byte of a response body is `{` or `[` before calling `json.loads()`.  This
 catches HTML error pages (proxy intercept pages, Cloudflare challenges) that
 would otherwise produce a misleading `JSONDecodeError`.
+
+---
+
+## Local File Transport Hardening
+
+**Module:** `muse/core/transport.py` — `LocalFileTransport`
+
+`LocalFileTransport` handles `file://` URLs — direct filesystem reads and
+writes between two Muse repositories on the same host (or a shared network
+mount).  Because all I/O is local, the threat surface shifts from network
+attacks to filesystem attacks.
+
+### Symlink canonicalisation
+
+`_repo_root()` calls `pathlib.Path.resolve()` on the path extracted from the
+URL before any filesystem operation.  `resolve()` dereferences all symlinks
+and normalises `..` path components.
+
+**Attack prevented:** a crafted `file://` URL or a pre-placed symlink at the
+URL target that points to a sensitive directory (one without `.muse/`) is
+rejected because the containment check is made on the *canonical* resolved
+path, not the symlink itself.
+
+### Branch name validation
+
+`push_pack()` calls `validate_branch_name(branch)` before any I/O.  This
+rejects:
+
+| Input | Why rejected |
+|---|---|
+| `../evil` | Leading `..` traversal |
+| `foo\x00bar` | Null byte injection |
+| `branch\revil` | CR log injection |
+| `main\\escape` | Backslash path separator |
+| `foo..bar` | Consecutive dots |
+| `""` (empty) | Cannot form a valid ref path |
+
+### Ref path containment
+
+Even after `validate_branch_name` passes, the branch name is joined onto the
+`.muse/refs/heads/` base path and validated with `contain_path()`.
+
+`contain_path()` resolves symlinks on the *result* path and asserts it is
+relative to the base directory.  This provides defence-in-depth against:
+
+- **Pre-placed symlinks** — an attacker who can write to `.muse/refs/heads/`
+  before a push could place a symlink named after a legitimate branch that
+  points outside the directory.  `contain_path()` resolves that symlink and
+  rejects the write.
+- **Future branch-name edge cases** — any branch name that somehow passes
+  `validate_branch_name` but resolves outside `refs/heads/` is still caught.
+
+### Where applied
+
+| Guard | Function | Attack prevented |
+|---|---|---|
+| `resolve()` | `_repo_root()` | Symlink traversal on URL path |
+| `validate_branch_name()` | `push_pack()` | Branch-as-path injection |
+| `contain_path()` | `push_pack()` | Pre-placed symlink in refs/heads/ |
 
 ---
 

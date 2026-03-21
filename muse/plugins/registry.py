@@ -21,13 +21,11 @@ import pathlib
 from muse.core.errors import MuseCLIError
 from muse.core.schema import DomainSchema
 from muse.domain import MuseDomainPlugin
-from muse.plugins.bitcoin.plugin import BitcoinPlugin
 from muse.plugins.code.plugin import CodePlugin
 from muse.plugins.midi.plugin import MidiPlugin
 from muse.plugins.scaffold.plugin import ScaffoldPlugin
 
 _REGISTRY: dict[str, MuseDomainPlugin] = {
-    "bitcoin":  BitcoinPlugin(),
     "code":     CodePlugin(),
     "midi":     MidiPlugin(),
     "scaffold": ScaffoldPlugin(),
