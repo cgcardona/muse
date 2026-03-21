@@ -213,10 +213,14 @@ from muse.cli.commands.plumbing import (
 # Root CLI
 # ---------------------------------------------------------------------------
 
+# Allow both -h and --help everywhere in the CLI tree.
+_HELP_SETTINGS: dict[str, list[str]] = {"help_option_names": ["-h", "--help"]}
+
 cli = typer.Typer(
     name="muse",
     help="Muse — domain-agnostic version control for multidimensional state.",
     no_args_is_help=True,
+    context_settings=_HELP_SETTINGS,
 )
 
 # ---------------------------------------------------------------------------
@@ -227,6 +231,7 @@ plumbing_cli = typer.Typer(
     name="plumbing",
     help="[Tier 1] Machine-readable plumbing commands. JSON output, pipeable, stable API.",
     no_args_is_help=True,
+    context_settings=_HELP_SETTINGS,
 )
 
 plumbing_cli.add_typer(hash_object.app,     name="hash-object",    help="SHA-256 a file; optionally store it in the object store.")
@@ -300,6 +305,7 @@ midi_cli = typer.Typer(
     name="midi",
     help="[Tier 3] MIDI domain semantic commands — music-aware version control operations.",
     no_args_is_help=True,
+    context_settings=_HELP_SETTINGS,
 )
 
 midi_cli.add_typer(notes.app,            name="notes",            help="List every note in a MIDI track as musical notation.")
@@ -347,6 +353,7 @@ code_cli = typer.Typer(
     name="code",
     help="[Tier 3] Code domain semantic commands — symbol graph, call graph, and provenance.",
     no_args_is_help=True,
+    context_settings=_HELP_SETTINGS,
 )
 
 code_cli.add_typer(symbols.app,              name="symbols",              help="List every semantic symbol (function, class, method…) in a snapshot.")
@@ -389,6 +396,7 @@ coord_cli = typer.Typer(
     name="coord",
     help="[Tier 3] Multi-agent coordination commands — reservations, intent, conflict forecasting.",
     no_args_is_help=True,
+    context_settings=_HELP_SETTINGS,
 )
 
 coord_cli.add_typer(reserve.app,    name="reserve",    help="Advisory symbol reservation — announce intent before editing.")
@@ -430,6 +438,7 @@ bitcoin_cli = typer.Typer(
     name="bitcoin",
     help="[Tier 3] Bitcoin domain semantic commands — on-chain UTXO analytics, coin selection, and agent strategy.",
     no_args_is_help=True,
+    context_settings=_HELP_SETTINGS,
 )
 
 # --- Wallet & balance ---
