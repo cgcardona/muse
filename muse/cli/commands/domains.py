@@ -33,15 +33,20 @@ Output (default — no flags)::
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import pathlib
 import shutil
 import sys
-from typing import Literal
+import urllib.error
+import urllib.request
+from typing import Literal, TypedDict
 
 import typer
 
+from muse.cli.config import get_auth_token, get_hub_url
+from muse.core.repo import find_repo_root
 from muse.domain import CRDTPlugin, MuseDomainPlugin, StructuredMergePlugin
 from muse.plugins.registry import _REGISTRY
 
@@ -285,6 +290,285 @@ def _print_dashboard(active_domain: str | None) -> None:
     typer.echo("  muse domains --json")
     typer.echo("See docs/guide/plugin-authoring-guide.md for the full walkthrough.")
     typer.echo(_hr())
+
+
+# ---------------------------------------------------------------------------
+# Publish subcommand
+# ---------------------------------------------------------------------------
+
+_PUBLISH_TIMEOUT = 15  # seconds
+
+# JSON-safe primitive — used for typed JSON dicts below.
+_JsonLeaf = str | int | float | bool | None
+
+
+class _DimensionDef(TypedDict):
+    name: str
+    description: str
+
+
+class _Capabilities(TypedDict, total=False):
+    dimensions: list[_DimensionDef]
+    artifact_types: list[str]
+    merge_semantics: str
+    supported_commands: list[str]
+
+
+class _PublishPayload(TypedDict):
+    author_slug: str
+    slug: str
+    display_name: str
+    description: str
+    capabilities: _Capabilities
+    viewer_type: str
+    version: str
+
+
+class _PublishResponse(TypedDict, total=False):
+    domain_id: str
+    scoped_id: str
+    manifest_hash: str
+
+
+def _post_json(url: str, payload: _PublishPayload, token: str) -> _PublishResponse:
+    """HTTP POST *payload* as JSON to *url* with a Bearer token.
+
+    Returns:
+        Parsed JSON response body.
+
+    Raises:
+        urllib.error.HTTPError: on non-2xx responses.
+        urllib.error.URLError:  on network/connection failures.
+        ValueError:             on non-JSON response body.
+    """
+    body = json.dumps(payload).encode()
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=_PUBLISH_TIMEOUT) as resp:  # noqa: S310
+        raw = resp.read().decode()
+    parsed = json.loads(raw)
+    if not isinstance(parsed, dict):
+        raise ValueError(f"Expected JSON object from server, got: {type(parsed).__name__}")
+    return _PublishResponse(
+        domain_id=str(parsed.get("domain_id") or ""),
+        scoped_id=str(parsed.get("scoped_id") or ""),
+        manifest_hash=str(parsed.get("manifest_hash") or ""),
+    )
+
+
+@app.command("publish")
+def publish(
+    author_slug: str = typer.Option(
+        ...,
+        "--author",
+        metavar="SLUG",
+        help="Your MuseHub username (owner of the domain, e.g. 'cgcardona').",
+    ),
+    slug: str = typer.Option(
+        ...,
+        "--slug",
+        metavar="SLUG",
+        help="URL-safe domain name (e.g. 'genomics', 'spatial-3d').",
+    ),
+    display_name: str = typer.Option(
+        ...,
+        "--name",
+        metavar="NAME",
+        help="Human-readable marketplace name (e.g. 'Genomics').",
+    ),
+    description: str = typer.Option(
+        ...,
+        "--description",
+        metavar="TEXT",
+        help="What this domain models and why it benefits from semantic VCS.",
+    ),
+    viewer_type: str = typer.Option(
+        ...,
+        "--viewer-type",
+        metavar="TYPE",
+        help="Primary viewer identifier (e.g. 'midi', 'code', 'spatial', 'genome').",
+    ),
+    version: str = typer.Option(
+        "0.1.0",
+        "--version",
+        metavar="SEMVER",
+        help="Semver release string (default: 0.1.0).",
+    ),
+    capabilities_json: str | None = typer.Option(
+        None,
+        "--capabilities",
+        metavar="JSON",
+        help=(
+            "Full capabilities manifest as a JSON string.  "
+            "Required keys: dimensions, artifact_types, merge_semantics, supported_commands.  "
+            "When omitted the active repo's domain plugin schema is used."
+        ),
+    ),
+    hub_url: str | None = typer.Option(
+        None,
+        "--hub",
+        metavar="URL",
+        help="Override the MuseHub base URL (default: read from .muse/config.toml).",
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit result as JSON."),
+) -> None:
+    """Publish a Muse domain plugin to the MuseHub marketplace.
+
+    Registers ``@{author}/{slug}`` so agents and users can discover and install
+    the domain via ``musehub_list_domains`` and ``muse domains``.
+
+    Capabilities are read from the active domain plugin's ``schema()`` when
+    ``--capabilities`` is omitted — so you can run this command from inside a
+    repo that uses the domain you want to publish.
+
+    Example::
+
+        muse domains publish \\
+            --author cgcardona --slug genomics \\
+            --name "Genomics" \\
+            --description "Version DNA sequences as multidimensional state" \\
+            --viewer-type genome
+
+        muse domains publish --author cgcardona --slug spatial \\
+            --name "Spatial 3D" \\
+            --description "Version 3-D scenes as structured multidimensional commits" \\
+            --viewer-type spatial \\
+            --capabilities '{"dimensions":[{"name":"geometry","description":"Mesh data"}],...}'
+    """
+    # ── Resolve hub URL and auth token ─────────────────────────────────────────
+    repo_root = find_repo_root()
+    resolved_hub = hub_url or get_hub_url(repo_root) or "https://musehub.ai"
+    resolved_hub = resolved_hub.rstrip("/")
+
+    token = get_auth_token(repo_root)
+    if not token:
+        typer.echo(
+            "❌ No MuseHub token found.  Run:\n"
+            "   muse auth login\n"
+            "or set your token with:\n"
+            "   muse config set hub.token <your-token>",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    # ── Build capabilities manifest ────────────────────────────────────────────
+    capabilities: _Capabilities
+    if capabilities_json is not None:
+        try:
+            raw_caps = json.loads(capabilities_json)
+            if not isinstance(raw_caps, dict):
+                raise ValueError("capabilities JSON must be an object")
+            capabilities = _Capabilities(
+                dimensions=[
+                    _DimensionDef(name=str(d.get("name", "")), description=str(d.get("description", "")))
+                    for d in raw_caps.get("dimensions", [])
+                    if isinstance(d, dict)
+                ],
+                artifact_types=[str(a) for a in raw_caps.get("artifact_types", []) if isinstance(a, str)],
+                merge_semantics=str(raw_caps.get("merge_semantics", "three_way")),
+                supported_commands=[str(c) for c in raw_caps.get("supported_commands", []) if isinstance(c, str)],
+            )
+        except (json.JSONDecodeError, ValueError) as exc:
+            typer.echo(f"❌ --capabilities is not valid JSON: {exc}", err=True)
+            raise typer.Exit(1) from exc
+    else:
+        # Derive from the active domain plugin schema if available.
+        active_domain_name: str | None = None
+        if repo_root is not None:
+            repo_json = repo_root / ".muse" / "repo.json"
+            try:
+                active_domain_name = json.loads(repo_json.read_text()).get("domain")
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        plugin = _REGISTRY.get(active_domain_name or "") if active_domain_name else None
+        capabilities_ok = False
+        if plugin is not None:
+            try:
+                schema = plugin.schema()
+                capabilities = _Capabilities(
+                    dimensions=[
+                        _DimensionDef(name=d["name"], description=d["description"])
+                        for d in schema["dimensions"]
+                    ],
+                    artifact_types=[],  # DomainSchema does not carry MIME types — set post-publish
+                    merge_semantics=schema["merge_mode"],
+                    supported_commands=["commit", "diff", "merge", "log", "status"],
+                )
+                capabilities_ok = True
+            except NotImplementedError:
+                capabilities = _Capabilities()
+        else:
+            capabilities = _Capabilities()
+
+        if not capabilities_ok:
+            typer.echo(
+                "⚠️  Could not derive capabilities from active plugin. "
+                "Provide --capabilities '<json>' to set them explicitly.",
+                err=True,
+            )
+            typer.echo(
+                "  Required keys: dimensions, artifact_types, merge_semantics, supported_commands",
+                err=True,
+            )
+            raise typer.Exit(1)
+
+    # ── POST to MuseHub ────────────────────────────────────────────────────────
+    endpoint = f"{resolved_hub}/api/v1/domains"
+    payload = _PublishPayload(
+        author_slug=author_slug,
+        slug=slug,
+        display_name=display_name,
+        description=description,
+        capabilities=capabilities,
+        viewer_type=viewer_type,
+        version=version,
+    )
+
+    try:
+        result = _post_json(endpoint, payload, token)
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode(errors="replace")
+        if exc.code == 409:
+            typer.echo(
+                f"❌ Domain '@{author_slug}/{slug}' is already registered. "
+                "Use a different slug or bump the version.",
+                err=True,
+            )
+        elif exc.code == 401:
+            typer.echo("❌ Authentication failed — is your MuseHub token valid?", err=True)
+        else:
+            typer.echo(f"❌ MuseHub returned HTTP {exc.code}: {body}", err=True)
+        raise typer.Exit(1) from exc
+    except urllib.error.URLError as exc:
+        typer.echo(f"❌ Could not reach MuseHub at {resolved_hub}: {exc.reason}", err=True)
+        raise typer.Exit(1) from exc
+    except ValueError as exc:
+        typer.echo(f"❌ Unexpected response from MuseHub: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    # ── Emit result ────────────────────────────────────────────────────────────
+    if as_json:
+        typer.echo(json.dumps(result, indent=2))
+        return
+
+    scoped_id = result.get("scoped_id") or f"@{author_slug}/{slug}"
+    manifest_hash = result.get("manifest_hash") or ""
+    typer.echo(f"✅ Domain published: {scoped_id}")
+    typer.echo(f"   manifest_hash: {manifest_hash}")
+    typer.echo(f"   Discoverable at: {resolved_hub}/domains/@{author_slug}/{slug}")
+    typer.echo("")
+    typer.echo("Agents can now use it:")
+    typer.echo(f'   musehub_get_domain(scoped_id="{scoped_id}")')
+    typer.echo(f'   musehub_create_repo(domain="{scoped_id}", ...)')
 
 
 # ---------------------------------------------------------------------------
