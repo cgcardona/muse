@@ -217,17 +217,16 @@ function muse_prompt_info() {
   local branch="${MUSE_BRANCH//\%/%%}"
   local domain="${MUSE_DOMAIN//\%/%%}"
 
-  # Yellow interior when dirty; magenta when clean.
-  local inner_color="%F{magenta}"
-  (( MUSE_DIRTY )) && inner_color="%F{yellow}"
+  # Branch turns yellow when dirty; magenta when clean. Domain is always magenta.
+  local branch_color="%F{magenta}"
+  (( MUSE_DIRTY )) && branch_color="%F{yellow}"
 
-  # Format: muse:(domain:branch)  — mirrors git:(branch) but adds the domain.
-  # Set MUSE_PROMPT_ICONS=1 in ~/.zshrc to prepend a domain icon.
+  # Format: %F{cyan}muse:(%F{magenta}<domain>:%F{yellow|magenta}<branch>%F{cyan})%f
   if [[ "$MUSE_PROMPT_ICONS" == "1" ]]; then
     local icon="${MUSE_DOMAIN_ICONS[$MUSE_DOMAIN]:-${MUSE_DOMAIN_ICONS[_default]}}"
-    echo -n "%F{cyan}${icon} muse:(${inner_color}${domain}:${branch}%F{cyan})%f"
+    echo -n "%F{cyan}${icon} muse:(%F{magenta}${domain}:${branch_color}${branch}%F{cyan})%f"
   else
-    echo -n "%F{cyan}muse:(${inner_color}${domain}:${branch}%F{cyan})%f"
+    echo -n "%F{cyan}muse:(%F{magenta}${domain}:${branch_color}${branch}%F{cyan})%f"
   fi
 }
 
