@@ -138,7 +138,9 @@ function _muse_check_dirty() {
 
 # ── §2  Cache management ──────────────────────────────────────────────────────
 
-# Lightweight refresh: head + domain only. Called on directory change.
+# Full refresh: head + domain + dirty. Called on directory change and on load.
+# One muse subprocess (status --porcelain) runs every time — same model as the
+# git plugin. The timeout in _muse_check_dirty keeps it bounded.
 function _muse_refresh() {
   if ! _muse_find_root; then
     MUSE_DOMAIN="midi"; MUSE_BRANCH=""; MUSE_DIRTY=0; MUSE_DIRTY_COUNT=0
@@ -146,12 +148,12 @@ function _muse_refresh() {
   fi
   _muse_parse_head
   _muse_parse_domain
+  _muse_check_dirty
 }
 
-# Full refresh: head + domain + dirty. Called after a muse command.
+# Post-command refresh: same as _muse_refresh but resets the command flag.
 function _muse_refresh_full() {
   _muse_refresh || return
-  _muse_check_dirty
   _MUSE_CMD_RAN=0
 }
 

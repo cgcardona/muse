@@ -46,7 +46,7 @@ name — the key differentiator from a single-domain VCS.
 | `muse:(midi:a1b2c3d4)` | magenta | detached HEAD, clean |
 | `muse:(midi:a1b2c3d4)` | yellow | detached HEAD, uncommitted changes |
 
-The yellow state only appears after a `muse` command runs in the current shell.
+The yellow state reflects the working tree at the time of the last `cd`, shell load, or `muse` command.
 
 ### Domain icons (optional)
 
@@ -89,9 +89,9 @@ With icons on, the prompt becomes `♪ muse:(midi:main)`.
 
 | Hook | When it fires | What it does |
 |------|--------------|--------------|
-| `chpwd` | On `cd` | Re-finds repo root, re-reads HEAD and domain; clears dirty state |
+| `chpwd` | On `cd` | Full refresh: re-finds root, re-reads HEAD, domain, and dirty state |
 | `preexec` | Before any command | Sets `_MUSE_CMD_RAN=1` when command is `muse` |
-| `precmd` | Before prompt | Runs full refresh (including dirty check) only if `_MUSE_CMD_RAN=1` |
+| `precmd` | Before prompt | Runs full refresh only if `_MUSE_CMD_RAN=1` |
 
 ---
 
@@ -138,9 +138,10 @@ All branch/tag/remote lookups use ZSH glob patterns against `.muse/refs/` and
 | Trigger | Subprocesses | What runs |
 |---------|-------------|-----------|
 | Prompt render | 0 | Reads cached shell vars only |
-| `cd` into repo | 1 (`python3`) | HEAD (ZSH read) + domain (python3) |
+| `cd` into repo | 2 (`python3` + `muse`) | HEAD (ZSH read) + domain + dirty check |
 | `cd` outside repo | 0 | Clears vars only |
-| After `muse` command | 1 (`muse status`) | Full refresh + dirty check |
+| Shell load / `exec zsh` | 2 (`python3` + `muse`) | Same as `cd` into repo |
+| After `muse` command | 2 (`python3` + `muse`) | Full refresh + dirty check |
 | Tab completion | 0 | ZSH glob reads `.muse/refs/` |
 
 ---
