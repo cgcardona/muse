@@ -20,7 +20,6 @@ from muse.core.object_store import read_object
 from muse.core.store import CommitRecord, read_commit
 from muse.domain import DomainOp
 from muse.plugins.code.ast_parser import (
-    SEMANTIC_EXTENSIONS,
     SymbolRecord,
     SymbolTree,
     parse_symbols,
@@ -56,6 +55,7 @@ def language_of(file_path: str) -> str:
 
 def is_semantic(file_path: str) -> bool:
     """Return ``True`` if *file_path* has a suffix with AST-level support."""
+    from muse.plugins.code.ast_parser import SEMANTIC_EXTENSIONS
     suffix = pathlib.PurePosixPath(file_path).suffix.lower()
     return suffix in SEMANTIC_EXTENSIONS
 
