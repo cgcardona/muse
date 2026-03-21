@@ -105,7 +105,7 @@ class TestStatusDispatch:
         _commit()
         _write(repo, "new.mid", "extra")
 
-        with patch("muse.cli.commands.status.resolve_plugin") as mock_resolve:
+        with patch("muse.cli.commands.status.resolve_plugin_by_domain") as mock_resolve:
             real_plugin = MidiPlugin()
             mock_plugin = MagicMock(spec=MuseDomainPlugin)
             mock_plugin.drift.side_effect = real_plugin.drift
@@ -151,7 +151,7 @@ class TestStatusDispatch:
         )
         fake_report = DriftReport(has_drift=True, summary="1 added", delta=fake_delta)
 
-        with patch("muse.cli.commands.status.resolve_plugin") as mock_resolve:
+        with patch("muse.cli.commands.status.resolve_plugin_by_domain") as mock_resolve:
             mock_plugin = MagicMock(spec=MuseDomainPlugin)
             mock_plugin.drift.return_value = fake_report
             mock_resolve.return_value = mock_plugin

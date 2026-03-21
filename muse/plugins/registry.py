@@ -43,7 +43,7 @@ def _read_domain(root: pathlib.Path) -> str:
     """
     repo_json = root / ".muse" / "repo.json"
     try:
-        data = json.loads(repo_json.read_text())
+        data = json.loads(repo_json.read_text(encoding="utf-8"))
         domain = data.get("domain")
         return str(domain) if domain else _DEFAULT_DOMAIN
     except (OSError, json.JSONDecodeError):
@@ -86,6 +86,31 @@ def read_domain(root: pathlib.Path) -> str:
     :class:`~muse.domain.SnapshotManifest` for a stored manifest.
     """
     return _read_domain(root)
+
+
+def resolve_plugin_by_domain(domain: str) -> MuseDomainPlugin:
+    """Return the plugin for *domain* without reading the filesystem.
+
+    Use this when the caller has already read ``repo.json`` and only needs
+    the plugin instance — avoids a redundant ``repo.json`` read compared to
+    :func:`resolve_plugin`.
+
+    Args:
+        domain: Domain name string (e.g. ``'code'``).
+
+    Returns:
+        The :class:`~muse.domain.MuseDomainPlugin` instance for *domain*.
+
+    Raises:
+        MuseCLIError: When *domain* is not in the registry.
+    """
+    plugin = _REGISTRY.get(domain)
+    if plugin is None:
+        registered = ", ".join(sorted(_REGISTRY))
+        raise MuseCLIError(
+            f"Unknown domain {domain!r}. Registered domains: {registered}"
+        )
+    return plugin
 
 
 def registered_domains() -> list[str]:

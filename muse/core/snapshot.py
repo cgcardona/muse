@@ -38,7 +38,9 @@ to prevent accidental inclusion of ``.git/``, ``.env``, and similar.
 from __future__ import annotations
 
 import hashlib
+import os
 import pathlib
+import stat as _stat
 
 from muse.core.stat_cache import load_cache
 
@@ -79,21 +81,39 @@ def walk_workdir(workdir: pathlib.Path) -> dict[str, str]:
     consulted to skip re-hashing files whose ``(mtime, size)`` is unchanged
     since the last walk.  The cache is saved atomically after every walk so
     subsequent calls benefit immediately.
+
+    Performance note: ``os.walk`` with in-place ``dirnames`` pruning is used
+    instead of ``pathlib.rglob`` so that hidden directories (e.g. ``.venv/``,
+    ``.muse/objects/``, ``node_modules/``) are never descended into.  On a
+    Python project with a virtualenv, ``rglob`` would visit tens of thousands
+    of site-package files before the hidden-dir filter could discard them.
     """
     cache = load_cache(workdir)
     manifest: dict[str, str] = {}
-    for file_path in sorted(workdir.rglob("*")):
-        if file_path.is_symlink():
-            continue
-        if not file_path.is_file():
-            continue
-        rel = file_path.relative_to(workdir)
-        # Skip hidden files and files inside hidden directories.
-        if any(part.startswith(".") for part in rel.parts):
-            continue
-        rel_str = rel.as_posix()
-        st = file_path.stat()
-        manifest[rel_str] = cache.get_cached(rel_str, str(file_path), st.st_mtime, st.st_size)
+    root_str = str(workdir)
+    prefix_len = len(root_str) + 1  # +1 for the path separator
+
+    for dirpath, dirnames, filenames in os.walk(root_str, followlinks=False):
+        # Prune hidden subdirectories in-place before os.walk descends into them.
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+
+        for fname in sorted(filenames):
+            if fname.startswith("."):
+                continue
+            abs_str = os.path.join(dirpath, fname)
+            try:
+                st = os.lstat(abs_str)
+            except OSError:
+                continue
+            # os.lstat lets us check for symlinks and regular files with one
+            # syscall, replacing the separate is_symlink() + is_file() pair.
+            if not _stat.S_ISREG(st.st_mode):
+                continue
+            rel = abs_str[prefix_len:]
+            if os.sep != "/":
+                rel = rel.replace(os.sep, "/")
+            manifest[rel] = cache.get_cached(rel, abs_str, st.st_mtime, st.st_size)
+
     cache.prune(set(manifest))
     cache.save()
     return manifest
