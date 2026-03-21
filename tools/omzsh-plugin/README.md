@@ -30,7 +30,7 @@ PROMPT='%~ $(muse_prompt_info) %# '
 Inside a Muse repo this renders as:
 
 ```
-~/my-song ♪ main %
+~/my-song ♪ muse:(midi:main) %
 ```
 
 Outside a Muse repo it emits nothing.
@@ -41,12 +41,12 @@ Outside a Muse repo it emits nothing.
 
 | Segment | Meaning |
 |---------|---------|
-| `♪ main` | `midi` domain, branch `main` |
-| `₿ lightning` | `bitcoin` domain, branch `lightning` |
-| `⌥ feature/x` | `code` domain, branch `feature/x` |
-| `◈ scaffold` | unknown/default domain |
-| `♪ a1b2c3d4` | detached HEAD (short SHA) |
-| `♪ main ✗ 3` | dirty working tree, 3 changed paths |
+| `♪ muse:(midi:main)` | `midi` domain, branch `main` |
+| `₿ muse:(bitcoin:lightning)` | `bitcoin` domain, branch `lightning` |
+| `⌥ muse:(code:feature/x)` | `code` domain, branch `feature/x` |
+| `◈ muse:(_default:main)` | unknown domain |
+| `♪ muse:(midi:a1b2c3d4)` | detached HEAD (short SHA) |
+| `♪ muse:(midi:main) ✗ 3` | dirty working tree, 3 changed paths |
 
 The dirty indicator (`✗`) only appears after you run a `muse` command in the
 same shell session. This keeps the prompt fast on first open.
