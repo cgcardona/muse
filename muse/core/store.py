@@ -114,9 +114,18 @@ def read_head(repo_root: pathlib.Path) -> HeadState:
     """Parse ``.muse/HEAD`` and return a typed :data:`HeadState`.
 
     Raises :exc:`ValueError` for any content that does not match the two
-    expected forms so callers never receive an ambiguous raw string.
+    expected forms, and when the HEAD file does not exist (uninitialised or
+    corrupt repository), so callers never receive an ambiguous raw string or
+    an unhandled :exc:`FileNotFoundError`.
     """
-    raw = (repo_root / ".muse" / "HEAD").read_text().strip()
+    head_path = repo_root / ".muse" / "HEAD"
+    try:
+        raw = head_path.read_text().strip()
+    except FileNotFoundError:
+        raise ValueError(
+            f"Repository HEAD file missing: {head_path}\n"
+            "The repository may be uninitialised. Run 'muse init' to fix it."
+        )
     if raw.startswith("ref: refs/heads/"):
         branch = raw.removeprefix("ref: refs/heads/").strip()
         validate_branch_name(branch)
