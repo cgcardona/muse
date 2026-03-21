@@ -31,8 +31,24 @@ def _read_repo_id(root: pathlib.Path) -> str:
 _MAX_INLINE_CHILDREN = 12
 
 
+def _green(text: str) -> str:
+    return typer.style(text, fg=typer.colors.GREEN)
+
+
+def _red(text: str) -> str:
+    return typer.style(text, fg=typer.colors.RED)
+
+
+def _yellow(text: str) -> str:
+    return typer.style(text, fg=typer.colors.YELLOW)
+
+
+def _cyan(text: str) -> str:
+    return typer.style(text, fg=typer.colors.CYAN)
+
+
 def _print_child_ops(child_ops: list[DomainOp]) -> None:
-    """Render symbol-level child ops with tree connectors.
+    """Render symbol-level child ops with tree connectors and colours.
 
     Shows up to ``_MAX_INLINE_CHILDREN`` entries inline; summarises the rest
     on a single trailing line so the output stays readable for large files.
@@ -44,15 +60,15 @@ def _print_child_ops(child_ops: list[DomainOp]) -> None:
         is_last = (i == len(visible) - 1) and overflow == 0
         connector = "└─" if is_last else "├─"
         if cop["op"] == "insert":
-            typer.echo(f"   {connector} {cop['content_summary']}")
+            typer.echo(f"   {connector} " + _green(cop["content_summary"]))
         elif cop["op"] == "delete":
-            typer.echo(f"   {connector} {cop['content_summary']}")
+            typer.echo(f"   {connector} " + _red(cop["content_summary"]))
         elif cop["op"] == "replace":
-            typer.echo(f"   {connector} {cop['new_summary']}")
+            typer.echo(f"   {connector} " + _yellow(cop["new_summary"]))
         elif cop["op"] == "move":
             typer.echo(
-                f"   {connector} {cop['address']}  "
-                f"({cop['from_position']} → {cop['to_position']})"
+                f"   {connector} "
+                + _cyan(f"{cop['address']}  ({cop['from_position']} → {cop['to_position']})")
             )
 
     if overflow > 0:
@@ -60,21 +76,27 @@ def _print_child_ops(child_ops: list[DomainOp]) -> None:
 
 
 def _print_structured_delta(ops: list[DomainOp]) -> int:
-    """Print a structured delta op-by-op. Returns the number of ops printed.
+    """Print a colour-coded delta op-by-op. Returns the number of ops printed.
+
+    Colour scheme mirrors standard diff conventions:
+    - Green  → added   (A)
+    - Red    → deleted (D)
+    - Yellow → modified (M)
+    - Cyan   → moved / renamed (R)
 
     Each branch checks ``op["op"]`` directly so mypy can narrow the
     TypedDict union to the specific subtype before accessing its fields.
     """
     for op in ops:
         if op["op"] == "insert":
-            typer.echo(f"A  {op['address']}")
+            typer.echo(_green(f"A  {op['address']}"))
         elif op["op"] == "delete":
-            typer.echo(f"D  {op['address']}")
+            typer.echo(_red(f"D  {op['address']}"))
         elif op["op"] == "replace":
-            typer.echo(f"M  {op['address']}")
+            typer.echo(_yellow(f"M  {op['address']}"))
         elif op["op"] == "move":
             typer.echo(
-                f"R  {op['address']}  ({op['from_position']} → {op['to_position']})"
+                _cyan(f"R  {op['address']}  ({op['from_position']} → {op['to_position']})")
             )
         elif op["op"] == "patch":
             child_ops = op["child_ops"]
@@ -83,8 +105,12 @@ def _print_structured_delta(ops: list[DomainOp]) -> int:
             # output reads like `git diff --name-status`.
             all_insert = all(c["op"] == "insert" for c in child_ops)
             all_delete = all(c["op"] == "delete" for c in child_ops)
-            prefix = "A" if all_insert else ("D" if all_delete else "M")
-            typer.echo(f"{prefix}  {op['address']}")
+            if all_insert:
+                typer.echo(_green(f"A  {op['address']}"))
+            elif all_delete:
+                typer.echo(_red(f"D  {op['address']}"))
+            else:
+                typer.echo(_yellow(f"M  {op['address']}"))
             _print_child_ops(child_ops)
     return len(ops)
 
