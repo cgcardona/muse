@@ -1,4 +1,20 @@
-"""muse branch — list, create, rename, or delete branches."""
+"""``muse branch`` — list, create, or delete branches.
+
+Branch rename is not yet implemented; use ``muse branch <new-name>`` followed
+by ``muse branch --delete <old-name>`` as a workaround.
+
+Usage::
+
+    muse branch                       # list all branches
+    muse branch <name>                # create a branch at HEAD
+    muse branch --delete <name>       # delete a branch
+    muse branch --verbose             # list with commit SHAs
+
+Exit codes::
+
+    0 — success
+    1 — invalid branch name, branch not found, trying to delete current branch
+"""
 
 from __future__ import annotations
 
@@ -40,8 +56,17 @@ def branch(
     delete: str | None = typer.Option(None, "-d", "--delete", help="Delete a branch."),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Show commit ID for each branch."),
     all_branches: bool = typer.Option(False, "-a", "--all", help="List all branches."),
+    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
 ) -> None:
-    """List, create, or delete branches."""
+    """List, create, or delete branches.
+
+    Agents should pass ``--format json`` when listing to receive a JSON array
+    of ``{name, current, commit_id}`` objects, or a single result object when
+    creating or deleting a branch.
+    """
+    if fmt not in ("text", "json"):
+        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
     root = require_repo()
     current = _read_current_branch(root)
 
@@ -59,7 +84,10 @@ def branch(
             typer.echo(f"❌ Branch '{sanitize_display(delete)}' not found.")
             raise typer.Exit(code=ExitCode.USER_ERROR)
         ref_file.unlink()
-        typer.echo(f"Deleted branch {sanitize_display(delete)}.")
+        if fmt == "json":
+            typer.echo(json.dumps({"action": "deleted", "branch": delete}))
+        else:
+            typer.echo(f"Deleted branch {sanitize_display(delete)}.")
         return
 
     if name:
@@ -76,11 +104,21 @@ def branch(
         current_commit = get_head_commit_id(root, current) or ""
         ref_file.parent.mkdir(parents=True, exist_ok=True)
         ref_file.write_text(current_commit)
-        typer.echo(f"Created branch {sanitize_display(name)}.")
+        if fmt == "json":
+            typer.echo(json.dumps({"action": "created", "branch": name, "commit_id": current_commit}))
+        else:
+            typer.echo(f"Created branch {sanitize_display(name)}.")
         return
 
     # List branches
     branches = _list_branches(root)
+    if fmt == "json":
+        result = []
+        for b in branches:
+            commit_id = get_head_commit_id(root, b) or ""
+            result.append({"name": b, "current": b == current, "commit_id": commit_id})
+        typer.echo(json.dumps(result))
+        return
     for b in branches:
         marker = "* " if b == current else "  "
         if verbose:

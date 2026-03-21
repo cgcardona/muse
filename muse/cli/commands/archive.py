@@ -42,6 +42,22 @@ app = typer.Typer(help="Export a snapshot as a portable tar.gz or zip archive.")
 _FORMAT_CHOICES = {"tar.gz", "zip"}
 
 
+def _safe_arcname(prefix: str, rel_path: str) -> str | None:
+    """Build a safe archive entry name, guarding against zip-slip path traversal.
+
+    Returns ``None`` if either *prefix* or *rel_path* contains ``..`` segments
+    or absolute paths; the caller must skip those entries.
+    """
+    clean_prefix = prefix.rstrip("/").strip()
+    if clean_prefix and ".." in clean_prefix.split("/"):
+        return None
+    resolved = pathlib.PurePosixPath(rel_path)
+    if resolved.is_absolute() or ".." in resolved.parts:
+        return None
+    safe_rel = str(resolved)
+    return (clean_prefix + "/" + safe_rel) if clean_prefix else safe_rel
+
+
 def _read_repo_id(root: pathlib.Path) -> str:
     import json
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
@@ -57,15 +73,23 @@ def _build_tar(
     output_path: pathlib.Path,
     prefix: str,
 ) -> int:
-    """Write a tar.gz archive; return file count."""
+    """Write a tar.gz archive from *manifest*; return file count.
+
+    Each entry's archive name is validated to prevent zip-slip / tar-slip
+    path traversal attacks.  Entries that would escape the archive root are
+    silently skipped with a warning.
+    """
     count = 0
     with tarfile.open(output_path, "w:gz") as tar:
         for rel_path, object_id in sorted(manifest.items()):
+            arcname = _safe_arcname(prefix, rel_path)
+            if arcname is None:
+                logger.warning("⚠️ Skipping unsafe archive path: %s", rel_path)
+                continue
             obj = object_path(root, object_id)
             if not obj.exists():
                 logger.warning("⚠️ Missing object %s for %s — skipping", object_id[:12], rel_path)
                 continue
-            arcname = (prefix.rstrip("/") + "/" + rel_path) if prefix else rel_path
             tar.add(str(obj), arcname=arcname, recursive=False)
             count += 1
     return count
@@ -77,15 +101,22 @@ def _build_zip(
     output_path: pathlib.Path,
     prefix: str,
 ) -> int:
-    """Write a zip archive; return file count."""
+    """Write a zip archive from *manifest*; return file count.
+
+    Each entry's archive name is validated to prevent zip-slip path traversal
+    attacks.  Entries that would escape the archive root are skipped.
+    """
     count = 0
     with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for rel_path, object_id in sorted(manifest.items()):
+            arcname = _safe_arcname(prefix, rel_path)
+            if arcname is None:
+                logger.warning("⚠️ Skipping unsafe archive path: %s", rel_path)
+                continue
             obj = object_path(root, object_id)
             if not obj.exists():
                 logger.warning("⚠️ Missing object %s for %s — skipping", object_id[:12], rel_path)
                 continue
-            arcname = (prefix.rstrip("/") + "/" + rel_path) if prefix else rel_path
             zf.write(str(obj), arcname=arcname)
             count += 1
     return count
@@ -124,6 +155,13 @@ def archive(
     """
     if fmt not in _FORMAT_CHOICES:
         typer.echo(f"❌ Unknown format '{sanitize_display(fmt)}'. Choose from: {', '.join(sorted(_FORMAT_CHOICES))}")
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
+    # Validate prefix against traversal — _safe_arcname will also catch it per-entry,
+    # but an early check gives the user a clear error message.
+    clean_prefix = prefix.rstrip("/").strip()
+    if clean_prefix and ".." in clean_prefix.split("/"):
+        typer.echo(f"❌ --prefix must not contain '..' segments: {sanitize_display(prefix)}", err=True)
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
     root = require_repo()

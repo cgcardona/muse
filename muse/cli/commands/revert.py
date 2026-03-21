@@ -43,8 +43,16 @@ def revert(
     ref: str = typer.Argument(..., help="Commit to revert."),
     message: str | None = typer.Option(None, "-m", "--message", help="Override revert commit message."),
     no_commit: bool = typer.Option(False, "--no-commit", "-n", help="Apply changes but do not commit."),
+    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
 ) -> None:
-    """Create a new commit that undoes a prior commit."""
+    """Create a new commit that undoes a prior commit.
+
+    Agents should pass ``--format json`` to receive ``{commit_id, branch,
+    reverted_commit_id, message}`` rather than human-readable text.
+    """
+    if fmt not in ("text", "json"):
+        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
@@ -72,7 +80,11 @@ def revert(
     apply_manifest(root, target_snapshot.manifest)
 
     if no_commit:
-        typer.echo(f"Reverted changes from {target.commit_id[:8]} applied to working tree. Run 'muse commit' to record.")
+        if fmt == "json":
+            typer.echo(json.dumps({"status": "applied", "commit_id": None,
+                                   "reverted_commit_id": target.commit_id, "branch": branch}))
+        else:
+            typer.echo(f"Reverted changes from {target.commit_id[:8]} applied to working tree. Run 'muse commit' to record.")
         return
 
     revert_message = message or f"Revert \"{target.message}\""
@@ -100,4 +112,12 @@ def revert(
     ))
     (root / ".muse" / "refs" / "heads" / branch).write_text(commit_id)
 
-    typer.echo(f"[{sanitize_display(branch)} {commit_id[:8]}] {sanitize_display(revert_message)}")
+    if fmt == "json":
+        typer.echo(json.dumps({
+            "commit_id": commit_id,
+            "branch": branch,
+            "reverted_commit_id": target.commit_id,
+            "message": revert_message,
+        }))
+    else:
+        typer.echo(f"[{sanitize_display(branch)} {commit_id[:8]}] {sanitize_display(revert_message)}")

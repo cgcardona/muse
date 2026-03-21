@@ -25,6 +25,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.identity import IdentityEntry, list_all_identities, load_identity
+from muse.core.validation import sanitize_display
 from muse.cli.config import get_hub_url
 
 logger = logging.getLogger(__name__)
@@ -52,10 +53,10 @@ def _display(hub: str, entry: IdentityEntry, *, json_output: bool) -> None:
         uid = entry.get("id") or "—"
         token = entry.get("token", "")
         token_status = "set" if (isinstance(token, str) and token) else "not set"
-        typer.echo(f"  hub:    {hub}")
-        typer.echo(f"  type:   {itype}")
-        typer.echo(f"  name:   {name}")
-        typer.echo(f"  id:     {uid}")
+        typer.echo(f"  hub:    {sanitize_display(hub)}")
+        typer.echo(f"  type:   {sanitize_display(str(itype))}")
+        typer.echo(f"  name:   {sanitize_display(str(name))}")
+        typer.echo(f"  id:     {sanitize_display(str(uid))}")
         typer.echo(f"  token:  {token_status}")
 
 
@@ -69,6 +70,10 @@ def whoami(
         bool,
         typer.Option("--all", "-a", help="Show identities for all configured hubs."),
     ] = False,
+    fmt: Annotated[
+        str,
+        typer.Option("--format", "-f", help="Output format: text or json (alias for --json)."),
+    ] = "text",
 ) -> None:
     """Show the current identity stored in ~/.muse/identity.toml.
 
@@ -76,13 +81,18 @@ def whoami(
     authentication status::
 
         muse whoami --json || muse auth login --agent ...
+        muse whoami --format json   # same as --json
 
     Examples::
 
         muse whoami
         muse whoami --json
+        muse whoami --format json
         muse whoami --all
     """
+    # --format json is an alias for --json for CLI consistency across all commands.
+    if fmt == "json":
+        json_output = True
     if all_hubs:
         identities = list_all_identities()
         if not identities:

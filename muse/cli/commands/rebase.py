@@ -32,6 +32,8 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.merge_engine import find_merge_base, write_merge_state
+from muse.core.validation import validate_branch_name
+from muse.domain import SnapshotManifest as _SnapshotManifest
 from muse.core.rebase import (
     RebaseState,
     _write_branch_ref,
@@ -43,7 +45,7 @@ from muse.core.rebase import (
 )
 from muse.core.reflog import append_reflog
 from muse.core.repo import require_repo
-from muse.domain import MuseDomainPlugin
+from muse.domain import MuseDomainPlugin, SnapshotManifest
 from muse.core.snapshot import compute_commit_id, compute_snapshot_id
 from muse.core.store import (
     CommitRecord,
@@ -75,15 +77,27 @@ def _resolve_ref_to_id(
     branch: str,
     ref: str,
 ) -> str | None:
-    """Resolve a ref string (branch name, commit SHA, or HEAD) to a commit ID."""
+    """Resolve a ref string (branch name, commit SHA, or HEAD) to a commit ID.
+
+    Branch names are validated with ``validate_branch_name`` before being used
+    as path components to prevent directory traversal attacks.
+    """
     if ref.upper() == "HEAD":
         return get_head_commit_id(root, branch)
 
-    # Try as a branch ref first.
+    # Try as a branch ref — validate before using as a path component.
+    try:
+        from muse.core.validation import validate_branch_name
+        validate_branch_name(ref)
+    except (ValueError, ImportError):
+        # Not a valid branch name — try as a commit SHA instead.
+        rec = resolve_commit_ref(root, repo_id, branch, ref)
+        return rec.commit_id if rec else None
+
     ref_path = root / ".muse" / "refs" / "heads" / ref
     if ref_path.exists():
         raw = ref_path.read_text(encoding="utf-8").strip()
-        if raw:
+        if raw and len(raw) == 64 and all(c in "0123456789abcdef" for c in raw):
             return raw
 
     # Fall back to commit SHA prefix resolution.
@@ -184,6 +198,10 @@ def rebase(
         bool,
         typer.Option("--continue", "-c", help="Resume after resolving a conflict."),
     ] = False,
+    fmt: Annotated[
+        str,
+        typer.Option("--format", "-f", help="Output format: text or json."),
+    ] = "text",
 ) -> None:
     """Replay commits from the current branch onto a new base.
 
@@ -218,7 +236,14 @@ def rebase(
         muse rebase --squash --message "feat: combined" main
         muse rebase --abort
         muse rebase --continue
+        muse rebase --format json main   # machine-readable result
     """
+    import json as _json
+    if fmt not in ("text", "json"):
+        from muse.core.validation import sanitize_display as _sd
+        typer.echo(f"❌ Unknown --format '{_sd(fmt)}'. Choose text or json.", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = read_current_branch(root)
@@ -385,8 +410,6 @@ def rebase(
 
         conflict_occurred = False
         for commit in commits_to_replay:
-            from muse.domain import SnapshotManifest as _SM
-
             base_manifest: dict[str, str] = {}
             if commit.parent_commit_id:
                 pc = read_commit(root, commit.parent_commit_id)
@@ -399,9 +422,9 @@ def rebase(
             theirs_manifest = theirs_snap.manifest if theirs_snap else {}
 
             result = plugin.merge(
-                _SM(files=base_manifest, domain=domain),
-                _SM(files=squash_manifest, domain=domain),
-                _SM(files=theirs_manifest, domain=domain),
+                _SnapshotManifest(files=base_manifest, domain=domain),
+                _SnapshotManifest(files=squash_manifest, domain=domain),
+                _SnapshotManifest(files=theirs_manifest, domain=domain),
                 repo_root=root,
             )
             if not result.is_clean:
@@ -444,7 +467,17 @@ def rebase(
             author="user",
             operation=f"rebase --squash onto {onto_id[:12]}",
         )
-        typer.echo(f"✅ Squash-rebase complete. HEAD is now {new_commit_id[:12]}.")
+        if fmt == "json":
+            typer.echo(_json.dumps({
+                "status": "completed",
+                "branch": branch,
+                "new_head": new_commit_id,
+                "onto": onto_id,
+                "squash": True,
+                "conflicts": [],
+            }))
+        else:
+            typer.echo(f"✅ Squash-rebase complete. HEAD is now {new_commit_id[:12]}.")
         return
 
     # Normal replay loop.
@@ -471,4 +504,15 @@ def rebase(
             author="user",
             operation=f"rebase: finished onto {onto_id[:12]}",
         )
-        typer.echo(f"✅ Rebase complete. HEAD is now {final_id[:12]}.")
+        if fmt == "json":
+            typer.echo(_json.dumps({
+                "status": "completed",
+                "branch": branch,
+                "new_head": final_id,
+                "onto": onto_id,
+                "squash": False,
+                "replayed": len(state["completed"]),
+                "conflicts": [],
+            }))
+        else:
+            typer.echo(f"✅ Rebase complete. HEAD is now {final_id[:12]}.")

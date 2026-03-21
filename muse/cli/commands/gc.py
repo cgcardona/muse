@@ -19,6 +19,7 @@ Exit codes::
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Annotated
 
@@ -50,6 +51,10 @@ def gc(
         bool,
         typer.Option("--verbose", "-v", help="Print each collected object ID."),
     ] = False,
+    fmt: Annotated[
+        str,
+        typer.Option("--format", "-f", help="Output format: text or json."),
+    ] = "text",
 ) -> None:
     """Remove unreachable objects from the Muse object store.
 
@@ -59,15 +64,34 @@ def gc(
 
     Safety: the reachability walk always runs before any deletion.  Use
     ``--dry-run`` to preview the impact before committing to a sweep.
+    Agents should pass ``--format json`` to receive a machine-readable result
+    with ``collected_count``, ``collected_bytes``, ``reachable_count``,
+    ``elapsed_seconds``, ``dry_run``, and ``collected_ids``.
 
     Examples::
 
         muse gc               # safe cleanup
         muse gc --dry-run     # preview only
         muse gc --verbose     # show every removed object
+        muse gc --format json # machine-readable
     """
+    if fmt not in ("text", "json"):
+        typer.echo(f"❌ Unknown --format '{fmt}'. Choose text or json.", err=True)
+        raise typer.Exit(code=1)
+
     repo_root = require_repo()
     result = run_gc(repo_root, dry_run=dry_run)
+
+    if fmt == "json":
+        typer.echo(json.dumps({
+            "collected_count": result.collected_count,
+            "collected_bytes": result.collected_bytes,
+            "reachable_count": result.reachable_count,
+            "elapsed_seconds": result.elapsed_seconds,
+            "dry_run": result.dry_run,
+            "collected_ids": sorted(result.collected_ids),
+        }))
+        return
 
     prefix = "[dry-run] " if dry_run else ""
 

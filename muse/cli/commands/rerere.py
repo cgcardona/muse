@@ -53,6 +53,7 @@ from muse.core.rerere import (
     rr_cache_dir,
 )
 from muse.core.store import get_head_commit_id, read_commit, read_current_branch, read_snapshot
+from muse.core.validation import sanitize_display
 from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,7 @@ def _fmt_record(rec: RerereRecord, *, color: bool) -> str:
             else typer.style(status, fg=typer.colors.YELLOW)
         )
     ts = rec.recorded_at.strftime("%Y-%m-%d %H:%M")
-    return f"{rec.fingerprint[:12]}  {status}  {ts}  {rec.path}"
+    return f"{rec.fingerprint[:12]}  {status}  {ts}  {sanitize_display(rec.path)}"
 
 
 # ---------------------------------------------------------------------------
@@ -191,9 +192,9 @@ def rerere(
 
     prefix = "[dry-run] would resolve" if dry_run else "✅ rerere auto-resolved"
     for p in auto_resolved:
-        typer.echo(f"  {prefix}: {p}")
+        typer.echo(f"  {prefix}: {sanitize_display(p)}")
     for p in remaining:
-        typer.echo(f"  ⏳ needs manual resolution: {p}")
+        typer.echo(f"  ⏳ needs manual resolution: {sanitize_display(p)}")
 
     if not auto_resolved and not remaining:
         typer.echo("No conflicting paths found.")
@@ -257,9 +258,9 @@ def rerere_record(
         return
 
     for p in recorded:
-        typer.echo(f"  📝 preimage recorded: {p}")
+        typer.echo(f"  📝 preimage recorded: {sanitize_display(p)}")
     for p in skipped:
-        typer.echo(f"  ⚠️  skipped (one side deleted): {p}")
+        typer.echo(f"  ⚠️  skipped (one side deleted): {sanitize_display(p)}")
 
 
 # ---------------------------------------------------------------------------
@@ -304,13 +305,8 @@ def rerere_status(
                     fp = compute_fingerprint(path, ours_id, theirs_id, plugin, root)
                     current_fps.add(fp)
 
-    is_tty = typer.get_app_dir  # presence check — colour only in a real terminal
-    color = False
-    try:
-        import sys
-        color = sys.stdout.isatty()
-    except Exception:  # noqa: BLE001
-        color = False
+    import sys
+    color = sys.stdout.isatty()
 
     if fmt == "json":
         typer.echo(
@@ -406,9 +402,9 @@ def rerere_forget(
         return
 
     for p in forgotten:
-        typer.echo(f"  🗑  forgot: {p}")
+        typer.echo(f"  🗑  forgot: {sanitize_display(p)}")
     for p in not_found:
-        typer.echo(f"  ⚠️  no record found: {p}")
+        typer.echo(f"  ⚠️  no record found: {sanitize_display(p)}")
 
 
 # ---------------------------------------------------------------------------
