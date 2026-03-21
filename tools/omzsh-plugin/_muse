@@ -1,0 +1,603 @@
+#compdef muse
+# _muse — ZSH completion for the Muse version control CLI
+# ─────────────────────────────────────────────────────────────────────────────
+# Coverage:
+#   Top-level commands       ~50 commands with descriptions
+#   Branch arguments         checkout, merge, branch -d, cherry-pick
+#   Tag arguments            tag create/delete
+#   Remote arguments         push, pull, fetch, remote subcommands
+#   Short SHA arguments      log, show, diff, reset, revert, blame, reflog
+#   Tracked file arguments   midi/code subcommands that take file paths
+#   Config key paths         config get/set
+#   Domain subcommands       midi (25), code (28), coord (6), plumbing (12)
+#   Per-command flags        log, diff, commit, branch, status, stash, …
+#
+# All branch/tag/remote lookups read directly from .muse/ — no subprocess.
+# Tracked-file lookup uses muse plumbing ls-files (one subprocess, deferred).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Helper: walk up to find .muse/ root (pure ZSH) ────────────────────────────
+function _muse_find_root_path() {
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    [[ -d "$dir/.muse" ]] && { echo "$dir"; return 0; }
+    dir="${dir:h}"
+  done
+  return 1
+}
+
+# ── Branch names from .muse/refs/heads/ ───────────────────────────────────────
+function _muse_branches() {
+  local root
+  root=$(_muse_find_root_path) || return 1
+  local refs_dir="$root/.muse/refs/heads"
+  [[ -d "$refs_dir" ]] || return 1
+  local -a branches
+  branches=(${(f)"$(ls "$refs_dir" 2>/dev/null)"})
+  (( ${#branches} )) && _describe 'branch' branches
+}
+
+# ── Tag names from .muse/tags/ ────────────────────────────────────────────────
+function _muse_tags() {
+  local root
+  root=$(_muse_find_root_path) || return 1
+  local tags_dir="$root/.muse/tags"
+  [[ -d "$tags_dir" ]] || return 1
+  # Each tag file has a "tag" key — collect unique names via python3.
+  local -a tags
+  tags=(${(f)"$(MUSE_META_ROOT="$root" python3 <<'PYEOF' 2>/dev/null
+import json, os, glob
+root = os.environ['MUSE_META_ROOT']
+seen = set()
+for f in glob.glob(os.path.join(root, '.muse', 'tags', '*', '*.json')):
+    try:
+        name = json.load(open(f)).get('tag', '')
+        if name and name not in seen:
+            seen.add(name)
+            print(name)
+    except Exception:
+        pass
+PYEOF
+  )"})
+  (( ${#tags} )) && _describe 'tag' tags
+}
+
+# ── Remote names from .muse/remotes/ ──────────────────────────────────────────
+function _muse_remotes() {
+  local root
+  root=$(_muse_find_root_path) || return 1
+  local remotes_dir="$root/.muse/remotes"
+  [[ -d "$remotes_dir" ]] || return 1
+  local -a remotes
+  remotes=(${(f)"$(ls "$remotes_dir" 2>/dev/null)"})
+  (( ${#remotes} )) && _describe 'remote' remotes
+}
+
+# ── Short SHAs (first 8 chars) from .muse/commits/ ───────────────────────────
+function _muse_short_shas() {
+  local root
+  root=$(_muse_find_root_path) || return 1
+  local commits_dir="$root/.muse/commits"
+  [[ -d "$commits_dir" ]] || return 1
+  local -a shas
+  shas=(${(f)"$(ls "$commits_dir" 2>/dev/null | sed 's/\.json$//' | cut -c1-8)"})
+  (( ${#shas} )) && _describe 'commit' shas
+}
+
+# ── Tracked files via muse plumbing ls-files (one subprocess, lazy) ───────────
+function _muse_tracked_files() {
+  local root
+  root=$(_muse_find_root_path) || return 1
+  local -a files
+  files=(${(f)"$(cd "$root" && muse plumbing ls-files 2>/dev/null | awk '{print $1}')"})
+  (( ${#files} )) && _describe 'tracked file' files
+}
+
+# ── Known config key paths ────────────────────────────────────────────────────
+function _muse_config_keys() {
+  local -a keys
+  keys=(
+    'user.name:Your display name (human or agent handle)'
+    'user.email:Your email address'
+    'user.type:Identity type — "human" or "agent"'
+    'hub.url:MuseHub fabric endpoint URL'
+    'domain.ticks_per_beat:MIDI ticks per beat (midi domain)'
+    'domain.default_channel:MIDI default channel (midi domain)'
+  )
+  _describe 'config key' keys
+}
+
+# ── Main completion function ───────────────────────────────────────────────────
+function _muse() {
+  local context curcontext="$curcontext" state state_descr line
+  typeset -A opt_args
+
+  local -a cmds
+  cmds=(
+    # ── Core VCS ──────────────────────────────────────────────────────────────
+    'init:Initialise a new Muse repository in the current directory'
+    'status:Show working-tree status (dirty files, merge conflicts)'
+    'log:Show commit history with domain-aware metadata and graph'
+    'diff:Show changes between commits, branches, or the working tree'
+    'show:Show a commit, snapshot, or object in detail'
+    'commit:Record changes to the repository as a new commit'
+    'branch:List, create, or delete branches'
+    'checkout:Switch branches or restore working-tree files'
+    'merge:Merge two branches with domain-aware three-way merge'
+    'reset:Move HEAD (and optionally the working tree) to a commit'
+    'revert:Create new commits that undo one or more existing commits'
+    'cherry-pick:Apply changes from a specific commit to the current branch'
+    'stash:Save and restore working-tree changes without committing'
+    'tag:Create, list, or delete annotated tags'
+    'blame:Show which commit last modified each tracked file'
+    'reflog:Show a log of all HEAD movements and branch updates'
+    'bisect:Binary search through history to find a regression'
+    'gc:Garbage-collect loose objects and orphaned blobs'
+    'archive:Create a tarball of a named tree'
+    'worktree:Manage multiple working trees from one repository'
+    'workspace:Manage named multi-repository workspaces'
+    # ── Remotes ───────────────────────────────────────────────────────────────
+    'remote:Add, remove, rename, and inspect remote references'
+    'clone:Clone a remote Muse repository to a local directory'
+    'fetch:Download objects and refs from a remote without merging'
+    'pull:Fetch and integrate changes from a remote branch'
+    'push:Upload local commits to a remote branch'
+    # ── Identity & hub ────────────────────────────────────────────────────────
+    'auth:Manage authentication (login, logout, whoami)'
+    'hub:Connect and interact with the MuseHub fabric'
+    'config:Read and write repository or global configuration'
+    # ── Domain utilities ──────────────────────────────────────────────────────
+    'domains:List all installed and available domain plugins'
+    'check:Run domain invariant checks on the current snapshot'
+    'annotate:Annotate file lines with commit and author provenance'
+    'attributes:Manage per-path domain attributes (.museattributes)'
+    # ── Domain commands ───────────────────────────────────────────────────────
+    'midi:MIDI domain — analysis, transformation, and multi-agent commands'
+    'code:Code domain — symbol analysis, refactor detection, and semantic search'
+    'coord:Multi-agent coordination — reservation, intent, and reconciliation'
+    # ── Plumbing ──────────────────────────────────────────────────────────────
+    'plumbing:Low-level machine-readable plumbing commands (JSON output)'
+  )
+
+  _arguments -C \
+    '(-h --help)'{-h,--help}'[Show help and exit]' \
+    '(-v --version)'{-v,--version}'[Show version and exit]' \
+    '1: :->command' \
+    '*:: :->args'
+
+  case "$state" in
+    command)
+      _describe 'muse command' cmds
+      return
+      ;;
+
+    args)
+      case "${line[1]}" in
+
+        # ── Checkout ──────────────────────────────────────────────────────────
+        checkout)
+          _arguments \
+            '-b[Create a new branch and switch to it]:branch name:' \
+            '--detach[Detach HEAD at the target commit]' \
+            '*:branch or tracked file:_muse_branches'
+          ;;
+
+        # ── Merge ─────────────────────────────────────────────────────────────
+        merge)
+          _arguments \
+            '--no-ff[Always create a merge commit]' \
+            '--strategy=[Merge strategy (ours/theirs/auto/dimension-merge)]:strategy:(ours theirs auto dimension-merge manual union)' \
+            '*:branch to merge:_muse_branches'
+          ;;
+
+        # ── Branch ────────────────────────────────────────────────────────────
+        branch)
+          _arguments \
+            '(-d --delete)'{-d,--delete}'[Delete a branch]:branch:_muse_branches' \
+            '(-v --verbose)'{-v,--verbose}'[Show commit IDs alongside branch names]' \
+            '1:new branch name:' \
+            '2:start point:_muse_short_shas'
+          ;;
+
+        # ── Tag ───────────────────────────────────────────────────────────────
+        tag)
+          _arguments \
+            '(-d --delete)'{-d,--delete}'[Delete a tag]:tag:_muse_tags' \
+            '1:tag name:_muse_tags' \
+            '2:commit SHA:_muse_short_shas'
+          ;;
+
+        # ── Remote ────────────────────────────────────────────────────────────
+        remote)
+          local -a remote_cmds
+          remote_cmds=(
+            'add:Register a new remote reference'
+            'remove:Remove a remote and all tracking pointers'
+            'rename:Rename an existing remote'
+            'list:Print all configured remotes'
+            'show:Show URL and tracking info for a remote'
+            'set-url:Change the URL of an existing remote'
+          )
+          _arguments \
+            '1: :->remote_cmd' \
+            '*:: :->remote_args'
+          case "$state" in
+            remote_cmd)   _describe 'remote subcommand' remote_cmds ;;
+            remote_args)  _muse_remotes ;;
+          esac
+          ;;
+
+        # ── Push / pull / fetch ───────────────────────────────────────────────
+        push)
+          _arguments \
+            '--force[Force-push (overwrite remote history)]' \
+            '--dry-run[Simulate the push without sending data]' \
+            '1:remote:_muse_remotes' \
+            '2:branch:_muse_branches'
+          ;;
+        pull)
+          _arguments \
+            '--rebase[Rebase local commits on top of remote]' \
+            '1:remote:_muse_remotes' \
+            '2:branch:_muse_branches'
+          ;;
+        fetch)
+          _arguments \
+            '--all[Fetch all remotes]' \
+            '1:remote:_muse_remotes' \
+            '2:branch:_muse_branches'
+          ;;
+
+        # ── Ref-argument commands ─────────────────────────────────────────────
+        show|blame|reflog)
+          _arguments '*:ref or file:_muse_short_shas'
+          ;;
+        reset)
+          _arguments \
+            '--hard[Reset working tree and index to commit]' \
+            '--soft[Move HEAD only, keep index and working tree]' \
+            '*:commit:_muse_short_shas'
+          ;;
+        revert)
+          _arguments \
+            '--no-commit[Stage the revert without committing]' \
+            '*:commit to revert:_muse_short_shas'
+          ;;
+        cherry-pick)
+          _arguments '*:commit to apply:_muse_short_shas'
+          ;;
+
+        # ── Log ───────────────────────────────────────────────────────────────
+        log)
+          _arguments \
+            '--oneline[Compact one-commit-per-line format]' \
+            '--graph[Draw ASCII commit graph]' \
+            '--stat[Show file-change statistics per commit]' \
+            '--patch[Show full diff patch per commit]' \
+            '(-n --max-count)'{-n,--max-count}'[Maximum number of commits to show]:count:' \
+            '--since[Show commits after this date]:date:' \
+            '--until[Show commits before this date]:date:' \
+            '--author[Filter by commit author]:author:' \
+            '--section[Filter by section metadata]:section:' \
+            '--track[Filter by track metadata]:track:' \
+            '--emotion[Filter by emotion metadata]:emotion:'
+          ;;
+
+        # ── Diff ──────────────────────────────────────────────────────────────
+        diff)
+          _arguments \
+            '--stat[Show diffstat summary only]' \
+            '--patch[Show full structured patch]' \
+            '1:first ref:_muse_short_shas' \
+            '2:second ref:_muse_short_shas'
+          ;;
+
+        # ── Status ────────────────────────────────────────────────────────────
+        status)
+          _arguments \
+            '(-s --short)'{-s,--short}'[Compact output]' \
+            '--porcelain[Machine-readable output for scripts]' \
+            '(-b --branch)'{-b,--branch}'[Show branch information only]'
+          ;;
+
+        # ── Commit ────────────────────────────────────────────────────────────
+        commit)
+          _arguments \
+            '(-m --message)'{-m,--message}'[Commit message]:message:' \
+            '*--meta[Domain metadata key=value pair]:key=value:' \
+            '--agent-id[Agent identity string (set by muse-agent-session)]:agent_id:' \
+            '--model-id[AI model identifier]:model_id:' \
+            '--toolchain-id[Toolchain that produced this commit]:toolchain_id:'
+          ;;
+
+        # ── Stash ─────────────────────────────────────────────────────────────
+        stash)
+          local -a stash_cmds
+          stash_cmds=(
+            'push:Save working-tree changes to the stash stack'
+            'pop:Restore and remove the latest stash entry'
+            'drop:Delete a stash entry without restoring it'
+            'list:List all stash entries'
+            'show:Show the contents of a stash entry'
+          )
+          _arguments \
+            '1: :->stash_cmd' \
+            '*:: :->stash_args'
+          case "$state" in
+            stash_cmd) _describe 'stash subcommand' stash_cmds ;;
+          esac
+          ;;
+
+        # ── Config ────────────────────────────────────────────────────────────
+        config)
+          local -a config_cmds
+          config_cmds=(
+            'show:Print the full resolved configuration'
+            'get:Get the value of a config key'
+            'set:Set a config key to a value'
+            'edit:Open the config file in $EDITOR'
+          )
+          _arguments \
+            '1: :->config_cmd' \
+            '*:: :->config_args'
+          case "$state" in
+            config_cmd)
+              _describe 'config subcommand' config_cmds
+              ;;
+            config_args)
+              case "${line[2]}" in
+                get|set) _muse_config_keys ;;
+              esac
+              ;;
+          esac
+          ;;
+
+        # ── Auth ──────────────────────────────────────────────────────────────
+        auth)
+          local -a auth_cmds
+          auth_cmds=(
+            'login:Authenticate and store credentials for MuseHub'
+            'logout:Remove stored authentication credentials'
+            'whoami:Show current authenticated identity'
+          )
+          _describe 'auth subcommand' auth_cmds
+          ;;
+
+        # ── Hub ───────────────────────────────────────────────────────────────
+        hub)
+          local -a hub_cmds
+          hub_cmds=(
+            'connect:Connect this repository to MuseHub'
+            'status:Show MuseHub connection and fabric status'
+            'disconnect:Disconnect from MuseHub'
+            'ping:Test connectivity to the hub endpoint'
+          )
+          _describe 'hub subcommand' hub_cmds
+          ;;
+
+        # ── Worktree ──────────────────────────────────────────────────────────
+        worktree)
+          local -a wt_cmds
+          wt_cmds=(
+            'add:Add a new linked working tree'
+            'list:List all working trees'
+            'remove:Remove a linked working tree'
+            'prune:Remove stale working-tree administrative files'
+          )
+          _describe 'worktree subcommand' wt_cmds
+          ;;
+
+        # ── Workspace ─────────────────────────────────────────────────────────
+        workspace)
+          local -a ws_cmds
+          ws_cmds=(
+            'create:Create a new named workspace'
+            'list:List all workspaces'
+            'switch:Switch to a different workspace'
+            'delete:Delete a workspace (does not delete repositories)'
+          )
+          _describe 'workspace subcommand' ws_cmds
+          ;;
+
+        # ── Bisect ────────────────────────────────────────────────────────────
+        bisect)
+          local -a bisect_cmds
+          bisect_cmds=(
+            'start:Start a bisect session'
+            'good:Mark the current commit as good'
+            'bad:Mark the current commit as bad'
+            'reset:End the bisect session and return to original HEAD'
+            'log:Show the bisect log'
+          )
+          _describe 'bisect subcommand' bisect_cmds
+          ;;
+
+        # ── Plumbing ──────────────────────────────────────────────────────────
+        plumbing)
+          local -a plumbing_cmds
+          plumbing_cmds=(
+            'hash-object:Compute SHA-256 of a file; optionally write to object store'
+            'cat-object:Emit raw bytes of a content-addressed object to stdout'
+            'rev-parse:Resolve a branch, tag, or SHA prefix to a full commit ID'
+            'ls-files:List all tracked files and their object IDs in the HEAD snapshot'
+            'read-commit:Emit full CommitRecord as JSON'
+            'read-snapshot:Emit full SnapshotRecord manifest as JSON'
+            'commit-tree:Create a commit from an explicit snapshot_id'
+            'update-ref:Move a branch HEAD pointer to a commit ID'
+            'commit-graph:Emit the full commit DAG as a JSON node list'
+            'pack-objects:Build a PackBundle JSON from wanted commits (for transport)'
+            'unpack-objects:Unpack a PackBundle JSON from stdin into the local object store'
+            'ls-remote:List branch heads on a remote without modifying local state'
+          )
+          _arguments \
+            '1: :->plumbing_cmd' \
+            '*:: :->plumbing_args'
+          case "$state" in
+            plumbing_cmd) _describe 'plumbing subcommand' plumbing_cmds ;;
+            plumbing_args)
+              case "${line[2]}" in
+                rev-parse|read-commit|read-snapshot|commit-tree) _muse_short_shas ;;
+                ls-remote)  _muse_remotes ;;
+                update-ref) _arguments '1:branch:_muse_branches' '2:commit:_muse_short_shas' ;;
+                hash-object|cat-object) _files ;;
+              esac
+              ;;
+          esac
+          ;;
+
+        # ── MIDI domain ───────────────────────────────────────────────────────
+        midi)
+          local -a midi_cmds
+          midi_cmds=(
+            # Analysis
+            'notes:List all NoteEvent entities in the current snapshot'
+            'note-log:Show note-level change history across commits'
+            'note-blame:Show which commit introduced each note'
+            'harmony:Analyse chord progressions and harmonic content'
+            'piano-roll:Render an ASCII piano roll of the snapshot'
+            'hotspots:Most-frequently changed notes or sections'
+            'velocity-profile:Statistical distribution of MIDI velocities'
+            'rhythm:Analyse rhythmic patterns and time signatures'
+            'scale:Detect probable key and scale from note content'
+            'contour:Show melodic contour (ascending/descending arc)'
+            'density:Note density per bar or time window'
+            'tension:Harmonic tension curve across the piece'
+            'cadence:Detect cadence points and resolution patterns'
+            'motif:Find and label recurring melodic motifs'
+            'voice-leading:Analyse voice-leading and part writing'
+            'instrumentation:Show instrument/channel assignment breakdown'
+            'tempo:Show tempo map and tempo-change events'
+            'compare:Compare two commits or branches by musical content'
+            # Transformation
+            'transpose:Transpose notes by a number of semitones'
+            'mix:Mix note content from multiple MIDI sources'
+            'quantize:Snap notes to a rhythmic grid'
+            'humanize:Add timing and velocity variation for expressiveness'
+            'invert:Invert melodic intervals around an axis pitch'
+            'retrograde:Reverse the note sequence in time'
+            'arpeggiate:Decompose chords into arpeggiated patterns'
+            'normalize:Normalise MIDI velocity range to a target window'
+            # Multi-agent
+            'shard:Partition snapshot into agent-assignable voice/channel shards'
+            'agent-map:Show current agent assignment map for the snapshot'
+            'find-phrase:Search for a melodic phrase across commit history'
+            # Structured query
+            'query:Run a MIDI query DSL expression against the snapshot'
+            'check:Verify all declared domain invariants pass'
+          )
+          _arguments \
+            '1: :->midi_cmd' \
+            '*:: :->midi_args'
+          case "$state" in
+            midi_cmd)  _describe 'midi subcommand' midi_cmds ;;
+            midi_args) _muse_tracked_files ;;
+          esac
+          ;;
+
+        # ── Code domain ───────────────────────────────────────────────────────
+        code)
+          local -a code_cmds
+          code_cmds=(
+            'symbols:List all symbols (functions, classes, types) in the snapshot'
+            'symbol-log:Show symbol-level change history across commits'
+            'detect-refactor:Detect rename, move, split, and merge refactorings'
+            'grep:Search symbol names and body content by pattern'
+            'blame:Show per-symbol commit provenance'
+            'hotspots:Symbols that change most frequently across history'
+            'stable:Symbols unchanged for the last N commits'
+            'coupling:Symbols that tend to change together (co-change analysis)'
+            'compare:Compare two commits by symbol content and API surface'
+            'languages:Language breakdown of the current snapshot'
+            'patch:Apply a structured code delta to the working tree'
+            'query:Run a code query DSL expression against the snapshot'
+            'query-history:Run a query expression across all commits in history'
+            'deps:Show the dependency graph for a symbol or module'
+            'find-symbol:Search for a symbol by name or regex pattern'
+            'impact:Estimate change impact from a set of modified symbols'
+            'dead:Detect unreachable or dead code symbols'
+            'coverage:Show test coverage attributed to each symbol'
+            'lineage:Show full ancestry of a symbol across renames and moves'
+            'api-surface:Show public API symbols and their change history'
+            'codemap:Generate a high-level code structure map'
+            'clones:Detect duplicate or near-duplicate code blocks'
+            'checkout-symbol:Check out a specific symbol at a past commit'
+            'semantic-cherry-pick:Cherry-pick by symbol address rather than commit SHA'
+            'index:Rebuild the code symbol index from scratch'
+            'breakage:Detect breaking changes in the API surface between commits'
+            'invariants:Show declared code invariants for the snapshot'
+            'check:Verify all declared code invariants pass'
+            'code-query:Advanced code query with predicate and pattern DSL'
+          )
+          _arguments \
+            '1: :->code_cmd' \
+            '*:: :->code_args'
+          case "$state" in
+            code_cmd)  _describe 'code subcommand' code_cmds ;;
+            code_args) _muse_tracked_files ;;
+          esac
+          ;;
+
+        # ── Coord domain ──────────────────────────────────────────────────────
+        coord)
+          local -a coord_cmds
+          coord_cmds=(
+            'reserve:Reserve a set of files or symbols for exclusive editing'
+            'intent:Declare editing intent for a path or symbol address'
+            'forecast:Predict merge conflicts from all declared intents'
+            'plan-merge:Generate a conflict-free merge plan from declared intents'
+            'shard:Partition the snapshot into agent-assignable shards'
+            'reconcile:Reconcile and apply parallel edits from multiple agents'
+          )
+          _arguments \
+            '1: :->coord_cmd' \
+            '*:: :->coord_args'
+          case "$state" in
+            coord_cmd)  _describe 'coord subcommand' coord_cmds ;;
+            coord_args) _muse_tracked_files ;;
+          esac
+          ;;
+
+        # ── Clone ─────────────────────────────────────────────────────────────
+        clone)
+          _arguments \
+            '--branch=[Branch to clone]:branch:' \
+            '--depth=[Shallow clone depth]:depth:' \
+            '1:remote URL:' \
+            '2:local directory:_directories'
+          ;;
+
+        # ── Archive ───────────────────────────────────────────────────────────
+        archive)
+          _arguments \
+            '--format=[Archive format (tar/zip)]:format:(tar zip)' \
+            '--output=[Output file path]:output:_files' \
+            '1:tree-ish:_muse_short_shas'
+          ;;
+
+        # ── Annotate / attributes ─────────────────────────────────────────────
+        annotate)
+          _arguments '*:file:_muse_tracked_files'
+          ;;
+        attributes)
+          local -a attr_cmds
+          attr_cmds=(
+            'list:Show all path attribute rules'
+            'check:Show effective attributes for a path'
+          )
+          _arguments '1: :->attr_cmd' '*:: :->attr_args'
+          case "$state" in
+            attr_cmd)  _describe 'attributes subcommand' attr_cmds ;;
+            attr_args) _muse_tracked_files ;;
+          esac
+          ;;
+
+        # ── Fallback: file completion ─────────────────────────────────────────
+        *)
+          _files
+          ;;
+      esac
+      ;;
+  esac
+}
+
+_muse "$@"

@@ -118,27 +118,27 @@ class TestRemoteRename:
 
 
 # ---------------------------------------------------------------------------
-# remote list
+# muse remote (implied list)
 # ---------------------------------------------------------------------------
 
 
 class TestRemoteList:
     def test_list_empty(self, repo: pathlib.Path) -> None:
-        result = runner.invoke(cli, ["remote", "list"])
+        result = runner.invoke(cli, ["remote"])
         assert result.exit_code == 0
         assert "No remotes" in result.output
 
     def test_list_shows_names(self, repo: pathlib.Path) -> None:
         runner.invoke(cli, ["remote", "add", "origin", "https://hub.muse.io/repos/r1"])
         runner.invoke(cli, ["remote", "add", "upstream", "https://hub.muse.io/repos/r2"])
-        result = runner.invoke(cli, ["remote", "list"])
+        result = runner.invoke(cli, ["remote"])
         assert result.exit_code == 0
         assert "origin" in result.output
         assert "upstream" in result.output
 
     def test_list_verbose_shows_url(self, repo: pathlib.Path) -> None:
         runner.invoke(cli, ["remote", "add", "origin", "https://hub.muse.io/repos/r1"])
-        result = runner.invoke(cli, ["remote", "list", "-v"])
+        result = runner.invoke(cli, ["remote", "-v"])
         assert result.exit_code == 0
         assert "https://hub.muse.io/repos/r1" in result.output
 

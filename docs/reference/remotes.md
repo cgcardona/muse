@@ -35,7 +35,8 @@ muse clone <url>          # one-time: download a full copy of a remote repo
 muse fetch [remote]       # download new commits without merging
 muse pull [remote]        # fetch + three-way merge into current branch
 muse push [remote]        # upload local commits to the remote
-muse remote add <n> <url> # manage named remotes
+muse remote [-v]          # list remotes (implied); manage named remotes
+muse remote add <n> <url>
 muse plumbing ls-remote [remote]   # list remote branches (Tier 1 plumbing)
 ```
 
@@ -241,10 +242,10 @@ muse remote rename <old> <new>
 Rename a remote in config and move its tracking refs directory.
 
 ```
-muse remote list [-v]
+muse remote [-v]
 ```
-List configured remotes. With `-v` / `--verbose`, shows URL and upstream
-tracking branch for each remote.
+List configured remotes (the default when no subcommand is given). With
+`-v` / `--verbose`, shows URL and upstream tracking branch for each remote.
 
 ```
 muse remote get-url <name>

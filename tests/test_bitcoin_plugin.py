@@ -198,17 +198,19 @@ def _make_fee(
     )
 
 
-def _json_bytes(
-    obj: (
-        list[UTXORecord]
-        | list[LightningChannelRecord]
-        | list[OraclePriceTickRecord]
-        | list[FeeEstimateRecord]
-        | list[PendingTxRecord]
-        | list[AddressLabelRecord]
-        | AgentStrategyRecord
-    ),
-) -> bytes:
+_AnyBitcoinRecord = (
+    UTXORecord
+    | LightningChannelRecord
+    | AddressLabelRecord
+    | AgentStrategyRecord
+    | FeeEstimateRecord
+    | RoutingPolicyRecord
+    | PendingTxRecord
+    | OraclePriceTickRecord
+)
+
+
+def _json_bytes(obj: _AnyBitcoinRecord | list[_AnyBitcoinRecord]) -> bytes:
     return json.dumps(obj, sort_keys=True).encode()
 
 
