@@ -40,6 +40,8 @@ from __future__ import annotations
 import hashlib
 import pathlib
 
+from muse.core.stat_cache import load_cache
+
 _SEP = "\x00"
 
 
@@ -72,7 +74,13 @@ def walk_workdir(workdir: pathlib.Path) -> dict[str, str]:
 
     Paths use POSIX separators regardless of host OS for cross-platform
     reproducibility.
+
+    When a ``.muse/`` directory exists under *workdir*, the stat cache is
+    consulted to skip re-hashing files whose ``(mtime, size)`` is unchanged
+    since the last walk.  The cache is saved atomically after every walk so
+    subsequent calls benefit immediately.
     """
+    cache = load_cache(workdir)
     manifest: dict[str, str] = {}
     for file_path in sorted(workdir.rglob("*")):
         if file_path.is_symlink():
@@ -83,7 +91,11 @@ def walk_workdir(workdir: pathlib.Path) -> dict[str, str]:
         # Skip hidden files and files inside hidden directories.
         if any(part.startswith(".") for part in rel.parts):
             continue
-        manifest[rel.as_posix()] = hash_file(file_path)
+        rel_str = rel.as_posix()
+        st = file_path.stat()
+        manifest[rel_str] = cache.get_cached(rel_str, str(file_path), st.st_mtime, st.st_size)
+    cache.prune(set(manifest))
+    cache.save()
     return manifest
 
 
