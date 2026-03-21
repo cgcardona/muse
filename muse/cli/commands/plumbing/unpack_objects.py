@@ -43,15 +43,43 @@ logger = logging.getLogger(__name__)
 app = typer.Typer()
 
 
+_FORMAT_CHOICES = ("json", "text")
+
+
 @app.callback(invoke_without_command=True)
-def unpack_objects(ctx: typer.Context) -> None:
+def unpack_objects(
+    ctx: typer.Context,
+    fmt: str = typer.Option(
+        "json", "--format", "-f",
+        help="Output format: json (default) or text (human-readable summary).",
+    ),
+) -> None:
     """Read a PackBundle JSON from stdin and write to the local store.
 
     Idempotent: if a commit, snapshot, or object already exists in the store
     it is silently skipped.  Partial packs (interrupted transfers) are safe
     to re-apply.  The exit code is 0 as long as the store is consistent at
     the end of the operation.
+
+    Output (``--format json``, default)::
+
+        {
+          "commits_written":   12,
+          "snapshots_written": 12,
+          "objects_written":   47,
+          "objects_skipped":   3
+        }
+
+    Output (``--format text``)::
+
+        Wrote 12 commits, 12 snapshots, 47 objects (3 skipped).
     """
+    if fmt not in _FORMAT_CHOICES:
+        typer.echo(
+            json.dumps({"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"})
+        )
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
     root = require_repo()
 
     raw_bytes = sys.stdin.buffer.read()
@@ -72,6 +100,16 @@ def unpack_objects(ctx: typer.Context) -> None:
     )
 
     result = apply_pack(root, bundle)
+
+    if fmt == "text":
+        typer.echo(
+            f"Wrote {result['commits_written']} commits, "
+            f"{result['snapshots_written']} snapshots, "
+            f"{result['objects_written']} objects "
+            f"({result['objects_skipped']} skipped)."
+        )
+        return
+
     typer.echo(json.dumps({
         "commits_written": result["commits_written"],
         "snapshots_written": result["snapshots_written"],

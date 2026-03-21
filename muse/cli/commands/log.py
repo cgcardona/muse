@@ -121,9 +121,10 @@ def log(
 ) -> None:
     """Display commit history.
 
-    Agents should pass ``--format json`` to receive a JSON array of commit
-    objects with ``commit_id``, ``message``, ``author``, ``committed_at``,
-    ``branch``, ``parent_commit_id``, ``snapshot_id``, and ``metadata``.
+    Agents should pass ``--format json`` to receive a JSON array where each
+    element is a commit object with fields: ``commit_id``, ``branch``,
+    ``message``, ``author``, ``committed_at``, ``parent_commit_id``,
+    ``snapshot_id``, ``metadata``, and ``sem_ver_bump``.
     """
     if fmt not in ("text", "json"):
         typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)

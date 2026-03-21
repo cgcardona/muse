@@ -397,15 +397,17 @@ class TestReadSnapshot:
 
 class TestCommitTree:
     def test_creates_commit_from_snapshot(self, tmp_path: pathlib.Path) -> None:
+        import hashlib
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"content")
-        _make_snapshot(repo, "s" * 64, {"file.txt": oid})
+        snap_id = hashlib.sha256(b"snapshot-1").hexdigest()
+        _make_snapshot(repo, snap_id, {"file.txt": oid})
 
         result = runner.invoke(
             cli,
             [
                 "plumbing", "commit-tree",
-                "--snapshot", "s" * 64,
+                "--snapshot", snap_id,
                 "--message", "plumbing commit",
                 "--author", "bot",
             ],
@@ -418,18 +420,22 @@ class TestCommitTree:
         assert len(data["commit_id"]) == 64
 
     def test_with_parent(self, tmp_path: pathlib.Path) -> None:
+        import hashlib
         repo = _init_repo(tmp_path)
         oid = _make_object(repo, b"data")
-        _make_snapshot(repo, "s" * 64, {"a": oid})
-        _make_commit(repo, "p" * 64, "s" * 64)
+        snap_id_1 = hashlib.sha256(b"snapshot-a").hexdigest()
+        snap_id_2 = hashlib.sha256(b"snapshot-b").hexdigest()
+        parent_id = hashlib.sha256(b"parent-commit").hexdigest()
+        _make_snapshot(repo, snap_id_1, {"a": oid})
+        _make_commit(repo, parent_id, snap_id_1)
 
-        _make_snapshot(repo, "snap2", {"b": oid})
+        _make_snapshot(repo, snap_id_2, {"b": oid})
         result = runner.invoke(
             cli,
             [
                 "plumbing", "commit-tree",
-                "--snapshot", "snap2",
-                "--parent", "p" * 64,
+                "--snapshot", snap_id_2,
+                "--parent", parent_id,
                 "--message", "child",
             ],
             env=_repo_env(repo),

@@ -68,8 +68,9 @@ def reflog(
     Every time HEAD or a branch ref moves — commit, checkout, merge, reset,
     cherry-pick, stash pop — Muse appends an entry to the reflog.  Use this
     command to find lost commits and undo accidental resets.  Agents should
-    pass ``--format json`` to receive a JSON array of entries with
-    ``new_id``, ``old_id``, ``timestamp``, and ``operation``.
+    pass ``--format json`` to receive a JSON array of entries, each with
+    ``index``, ``new_id``, ``old_id``, ``timestamp``, ``operation``, and
+    ``author``.
 
     Examples::
 

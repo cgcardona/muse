@@ -96,11 +96,20 @@ def commit(
     sign: bool = typer.Option(False, "--sign", help="HMAC-sign the commit using the agent's stored key (requires --agent-id or MUSE_AGENT_ID)."),
     fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
 ) -> None:
-    """Record the current state/ state as a new version.
+    """Record the current state as a new version.
 
-    Agents should pass ``--format json`` to receive a machine-readable result
-    with ``commit_id``, ``branch``, ``snapshot_id``, ``message``,
-    ``parent_commit_id``, and ``committed_at`` fields.
+    Agents should pass ``--format json`` to receive a machine-readable result::
+
+        {
+          "commit_id":        "<sha256>",
+          "branch":           "main",
+          "snapshot_id":      "<sha256>",
+          "message":          "Add verse melody",
+          "parent_commit_id": "<sha256> | null",
+          "committed_at":     "2026-03-21T12:00:00+00:00",
+          "author":           "gabriel",
+          "sem_ver_bump":     "none"
+        }
     """
     if fmt not in ("text", "json"):
         typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)

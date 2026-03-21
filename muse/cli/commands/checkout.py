@@ -116,8 +116,9 @@ def checkout(
 ) -> None:
     """Switch branches or restore working tree from a commit.
 
-    Agents should pass ``--format json`` to get a machine-readable result with
-    ``action`` (created|switched|detached), ``branch``, and ``commit_id``.
+    Agents should pass ``--format json`` to get a machine-readable result::
+
+        {"action": "created|switched|detached|already_on", "branch": "<name>", "commit_id": "<sha256>"}
     """
     if fmt not in ("text", "json"):
         from muse.core.validation import sanitize_display as _sd

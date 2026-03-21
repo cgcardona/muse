@@ -234,8 +234,15 @@ def diff(
 ) -> None:
     """Compare working tree against HEAD, or compare two commits.
 
-    Agents should pass ``--format json`` to receive a structured result with
-    ``summary``, ``added``, ``deleted``, ``modified``, and ``ops`` fields.
+    Agents should pass ``--format json`` to receive a structured result::
+
+        {
+          "summary":       "3 changes",
+          "added":         ["path/to/new_file"],
+          "deleted":       ["path/to/removed_file"],
+          "modified":      ["path/to/changed_file"],
+          "total_changes": 3
+        }
     """
     if fmt not in ("text", "json"):
         typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)

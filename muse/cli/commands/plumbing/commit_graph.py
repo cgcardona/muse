@@ -80,15 +80,19 @@ class _CommitNode(TypedDict):
     author: str
 
 
+_ANCESTRY_PATH_MAX = 100_000  # hard ceiling for --ancestry-path BFS
+
+
 def _ancestors_of(root: pathlib.Path, start: str) -> set[str]:
     """Return the set of all commit IDs reachable from *start* (inclusive).
 
     Used by ``--ancestry-path`` to identify which commits lie on a direct
-    path between the tip and the stop-at commit.
+    path between the tip and the stop-at commit.  Capped at
+    ``_ANCESTRY_PATH_MAX`` to prevent unbounded I/O on very large repos.
     """
     visited: set[str] = set()
     queue: deque[str] = deque([start])
-    while queue:
+    while queue and len(visited) < _ANCESTRY_PATH_MAX:
         cid = queue.popleft()
         if cid in visited:
             continue

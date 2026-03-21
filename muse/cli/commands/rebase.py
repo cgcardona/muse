@@ -237,6 +237,20 @@ def rebase(
         muse rebase --abort
         muse rebase --continue
         muse rebase --format json main   # machine-readable result
+
+    Agents should pass ``--format json`` to receive a structured result.
+    Squash rebase payload::
+
+        {
+          "status":    "merged|conflict",
+          "branch":    "<name>",
+          "new_head":  "<sha256>",
+          "onto":      "<sha256>",
+          "squash":    true,
+          "conflicts": []
+        }
+
+    Normal rebase payload adds ``"replayed": <n>`` (number of commits applied).
     """
     import json as _json
     if fmt not in ("text", "json"):

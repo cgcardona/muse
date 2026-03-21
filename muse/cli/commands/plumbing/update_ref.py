@@ -31,11 +31,14 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import get_head_commit_id, read_commit
-from muse.core.validation import validate_object_id
+from muse.core.validation import validate_branch_name, validate_object_id
 
 logger = logging.getLogger(__name__)
 
 app = typer.Typer()
+
+
+_FORMAT_CHOICES = ("json", "text")
 
 
 @app.callback(invoke_without_command=True)
@@ -54,6 +57,10 @@ def update_ref(
         "--verify/--no-verify",
         help="Verify the commit exists in the store before updating (default: on).",
     ),
+    fmt: str = typer.Option(
+        "json", "--format", "-f",
+        help="Output format: json (default) or text (silent on success).",
+    ),
 ) -> None:
     """Move a branch HEAD to a specific commit ID.
 
@@ -61,8 +68,27 @@ def update_ref(
     (the default), the commit must already exist in ``.muse/commits/``.
     Pass ``--no-verify`` to write the ref even if the commit is not yet in
     the local store (e.g. after ``muse plumbing unpack-objects``).
+
+    Output (``--format json``, default)::
+
+        {"branch": "main", "commit_id": "<sha256>", "previous": "<sha256> | null"}
+
+    Output (``--format text``)::
+
+        (silent on success — exits 0)
     """
+    if fmt not in _FORMAT_CHOICES:
+        typer.echo(
+            json.dumps({"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"})
+        )
+        raise typer.Exit(code=ExitCode.USER_ERROR)
     root = require_repo()
+
+    try:
+        validate_branch_name(branch)
+    except ValueError as exc:
+        typer.echo(json.dumps({"error": f"Invalid branch name: {exc}"}))
+        raise typer.Exit(code=ExitCode.USER_ERROR)
 
     ref_path = root / ".muse" / "refs" / "heads" / branch
 
@@ -71,7 +97,8 @@ def update_ref(
             typer.echo(json.dumps({"error": f"Branch ref does not exist: {branch}"}))
             raise typer.Exit(code=ExitCode.USER_ERROR)
         ref_path.unlink()
-        typer.echo(json.dumps({"branch": branch, "deleted": True}))
+        if fmt == "json":
+            typer.echo(json.dumps({"branch": branch, "deleted": True}))
         return
 
     if commit_id is None:
@@ -100,12 +127,13 @@ def update_ref(
         typer.echo(json.dumps({"error": str(exc)}))
         raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
 
-    typer.echo(
-        json.dumps(
-            {
-                "branch": branch,
-                "commit_id": commit_id,
-                "previous": previous,
-            }
+    if fmt == "json":
+        typer.echo(
+            json.dumps(
+                {
+                    "branch": branch,
+                    "commit_id": commit_id,
+                    "previous": previous,
+                }
+            )
         )
-    )

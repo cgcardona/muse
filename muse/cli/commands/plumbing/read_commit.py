@@ -51,19 +51,34 @@ logger = logging.getLogger(__name__)
 app = typer.Typer()
 
 
+_FORMAT_CHOICES = ("json", "text")
+
+
 @app.callback(invoke_without_command=True)
 def read_commit_cmd(
     ctx: typer.Context,
     commit_id: str = typer.Argument(
         ..., help="Full or abbreviated SHA-256 commit ID."
     ),
+    fmt: str = typer.Option(
+        "json", "--format", "-f", help="Output format: json (default) or text."
+    ),
 ) -> None:
-    """Emit full commit metadata as JSON.
+    """Emit full commit metadata as JSON (default) or a compact text summary.
 
-    Accepts a full 64-character commit ID or a unique prefix.  The output
+    Accepts a full 64-character commit ID or a unique prefix.  The JSON output
     schema matches ``CommitRecord.to_dict()`` and is stable across Muse
     versions (use ``format_version`` to detect schema changes).
+
+    Text format (``--format text``)::
+
+        <commit_id>  <branch>  <author>  <committed_at>  <message>
     """
+    if fmt not in _FORMAT_CHOICES:
+        typer.echo(
+            json.dumps({"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"})
+        )
+        raise typer.Exit(code=ExitCode.USER_ERROR)
     root = require_repo()
 
     record = None
@@ -95,5 +110,13 @@ def read_commit_cmd(
     if record is None:
         typer.echo(json.dumps({"error": f"Commit not found: {commit_id}"}))
         raise typer.Exit(code=ExitCode.USER_ERROR)
+
+    if fmt == "text":
+        msg = (record.message or "").replace("\n", " ")
+        typer.echo(
+            f"{record.commit_id[:12]}  {record.branch}  {record.author or ''}  "
+            f"{record.committed_at.isoformat()}  {msg}"
+        )
+        return
 
     typer.echo(json.dumps(record.to_dict(), indent=2, default=str))
