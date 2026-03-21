@@ -846,6 +846,295 @@ muse plumbing show-ref -f json \
 
 ---
 
+## symbolic-ref — read or write HEAD's symbolic reference
+
+In Muse, HEAD is always a symbolic reference — it always points to a branch,
+never directly to a commit.  `symbolic-ref` reads which branch HEAD tracks or,
+with `--set`, points HEAD at a different branch.
+
+```sh
+# Read mode
+muse plumbing symbolic-ref HEAD [-f json|text] [--short]
+
+# Write mode
+muse plumbing symbolic-ref HEAD --set <branch> [-f json|text]
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--set` | `-s` | `""` | Branch name to point HEAD at |
+| `--short` | `-S` | false | Emit branch name only (not the full `refs/heads/…` path) |
+| `--format` | `-f` | `json` | Output format: `json` or `text` |
+
+**JSON output (read mode):**
+
+```json
+{
+  "ref":             "HEAD",
+  "symbolic_target": "refs/heads/main",
+  "branch":          "main",
+  "commit_id":       "<sha256>"
+}
+```
+
+`commit_id` is `null` when the branch has no commits yet.
+
+**Text output:** `refs/heads/main` (or just `main` with `--short`)
+
+| Exit | Meaning |
+|---|---|
+| 0 | Ref read or written |
+| 1 | `--set` target branch does not exist; bad `--format` |
+| 3 | I/O error reading or writing HEAD |
+
+---
+
+## for-each-ref — iterate all refs with rich metadata
+
+Enumerates every branch ref together with the full commit metadata it points to.
+Supports sorting by any commit field and glob-pattern filtering, making it
+ideal for agent pipelines that need to slice the ref list without post-processing.
+
+```sh
+muse plumbing for-each-ref [-p <pattern>] [-s <field>] [-d] [-n <count>] [-f json|text]
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--pattern` | `-p` | `""` | fnmatch glob on the full ref name, e.g. `refs/heads/feat/*` |
+| `--sort` | `-s` | `ref` | Sort field: `ref`, `branch`, `commit_id`, `author`, `committed_at`, `message` |
+| `--desc` | `-d` | false | Reverse sort order (descending) |
+| `--count` | `-n` | `0` | Limit to first N refs after sorting (0 = unlimited) |
+| `--format` | `-f` | `json` | Output format: `json` or `text` |
+
+**JSON output:**
+
+```json
+{
+  "refs": [
+    {
+      "ref":          "refs/heads/dev",
+      "branch":       "dev",
+      "commit_id":    "<sha256>",
+      "author":       "gabriel",
+      "message":      "Add verse melody",
+      "committed_at": "2026-01-01T00:00:00+00:00",
+      "snapshot_id":  "<sha256>"
+    }
+  ],
+  "count": 1
+}
+```
+
+**Text output:** `<commit_id>  <ref>  <committed_at>  <author>`
+
+**Example — three most recently committed branches:**
+
+```sh
+muse plumbing for-each-ref --sort committed_at --desc --count 3
+```
+
+| Exit | Meaning |
+|---|---|
+| 0 | Refs emitted (list may be empty) |
+| 1 | Bad `--sort` field; bad `--format` |
+| 3 | I/O error reading refs or commit records |
+
+---
+
+## name-rev — map commit IDs to branch-relative names
+
+For each supplied commit ID, performs a single multi-source BFS from all branch
+tips and reports the closest branch and hop distance.  Results are expressed as
+`<branch>~N` (where N=0 means the commit IS the branch tip).
+
+```sh
+muse plumbing name-rev <commit-id>... [-n] [-u <string>] [-f json|text]
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--name-only` | `-n` | false | Emit only the name (or the undefined string), not the commit ID |
+| `--undefined` | `-u` | `"undefined"` | String to emit for unreachable commits |
+| `--format` | `-f` | `json` | Output format: `json` or `text` |
+
+**JSON output:**
+
+```json
+{
+  "results": [
+    {
+      "commit_id": "<sha256>",
+      "name":      "main~3",
+      "branch":    "main",
+      "distance":  3,
+      "undefined": false
+    },
+    {
+      "commit_id": "<sha256>",
+      "name":      null,
+      "branch":    null,
+      "distance":  null,
+      "undefined": true
+    }
+  ]
+}
+```
+
+**Text output:** `<sha256>  main~3` (or `main~3` with `--name-only`)
+
+**Performance:** A single O(total-commits) BFS from all branch tips simultaneously.
+Every commit is visited at most once regardless of how many input IDs are supplied.
+
+| Exit | Meaning |
+|---|---|
+| 0 | All results computed (some may be `undefined`) |
+| 1 | Bad `--format`; no commit IDs supplied |
+| 3 | I/O error reading commit records |
+
+---
+
+## check-ref-format — validate branch and ref names
+
+Tests one or more names against Muse's branch-naming rules — the same
+validation used by `muse branch` and `muse plumbing update-ref`.  Use in
+scripts to pre-validate names before attempting to create a branch.
+
+```sh
+muse plumbing check-ref-format <name>... [-q] [-f json|text]
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--quiet` | `-q` | false | No output — exit 0 if all valid, exit 1 otherwise |
+| `--format` | `-f` | `json` | Output format: `json` or `text` |
+
+**Rules enforced:** 1–255 chars; no backslash, null bytes, CR, LF, or tab;
+no leading/trailing dot; no consecutive dots (`..`); no leading/trailing or
+consecutive slashes.
+
+**JSON output:**
+
+```json
+{
+  "results": [
+    {"name": "feat/my-branch", "valid": true,  "error": null},
+    {"name": "bad..name",      "valid": false, "error": "..."}
+  ],
+  "all_valid": false
+}
+```
+
+**Text output:**
+```
+ok    feat/my-branch
+FAIL  bad..name  →  Branch name 'bad..name' contains forbidden characters
+```
+
+**Shell conditional:**
+
+```sh
+muse plumbing check-ref-format -q "$BRANCH" && git checkout -b "$BRANCH"
+```
+
+| Exit | Meaning |
+|---|---|
+| 0 | All names are valid |
+| 1 | One or more names are invalid; no names supplied |
+
+---
+
+## verify-pack — verify PackBundle integrity
+
+Reads a PackBundle JSON from stdin or `--file` and performs three-tier integrity
+checking:
+
+1. **Object integrity** — every object payload is base64-decoded and its SHA-256
+   is recomputed.  The digest must match the declared `object_id`.
+2. **Snapshot consistency** — every snapshot's manifest entries reference objects
+   present in the bundle or already in the local store.
+3. **Commit consistency** — every commit's `snapshot_id` is present in the bundle
+   or already in the local store.
+
+```sh
+muse plumbing pack-objects main | muse plumbing verify-pack
+muse plumbing verify-pack --file bundle.json
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--file` | `-i` | `""` | Path to bundle file (reads stdin when omitted) |
+| `--quiet` | `-q` | false | No output — exit 0 if clean, exit 1 on any failure |
+| `--no-local` | `-L` | false | Skip local store checks (verify bundle in isolation) |
+| `--format` | `-f` | `json` | Output format: `json` or `text` |
+
+**JSON output:**
+
+```json
+{
+  "objects_checked":   42,
+  "snapshots_checked": 5,
+  "commits_checked":   5,
+  "all_ok":            true,
+  "failures":          []
+}
+```
+
+**With failures:**
+
+```json
+{
+  "all_ok": false,
+  "failures": [
+    {"kind": "object",   "id": "<sha256>", "error": "hash mismatch"},
+    {"kind": "snapshot", "id": "<sha256>", "error": "missing object: ..."}
+  ]
+}
+```
+
+**Validate before upload:**
+
+```sh
+muse plumbing pack-objects main | muse plumbing verify-pack -q \
+  && echo "bundle is clean — safe to push"
+```
+
+| Exit | Meaning |
+|---|---|
+| 0 | Bundle is fully intact |
+| 1 | One or more integrity failures; malformed JSON; bad args |
+| 3 | I/O error reading stdin or the bundle file |
+
+---
+
+## commit-graph — emit the commit DAG
+
+The `commit-graph` command gained three new flags this release:
+
+| Flag | Short | Description |
+|---|---|---|
+| `--count` | `-c` | Emit only the integer count, not the full node list |
+| `--first-parent` | `-1` | Follow only first-parent links (linear, no merge parents) |
+| `--ancestry-path` | `-a` | With `--stop-at`: restrict to commits on the direct path between tip and stop-at |
+
+**Count commits in a feature branch since diverging from dev:**
+
+```sh
+muse plumbing commit-graph \
+  --tip $(muse plumbing rev-parse feat/my-branch -f text) \
+  --stop-at $(muse plumbing merge-base feat/my-branch dev -f text) \
+  --count
+# → {"tip": "<sha256>", "count": 7}
+```
+
+**Linear history only (no merge commits):**
+
+```sh
+muse plumbing commit-graph --first-parent -f text
+```
+
+---
+
 ## Object ID Quick Reference
 
 All IDs in Muse are 64-character lowercase hex SHA-256 digests.  There are
