@@ -15,7 +15,7 @@ Plumbing contract
 -----------------
 
 - Exit 0: commit written, commit_id printed.
-- Exit 1: snapshot not found, or parent commit not found.
+- Exit 1: snapshot not found, parent commit not found, or repo.json unreadable.
 - Exit 3: write failure.
 """
 
@@ -25,14 +25,19 @@ import datetime
 import json
 import logging
 import pathlib
-from typing import Annotated
 
 import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.snapshot import compute_commit_id
-from muse.core.store import CommitRecord, read_commit, read_current_branch, read_snapshot, write_commit
+from muse.core.store import (
+    CommitRecord,
+    read_commit,
+    read_current_branch,
+    read_snapshot,
+    write_commit,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,12 +45,23 @@ app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
-    import json as _json
-    return str(_json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
+    """Read the repo UUID from repo.json.
 
-
-def _current_branch(root: pathlib.Path) -> str:
-    return read_current_branch(root)
+    Returns the repo_id string, or raises SystemExit if the file is missing,
+    malformed, or the field is absent — a commit without a valid repo_id would
+    be permanently corrupt.
+    """
+    repo_json = root / ".muse" / "repo.json"
+    try:
+        data = json.loads(repo_json.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        typer.echo(f"❌ Cannot read repo.json: {exc}", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+    repo_id = data.get("repo_id", "")
+    if not isinstance(repo_id, str) or not repo_id:
+        typer.echo("❌ repo.json is missing a valid 'repo_id' field.", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+    return repo_id
 
 
 @app.callback(invoke_without_command=True)
@@ -81,7 +97,7 @@ def commit_tree(
             raise typer.Exit(code=ExitCode.USER_ERROR)
 
     repo_id = _read_repo_id(root)
-    branch_name = branch or _current_branch(root)
+    branch_name = branch or read_current_branch(root)
     committed_at = datetime.datetime.now(datetime.timezone.utc)
 
     commit_id = compute_commit_id(

@@ -26,9 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
-import pathlib
 import sys
-from typing import Annotated
 
 import typer
 
@@ -40,10 +38,6 @@ from muse.core.store import get_head_commit_id, read_current_branch
 logger = logging.getLogger(__name__)
 
 app = typer.Typer()
-
-
-def _current_branch(root: pathlib.Path) -> str:
-    return read_current_branch(root)
 
 
 @app.callback(invoke_without_command=True)
@@ -72,16 +66,14 @@ def pack_objects(
     resolved_wants: list[str] = []
     for w in want:
         if w.upper() == "HEAD":
-            branch = _current_branch(root)
+            branch = read_current_branch(root)
             cid = get_head_commit_id(root, branch)
             if cid is None:
-                typer.echo(
-                    json.dumps({"error": "HEAD has no commits"}), err=True
-                )
+                typer.echo(json.dumps({"error": "HEAD has no commits"}), err=True)
                 raise typer.Exit(code=ExitCode.USER_ERROR)
             resolved_wants.append(cid)
         else:
             resolved_wants.append(w)
 
-    bundle = build_pack(root, commit_ids=resolved_wants, have=have or None)
-    sys.stdout.write(json.dumps(bundle))
+    bundle = build_pack(root, commit_ids=resolved_wants, have=have)
+    json.dump(bundle, sys.stdout)

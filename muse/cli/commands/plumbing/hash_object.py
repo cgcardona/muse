@@ -16,8 +16,8 @@ Plumbing contract
 -----------------
 
 - Exit 0: hash computed successfully.
-- Exit 1: file not found or path is a directory.
-- Exit 3: I/O error writing to the store.
+- Exit 1: file not found, path is a directory, or unknown --format value.
+- Exit 3: I/O error writing to the store, or integrity check failed.
 """
 
 from __future__ import annotations
@@ -25,12 +25,11 @@ from __future__ import annotations
 import json
 import logging
 import pathlib
-import sys
 
 import typer
 
 from muse.core.errors import ExitCode
-from muse.core.object_store import write_object
+from muse.core.object_store import write_object_from_path
 from muse.core.repo import find_repo_root
 from muse.core.snapshot import hash_file
 
@@ -38,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 app = typer.Typer()
 
-_FORMAT_CHOICES = ["json", "text"]
+_FORMAT_CHOICES = ("json", "text")
 
 
 @app.callback(invoke_without_command=True)
@@ -48,7 +47,9 @@ def hash_object(
     write: bool = typer.Option(
         False, "--write", "-w", help="Store the object in .muse/objects/."
     ),
-    fmt: str = typer.Option("json", "--format", help="Output format: json or text."),
+    fmt: str = typer.Option(
+        "json", "--format", "-f", help="Output format: json or text."
+    ),
 ) -> None:
     """Compute the SHA-256 object ID of a file.
 
@@ -57,6 +58,13 @@ def hash_object(
     store the object so it can be referenced by future ``muse plumbing
     commit-tree`` calls.
     """
+    if fmt not in _FORMAT_CHOICES:
+        typer.echo(
+            f"❌ Unknown format {fmt!r}. Valid choices: {', '.join(_FORMAT_CHOICES)}",
+            err=True,
+        )
+        raise typer.Exit(code=ExitCode.USER_ERROR)
+
     if not path.exists():
         typer.echo(f"❌ Path does not exist: {path}", err=True)
         raise typer.Exit(code=ExitCode.USER_ERROR)
@@ -73,8 +81,18 @@ def hash_object(
             typer.echo("❌ Not inside a Muse repository. Cannot write object.", err=True)
             raise typer.Exit(code=ExitCode.USER_ERROR)
         try:
-            raw = path.read_bytes()
-            stored = write_object(root, object_id, raw)
+            # write_object_from_path streams the file at 64 KiB at a time via
+            # shutil.copy2, so arbitrarily large blobs never spike the heap.
+            # It also re-verifies the hash before writing, catching any race
+            # between our hash_file() call above and the actual store write.
+            stored = write_object_from_path(root, object_id, path)
+        except ValueError as exc:
+            # File changed between hash_file() and the integrity re-check.
+            typer.echo(
+                f"❌ Integrity check failed (file may have changed during write): {exc}",
+                err=True,
+            )
+            raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
         except OSError as exc:
             typer.echo(f"❌ Failed to write object: {exc}", err=True)
             raise typer.Exit(code=ExitCode.INTERNAL_ERROR)

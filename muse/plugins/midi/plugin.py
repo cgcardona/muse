@@ -56,7 +56,9 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import pathlib
+import stat as _stat
 
 from muse._version import __version__
 from muse.core.schema import (
@@ -83,6 +85,7 @@ from muse.domain import (
     StructuredDelta,
     StructuredMergePlugin,
 )
+from muse.core.stat_cache import load_cache
 from muse.plugins.midi.midi_diff import NoteKey
 
 logger = logging.getLogger(__name__)
@@ -129,19 +132,33 @@ class MidiPlugin:
         if isinstance(live_state, pathlib.Path):
             from muse.core.ignore import is_ignored, load_ignore_config, resolve_patterns
             workdir = live_state
-            repo_root = workdir
-            patterns = resolve_patterns(load_ignore_config(repo_root), _DOMAIN_TAG)
+            patterns = resolve_patterns(load_ignore_config(workdir), _DOMAIN_TAG)
+            cache = load_cache(workdir)
             files: dict[str, str] = {}
-            for file_path in sorted(workdir.rglob("*")):
-                if not file_path.is_file():
-                    continue
-                rel_parts = file_path.relative_to(workdir).parts
-                if any(part.startswith(".") for part in rel_parts):
-                    continue
-                rel = file_path.relative_to(workdir).as_posix()
-                if is_ignored(rel, patterns):
-                    continue
-                files[rel] = _hash_file(file_path)
+            root_str = str(workdir)
+            prefix_len = len(root_str) + 1
+
+            for dirpath, dirnames, filenames in os.walk(root_str, followlinks=False):
+                dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+                for fname in sorted(filenames):
+                    if fname.startswith("."):
+                        continue
+                    abs_str = os.path.join(dirpath, fname)
+                    try:
+                        st = os.lstat(abs_str)
+                    except OSError:
+                        continue
+                    if not _stat.S_ISREG(st.st_mode):
+                        continue
+                    rel = abs_str[prefix_len:]
+                    if os.sep != "/":
+                        rel = rel.replace(os.sep, "/")
+                    if is_ignored(rel, patterns):
+                        continue
+                    files[rel] = cache.get_cached(rel, abs_str, st.st_mtime, st.st_size)
+
+            cache.prune(set(files))
+            cache.save()
             return SnapshotManifest(files=files, domain=_DOMAIN_TAG)
 
         return live_state
