@@ -124,15 +124,6 @@ PYEOF
 typeset -gi _MUSE_LAST_DIRTY_RC=0  # last exit code from the dirty check subprocess
 
 function _muse_check_dirty() {
-  # A fresh repo has an empty branch ref file — no commits, nothing to diff.
-  # Running muse status against a commitless HEAD hangs; skip it.
-  local ref_file="$MUSE_REPO_ROOT/.muse/refs/heads/$MUSE_BRANCH"
-  if [[ ! -s "$ref_file" ]]; then
-    MUSE_DIRTY=0; MUSE_DIRTY_COUNT=0
-    (( MUSE_DEBUG )) && print "[muse] dirty skip: no commits yet" >&2
-    return
-  fi
-
   local output rc count=0
   output=$(cd -- "$MUSE_REPO_ROOT" && \
            timeout -- "${MUSE_DIRTY_TIMEOUT}" muse status --porcelain 2>/dev/null)
