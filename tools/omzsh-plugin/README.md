@@ -1,7 +1,8 @@
 # Muse — Oh My ZSH Plugin
 
 Minimal shell integration for [Muse](https://github.com/cgcardona/muse).
-Shows your active domain and branch in the prompt. That's it.
+Shows your active domain and branch in the prompt, mirroring what
+`git:(branch)` does for Git repos.
 
 ---
 
@@ -30,7 +31,7 @@ PROMPT='%~ $(muse_prompt_info) %# '
 Inside a Muse repo this renders as:
 
 ```
-~/my-song ♪ muse:(midi:main) %
+~/my-song muse:(midi:main) %
 ```
 
 Outside a Muse repo it emits nothing.
@@ -41,14 +42,14 @@ Outside a Muse repo it emits nothing.
 
 | Segment | Meaning |
 |---------|---------|
-| `♪ muse:(midi:main)` | `midi` domain, branch `main` |
-| `₿ muse:(bitcoin:lightning)` | `bitcoin` domain, branch `lightning` |
-| `⌥ muse:(code:feature/x)` | `code` domain, branch `feature/x` |
-| `◈ muse:(_default:main)` | unknown domain |
-| `♪ muse:(midi:a1b2c3d4)` | detached HEAD (short SHA) |
-| `♪ muse:(midi:main) ✗ 3` | dirty working tree, 3 changed paths |
+| `muse:(midi:main)` | `midi` domain, branch `main` |
+| `muse:(bitcoin:lightning)` | `bitcoin` domain, branch `lightning` |
+| `muse:(code:feature/x)` | `code` domain, branch `feature/x` |
+| `muse:(scaffold:main)` | `scaffold` domain |
+| `muse:(midi:a1b2c3d4)` | detached HEAD (short SHA) |
+| `muse:(midi:main) ✗ 3` | dirty working tree, 3 changed paths |
 
-The dirty indicator (`✗`) only appears after you run a `muse` command in the
+The dirty indicator (`✗ N`) only appears after you run a `muse` command in the
 same shell session. This keeps the prompt fast on first open.
 
 ---
@@ -58,13 +59,14 @@ same shell session. This keeps the prompt fast on first open.
 Set these in `~/.zshrc` **before** `plugins=(… muse …)`:
 
 ```zsh
-MUSE_PROMPT_ICONS=1       # 0 = ASCII fallback, e.g. [midi] main
+MUSE_PROMPT_ICONS=1       # prepend a domain icon, e.g. ♪ muse:(midi:main)
 MUSE_DIRTY_TIMEOUT=1      # seconds before dirty check gives up
 ```
 
-Override individual domain icons:
+Domain icons are off by default. To enable and override individual icons:
 
 ```zsh
+MUSE_PROMPT_ICONS=1
 MUSE_DOMAIN_ICONS[midi]="🎵"
 MUSE_DOMAIN_ICONS[bitcoin]="🔑"
 ```
