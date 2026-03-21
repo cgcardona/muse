@@ -91,8 +91,9 @@ tests/
    pytest tests/ -v                                                  # all 99+ tests green
    ```
 5. **Open a PR** against `dev` via `gh pr create` or the GitHub MCP tool.
-6. **Merge immediately.** Feature→dev: squash. Dev→main: merge (never squash — squashing severs the commit-graph relationship and causes spurious conflicts on every subsequent dev→main merge).
-7. **Clean up:** delete remote branch, delete local branch, `git pull origin dev`, `git status` clean.
+6. **Wait for CI to go green.** Do not merge while any check is yellow (pending) or red (failing). If CI fails, fix the branch and push again — never merge around a failure.
+7. **Merge only when CI is green.** Feature→dev: squash. Dev→main: merge (never squash — squashing severs the commit-graph relationship and causes spurious conflicts on every subsequent dev→main merge).
+8. **Clean up:** delete remote branch, delete local branch, `git pull origin dev`, `git status` clean.
 
 ### Enforcement protocol
 
@@ -100,6 +101,7 @@ tests/
 |-----------|---------|----------|
 | Before branching | `git status` | `nothing to commit, working tree clean` |
 | Before opening PR | `mypy` + `typing_audit` + `pytest` | All pass locally |
+| Before merging | GitHub Actions on the PR | All checks green — never merge on yellow or red |
 | After task | Branch deleted, dev pulled | `git status` clean |
 
 ---
@@ -198,6 +200,10 @@ Run before opening any PR:
 - [ ] Affected docs updated in the same commit
 - [ ] No secrets, no `print()`, no orphaned imports
 
+Before merging a PR:
+
+- [ ] All GitHub Actions checks are **green** — never merge on yellow (pending) or red (failing)
+
 ---
 
 ## Scope of Authority
@@ -221,6 +227,8 @@ Run before opening any PR:
 ## Anti-Patterns (never do these)
 
 - Working directly on `dev` or `main`.
+- Merging a PR while CI is yellow (pending) or red (failing) — wait for green.
+- Merging with a known failing test.
 - `Any`, `object`, bare collections, `cast()`, `# type: ignore` — absolute bans.
 - `Optional[X]`, `List[X]`, `Dict[K,V]` — use modern syntax.
 - `async`/`await` anywhere in `muse/`.
@@ -228,4 +236,3 @@ Run before opening any PR:
 - Adding `fastapi`, `sqlalchemy`, `pydantic`, `httpx`, `asyncpg` as dependencies.
 - Referencing external prior projects — they do not exist in this codebase.
 - `print()` for diagnostics.
-- Merging with a known failing test.
