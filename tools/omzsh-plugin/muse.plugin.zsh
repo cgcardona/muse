@@ -28,7 +28,8 @@ fi
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 : ${MUSE_PROMPT_ICONS:=0}
-: ${MUSE_DIRTY_TIMEOUT:=1}
+: ${MUSE_DIRTY_TIMEOUT:=5}
+: ${MUSE_DEBUG:=0}          # set to 1 to print timestamped trace to stderr
 
 # Domain icon map. Override individual elements in ~/.zshrc before plugins=().
 typeset -gA MUSE_DOMAIN_ICONS
@@ -118,12 +119,25 @@ PYEOF
   : ${MUSE_DOMAIN:=midi}
 }
 
-# Check dirty state. Runs with timeout; only called after a muse command.
+# Check dirty state. Runs with timeout; called on cd, shell load, and after
+# any muse command. MUSE_DIRTY_TIMEOUT (default 5s) caps the wait.
+typeset -gi _MUSE_LAST_DIRTY_RC=0  # last exit code from the dirty check subprocess
+
 function _muse_check_dirty() {
+  # A fresh repo has an empty branch ref file — no commits, nothing to diff.
+  # Running muse status against a commitless HEAD hangs; skip it.
+  local ref_file="$MUSE_REPO_ROOT/.muse/refs/heads/$MUSE_BRANCH"
+  if [[ ! -s "$ref_file" ]]; then
+    MUSE_DIRTY=0; MUSE_DIRTY_COUNT=0
+    (( MUSE_DEBUG )) && print "[muse] dirty skip: no commits yet" >&2
+    return
+  fi
+
   local output rc count=0
   output=$(cd -- "$MUSE_REPO_ROOT" && \
            timeout -- "${MUSE_DIRTY_TIMEOUT}" muse status --porcelain 2>/dev/null)
   rc=$?
+  _MUSE_LAST_DIRTY_RC=$rc
   if (( rc == 124 )); then
     # Timeout — leave previous dirty state in place rather than lying.
     return
@@ -138,20 +152,29 @@ function _muse_check_dirty() {
 
 # ── §2  Cache management ──────────────────────────────────────────────────────
 
-# Lightweight refresh: head + domain only. Called on directory change.
+# Full refresh: head + domain + dirty. Called on directory change and on load.
+# One muse subprocess (status --porcelain) runs every time — same model as the
+# git plugin. The timeout in _muse_check_dirty keeps it bounded.
 function _muse_refresh() {
+  (( MUSE_DEBUG )) && print "[muse] _muse_refresh start  $(date +%T.%3N)" >&2
   if ! _muse_find_root; then
     MUSE_DOMAIN="midi"; MUSE_BRANCH=""; MUSE_DIRTY=0; MUSE_DIRTY_COUNT=0
+    (( MUSE_DEBUG )) && print "[muse] _muse_find_root: no repo" >&2
     return 1
   fi
+  (( MUSE_DEBUG )) && print "[muse] root=$MUSE_REPO_ROOT" >&2
   _muse_parse_head
+  (( MUSE_DEBUG )) && print "[muse] head done  branch=$MUSE_BRANCH  $(date +%T.%3N)" >&2
   _muse_parse_domain
+  (( MUSE_DEBUG )) && print "[muse] domain done  domain=$MUSE_DOMAIN  $(date +%T.%3N)" >&2
+  _muse_check_dirty
+  (( MUSE_DEBUG )) && print "[muse] dirty done  dirty=$MUSE_DIRTY rc=$_MUSE_LAST_DIRTY_RC  $(date +%T.%3N)" >&2
 }
 
-# Full refresh: head + domain + dirty. Called after a muse command.
+# Post-command refresh: same as _muse_refresh but resets the command flag.
 function _muse_refresh_full() {
+  (( MUSE_DEBUG )) && print "[muse] _muse_refresh_full (cmd_ran=$_MUSE_CMD_RAN)" >&2
   _muse_refresh || return
-  _muse_check_dirty
   _MUSE_CMD_RAN=0
 }
 
@@ -183,6 +206,12 @@ precmd_functions+=(_muse_hook_precmd)
 # Primary prompt segment. Example usage in ~/.zshrc:
 #   PROMPT='%~ $(muse_prompt_info) %# '
 # Emits nothing when not inside a muse repo.
+#
+# Clean:  muse:(code:main)       — domain:branch in magenta
+# Dirty:  muse:(code:main)       — domain:branch in yellow
+#
+# The color of the domain:branch text is the only dirty signal — no extra
+# symbol. Yellow means "uncommitted changes exist"; magenta means clean.
 function muse_prompt_info() {
   [[ -z "$MUSE_REPO_ROOT" ]] && return
 
@@ -190,16 +219,17 @@ function muse_prompt_info() {
   local branch="${MUSE_BRANCH//\%/%%}"
   local domain="${MUSE_DOMAIN//\%/%%}"
 
-  local dirty=""
-  (( MUSE_DIRTY )) && dirty=" %F{red}✗ ${MUSE_DIRTY_COUNT}%f"
+  # Yellow interior when dirty; magenta when clean.
+  local inner_color="%F{magenta}"
+  (( MUSE_DIRTY )) && inner_color="%F{yellow}"
 
   # Format: muse:(domain:branch)  — mirrors git:(branch) but adds the domain.
   # Set MUSE_PROMPT_ICONS=1 in ~/.zshrc to prepend a domain icon.
   if [[ "$MUSE_PROMPT_ICONS" == "1" ]]; then
     local icon="${MUSE_DOMAIN_ICONS[$MUSE_DOMAIN]:-${MUSE_DOMAIN_ICONS[_default]}}"
-    echo -n "%F{cyan}${icon} muse:(%F{magenta}${domain}:${branch}%F{cyan})%f${dirty}"
+    echo -n "%F{cyan}${icon} muse:(${inner_color}${domain}:${branch}%F{cyan})%f"
   else
-    echo -n "%F{cyan}muse:(%F{magenta}${domain}:${branch}%F{cyan})%f${dirty}"
+    echo -n "%F{cyan}muse:(${inner_color}${domain}:${branch}%F{cyan})%f"
   fi
 }
 
@@ -208,15 +238,20 @@ function muse_prompt_info() {
 # Print current plugin state. Run when the prompt looks wrong.
 #   muse_debug
 function muse_debug() {
-  print "MUSE_REPO_ROOT  = ${MUSE_REPO_ROOT:-(not set)}"
-  print "MUSE_BRANCH     = ${MUSE_BRANCH:-(not set)}"
-  print "MUSE_DOMAIN     = ${MUSE_DOMAIN:-(not set)}"
-  print "MUSE_DIRTY      = $MUSE_DIRTY  (count: $MUSE_DIRTY_COUNT)"
-  print "_MUSE_CMD_RAN   = $_MUSE_CMD_RAN"
-  print "PWD             = $PWD"
+  print "MUSE_REPO_ROOT       = ${MUSE_REPO_ROOT:-(not set)}"
+  print "MUSE_BRANCH          = ${MUSE_BRANCH:-(not set)}"
+  print "MUSE_DOMAIN          = ${MUSE_DOMAIN:-(not set)}"
+  print "MUSE_DIRTY           = $MUSE_DIRTY  (count: $MUSE_DIRTY_COUNT)"
+  print "MUSE_DIRTY_TIMEOUT   = ${MUSE_DIRTY_TIMEOUT}s"
+  print "_MUSE_LAST_DIRTY_RC  = $_MUSE_LAST_DIRTY_RC  (124 = timed out)"
+  print "_MUSE_CMD_RAN        = $_MUSE_CMD_RAN"
+  print "PWD                  = $PWD"
   if [[ -n "$MUSE_REPO_ROOT" ]]; then
-    print "repo.json       = $MUSE_REPO_ROOT/.muse/repo.json"
-    print "HEAD            = $(< "$MUSE_REPO_ROOT/.muse/HEAD" 2>/dev/null || print '(missing)')"
+    print "repo.json            = $MUSE_REPO_ROOT/.muse/repo.json"
+    print "HEAD                 = $(< "$MUSE_REPO_ROOT/.muse/HEAD" 2>/dev/null || print '(missing)')"
+    print "--- muse status --porcelain (live, timed) ---"
+    time (cd -- "$MUSE_REPO_ROOT" && muse status --porcelain 2>&1)
+    print "--------------------------------------------"
   fi
 }
 

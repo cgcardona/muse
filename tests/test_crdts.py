@@ -22,6 +22,7 @@ import pathlib
 
 import pytest
 
+from muse._version import __version__
 from muse.domain import CRDTPlugin
 from muse.core.crdts import (
     AWMap,
@@ -603,7 +604,7 @@ class TestCRDTMergeEngineIntegration:
                     "dimensions": [],
                     "top_level": schema,
                     "merge_mode": "crdt",
-                    "schema_version": 1,
+                    "schema_version": __version__,
                 }
 
             def crdt_schema(self) -> list[CRDTDimensionSpec]:
@@ -627,7 +628,7 @@ class TestCRDTMergeEngineIntegration:
                     "domain": a["domain"],
                     "vclock": merged_vc.to_dict(),
                     "crdt_state": merged_crdt_state,
-                    "schema_version": 1,
+                    "schema_version": __version__,
                 }
                 return result
 
@@ -637,7 +638,7 @@ class TestCRDTMergeEngineIntegration:
                     "domain": snapshot.get("domain", "stub"),
                     "vclock": {},
                     "crdt_state": {},
-                    "schema_version": 1,
+                    "schema_version": __version__,
                 }
                 return result
 
@@ -753,14 +754,14 @@ class TestCRDTMergeEngineIntegration:
             "domain": "stub",
             "vclock": {"x": 1},
             "crdt_state": {},
-            "schema_version": 1,
+            "schema_version": __version__,
         }
         b: CRDTSnapshotManifest = {
             "files": {"b.mid": "hb"},
             "domain": "stub",
             "vclock": {"y": 1},
             "crdt_state": {},
-            "schema_version": 1,
+            "schema_version": __version__,
         }
         ab = plugin.join(a, b)
         ba = plugin.join(b, a)

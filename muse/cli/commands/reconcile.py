@@ -58,6 +58,7 @@ import logging
 
 import typer
 
+from muse._version import __version__
 from muse.core.coordination import active_reservations, load_all_intents
 from muse.core.repo import require_repo
 
@@ -155,7 +156,7 @@ def reconcile(
     if as_json:
         typer.echo(json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": __version__,
                 "active_reservations": len(reservations),
                 "active_intents": len(intents),
                 "conflict_hotspots": len(hotspots),

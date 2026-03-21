@@ -14,6 +14,7 @@ import hashlib
 import pytest
 from typing import Literal
 
+from muse._version import __version__
 from muse.core.diff_algorithms import (
     DiffInput,
     MapInput,
@@ -513,7 +514,7 @@ def _minimal_schema(domain: str) -> DomainSchema:
         dimensions=[],
         top_level=SetSchema(kind="set", element_type="file", identity="by_content"),
         merge_mode="three_way",
-        schema_version=1,
+        schema_version=__version__,
     )
 
 

@@ -84,6 +84,7 @@ import re
 
 import typer
 
+from muse._version import __version__
 from muse.core.errors import ExitCode
 from muse.core.object_store import read_object
 from muse.core.repo import require_repo
@@ -326,7 +327,7 @@ def invariants(
     if as_json:
         typer.echo(json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": __version__,
                 "commit": commit.commit_id[:8],
                 "rules_checked": len(results),
                 "passed": sum(1 for r in results if r.passed),

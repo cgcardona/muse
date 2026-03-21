@@ -13,10 +13,10 @@ Available indexes
     Enables O(1) ``muse symbol-log``, ``muse lineage``, and ``muse query-history``
     instead of O(commits × files) scans.
 
-    Schema v1::
+    Schema::
 
         {
-          "schema_version": 1,
+          "schema_version": "<muse package version>",
           "index": "symbol_history",
           "updated_at": "2026-03-18T12:00:00+00:00",
           "entries": {
@@ -39,10 +39,10 @@ Available indexes
     Maps ``body_hash`` values to the list of symbol addresses that share them.
     Enables O(1) ``muse clones`` and ``muse find-symbol hash=``.
 
-    Schema v1::
+    Schema::
 
         {
-          "schema_version": 1,
+          "schema_version": "<muse package version>",
           "index": "hash_occurrence",
           "updated_at": "2026-03-18T12:00:00+00:00",
           "entries": {
@@ -65,11 +65,11 @@ import json
 import logging
 import pathlib
 
+from muse._version import __version__ as _SCHEMA_VERSION
+
 logger = logging.getLogger(__name__)
 
 _INDICES_DIR = pathlib.PurePosixPath(".muse") / "indices"
-
-_SCHEMA_VERSION = 1
 
 
 # ---------------------------------------------------------------------------

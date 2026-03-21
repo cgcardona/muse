@@ -55,6 +55,7 @@ import textwrap
 import pytest
 from typer.testing import CliRunner
 
+from muse._version import __version__
 from muse.cli.app import cli
 from muse.core.store import get_head_commit_id
 
@@ -281,7 +282,7 @@ class TestQueryV2:
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "schema_version" in data
-        assert data["schema_version"] == 2
+        assert data["schema_version"] == __version__
 
     def test_query_or_predicate(self, code_repo: pathlib.Path) -> None:
         result = runner.invoke(cli, ["code", "query", "kind=function", "OR", "kind=method"])
@@ -332,7 +333,7 @@ class TestQueryHistory:
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "schema_version" in data
-        assert data["schema_version"] == 2
+        assert data["schema_version"] == __version__
         assert "results" in data
 
     def test_query_history_with_from_to(self, code_repo: pathlib.Path) -> None:
@@ -406,7 +407,7 @@ class TestDetectRefactorV2:
         ])
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)
-        assert data["schema_version"] == 2
+        assert data["schema_version"] == __version__
         assert "total" in data
         assert "events" in data
 

@@ -44,6 +44,7 @@ import logging
 import pathlib
 from typing import Literal, TypedDict
 
+from muse._version import __version__
 from muse.plugins.midi._query import (
     NoteInfo,
     detect_chord,
@@ -116,14 +117,14 @@ class MusicManifest(TypedDict):
     reads only ``files`` for content addressing.  The ``tracks`` field is
     additive richness for music-domain queries, diff, and merge.
 
-    ``schema_version``  Always ``2`` for this format.
+    ``schema_version``  The Muse package version (read from ``muse._version``).
     ``snapshot_id``     The snapshot this manifest belongs to.
     ``files``           Standard flat ``{path: sha256}`` manifest (compat layer).
     ``tracks``          ``{path: TrackManifest}`` for each MIDI file.
     """
 
     domain: Literal["midi"]
-    schema_version: Literal[2]
+    schema_version: str
     snapshot_id: str
     files: dict[str, str]
     tracks: dict[str, TrackManifest]
@@ -257,7 +258,7 @@ def build_music_manifest(
 
     return MusicManifest(
         domain="midi",
-        schema_version=2,
+        schema_version=__version__,
         snapshot_id=snapshot_id,
         files=dict(file_manifest),
         tracks=tracks,

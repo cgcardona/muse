@@ -51,6 +51,7 @@ import pathlib
 
 import typer
 
+from muse._version import __version__
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import CommitRecord, get_all_commits, get_commit_snapshot_manifest, read_current_branch, resolve_commit_ref
@@ -245,7 +246,7 @@ def query(
         if as_json:
             typer.echo(json.dumps(
                 {
-                    "schema_version": 2,
+                    "schema_version": __version__,
                     "mode": "all-commits",
                     "results": [h.to_dict() for h in historical],
                 },
@@ -312,7 +313,7 @@ def query(
                 "signature_id": rec["signature_id"],
             })
         typer.echo(json.dumps(
-            {"schema_version": 2, "commit": commit.commit_id[:8], "results": out},
+            {"schema_version": __version__, "commit": commit.commit_id[:8], "results": out},
             indent=2,
         ))
         return

@@ -749,14 +749,14 @@ class CRDTSnapshotManifest(TypedDict):
     tokens) lives here, separate from content hashes, so the content-addressed
     store remains valid.
 
-    ``schema_version`` is always ``1``.
+    ``schema_version`` is the Muse package version (read from ``muse._version``).
     """
 
     files: dict[str, str]
     domain: str
     vclock: dict[str, int]
     crdt_state: dict[str, str]
-    schema_version: Literal[1]
+    schema_version: str
 
 
 @runtime_checkable
