@@ -210,7 +210,8 @@ precmd_functions+=(_muse_hook_precmd)
 function muse_prompt_info() {
   [[ -z "$MUSE_REPO_ROOT" ]] && return
 
-  print "[muse:prompt] MUSE_DIRTY=$MUSE_DIRTY  → color=$(( MUSE_DIRTY ? 'YELLOW' : 'MAGENTA' ))" >&2
+  local _dbg_color; (( MUSE_DIRTY )) && _dbg_color=YELLOW || _dbg_color=MAGENTA
+  print "[muse:prompt] MUSE_DIRTY=$MUSE_DIRTY → color=$_dbg_color" >&2
 
   # Escape % so ZSH does not treat branch-name content as prompt directives.
   local branch="${MUSE_BRANCH//\%/%%}"
