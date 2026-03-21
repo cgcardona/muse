@@ -330,7 +330,7 @@ def init(
     template: str | None = typer.Option(None, "--template", metavar="PATH", help="Copy PATH contents into the working tree."),
     default_branch: str = typer.Option("main", "--default-branch", metavar="BRANCH", help="Name of the initial branch."),
     force: bool = typer.Option(False, "--force", help="Re-initialise even if already a Muse repository."),
-    domain: str = typer.Option("midi", "--domain", help="Domain plugin to use (e.g. midi). Must be registered in the plugin registry."),
+    domain: str = typer.Option("code", "--domain", help="Domain plugin to use (e.g. code, midi). Must be registered in the plugin registry."),
 ) -> None:
     """Initialise a new Muse repository in the current directory."""
     try:
