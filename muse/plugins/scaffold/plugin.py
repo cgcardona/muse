@@ -32,12 +32,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import pathlib
+import stat as _stat
 
 from muse._version import __version__
 from muse.core.crdts import ORSet, VectorClock
 from muse.core.diff_algorithms import snapshot_diff
 from muse.core.op_transform import merge_op_lists
+from muse.core.stat_cache import load_cache
 from muse.core.schema import (
     CRDTDimensionSpec,
     DimensionSpec,
@@ -105,21 +108,33 @@ class ScaffoldPlugin:
             from muse.core.ignore import is_ignored, load_ignore_config, resolve_patterns
 
             workdir = live_state
-            repo_root = workdir
-            patterns = resolve_patterns(load_ignore_config(repo_root), _DOMAIN_NAME)
+            patterns = resolve_patterns(load_ignore_config(workdir), _DOMAIN_NAME)
+            cache = load_cache(workdir)
             files: dict[str, str] = {}
-            for p in sorted(workdir.rglob(_FILE_GLOB)):
-                if not p.is_file():
-                    continue
-                rel = p.relative_to(workdir).as_posix()
-                # Skip hidden files and any file inside a hidden directory.
-                if any(part.startswith(".") for part in pathlib.Path(rel).parts):
-                    continue
-                if is_ignored(rel, patterns):
-                    continue
-                raw = p.read_bytes()
-                sha = hashlib.sha256(raw).hexdigest()
-                files[rel] = sha
+            root_str = str(workdir)
+            prefix_len = len(root_str) + 1
+
+            for dirpath, dirnames, filenames in os.walk(root_str, followlinks=False):
+                dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+                for fname in sorted(filenames):
+                    if fname.startswith("."):
+                        continue
+                    abs_str = os.path.join(dirpath, fname)
+                    try:
+                        st = os.lstat(abs_str)
+                    except OSError:
+                        continue
+                    if not _stat.S_ISREG(st.st_mode):
+                        continue
+                    rel = abs_str[prefix_len:]
+                    if os.sep != "/":
+                        rel = rel.replace(os.sep, "/")
+                    if is_ignored(rel, patterns):
+                        continue
+                    files[rel] = cache.get_cached(rel, abs_str, st.st_mtime, st.st_size)
+
+            cache.prune(set(files))
+            cache.save()
             return SnapshotManifest(files=files, domain=_DOMAIN_NAME)
 
         # SnapshotManifest dict path — used by merge / diff in memory

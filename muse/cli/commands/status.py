@@ -40,6 +40,7 @@ import json
 import logging
 import pathlib
 import sys
+from typing import Callable
 
 import typer
 
@@ -47,7 +48,7 @@ from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import get_head_snapshot_manifest, read_current_branch
 from muse.domain import SnapshotManifest
-from muse.plugins.registry import read_domain, resolve_plugin
+from muse.plugins.registry import resolve_plugin_by_domain
 
 logger = logging.getLogger(__name__)
 
@@ -60,15 +61,24 @@ _GREEN  = typer.colors.GREEN
 _RED    = typer.colors.RED
 
 
-def _c(text: str, color: str) -> str:
-    """Apply *color* to *text* when stdout is a terminal; pass through otherwise."""
-    if sys.stdout.isatty():
-        return typer.style(text, fg=color, bold=True)
-    return text
+def _read_repo_meta(root: pathlib.Path) -> tuple[str, str]:
+    """Read ``.muse/repo.json`` once and return ``(repo_id, domain)``.
 
-
-def _read_repo_id(root: pathlib.Path) -> str:
-    return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
+    Returns sensible defaults on any read or parse failure rather than
+    propagating an unhandled exception to the user.  The caller never needs
+    to guard against a missing or corrupt ``repo.json`` — status degrades
+    gracefully to an empty diff in the worst case.
+    """
+    repo_json = root / ".muse" / "repo.json"
+    try:
+        data = json.loads(repo_json.read_text(encoding="utf-8"))
+        repo_id_raw = data.get("repo_id", "")
+        repo_id = str(repo_id_raw) if isinstance(repo_id_raw, str) and repo_id_raw else ""
+        domain_raw = data.get("domain", "")
+        domain = str(domain_raw) if isinstance(domain_raw, str) and domain_raw else "midi"
+        return repo_id, domain
+    except (OSError, json.JSONDecodeError):
+        return "", "midi"
 
 
 @app.callback(invoke_without_command=True)
@@ -85,21 +95,32 @@ def status(
     except ValueError as exc:
         typer.echo(f"fatal: {exc}", err=True)
         raise typer.Exit(code=ExitCode.USER_ERROR)
-    repo_id = _read_repo_id(root)
+
+    # Read repo.json exactly once — repo_id and domain both come from here.
+    # resolve_plugin_by_domain() uses the pre-read domain string, eliminating
+    # the two additional repo.json reads that resolve_plugin() and read_domain()
+    # would otherwise each trigger independently.
+    repo_id, domain = _read_repo_meta(root)
 
     if porcelain:
         typer.echo(f"## {branch}")
-        if branch_only:
-            return
-
     elif not short:
         typer.echo(f"On branch {branch}")
-        if branch_only:
-            return
+
+    # --branch: print only the branch header then exit, regardless of mode.
+    if branch_only:
+        return
+
+    # Compute isatty once; it is a syscall and must not be repeated per line.
+    # Porcelain output is never colored, even on a TTY.
+    is_tty = sys.stdout.isatty() and not porcelain
+
+    def _color(text: str, color: str) -> str:
+        return typer.style(text, fg=color, bold=True) if is_tty else text
 
     head_manifest = get_head_snapshot_manifest(root, repo_id, branch) or {}
-    plugin = resolve_plugin(root)
-    committed_snap = SnapshotManifest(files=head_manifest, domain=read_domain(root))
+    plugin = resolve_plugin_by_domain(domain)
+    committed_snap = SnapshotManifest(files=head_manifest, domain=domain)
     report = plugin.drift(committed_snap, root)
     delta = report.delta
 
@@ -107,7 +128,7 @@ def status(
     modified: set[str] = {op["address"] for op in delta["ops"] if op["op"] in ("replace", "patch")}
     deleted: set[str] = {op["address"] for op in delta["ops"] if op["op"] == "delete"}
 
-    if not any([added, modified, deleted]):
+    if not (added or modified or deleted):
         if not short and not porcelain:
             typer.echo("\nNothing to commit, working tree clean")
         return
@@ -125,19 +146,19 @@ def status(
     # --short: compact one-line-per-file, colored letter prefix.
     if short:
         for p in sorted(modified):
-            typer.echo(f" {_c('M', _YELLOW)} {p}")
+            typer.echo(f" {_color('M', _YELLOW)} {p}")
         for p in sorted(added):
-            typer.echo(f" {_c('A', _GREEN)} {p}")
+            typer.echo(f" {_color('A', _GREEN)} {p}")
         for p in sorted(deleted):
-            typer.echo(f" {_c('D', _RED)} {p}")
+            typer.echo(f" {_color('D', _RED)} {p}")
         return
 
     # Default: human-readable, colored label.
     typer.echo("\nChanges since last commit:")
     typer.echo('  (use "muse commit -m <msg>" to record changes)\n')
     for p in sorted(modified):
-        typer.echo(f"\t{_c('    modified:', _YELLOW)} {p}")
+        typer.echo(f"\t{_color('    modified:', _YELLOW)} {p}")
     for p in sorted(added):
-        typer.echo(f"\t{_c('    new file:', _GREEN)} {p}")
+        typer.echo(f"\t{_color('    new file:', _GREEN)} {p}")
     for p in sorted(deleted):
-        typer.echo(f"\t{_c('     deleted:', _RED)} {p}")
+        typer.echo(f"\t{_color('     deleted:', _RED)} {p}")

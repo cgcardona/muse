@@ -85,7 +85,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import pathlib
+import stat as _stat
 
 from muse._version import __version__
 from muse.core.attributes import load_attributes, resolve_strategy
@@ -93,6 +95,7 @@ from muse.core.diff_algorithms import snapshot_diff
 from muse.core.ignore import is_ignored, load_ignore_config, resolve_patterns
 from muse.core.object_store import read_object
 from muse.core.op_transform import merge_op_lists, ops_commute
+from muse.core.stat_cache import load_cache
 from muse.core.schema import (
     DimensionSpec,
     DomainSchema,
@@ -171,6 +174,11 @@ class CodePlugin:
         SHA-256 (raw bytes).  Honours ``.museignore`` and always ignores
         known tool-generated directories (``__pycache__``, ``.git``, etc.).
 
+        Uses ``os.walk`` with in-place ``dirnames`` pruning so that
+        always-ignored and hidden directories (e.g. ``.venv/``, ``node_modules/``,
+        ``.muse/``) are never descended into.  The ``StatCache`` is consulted
+        before hashing so that unchanged files are not re-read from disk.
+
         Args:
             live_state: A ``pathlib.Path`` pointing to the repository root, or an
                         existing ``SnapshotManifest`` dict (returned as-is).
@@ -183,26 +191,37 @@ class CodePlugin:
             return live_state
 
         workdir = live_state
-        # workdir IS the repository root; .museignore lives here.
-        repo_root = workdir
-        patterns = resolve_patterns(load_ignore_config(repo_root), _DOMAIN_NAME)
-
+        patterns = resolve_patterns(load_ignore_config(workdir), _DOMAIN_NAME)
+        cache = load_cache(workdir)
         files: dict[str, str] = {}
-        for p in sorted(workdir.rglob("*")):
-            if not p.is_file():
-                continue
-            rel_parts = p.relative_to(workdir).parts
-            # Skip hidden files and files inside hidden directories (e.g. .muse/).
-            if any(part.startswith(".") for part in rel_parts):
-                continue
-            # Skip always-ignored directories by checking path parts.
-            if any(part in _ALWAYS_IGNORE_DIRS for part in p.parts):
-                continue
-            rel = p.relative_to(workdir).as_posix()
-            if is_ignored(rel, patterns):
-                continue
-            files[rel] = _hash_file(p)
+        root_str = str(workdir)
+        prefix_len = len(root_str) + 1
 
+        for dirpath, dirnames, filenames in os.walk(root_str, followlinks=False):
+            # Prune always-ignored and hidden directories before descending.
+            dirnames[:] = sorted(
+                d for d in dirnames
+                if not d.startswith(".") and d not in _ALWAYS_IGNORE_DIRS
+            )
+            for fname in sorted(filenames):
+                if fname.startswith("."):
+                    continue
+                abs_str = os.path.join(dirpath, fname)
+                try:
+                    st = os.lstat(abs_str)
+                except OSError:
+                    continue
+                if not _stat.S_ISREG(st.st_mode):
+                    continue
+                rel = abs_str[prefix_len:]
+                if os.sep != "/":
+                    rel = rel.replace(os.sep, "/")
+                if is_ignored(rel, patterns):
+                    continue
+                files[rel] = cache.get_cached(rel, abs_str, st.st_mtime, st.st_size)
+
+        cache.prune(set(files))
+        cache.save()
         return SnapshotManifest(files=files, domain=_DOMAIN_NAME)
 
     # ------------------------------------------------------------------
