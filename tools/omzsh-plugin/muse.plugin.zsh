@@ -183,6 +183,12 @@ precmd_functions+=(_muse_hook_precmd)
 # Primary prompt segment. Example usage in ~/.zshrc:
 #   PROMPT='%~ $(muse_prompt_info) %# '
 # Emits nothing when not inside a muse repo.
+#
+# Clean:  muse:(code:main)       — domain:branch in magenta
+# Dirty:  muse:(code:main)       — domain:branch in yellow
+#
+# The color of the domain:branch text is the only dirty signal — no extra
+# symbol. Yellow means "uncommitted changes exist"; magenta means clean.
 function muse_prompt_info() {
   [[ -z "$MUSE_REPO_ROOT" ]] && return
 
@@ -190,16 +196,17 @@ function muse_prompt_info() {
   local branch="${MUSE_BRANCH//\%/%%}"
   local domain="${MUSE_DOMAIN//\%/%%}"
 
-  local dirty=""
-  (( MUSE_DIRTY )) && dirty=" %F{red}✗ ${MUSE_DIRTY_COUNT}%f"
+  # Yellow interior when dirty; magenta when clean.
+  local inner_color="%F{magenta}"
+  (( MUSE_DIRTY )) && inner_color="%F{yellow}"
 
   # Format: muse:(domain:branch)  — mirrors git:(branch) but adds the domain.
   # Set MUSE_PROMPT_ICONS=1 in ~/.zshrc to prepend a domain icon.
   if [[ "$MUSE_PROMPT_ICONS" == "1" ]]; then
     local icon="${MUSE_DOMAIN_ICONS[$MUSE_DOMAIN]:-${MUSE_DOMAIN_ICONS[_default]}}"
-    echo -n "%F{cyan}${icon} muse:(%F{magenta}${domain}:${branch}%F{cyan})%f${dirty}"
+    echo -n "%F{cyan}${icon} muse:(${inner_color}${domain}:${branch}%F{cyan})%f"
   else
-    echo -n "%F{cyan}muse:(%F{magenta}${domain}:${branch}%F{cyan})%f${dirty}"
+    echo -n "%F{cyan}muse:(${inner_color}${domain}:${branch}%F{cyan})%f"
   fi
 }
 

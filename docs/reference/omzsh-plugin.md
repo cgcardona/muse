@@ -26,23 +26,27 @@ PROMPT='%~ $(muse_prompt_info) %# '
 `muse_prompt_info` emits nothing outside a Muse repo. Inside one it emits:
 
 ```
-%F{cyan}muse:(%F{magenta}<domain>:<branch>%F{cyan})%f[ %F{red}✗ <count>%f]
+%F{cyan}muse:(%F{<color>}<domain>:<branch>%F{cyan})%f
 ```
+
+The inner color is the only dirty signal — no extra symbol or count:
+
+- **magenta** — working tree is clean
+- **yellow** — uncommitted changes exist
 
 This mirrors the Git plugin's `git:(branch)` format, extended with the domain
 name — the key differentiator from a single-domain VCS.
 
 ### Examples
 
-| Output | Meaning |
-|--------|---------|
-| `muse:(midi:main)` | `midi` domain, branch `main` |
-| `muse:(bitcoin:lightning)` | `bitcoin` domain, branch `lightning` |
-| `muse:(code:feature/x)` | `code` domain, branch `feature/x` |
-| `muse:(midi:a1b2c3d4)` | detached HEAD — short SHA shown |
-| `muse:(midi:main) ✗ 3` | dirty working tree, 3 changed paths |
+| Output | Inner color | Meaning |
+|--------|-------------|---------|
+| `muse:(midi:main)` | magenta | clean |
+| `muse:(midi:main)` | yellow | uncommitted changes |
+| `muse:(midi:a1b2c3d4)` | magenta | detached HEAD, clean |
+| `muse:(midi:a1b2c3d4)` | yellow | detached HEAD, uncommitted changes |
 
-The dirty segment only appears after a `muse` command runs in the current shell.
+The yellow state only appears after a `muse` command runs in the current shell.
 
 ### Domain icons (optional)
 
