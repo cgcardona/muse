@@ -37,11 +37,10 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import resolve_commit_ref
+from muse.core.store import read_current_branch, resolve_commit_ref
 from muse.plugins.bitcoin._loader import (
     load_strategy,
     load_strategy_from_workdir,
-    read_current_branch,
     read_repo_id,
 )
 from muse.plugins.bitcoin._query import format_sat, strategy_summary_line

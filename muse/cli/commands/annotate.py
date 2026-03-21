@@ -31,7 +31,7 @@ import typer
 
 from muse.core.crdts.or_set import ORSet
 from muse.core.repo import require_repo
-from muse.core.store import get_head_commit_id, overwrite_commit, read_commit
+from muse.core.store import get_head_commit_id, overwrite_commit, read_commit, read_current_branch
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +41,7 @@ app = typer.Typer()
 def _resolve_commit_id(root: pathlib.Path, commit_arg: str | None) -> str | None:
     """Return the resolved commit ID (HEAD branch if *commit_arg* is None)."""
     if commit_arg is None:
-        head_ref = (root / ".muse" / "HEAD").read_text().strip()
-        branch = head_ref.removeprefix("refs/heads/").strip()
+        branch = read_current_branch(root)
         return get_head_commit_id(root, branch)
     return commit_arg
 

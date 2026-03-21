@@ -369,7 +369,3 @@ def read_repo_id(root: pathlib.Path) -> str:
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
-def read_current_branch(root: pathlib.Path) -> str:
-    """Return the current branch name from ``.muse/HEAD``."""
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    return head_ref.removeprefix("refs/heads/").strip()

@@ -10,7 +10,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import get_head_commit_id
+from muse.core.store import get_head_commit_id, read_current_branch
 from muse.core.validation import sanitize_display, validate_branch_name
 
 logger = logging.getLogger(__name__)
@@ -19,8 +19,7 @@ app = typer.Typer()
 
 
 def _read_current_branch(root: pathlib.Path) -> str:
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    return head_ref.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 def _list_branches(root: pathlib.Path) -> list[str]:

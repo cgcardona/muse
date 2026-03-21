@@ -50,7 +50,7 @@ def repo(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Pat
     (muse_dir / "repo.json").write_text(
         json.dumps({"repo_id": "test-repo", "schema_version": "2", "domain": "midi"})
     )
-    (muse_dir / "HEAD").write_text("refs/heads/main\n")
+    (muse_dir / "HEAD").write_text("ref: refs/heads/main\n")
     (muse_dir / "config.toml").write_text(
         '[hub]\nurl = "https://musehub.ai"\n'
     )
@@ -157,7 +157,7 @@ class TestAuthLogin:
         (muse_dir / "repo.json").write_text(
             json.dumps({"repo_id": "r", "schema_version": "2", "domain": "midi"})
         )
-        (muse_dir / "HEAD").write_text("refs/heads/main\n")
+        (muse_dir / "HEAD").write_text("ref: refs/heads/main\n")
         monkeypatch.setenv("MUSE_REPO_ROOT", str(tmp_path))
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("MUSE_TOKEN", raising=False)
@@ -325,7 +325,7 @@ class TestAuthLogout:
         (muse_dir / "repo.json").write_text(
             json.dumps({"repo_id": "r", "schema_version": "2", "domain": "midi"})
         )
-        (muse_dir / "HEAD").write_text("refs/heads/main\n")
+        (muse_dir / "HEAD").write_text("ref: refs/heads/main\n")
         monkeypatch.setenv("MUSE_REPO_ROOT", str(tmp_path))
         monkeypatch.chdir(tmp_path)
         fake_dir = tmp_path / "home" / ".muse"

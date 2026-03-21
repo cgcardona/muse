@@ -49,7 +49,7 @@ import typer
 
 from muse.core.invariants import format_report
 from muse.core.repo import require_repo
-from muse.core.store import get_head_commit_id
+from muse.core.store import get_head_commit_id, read_current_branch
 from muse.plugins.code._invariants import CodeChecker, load_invariant_rules, run_invariants
 
 logger = logging.getLogger(__name__)
@@ -58,8 +58,7 @@ app = typer.Typer()
 
 
 def _resolve_head(root: pathlib.Path) -> str | None:
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    branch = head_ref.removeprefix("refs/heads/").strip()
+    branch = read_current_branch(root)
     return get_head_commit_id(root, branch)
 
 

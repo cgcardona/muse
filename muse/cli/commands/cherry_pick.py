@@ -19,6 +19,7 @@ from muse.core.store import (
     get_head_commit_id,
     get_head_snapshot_manifest,
     read_commit,
+    read_current_branch,
     read_snapshot,
     resolve_commit_ref,
     write_commit,
@@ -35,8 +36,7 @@ app = typer.Typer()
 
 
 def _read_branch(root: pathlib.Path) -> str:
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    return head_ref.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 def _read_repo_id(root: pathlib.Path) -> str:

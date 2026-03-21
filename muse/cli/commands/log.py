@@ -46,7 +46,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import CommitRecord, get_commits_for_branch, get_commit_snapshot_manifest, read_snapshot
+from muse.core.store import CommitRecord, get_commit_snapshot_manifest, get_commits_for_branch, read_current_branch, read_snapshot
 from muse.core.validation import sanitize_display
 
 logger = logging.getLogger(__name__)
@@ -57,8 +57,7 @@ _DEFAULT_LIMIT = 1000
 
 
 def _read_branch(root: pathlib.Path) -> str:
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    return head_ref.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 def _read_repo_id(root: pathlib.Path) -> str:

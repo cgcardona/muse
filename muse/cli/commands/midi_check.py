@@ -52,7 +52,7 @@ import sys
 import typer
 
 from muse.core.repo import require_repo
-from muse.core.store import get_head_commit_id
+from muse.core.store import get_head_commit_id, read_current_branch
 from muse.plugins.midi._invariants import (
     InvariantReport,
     load_invariant_rules,
@@ -65,8 +65,7 @@ app = typer.Typer(no_args_is_help=False)
 
 
 def _read_branch(root: pathlib.Path) -> str:
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    return head_ref.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 @app.command(name="midi-check")

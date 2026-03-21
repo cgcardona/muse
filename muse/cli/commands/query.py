@@ -53,7 +53,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import CommitRecord, get_all_commits, get_commit_snapshot_manifest, resolve_commit_ref
+from muse.core.store import CommitRecord, get_all_commits, get_commit_snapshot_manifest, read_current_branch, resolve_commit_ref
 from muse.plugins.code._predicate import Predicate, PredicateError, parse_query
 from muse.plugins.code._query import language_of, symbols_for_snapshot
 from muse.plugins.code.ast_parser import SymbolRecord  # used in _query_all_commits signature
@@ -78,8 +78,7 @@ def _read_repo_id(root: pathlib.Path) -> str:
 
 
 def _read_branch(root: pathlib.Path) -> str:
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    return head_ref.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 # Predicate parsing is handled by muse.plugins.code._predicate (v2 grammar).

@@ -10,7 +10,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import get_commit_snapshot_manifest, get_head_snapshot_manifest, resolve_commit_ref
+from muse.core.store import get_commit_snapshot_manifest, get_head_snapshot_manifest, read_current_branch, resolve_commit_ref
 from muse.core.validation import sanitize_display
 from muse.domain import DomainOp, SnapshotManifest
 from muse.plugins.registry import read_domain, resolve_plugin
@@ -21,8 +21,7 @@ app = typer.Typer()
 
 
 def _read_branch(root: pathlib.Path) -> str:
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    return head_ref.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 def _read_repo_id(root: pathlib.Path) -> str:

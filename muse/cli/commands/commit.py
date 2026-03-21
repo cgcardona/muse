@@ -34,6 +34,7 @@ from muse.core.store import (
     SnapshotRecord,
     get_head_snapshot_id,
     read_commit,
+    read_current_branch,
     read_snapshot,
     write_commit,
     write_snapshot,
@@ -55,18 +56,10 @@ def _read_repo_id(root: pathlib.Path) -> str:
 def _read_branch(root: pathlib.Path) -> tuple[str, pathlib.Path]:
     """Return (branch_name, ref_file_path).
 
-    Guards against HEAD-poisoning attacks: the ref stored in HEAD must begin
-    with ``refs/heads/`` and the derived branch name must pass branch-name
-    validation before it is used as a path component.
+    Delegates HEAD parsing and branch-name validation to the store so
+    that format details are not duplicated across commands.
     """
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    if not head_ref.startswith("refs/heads/"):
-        raise ValueError(
-            f"HEAD contains an unexpected ref format: {head_ref!r}. "
-            "Expected 'refs/heads/<branch>'."
-        )
-    branch = head_ref.removeprefix("refs/heads/").strip()
-    validate_branch_name(branch)
+    branch = read_current_branch(root)
     ref_path = root / ".muse" / "refs" / "heads" / branch
     return branch, ref_path
 

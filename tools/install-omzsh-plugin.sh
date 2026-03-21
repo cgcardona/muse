@@ -72,27 +72,5 @@ echo ""
 echo "    source ~/.zshrc"
 echo ""
 
-# ── Powerlevel10k hint ────────────────────────────────────────────────────────
-
-if [[ -f "$HOME/.p10k.zsh" ]]; then
-  echo "  Powerlevel10k detected."
-  echo "  Add 'muse_vcs' to POWERLEVEL9K_LEFT_PROMPT_ELEMENTS or"
-  echo "  POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS in ~/.p10k.zsh:"
-  echo ""
-  echo "    POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(... muse_vcs ...)"
-  echo ""
-fi
-
-# ── fzf hint ──────────────────────────────────────────────────────────────────
-
-if ! command -v fzf >/dev/null 2>&1; then
-  echo "  Optional: install fzf to unlock interactive tools"
-  echo "  (branch picker, commit browser, stash browser):"
-  echo ""
-  echo "    brew install fzf   # macOS"
-  echo "    apt install fzf    # Debian/Ubuntu"
-  echo ""
-fi
-
 echo "  Full docs: docs/reference/omzsh-plugin.md"
 echo ""

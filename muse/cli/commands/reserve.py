@@ -59,6 +59,7 @@ import typer
 
 from muse.core.coordination import active_reservations, create_reservation
 from muse.core.repo import require_repo
+from muse.core.store import read_current_branch
 
 logger = logging.getLogger(__name__)
 
@@ -97,8 +98,7 @@ def reserve(
     """
     root = require_repo()
 
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    branch = head_ref.removeprefix("refs/heads/").strip()
+    branch = read_current_branch(root)
 
     # Check for conflicts with existing active reservations.
     existing = active_reservations(root)

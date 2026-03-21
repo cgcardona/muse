@@ -30,7 +30,7 @@ import typer
 from muse.cli.config import set_remote, set_remote_head, set_upstream
 from muse.core.errors import ExitCode
 from muse.core.pack import apply_pack
-from muse.core.store import get_all_commits, read_commit, read_snapshot
+from muse.core.store import get_all_commits, read_commit, read_snapshot, write_head_branch
 from muse.core.transport import HttpTransport, TransportError
 from muse.core.workdir import apply_manifest
 
@@ -85,7 +85,7 @@ def _init_muse_dir(
         "domain": domain,
     }
     (muse_dir / "repo.json").write_text(json.dumps(repo_meta, indent=2) + "\n")
-    (muse_dir / "HEAD").write_text(f"refs/heads/{default_branch}\n")
+    write_head_branch(muse_dir.parent, default_branch)
     (muse_dir / "refs" / "heads" / default_branch).write_text("")
     (muse_dir / "config.toml").write_text(_DEFAULT_CONFIG)
 

@@ -36,7 +36,7 @@ def repo(tmp_path: pathlib.Path) -> pathlib.Path:
     (muse_dir / "snapshots").mkdir(parents=True)
     (muse_dir / "refs" / "heads").mkdir(parents=True)
     (muse_dir / "repo.json").write_text(json.dumps({"repo_id": "test-repo"}))
-    (muse_dir / "HEAD").write_text("refs/heads/main\n")
+    (muse_dir / "HEAD").write_text("ref: refs/heads/main\n")
     (muse_dir / "refs" / "heads" / "main").write_text("")
     return tmp_path
 

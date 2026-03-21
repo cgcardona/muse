@@ -42,7 +42,7 @@ def _init_repo(path: pathlib.Path) -> pathlib.Path:
     (muse / "snapshots").mkdir(parents=True)
     (muse / "objects").mkdir(parents=True)
     (muse / "refs" / "heads").mkdir(parents=True)
-    muse.joinpath("HEAD").write_text("refs/heads/main")
+    muse.joinpath("HEAD").write_text("ref: refs/heads/main")
     muse.joinpath("repo.json").write_text(
         json.dumps({"repo_id": "test-repo-id", "domain": "generic"})
     )

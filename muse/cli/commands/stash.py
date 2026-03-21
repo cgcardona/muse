@@ -25,7 +25,7 @@ from muse.core.errors import ExitCode
 from muse.core.object_store import write_object_from_path
 from muse.core.repo import require_repo
 from muse.core.snapshot import compute_snapshot_id
-from muse.core.store import get_head_snapshot_manifest, read_snapshot
+from muse.core.store import get_head_snapshot_manifest, read_current_branch, read_snapshot
 from muse.core.workdir import apply_manifest
 from muse.plugins.registry import resolve_plugin
 
@@ -46,8 +46,7 @@ class StashEntry(TypedDict):
 
 
 def _read_branch(root: pathlib.Path) -> str:
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    return head_ref.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 def _read_repo_id(root: pathlib.Path) -> str:

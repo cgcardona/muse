@@ -129,7 +129,8 @@ All branch/tag/remote lookups use ZSH glob patterns against `.muse/refs/` and
 
 ### Branch name injection
 
-`.muse/HEAD` is read with a pure ZSH `$(<file)` — no subprocess. The result is
+`.muse/HEAD` is read with a pure ZSH `$(<file)` — no subprocess. Muse writes
+the symbolic ref as `refs/heads/<branch>` (no `ref:` prefix). The result is
 validated with `[[ "$branch" =~ '^[[:alnum:]/_.-]+$' ]]`. Any branch name that
 contains characters outside this set (including `%`, `$`, backticks, quotes) is
 replaced with `?`. Valid branch names are additionally `%`-escaped

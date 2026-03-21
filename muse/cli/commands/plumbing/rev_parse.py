@@ -32,6 +32,7 @@ from muse.core.store import (
     find_commits_by_prefix,
     get_head_commit_id,
     read_commit,
+    read_current_branch,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,8 +46,7 @@ def _read_repo_id(root: pathlib.Path) -> str:
 
 
 def _read_current_branch(root: pathlib.Path) -> str:
-    head = (root / ".muse" / "HEAD").read_text().strip()
-    return head.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 @app.callback(invoke_without_command=True)
