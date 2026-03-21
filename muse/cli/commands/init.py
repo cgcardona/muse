@@ -9,14 +9,15 @@ Layout::
         HEAD                — symbolic ref → refs/heads/main
         refs/heads/main     — empty (no commits yet)
         config.toml         — [user], [auth], [remotes], [domain] stubs
-        objects/            — content-addressed blobs (created on first commit)
+        objects/            — content-addressed blobs (SHA-256 sharded)
         commits/            — commit records (JSON, one file per commit)
         snapshots/          — snapshot manifests (JSON, one file per snapshot)
-    .museattributes         — TOML merge strategy overrides (created in repo root)
-    .museignore             — TOML ignore rules (created in repo root)
+    .museattributes         — TOML merge strategy overrides (working-tree only)
+    .museignore             — TOML ignore rules (working-tree only)
 
 The repository root IS the working tree.  There is no ``state/`` subdirectory.
-Bare repositories (``--bare``) have no working tree; they store only ``.muse/``.
+Bare repositories (``--bare``) have no working tree; they store only ``.muse/``
+and do not receive ``.museattributes`` or ``.museignore``.
 """
 
 from __future__ import annotations
@@ -87,97 +88,7 @@ type = "human"    # "human" | "agent"
 """
 
 
-def _museignore_template(domain: str) -> str:
-    """Return a TOML ``.museignore`` template pre-filled for *domain*.
-
-    The ``[global]`` section covers cross-domain OS artifacts.  The
-    ``[domain.<name>]`` section lists patterns specific to the chosen domain.
-    Patterns from other domains are never loaded at snapshot time.
-    """
-    global_section = """\
-[global]
-# Patterns applied to every domain. Last match wins; prefix with ! to un-ignore.
-patterns = [
-    ".DS_Store",
-    "Thumbs.db",
-    "*.tmp",
-    "*.swp",
-    "*.swo",
-]
-"""
-    midi_section = """\
-[domain.midi]
-# Patterns applied only when the active domain plugin is "midi".
-patterns = [
-    "*.bak",
-    "*.autosave",
-    "/renders/",
-    "/exports/",
-    "/previews/",
-]
-"""
-    code_section = """\
-[domain.code]
-# Patterns applied only when the active domain plugin is "code".
-patterns = [
-    "__pycache__/",
-    "*.pyc",
-    "*.pyo",
-    "node_modules/",
-    "dist/",
-    "build/",
-    ".venv/",
-    "venv/",
-    ".tox/",
-    "*.egg-info/",
-]
-"""
-    genomics_section = """\
-[domain.genomics]
-# Patterns applied only when the active domain plugin is "genomics".
-patterns = [
-    "*.sam",
-    "*.bam.bai",
-    "pipeline-cache/",
-    "*.log",
-]
-"""
-    simulation_section = """\
-[domain.simulation]
-# Patterns applied only when the active domain plugin is "simulation".
-patterns = [
-    "frames/raw/",
-    "*.frame.bin",
-    "checkpoint-tmp/",
-]
-"""
-    spatial_section = """\
-[domain.spatial]
-# Patterns applied only when the active domain plugin is "spatial".
-patterns = [
-    "previews/",
-    "*.preview.vdb",
-    "**/.shadercache/",
-]
-"""
-
-    domain_blocks: dict[str, str] = {
-        "midi": midi_section,
-        "code": code_section,
-        "genomics": genomics_section,
-        "simulation": simulation_section,
-        "spatial": spatial_section,
-    }
-    domain_block = domain_blocks.get(domain, f"""\
-[domain.{domain}]
-# Patterns applied only when the active domain plugin is "{domain}".
-# patterns = [
-#     "*.generated",
-#     "/cache/",
-# ]
-""")
-
-    header = f"""\
+_MUSEIGNORE_HEADER = """\
 # .museignore — snapshot exclusion rules for this repository.
 # Documentation: docs/reference/museignore.md
 #
@@ -194,7 +105,94 @@ patterns = [
 # Last matching rule wins.
 
 """
-    return header + global_section + "\n" + domain_block
+
+_MUSEIGNORE_GLOBAL = """\
+[global]
+# Patterns applied to every domain. Last match wins; prefix with ! to un-ignore.
+patterns = [
+    ".DS_Store",
+    "Thumbs.db",
+    "*.tmp",
+    "*.swp",
+    "*.swo",
+]
+"""
+
+_MUSEIGNORE_DOMAIN_BLOCKS: dict[str, str] = {
+    "midi": """\
+[domain.midi]
+# Patterns applied only when the active domain plugin is "midi".
+patterns = [
+    "*.bak",
+    "*.autosave",
+    "/renders/",
+    "/exports/",
+    "/previews/",
+]
+""",
+    "code": """\
+[domain.code]
+# Patterns applied only when the active domain plugin is "code".
+patterns = [
+    "__pycache__/",
+    "*.pyc",
+    "*.pyo",
+    "node_modules/",
+    "dist/",
+    "build/",
+    ".venv/",
+    "venv/",
+    ".tox/",
+    "*.egg-info/",
+]
+""",
+    "genomics": """\
+[domain.genomics]
+# Patterns applied only when the active domain plugin is "genomics".
+patterns = [
+    "*.sam",
+    "*.bam.bai",
+    "pipeline-cache/",
+    "*.log",
+]
+""",
+    "simulation": """\
+[domain.simulation]
+# Patterns applied only when the active domain plugin is "simulation".
+patterns = [
+    "frames/raw/",
+    "*.frame.bin",
+    "checkpoint-tmp/",
+]
+""",
+    "spatial": """\
+[domain.spatial]
+# Patterns applied only when the active domain plugin is "spatial".
+patterns = [
+    "previews/",
+    "*.preview.vdb",
+    "**/.shadercache/",
+]
+""",
+}
+
+
+def _museignore_template(domain: str) -> str:
+    """Return a TOML ``.museignore`` template pre-filled for *domain*.
+
+    The ``[global]`` section covers cross-domain OS artifacts.  The
+    ``[domain.<name>]`` section lists patterns specific to the chosen domain.
+    Patterns from other domains are never loaded at snapshot time.
+    """
+    domain_block = _MUSEIGNORE_DOMAIN_BLOCKS.get(domain, f"""\
+[domain.{domain}]
+# Patterns applied only when the active domain plugin is "{domain}".
+# patterns = [
+#     "*.generated",
+#     "/cache/",
+# ]
+""")
+    return _MUSEIGNORE_HEADER + _MUSEIGNORE_GLOBAL + "\n" + domain_block
 
 
 def _museattributes_template(domain: str) -> str:
@@ -363,7 +361,9 @@ def init(
         repo_json = muse_dir / "repo.json"
         if repo_json.exists():
             try:
-                existing_repo_id = json.loads(repo_json.read_text()).get("repo_id")
+                raw_id = json.loads(repo_json.read_text(encoding="utf-8")).get("repo_id")
+                if isinstance(raw_id, str):
+                    existing_repo_id = raw_id
             except (json.JSONDecodeError, OSError):
                 pass
 
@@ -381,25 +381,30 @@ def init(
         }
         if bare:
             repo_meta["bare"] = True
-        (muse_dir / "repo.json").write_text(json.dumps(repo_meta, indent=2) + "\n")
+        (muse_dir / "repo.json").write_text(
+            json.dumps(repo_meta, indent=2) + "\n", encoding="utf-8"
+        )
 
         write_head_branch(muse_dir.parent, default_branch)
 
         ref_file = muse_dir / "refs" / "heads" / default_branch
         if not ref_file.exists() or force:
-            ref_file.write_text("")
+            ref_file.write_text("", encoding="utf-8")
 
         config_path = muse_dir / "config.toml"
         if not config_path.exists():
-            config_path.write_text(_BARE_CONFIG if bare else _DEFAULT_CONFIG)
+            config_path.write_text(
+                _BARE_CONFIG if bare else _DEFAULT_CONFIG, encoding="utf-8"
+            )
 
-        attrs_path = cwd / ".museattributes"
-        if not attrs_path.exists():
-            attrs_path.write_text(_museattributes_template(domain))
+        if not bare:
+            attrs_path = cwd / ".museattributes"
+            if not attrs_path.exists():
+                attrs_path.write_text(_museattributes_template(domain), encoding="utf-8")
 
-        ignore_path = cwd / ".museignore"
-        if not ignore_path.exists():
-            ignore_path.write_text(_museignore_template(domain))
+            ignore_path = cwd / ".museignore"
+            if not ignore_path.exists():
+                ignore_path.write_text(_museignore_template(domain), encoding="utf-8")
 
         if not bare and template_path is not None:
             for item in template_path.iterdir():

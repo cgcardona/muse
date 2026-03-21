@@ -120,7 +120,7 @@ def read_head(repo_root: pathlib.Path) -> HeadState:
     """
     head_path = repo_root / ".muse" / "HEAD"
     try:
-        raw = head_path.read_text().strip()
+        raw = head_path.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
         raise ValueError(
             f"Repository HEAD file missing: {head_path}\n"
@@ -164,7 +164,7 @@ def write_head_branch(repo_root: pathlib.Path, branch: str) -> None:
     prefix unambiguously identifies the entry as a symbolic reference.
     """
     validate_branch_name(branch)
-    (repo_root / ".muse" / "HEAD").write_text(f"ref: refs/heads/{branch}\n")
+    (repo_root / ".muse" / "HEAD").write_text(f"ref: refs/heads/{branch}\n", encoding="utf-8")
 
 
 def write_head_commit(repo_root: pathlib.Path, commit_id: str) -> None:
@@ -177,7 +177,7 @@ def write_head_commit(repo_root: pathlib.Path, commit_id: str) -> None:
     """
     if not re.fullmatch(r"[0-9a-f]{64}", commit_id):
         raise ValueError(f"commit_id must be a 64-char hex string, got: {commit_id!r}")
-    (repo_root / ".muse" / "HEAD").write_text(f"commit: {commit_id}\n")
+    (repo_root / ".muse" / "HEAD").write_text(f"commit: {commit_id}\n", encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -523,7 +523,7 @@ def write_commit(repo_root: pathlib.Path, commit: CommitRecord) -> None:
     if path.exists():
         logger.debug("⚠️ Commit %s already exists — skipped", commit.commit_id[:8])
         return
-    path.write_text(json.dumps(commit.to_dict(), indent=2) + "\n")
+    path.write_text(json.dumps(commit.to_dict(), indent=2) + "\n", encoding="utf-8")
     logger.debug("✅ Stored commit %s branch=%r", commit.commit_id[:8], commit.branch)
 
 
@@ -539,7 +539,7 @@ def read_commit(repo_root: pathlib.Path, commit_id: str) -> CommitRecord | None:
     if not path.exists():
         return None
     try:
-        return CommitRecord.from_dict(json.loads(path.read_text()))
+        return CommitRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
     except (json.JSONDecodeError, KeyError, TypeError) as exc:
         logger.warning("⚠️ Corrupt commit file %s: %s", path, exc)
         return None
@@ -559,7 +559,7 @@ def overwrite_commit(repo_root: pathlib.Path, commit: CommitRecord) -> None:
     """
     _commits_dir(repo_root).mkdir(parents=True, exist_ok=True)
     path = _commit_path(repo_root, commit.commit_id)
-    path.write_text(json.dumps(commit.to_dict(), indent=2) + "\n")
+    path.write_text(json.dumps(commit.to_dict(), indent=2) + "\n", encoding="utf-8")
     logger.debug("✅ Updated annotation on commit %s", commit.commit_id[:8])
 
 
@@ -579,7 +579,7 @@ def update_commit_metadata(
         return False
     commit.metadata[key] = value
     path = _commit_path(repo_root, commit_id)
-    path.write_text(json.dumps(commit.to_dict(), indent=2) + "\n")
+    path.write_text(json.dumps(commit.to_dict(), indent=2) + "\n", encoding="utf-8")
     logger.debug("✅ Set %s=%r on commit %s", key, value, commit_id[:8])
     return True
 
@@ -590,7 +590,7 @@ def get_head_commit_id(repo_root: pathlib.Path, branch: str) -> str | None:
     ref_path = repo_root / ".muse" / "refs" / "heads" / branch
     if not ref_path.exists():
         return None
-    raw = ref_path.read_text().strip()
+    raw = ref_path.read_text(encoding="utf-8").strip()
     return raw if raw else None
 
 
@@ -660,7 +660,7 @@ def _find_commit_by_prefix(
     safe_prefix = sanitize_glob_prefix(prefix)
     for path in commits_dir.glob(f"{safe_prefix}*.json"):
         try:
-            return CommitRecord.from_dict(json.loads(path.read_text()))
+            return CommitRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
         except (json.JSONDecodeError, KeyError, TypeError):
             continue
     return None
@@ -677,7 +677,7 @@ def find_commits_by_prefix(
     results: list[CommitRecord] = []
     for path in commits_dir.glob(f"{safe_prefix}*.json"):
         try:
-            results.append(CommitRecord.from_dict(json.loads(path.read_text())))
+            results.append(CommitRecord.from_dict(json.loads(path.read_text(encoding="utf-8"))))
         except (json.JSONDecodeError, KeyError, TypeError):
             continue
     return results
@@ -710,7 +710,7 @@ def get_all_commits(repo_root: pathlib.Path) -> list[CommitRecord]:
     results: list[CommitRecord] = []
     for path in commits_dir.glob("*.json"):
         try:
-            results.append(CommitRecord.from_dict(json.loads(path.read_text())))
+            results.append(CommitRecord.from_dict(json.loads(path.read_text(encoding="utf-8"))))
         except (json.JSONDecodeError, KeyError, TypeError):
             continue
     return results
@@ -763,7 +763,7 @@ def write_snapshot(repo_root: pathlib.Path, snapshot: SnapshotRecord) -> None:
     if path.exists():
         logger.debug("⚠️ Snapshot %s already exists — skipped", snapshot.snapshot_id[:8])
         return
-    path.write_text(json.dumps(snapshot.to_dict(), indent=2) + "\n")
+    path.write_text(json.dumps(snapshot.to_dict(), indent=2) + "\n", encoding="utf-8")
     logger.debug("✅ Stored snapshot %s (%d files)", snapshot.snapshot_id[:8], len(snapshot.manifest))
 
 
@@ -779,7 +779,7 @@ def read_snapshot(repo_root: pathlib.Path, snapshot_id: str) -> SnapshotRecord |
     if not path.exists():
         return None
     try:
-        return SnapshotRecord.from_dict(json.loads(path.read_text()))
+        return SnapshotRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
     except (json.JSONDecodeError, KeyError, TypeError) as exc:
         logger.warning("⚠️ Corrupt snapshot file %s: %s", path, exc)
         return None
@@ -837,7 +837,7 @@ def write_tag(repo_root: pathlib.Path, tag: TagRecord) -> None:
     tags_dir = _tags_dir(repo_root, tag.repo_id)
     tags_dir.mkdir(parents=True, exist_ok=True)
     path = tags_dir / f"{tag.tag_id}.json"
-    path.write_text(json.dumps(tag.to_dict(), indent=2) + "\n")
+    path.write_text(json.dumps(tag.to_dict(), indent=2) + "\n", encoding="utf-8")
     logger.debug("✅ Stored tag %r on commit %s", tag.tag, tag.commit_id[:8])
 
 
@@ -851,7 +851,7 @@ def get_tags_for_commit(
     results: list[TagRecord] = []
     for path in tags_dir.glob("*.json"):
         try:
-            record = TagRecord.from_dict(json.loads(path.read_text()))
+            record = TagRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
             if record.commit_id == commit_id:
                 results.append(record)
         except (json.JSONDecodeError, KeyError, TypeError):
@@ -867,7 +867,7 @@ def get_all_tags(repo_root: pathlib.Path, repo_id: str) -> list[TagRecord]:
     results: list[TagRecord] = []
     for path in tags_dir.glob("*.json"):
         try:
-            results.append(TagRecord.from_dict(json.loads(path.read_text())))
+            results.append(TagRecord.from_dict(json.loads(path.read_text(encoding="utf-8"))))
         except (json.JSONDecodeError, KeyError, TypeError):
             continue
     return results
