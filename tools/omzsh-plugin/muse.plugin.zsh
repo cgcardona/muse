@@ -217,8 +217,8 @@ function muse_prompt_info() {
   local branch="${MUSE_BRANCH//\%/%%}"
   local domain="${MUSE_DOMAIN//\%/%%}"
 
-  # Branch turns yellow when dirty; magenta when clean. Domain is always magenta.
-  local branch_color="%F{magenta}"
+  # Branch: green when clean, yellow when dirty. Domain is always magenta.
+  local branch_color="%F{green}"
   (( MUSE_DIRTY )) && branch_color="%F{yellow}"
 
   # Format: %F{cyan}muse:(%F{magenta}<domain>:%F{yellow|magenta}<branch>%F{cyan})%f
