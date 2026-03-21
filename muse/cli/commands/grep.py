@@ -14,6 +14,7 @@ Usage::
     muse grep "Invoice" --kind class     # only class symbols
     muse grep "compute" --language Go    # only Go symbols
     muse grep "total" --commit HEAD~5    # search a historical snapshot
+    muse grep "validate" --json          # machine-readable output for agents
 
 Output::
 
@@ -23,6 +24,9 @@ Output::
     src/auth.py::Validator.validate      method     line 28   4a5b6c..
 
     4 match(es) across 2 files
+
+Security note: patterns are capped at 512 characters to prevent ReDoS.
+Invalid regex syntax is caught and reported as exit 1 rather than crashing.
 """
 
 from __future__ import annotations
@@ -43,6 +47,9 @@ from muse.plugins.code.ast_parser import SymbolRecord
 logger = logging.getLogger(__name__)
 
 app = typer.Typer()
+
+# Guard against ReDoS: reject patterns longer than this before compiling.
+_MAX_PATTERN_LEN: int = 512
 
 _KIND_ICON: dict[str, str] = {
     "function": "fn",
@@ -102,10 +109,19 @@ def grep(
     The ``--hashes`` flag adds the 8-character content-ID prefix to each
     result, enabling downstream filtering by identity (e.g. find clones
     with ``muse query hash=<prefix>``).
+
+    Patterns are capped at 512 characters to guard against ReDoS.
     """
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
+
+    if len(pattern) > _MAX_PATTERN_LEN:
+        typer.echo(
+            f"❌ Pattern too long ({len(pattern)} chars) — maximum is {_MAX_PATTERN_LEN}.",
+            err=True,
+        )
+        raise typer.Exit(code=ExitCode.USER_ERROR)
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:

@@ -170,13 +170,28 @@ Restore a single named symbol from a historical commit into the current working 
 ```
 muse code checkout-symbol src/billing.py::compute_total --commit v1.0
 muse code checkout-symbol src/billing.py::compute_total --commit abc123 --dry-run
+muse code checkout-symbol src/billing.py::compute_total --commit v1.0 --json
 ```
 
 **Flags:**
 - `--commit REF` *(required)* — source commit
 - `--dry-run` — print the unified diff without writing
+- `--json` — emit result as JSON for agent consumption
+
+**JSON output:**
+
+```json
+{
+  "address": "src/billing.py::compute_total",
+  "file": "src/billing.py",
+  "restored_from": "abc12345",
+  "dry_run": false
+}
+```
 
 **Safety:** Rejects the operation if the target file cannot be parsed (syntax error) or if the symbol no longer exists at the destination location and the file cannot be safely patched.
+
+**Security:** The file path component of ADDRESS is validated via `contain_path()` before any disk access.  Paths that escape the repo root (e.g. `../../etc/passwd::foo`) are rejected with exit 1.
 
 ---
 
@@ -194,6 +209,24 @@ muse code semantic-cherry-pick src/billing.py::compute_total --from v1.0 --dry-r
 - `--from REF` *(required)* — source commit
 - `--dry-run` — show what would change without writing
 - `--json` — structured output with per-symbol patch results
+
+**JSON output:**
+
+```json
+{
+  "from_commit": "abc12345",
+  "dry_run": false,
+  "results": [
+    {"address": "src/billing.py::compute_total", "status": "applied",
+     "detail": "lines 10–25 → 12 lines", "old_lines": 16, "new_lines": 12}
+  ],
+  "applied": 1,
+  "failed": 0,
+  "already_current": 0
+}
+```
+
+**Security:** Every file path extracted from ADDRESS arguments is validated via `contain_path()` before any disk I/O or directory creation.  Paths that escape the repo root are recorded as `not_found` and the remaining symbols continue to be processed.
 
 ---
 
@@ -306,18 +339,45 @@ muse code index status
 muse code index status --json
 ```
 
+**Flags:**
+- `--json` — emit status array as JSON
+
+**JSON output:**
+
+```json
+[
+  {"name": "symbol_history",  "status": "present", "entries": 1024, "updated_at": "2026-03-21T12:00:00"},
+  {"name": "hash_occurrence", "status": "absent",  "entries": 0,    "updated_at": null}
+]
+```
+
 ### `muse code index rebuild`
 
 Rebuild one or all indexes by walking the full commit history.
 
 ```
 muse code index rebuild
+muse code index rebuild --json
 muse code index rebuild --index symbol_history
-muse code index rebuild --index hash_occurrence
+muse code index rebuild --index hash_occurrence --verbose
 ```
 
 **Flags:**
 - `--index NAME` — rebuild only this index (default: all)
+- `--verbose, -v` — show progress while building
+- `--json` — emit rebuild summary as JSON
+
+**JSON output:**
+
+```json
+{
+  "rebuilt": ["symbol_history", "hash_occurrence"],
+  "symbol_history_addresses": 512,
+  "symbol_history_events": 2048,
+  "hash_occurrence_clusters": 31,
+  "hash_occurrence_addresses": 87
+}
+```
 
 ### Index Design
 
@@ -805,6 +865,7 @@ Surgical semantic patch — replace exactly one named symbol in the working tree
 muse code patch src/billing.py::compute_total new_impl.py
 echo "def compute_total(x): return x * 2" | muse code patch src/billing.py::compute_total -
 muse code patch src/billing.py::compute_total new_impl.py --dry-run
+muse code patch src/billing.py::compute_total new_impl.py --json
 ```
 
 **Syntax validation:** Before writing, validates the replacement source with:
@@ -814,8 +875,93 @@ muse code patch src/billing.py::compute_total new_impl.py --dry-run
 Rejects the patch and exits non-zero if the source has syntax errors.
 
 **Flags:**
-- `--dry-run` — print the unified diff without writing
-- `--json` — structured output with patch result
+- `--body, -b FILE` *(required)* — file containing the replacement source (`-` for stdin)
+- `--dry-run, -n` — print what would change without writing
+- `--json` — emit result as JSON for agent consumption
+
+**JSON output:**
+
+```json
+{
+  "address": "src/billing.py::compute_total",
+  "file": "src/billing.py",
+  "lines_replaced": 12,
+  "new_lines": 9,
+  "dry_run": false
+}
+```
+
+**Security:** The file path component of ADDRESS is validated via `contain_path()` before any disk access.  Paths that escape the repo root (e.g. `../../etc/passwd::foo`) are rejected with exit 1.
+
+---
+
+### `muse grep PATTERN [OPTIONS]`
+
+Search the typed symbol graph by name — not file text.  Every result is a real symbol declaration; no false positives from comments, string literals, or call sites.
+
+```
+muse grep validate
+muse grep "^handle" --regex
+muse grep Invoice --kind class
+muse grep compute --language Go
+muse grep total --commit HEAD~5
+muse grep validate --json
+```
+
+**Flags:**
+
+| Flag | Short | Description |
+|---|---|---|
+| `--regex, -e` | | Treat PATTERN as a Python regex (default: substring match) |
+| `--kind KIND, -k` | | Restrict to symbols of this kind (function, class, method, …) |
+| `--language LANG, -l` | | Restrict to files of this language (Python, Go, …) |
+| `--commit REF, -c` | | Search a historical commit instead of HEAD |
+| `--hashes` | | Include 8-char content-ID prefix in output |
+| `--json` | | Emit results as JSON |
+
+**JSON output:**
+
+```json
+[
+  {
+    "address": "src/auth.py::validate_token",
+    "kind": "function",
+    "name": "validate_token",
+    "qualified_name": "validate_token",
+    "file": "src/auth.py",
+    "lineno": 14,
+    "language": "Python",
+    "content_id": "cb4afa1234567890..."
+  }
+]
+```
+
+**Security:** Patterns are capped at 512 characters to prevent ReDoS.  Invalid regex syntax is caught and reported as exit 1 rather than crashing.
+
+---
+
+### `muse code-check [COMMIT] [OPTIONS]`
+
+Enforce semantic code invariants against a commit snapshot.
+
+```
+muse code-check                         # check HEAD
+muse code-check abc1234                 # check specific commit
+muse code-check --strict                # exit 1 on any error-severity violation
+muse code-check --json                  # machine-readable JSON output
+muse code-check --rules my_rules.toml  # custom rules file inside the repo
+```
+
+**Flags:**
+
+| Flag | Description |
+|---|---|
+| `COMMIT` | Commit ID to check (default: HEAD) |
+| `--strict` | Exit 1 when any error-severity violation is found |
+| `--json` | Emit machine-readable JSON |
+| `--rules FILE` | Path to a TOML invariants file **inside the repo** (default: `.muse/code_invariants.toml`) |
+
+**Security:** `--rules FILE` is validated via `contain_path()` — paths that escape the repo root are rejected with exit 1.
 
 ---
 

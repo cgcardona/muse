@@ -62,7 +62,7 @@ def code_query(
     query: str = typer.Argument(..., help="Query expression (see muse code-query --help)."),
     branch: str | None = typer.Option(None, "--branch", help="Branch to search (default: HEAD branch)."),
     max_commits: int = typer.Option(200, "--max", help="Maximum commits to inspect."),
-    output_json: bool = typer.Option(False, "--json", help="Emit JSON array of matches."),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON array of matches."),
 ) -> None:
     """Query the code commit history using a structured predicate.
 
@@ -86,7 +86,7 @@ def code_query(
     resolved_branch = branch or _current_branch(root)
     matches = walk_history(root, resolved_branch, evaluator, max_commits=max_commits)
 
-    if output_json:
+    if as_json:
         typer.echo(json.dumps(list(matches)))
         return
 

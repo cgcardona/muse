@@ -12,6 +12,10 @@ functions, no diff noise, no merge headache.
 After patching, the working tree is dirty and ``muse status`` will show
 exactly which symbol changed.  Run ``muse commit`` as usual.
 
+Security note: the file path component of ADDRESS is validated via
+``contain_path()`` before any disk access.  Paths that escape the repo root
+(e.g. ``../../etc/passwd::foo``) are rejected with exit 1.
+
 Usage::
 
     # Write new body to a file and apply it
@@ -23,16 +27,30 @@ Usage::
     # Preview what will change without writing
     muse patch "src/billing.py::compute_invoice_total" --body new_body.py --dry-run
 
+    # Machine-readable output for agents
+    muse patch "src/utils.py::foo" --body new.py --json
+
 Output::
 
     ✅ Patched src/billing.py::compute_invoice_total
        Lines 2–4 replaced (was 3 lines, now 4 lines)
        Surrounding code untouched (4 symbols preserved)
        Run `muse status` to review, then `muse commit`
+
+JSON output (``--json``)::
+
+    {
+      "address": "src/billing.py::compute_invoice_total",
+      "file": "src/billing.py",
+      "lines_replaced": 3,
+      "new_lines": 4,
+      "dry_run": false
+    }
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import pathlib
 import sys
@@ -41,6 +59,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
+from muse.core.validation import contain_path
 from muse.plugins.code.ast_parser import parse_symbols, validate_syntax
 
 logger = logging.getLogger(__name__)
@@ -90,6 +109,7 @@ def patch(
         False, "--dry-run", "-n",
         help="Print what would change without writing to disk.",
     ),
+    as_json: bool = typer.Option(False, "--json", help="Emit result as JSON for agent consumption."),
 ) -> None:
     """Replace exactly one symbol's source — surgical precision for agents.
 
@@ -101,6 +121,9 @@ def patch(
     The replacement source must define exactly the symbol being replaced
     (same name, at the top level of the file passed via --body).  Muse
     verifies the patched file remains parseable before writing.
+
+    The file path component of ADDRESS is validated against the repo root —
+    path-traversal addresses (e.g. ``../../etc/passwd::foo``) are rejected.
 
     After patching, run ``muse status`` to review the change, then
     ``muse commit`` to record it.  The structured delta will describe
@@ -116,18 +139,14 @@ def patch(
 
     rel_path, sym_name = address.split("::", 1)
 
-    # Try state/ first (the Muse working directory), fall back to repo root.
-    candidates = [
-        root / rel_path,
-        root / rel_path,
-    ]
-    file_path: pathlib.Path | None = None
-    for c in candidates:
-        if c.exists():
-            file_path = c
-            break
+    # Validate the file path stays inside the repo root.
+    try:
+        file_path = contain_path(root, rel_path)
+    except ValueError as exc:
+        typer.echo(f"❌ {exc}", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
 
-    if file_path is None:
+    if not file_path.exists():
         typer.echo(f"❌ File '{rel_path}' not found in working tree.", err=True)
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
@@ -168,11 +187,22 @@ def patch(
         typer.echo(f"❌ Patched file has a {syntax_error}", err=True)
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
+    new_line_count = new_body.count(chr(10))
+
     if dry_run:
+        if as_json:
+            typer.echo(json.dumps({
+                "address": address,
+                "file": rel_path,
+                "lines_replaced": len(old_lines),
+                "new_lines": new_line_count,
+                "dry_run": True,
+            }, indent=2))
+            return
         typer.echo(f"\n[dry-run] Would patch {rel_path}")
         typer.echo(f"  Symbol:        {sym_name}")
         typer.echo(f"  Replace lines: {start_line}–{end_line} ({len(old_lines)} line(s))")
-        typer.echo(f"  New source:    {new_body.count(chr(10))} line(s)")
+        typer.echo(f"  New source:    {new_line_count} line(s)")
         typer.echo("  No changes written (--dry-run).")
         return
 
@@ -182,7 +212,17 @@ def patch(
     remaining = parse_symbols(file_path.read_bytes(), rel_path)
     other_count = sum(1 for addr in remaining if addr != address)
 
+    if as_json:
+        typer.echo(json.dumps({
+            "address": address,
+            "file": rel_path,
+            "lines_replaced": len(old_lines),
+            "new_lines": new_line_count,
+            "dry_run": False,
+        }, indent=2))
+        return
+
     typer.echo(f"\n✅ Patched {address}")
-    typer.echo(f"   Lines {start_line}–{end_line} replaced ({len(old_lines)} → {new_body.count(chr(10))} line(s))")
+    typer.echo(f"   Lines {start_line}–{end_line} replaced ({len(old_lines)} → {new_line_count} line(s))")
     typer.echo(f"   Surrounding code untouched ({other_count} symbol(s) preserved)")
     typer.echo("   Run `muse status` to review, then `muse commit`")
