@@ -21,6 +21,7 @@ import pytest
 from muse.domain import (
     CRDTPlugin,
     DeleteOp,
+    DomainOp,
     InsertOp,
     MuseDomainPlugin,
     MutateOp,
@@ -478,6 +479,7 @@ class TestDiffStrategy:
         old_s = _make_strategy(simulation_mode=False)
         new_s = _make_strategy(simulation_mode=True)
         ops = _diff_strategy("strategy/agent.json", _json_bytes(old_s), _json_bytes(new_s))
+        assert ops[0]["op"] == "mutate"
         assert ops[0]["fields"]["simulation_mode"]["old"] == "False"
         assert ops[0]["fields"]["simulation_mode"]["new"] == "True"
 
@@ -509,6 +511,7 @@ class TestDiffTimeSeries:
             "oracles/fees.json", _json_bytes([]), _json_bytes([fee]), "fees"
         )
         assert len(ops) == 1
+        assert ops[0]["op"] == "insert"
         assert "25" in ops[0]["content_summary"]
 
     def test_existing_tick_not_duplicated(self) -> None:
@@ -780,7 +783,7 @@ class TestMergeOps:
         self.snap = SnapshotManifest(files={}, domain="bitcoin")
 
     def test_non_conflicting_ops_clean_merge(self) -> None:
-        ours_ops = [
+        ours_ops: list[DomainOp] = [
             InsertOp(
                 op="insert",
                 address="wallet/utxos.json::aaa:0",
@@ -789,7 +792,7 @@ class TestMergeOps:
                 content_summary="received UTXO aaa:0",
             )
         ]
-        theirs_ops = [
+        theirs_ops: list[DomainOp] = [
             InsertOp(
                 op="insert",
                 address="wallet/utxos.json::bbb:0",
@@ -806,7 +809,7 @@ class TestMergeOps:
 
     def test_double_spend_detected_in_merge_ops(self) -> None:
         utxo_addr = "wallet/utxos.json::deadbeef:0"
-        ours_ops = [
+        ours_ops: list[DomainOp] = [
             DeleteOp(
                 op="delete",
                 address=utxo_addr,
@@ -815,7 +818,7 @@ class TestMergeOps:
                 content_summary="spent UTXO deadbeef:0",
             )
         ]
-        theirs_ops = [
+        theirs_ops: list[DomainOp] = [
             DeleteOp(
                 op="delete",
                 address=utxo_addr,
@@ -836,11 +839,11 @@ class TestMergeOps:
 
     def test_non_utxo_delete_not_flagged_as_double_spend(self) -> None:
         addr = "channels/channels.json::850000x1x0"
-        ours_ops = [
+        ours_ops: list[DomainOp] = [
             DeleteOp(op="delete", address=addr, position=None,
                      content_id="a" * 64, content_summary="channel closed")
         ]
-        theirs_ops = [
+        theirs_ops: list[DomainOp] = [
             DeleteOp(op="delete", address=addr, position=None,
                      content_id="a" * 64, content_summary="channel closed")
         ]

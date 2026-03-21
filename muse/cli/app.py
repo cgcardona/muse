@@ -400,6 +400,71 @@ coord_cli.add_typer(reconcile.app,  name="reconcile",  help="Recommend merge ord
 
 cli.add_typer(coord_cli, name="coord")
 
+# ---------------------------------------------------------------------------
+# Tier 3 — Bitcoin domain semantic commands (muse bitcoin …)
+# ---------------------------------------------------------------------------
+
+from muse.cli.commands import (  # noqa: E402
+    btc_balance,
+    btc_check,
+    btc_compare,
+    btc_consolidate,
+    btc_dust,
+    btc_fee,
+    btc_halving,
+    btc_hodl,
+    btc_mempool,
+    btc_moon,
+    btc_oracle,
+    btc_pnl,
+    btc_privacy,
+    btc_provenance,
+    btc_select_coins,
+    btc_stack,
+    btc_strategy,
+    btc_utxos,
+    btc_whale,
+)
+
+bitcoin_cli = typer.Typer(
+    name="bitcoin",
+    help="[Tier 3] Bitcoin domain semantic commands — on-chain UTXO analytics, coin selection, and agent strategy.",
+    no_args_is_help=True,
+)
+
+# --- Wallet & balance ---
+bitcoin_cli.add_typer(btc_balance.app,      name="balance",      help="On-chain balance: confirmed, unconfirmed, by script type and category, USD value.")
+bitcoin_cli.add_typer(btc_utxos.app,        name="utxos",        help="Full UTXO set with lifecycle analysis: age, effective value, dust flag, label.")
+
+# --- Bitcoin-culture commands ---
+bitcoin_cli.add_typer(btc_hodl.app,         name="hodl",         help="HODL score, diamond-hands analysis, and age distribution of the UTXO stack.")
+bitcoin_cli.add_typer(btc_whale.app,        name="whale",        help="Whale-tier classification (Plankton → Humpback) and tier-progression ladder.")
+bitcoin_cli.add_typer(btc_moon.app,         name="moon",         help="Portfolio value at price targets — to the moon and beyond.")
+bitcoin_cli.add_typer(btc_halving.app,      name="halving",      help="Halving epoch, current block subsidy, and countdown to the next supply event.")
+bitcoin_cli.add_typer(btc_stack.app,        name="stack",        help="Stacking-sats accumulation history: balance delta across commit history.")
+
+# --- Fee & mempool ---
+bitcoin_cli.add_typer(btc_fee.app,          name="fee",          help="Fee-market window: current rate vs history, percentile, send-now / wait / RBF recommendation.")
+bitcoin_cli.add_typer(btc_mempool.app,      name="mempool",      help="Pending transactions with fee rate and RBF flags.")
+
+# --- Coin management ---
+bitcoin_cli.add_typer(btc_select_coins.app, name="select-coins", help="Agent-first coin selection: BnB / largest / smallest / random, dust excluded.")
+bitcoin_cli.add_typer(btc_consolidate.app,  name="consolidate",  help="UTXO consolidation planner: fee cost, savings, break-even analysis.")
+bitcoin_cli.add_typer(btc_dust.app,         name="dust",         help="Dust UTXO analysis: unspendable coins, total locked value, cleanup recommendations.")
+
+# --- Analytics & history ---
+bitcoin_cli.add_typer(btc_pnl.app,          name="pnl",          help="Portfolio P&L between two commits: sat delta and oracle-anchored USD delta.")
+bitcoin_cli.add_typer(btc_compare.app,      name="compare",      help="Deep semantic comparison between two snapshots: received, spent, strategy changes.")
+bitcoin_cli.add_typer(btc_provenance.app,   name="provenance",   help="UTXO lineage through the MUSE commit DAG — appeared, held, and spent events.")
+
+# --- Agent & strategy ---
+bitcoin_cli.add_typer(btc_strategy.app,     name="strategy",     help="Active agent strategy config with optional diff against a historical commit.")
+bitcoin_cli.add_typer(btc_oracle.app,       name="oracle",       help="Versioned price and fee oracle history with trend analysis.")
+bitcoin_cli.add_typer(btc_check.app,        name="check",        help="Enforce Bitcoin state invariants: maturity, fee ceiling, address reuse, strategy sanity.")
+bitcoin_cli.add_typer(btc_privacy.app,      name="privacy",      help="Privacy analysis: address reuse, script-type entropy, Taproot adoption.")
+
+cli.add_typer(bitcoin_cli, name="bitcoin")
+
 
 if __name__ == "__main__":
     cli()
