@@ -36,7 +36,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import resolve_commit_ref
+from muse.core.store import read_current_branch, resolve_commit_ref
 from muse.core.validation import sanitize_display
 from muse.plugins.midi._query import (
     NoteInfo,
@@ -65,7 +65,7 @@ def _read_repo_id(root: pathlib.Path) -> str:
 
 
 def _read_branch(root: pathlib.Path) -> str:
-    return (root / ".muse" / "HEAD").read_text().strip().removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 def _bar_set(notes: list[NoteInfo]) -> frozenset[int]:

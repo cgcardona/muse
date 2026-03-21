@@ -25,7 +25,7 @@ def _make_repo(tmp_path: pathlib.Path) -> pathlib.Path:
     for d in ("objects", "commits", "snapshots", "refs/heads"):
         (muse / d).mkdir(parents=True, exist_ok=True)
     (muse / "repo.json").write_text(json.dumps({"repo_id": "test-repo"}))
-    (muse / "HEAD").write_text("refs/heads/main\n")
+    (muse / "HEAD").write_text("ref: refs/heads/main\n")
     (muse / "refs" / "heads" / "main").write_text("0" * 64)
     return tmp_path
 

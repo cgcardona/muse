@@ -21,8 +21,11 @@ from muse.core.repo import require_repo
 from muse.core.store import (
     get_head_commit_id,
     get_head_snapshot_id,
+    read_current_branch,
     read_snapshot,
     resolve_commit_ref,
+    write_head_branch,
+    write_head_commit,
 )
 from muse.core.reflog import append_reflog
 from muse.core.validation import contain_path, sanitize_display, validate_branch_name
@@ -35,8 +38,7 @@ app = typer.Typer()
 
 
 def _read_current_branch(root: pathlib.Path) -> str:
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    return head_ref.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -132,7 +134,7 @@ def checkout(
         current_commit = get_head_commit_id(root, current_branch) or ""
         ref_file.parent.mkdir(parents=True, exist_ok=True)
         ref_file.write_text(current_commit)
-        (muse_dir / "HEAD").write_text(f"refs/heads/{target}\n")
+        write_head_branch(root, target)
         append_reflog(
             root, target, old_id=None, new_id=current_commit or ("0" * 64),
             author="user", operation=f"branch: created from {sanitize_display(current_branch)}",
@@ -153,7 +155,7 @@ def checkout(
         if target_snapshot_id:
             _checkout_snapshot(root, target_snapshot_id, current_snapshot_id)
 
-        (muse_dir / "HEAD").write_text(f"refs/heads/{target}\n")
+        write_head_branch(root, target)
         append_reflog(
             root, target, old_id=current_commit_id or None, new_id=target_commit_id or ("0" * 64),
             author="user",
@@ -170,7 +172,7 @@ def checkout(
 
     current_commit_id = get_head_commit_id(root, current_branch) or ""
     _checkout_snapshot(root, commit.snapshot_id, current_snapshot_id)
-    (muse_dir / "HEAD").write_text(commit.commit_id + "\n")
+    write_head_commit(root, commit.commit_id)
     append_reflog(
         root, current_branch, old_id=current_commit_id or None, new_id=commit.commit_id,
         author="user",

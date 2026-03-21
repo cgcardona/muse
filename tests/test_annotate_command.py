@@ -24,7 +24,7 @@ def repo(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Pat
     muse = tmp_path / ".muse"
     muse.mkdir()
     (muse / "repo.json").write_text('{"repo_id":"test-repo"}')
-    (muse / "HEAD").write_text("refs/heads/main")
+    (muse / "HEAD").write_text("ref: refs/heads/main")
     (muse / "commits").mkdir()
     (muse / "snapshots").mkdir()
     (muse / "refs" / "heads").mkdir(parents=True)

@@ -16,7 +16,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import read_snapshot, resolve_commit_ref
+from muse.core.store import read_current_branch, read_snapshot, resolve_commit_ref
 from muse.core.reflog import append_reflog
 from muse.core.validation import sanitize_display, validate_branch_name
 from muse.core.workdir import apply_manifest
@@ -27,8 +27,7 @@ app = typer.Typer()
 
 
 def _read_branch(root: pathlib.Path) -> str:
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    return head_ref.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 def _read_repo_id(root: pathlib.Path) -> str:

@@ -37,7 +37,7 @@ import sys
 import typer
 
 from muse.core.repo import require_repo
-from muse.core.store import get_head_commit_id, read_commit
+from muse.core.store import get_head_commit_id, read_commit, read_current_branch
 from muse.plugins.midi._midi_query import run_query
 
 logger = logging.getLogger(__name__)
@@ -46,8 +46,7 @@ app = typer.Typer(no_args_is_help=True)
 
 
 def _read_branch(root: pathlib.Path) -> str:
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    return head_ref.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 def _resolve_head(root: pathlib.Path, alias: str | None = None) -> str | None:

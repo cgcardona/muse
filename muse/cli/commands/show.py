@@ -10,7 +10,7 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import get_commit_snapshot_manifest, read_commit, resolve_commit_ref
+from muse.core.store import get_commit_snapshot_manifest, read_commit, read_current_branch, resolve_commit_ref
 from muse.domain import DomainOp
 
 logger = logging.getLogger(__name__)
@@ -19,8 +19,7 @@ app = typer.Typer()
 
 
 def _read_branch(root: pathlib.Path) -> str:
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    return head_ref.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 def _read_repo_id(root: pathlib.Path) -> str:

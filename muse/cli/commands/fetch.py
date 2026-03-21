@@ -21,7 +21,7 @@ from muse.cli.config import get_auth_token, get_remote, get_upstream, set_remote
 from muse.core.errors import ExitCode
 from muse.core.pack import apply_pack
 from muse.core.repo import require_repo
-from muse.core.store import get_all_commits
+from muse.core.store import get_all_commits, read_current_branch
 from muse.core.transport import HttpTransport, TransportError
 
 logger = logging.getLogger(__name__)
@@ -31,8 +31,7 @@ app = typer.Typer()
 
 def _current_branch(root: pathlib.Path) -> str:
     """Return the current branch name from ``.muse/HEAD``."""
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    return head_ref.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 @app.callback(invoke_without_command=True)

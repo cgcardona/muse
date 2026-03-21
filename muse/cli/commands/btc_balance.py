@@ -41,17 +41,16 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import get_head_commit_id, resolve_commit_ref
+from muse.core.store import get_head_commit_id, read_current_branch, resolve_commit_ref
 from muse.plugins.bitcoin._loader import (
-    load_fees_from_workdir,
     load_fees,
+    load_fees_from_workdir,
     load_labels,
     load_labels_from_workdir,
     load_prices,
     load_prices_from_workdir,
     load_utxos,
     load_utxos_from_workdir,
-    read_current_branch,
     read_repo_id,
 )
 from muse.plugins.bitcoin._query import (

@@ -55,7 +55,7 @@ from muse.core.indices import (
 )
 from muse.core.object_store import read_object
 from muse.core.repo import require_repo
-from muse.core.store import get_all_commits, get_commit_snapshot_manifest
+from muse.core.store import get_all_commits, get_commit_snapshot_manifest, read_current_branch
 from muse.plugins.code._query import is_semantic
 from muse.plugins.code.ast_parser import parse_symbols
 
@@ -142,7 +142,7 @@ def _build_hash_occurrence(root: pathlib.Path) -> HashOccurrenceIndex:
     head_ref_path = root / ".muse" / "HEAD"
     if not head_ref_path.exists():
         return {}
-    head_ref = head_ref_path.read_text().strip().removeprefix("refs/heads/").strip()
+    head_ref = read_current_branch(root)
     branch_ref_path = root / ".muse" / "refs" / "heads" / head_ref
     if not branch_ref_path.exists():
         return {}

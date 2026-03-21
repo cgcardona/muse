@@ -37,12 +37,11 @@ import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import get_head_commit_id, read_commit, resolve_commit_ref
+from muse.core.store import get_head_commit_id, read_commit, read_current_branch, resolve_commit_ref
 from muse.plugins.bitcoin._loader import (
     load_prices,
     load_strategy,
     load_utxos,
-    read_current_branch,
     read_repo_id,
 )
 from muse.plugins.bitcoin._query import format_sat, latest_price, total_balance_sat, utxo_key

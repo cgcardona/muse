@@ -46,7 +46,7 @@ from dataclasses import dataclass
 from typing import TypedDict
 
 from muse.core.object_store import restore_object
-from muse.core.store import get_head_commit_id, read_snapshot
+from muse.core.store import get_head_commit_id, read_current_branch, read_snapshot
 from muse.core.validation import contain_path, validate_branch_name
 
 logger = logging.getLogger(__name__)
@@ -132,8 +132,7 @@ def _save_meta(repo_root: pathlib.Path, record: WorktreeRecord) -> None:
 
 
 def _read_main_branch(repo_root: pathlib.Path) -> str:
-    head = (repo_root / ".muse" / "HEAD").read_text().strip()
-    return head.removeprefix("refs/heads/").strip()
+    return read_current_branch(repo_root)
 
 
 # ---------------------------------------------------------------------------

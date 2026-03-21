@@ -35,7 +35,7 @@ import typer
 from muse.core.errors import ExitCode
 from muse.core.pack import build_pack
 from muse.core.repo import require_repo
-from muse.core.store import get_head_commit_id
+from muse.core.store import get_head_commit_id, read_current_branch
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +43,7 @@ app = typer.Typer()
 
 
 def _current_branch(root: pathlib.Path) -> str:
-    head = (root / ".muse" / "HEAD").read_text().strip()
-    return head.removeprefix("refs/heads/").strip()
+    return read_current_branch(root)
 
 
 @app.callback(invoke_without_command=True)

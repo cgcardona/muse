@@ -52,6 +52,7 @@ import typer
 from muse.core.coordination import create_intent
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
+from muse.core.store import read_current_branch
 
 logger = logging.getLogger(__name__)
 
@@ -106,8 +107,7 @@ def intent(
         )
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
-    head_ref = (root / ".muse" / "HEAD").read_text().strip()
-    branch = head_ref.removeprefix("refs/heads/").strip()
+    branch = read_current_branch(root)
 
     intent_record = create_intent(
         root=root,

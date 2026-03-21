@@ -58,6 +58,7 @@ from muse.core.store import (
     SnapshotRecord,
     get_head_commit_id,
     write_commit,
+    write_head_branch,
     write_snapshot,
 )
 from muse.core.snapshot import compute_commit_id, compute_snapshot_id
@@ -287,8 +288,7 @@ def _get_branch_head(repo_root: pathlib.Path, branch: str) -> str | None:
 
 
 def _set_head_ref(repo_root: pathlib.Path, branch: str) -> None:
-    head_path = repo_root / ".muse" / "HEAD"
-    head_path.write_text(f"refs/heads/{branch}\n")
+    write_head_branch(repo_root, branch)
 
 
 def _ensure_branch_exists(repo_root: pathlib.Path, branch: str) -> None:
