@@ -47,29 +47,66 @@ def _cyan(text: str) -> str:
     return typer.style(text, fg=typer.colors.CYAN)
 
 
-def _print_child_ops(child_ops: list[DomainOp]) -> None:
-    """Render symbol-level child ops with tree connectors and colours.
+_LOC_SEP = "  L"
 
-    Shows up to ``_MAX_INLINE_CHILDREN`` entries inline; summarises the rest
-    on a single trailing line so the output stays readable for large files.
+
+def _split_loc(summary: str) -> tuple[str, str]:
+    """Split 'added function foo  L4–8' into ('added function foo', 'L4–8').
+
+    Returns the original string and an empty loc when no location suffix is
+    present (e.g. cross-file move annotations that carry no line data).
+    """
+    if _LOC_SEP in summary:
+        label, _, loc = summary.rpartition(_LOC_SEP)
+        return label, f"L{loc}"
+    return summary, ""
+
+
+def _print_child_ops(child_ops: list[DomainOp]) -> None:
+    """Render symbol-level child ops with aligned columns and colours.
+
+    Labels are left-padded to a uniform width within the group so the
+    line-range column (``L{start}–{end}``) lines up vertically.  Shows up
+    to ``_MAX_INLINE_CHILDREN`` entries inline; summarises the rest on a
+    single trailing line.
     """
     visible = child_ops[:_MAX_INLINE_CHILDREN]
     overflow = len(child_ops) - len(visible)
 
-    for i, cop in enumerate(visible):
-        is_last = (i == len(visible) - 1) and overflow == 0
-        connector = "└─" if is_last else "├─"
+    # First pass: gather (op_type, unstyled_label, loc) for each visible op.
+    # We need unstyled widths before applying ANSI colour codes.
+    rows: list[tuple[str, str, str]] = []
+    for cop in visible:
         if cop["op"] == "insert":
-            typer.echo(f"   {connector} " + _green(cop["content_summary"]))
+            label, loc = _split_loc(cop["content_summary"])
+            rows.append(("insert", label, loc))
         elif cop["op"] == "delete":
-            typer.echo(f"   {connector} " + _red(cop["content_summary"]))
+            label, loc = _split_loc(cop["content_summary"])
+            rows.append(("delete", label, loc))
         elif cop["op"] == "replace":
-            typer.echo(f"   {connector} " + _yellow(cop["new_summary"]))
+            label, loc = _split_loc(cop["new_summary"])
+            rows.append(("replace", label, loc))
         elif cop["op"] == "move":
-            typer.echo(
-                f"   {connector} "
-                + _cyan(f"{cop['address']}  ({cop['from_position']} → {cop['to_position']})")
-            )
+            label = f"{cop['address']}  ({cop['from_position']} → {cop['to_position']})"
+            rows.append(("move", label, ""))
+        else:
+            rows.append(("unknown", "", ""))
+
+    for i, (op_type, label, loc) in enumerate(rows):
+        is_last = (i == len(rows) - 1) and overflow == 0
+        connector = "└─" if is_last else "├─"
+        if op_type == "insert":
+            styled = _green(label)
+        elif op_type == "delete":
+            styled = _red(label)
+        elif op_type == "replace":
+            styled = _yellow(label)
+        elif op_type == "move":
+            styled = _cyan(label)
+        else:
+            styled = label
+        suffix = f"  {loc}" if loc else ""
+        typer.echo(f"   {connector} {styled}{suffix}")
 
     if overflow > 0:
         typer.echo(f"   └─ … and {overflow} more")
