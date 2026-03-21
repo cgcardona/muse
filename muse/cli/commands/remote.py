@@ -3,10 +3,10 @@
 Subcommands
 -----------
 
+    muse remote [-v]                     List configured remotes (default)
     muse remote add <name> <url>         Register a new remote
     muse remote remove <name>            Remove a remote and its tracking refs
     muse remote rename <old> <new>       Rename a remote
-    muse remote list [-v]                List configured remotes
     muse remote get-url <name>           Print a remote's URL
     muse remote set-url <name> <url>     Update a remote's URL
 
@@ -34,7 +34,33 @@ from muse.core.repo import require_repo
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer(no_args_is_help=True)
+app = typer.Typer()
+
+
+@app.callback(invoke_without_command=True)
+def remote_main(
+    ctx: typer.Context,
+    verbose: bool = typer.Option(
+        False, "-v", "--verbose", help="Show URL and upstream tracking branch."
+    ),
+) -> None:
+    """Manage remote repository connections. With no subcommand, lists remotes."""
+    if ctx.invoked_subcommand is not None:
+        return
+    root = require_repo()
+    remotes = list_remotes(root)
+    if not remotes:
+        typer.echo("No remotes configured. Use 'muse remote add <name> <url>'.")
+        return
+    for r in remotes:
+        if verbose:
+            upstream = get_upstream(r["name"], root)
+            head = get_remote_head(r["name"], upstream or "main", root)
+            head_str = f" @ {head[:8]}" if head else ""
+            tracking = f" -> {r['name']}/{upstream}" if upstream else ""
+            typer.echo(f"{r['name']}\t{r['url']}{tracking}{head_str}")
+        else:
+            typer.echo(r["name"])
 
 
 @app.command("add")
@@ -83,29 +109,6 @@ def remote_rename(
         typer.echo(f"❌ Remote '{new_name}' already exists.")
         raise typer.Exit(code=ExitCode.USER_ERROR)
     typer.echo(f"✅ Remote '{old_name}' renamed to '{new_name}'.")
-
-
-@app.command("list")
-def remote_list(
-    verbose: bool = typer.Option(
-        False, "-v", "--verbose", help="Show URL and upstream tracking branch."
-    ),
-) -> None:
-    """List configured remote repositories."""
-    root = require_repo()
-    remotes = list_remotes(root)
-    if not remotes:
-        typer.echo("No remotes configured. Use 'muse remote add <name> <url>'.")
-        return
-    for r in remotes:
-        if verbose:
-            upstream = get_upstream(r["name"], root)
-            head = get_remote_head(r["name"], upstream or "main", root)
-            head_str = f" @ {head[:8]}" if head else ""
-            tracking = f" -> {r['name']}/{upstream}" if upstream else ""
-            typer.echo(f"{r['name']}\t{r['url']}{tracking}{head_str}")
-        else:
-            typer.echo(r["name"])
 
 
 @app.command("get-url")
