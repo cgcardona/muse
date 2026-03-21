@@ -72,7 +72,7 @@ from muse.core.repo import require_repo
 from muse.core.store import get_commit_snapshot_manifest, read_current_branch, resolve_commit_ref
 from muse.plugins.code._callgraph import build_reverse_graph
 from muse.plugins.code._query import symbols_for_snapshot
-from muse.plugins.code.ast_parser import SEMANTIC_EXTENSIONS, parse_symbols
+from muse.plugins.code.ast_parser import parse_symbols
 from muse.core.object_store import read_object
 
 logger = logging.getLogger(__name__)
@@ -98,6 +98,7 @@ def _all_imported_modules(
     manifest: dict[str, str],
 ) -> set[str]:
     """Return the set of all module/symbol names imported across the snapshot."""
+    from muse.plugins.code.ast_parser import SEMANTIC_EXTENSIONS
     imported: set[str] = set()
     for file_path, obj_id in manifest.items():
         suffix = pathlib.PurePosixPath(file_path).suffix.lower()

@@ -48,7 +48,7 @@ from muse.core.repo import require_repo
 from muse.core.store import get_commit_snapshot_manifest, read_current_branch, resolve_commit_ref
 from muse.plugins.code._callgraph import build_reverse_graph, callees_for_symbol
 from muse.plugins.code._query import language_of, symbols_for_snapshot
-from muse.plugins.code.ast_parser import SEMANTIC_EXTENSIONS, SymbolTree, parse_symbols
+from muse.plugins.code.ast_parser import SymbolTree, parse_symbols
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +105,7 @@ def _reverse_imports(
     This catches ``import billing``, ``from billing import X``, and fully-
     qualified paths like ``src.billing``.
     """
+    from muse.plugins.code.ast_parser import SEMANTIC_EXTENSIONS
     target_stem = pathlib.PurePosixPath(target_file).stem
     target_module = pathlib.PurePosixPath(target_file).with_suffix("").as_posix().replace("/", ".")
     importers: list[str] = []
