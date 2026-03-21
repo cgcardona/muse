@@ -135,28 +135,32 @@ def _build_import_graph(
 
 
 def _find_cycles(imports_out: dict[str, list[str]]) -> list[list[str]]:
-    """Detect import cycles via iterative DFS.  Returns cycle paths."""
+    """Detect import cycles via iterative DFS.  Returns cycle paths.
+
+    Uses an explicit stack instead of recursion so that deeply nested import
+    graphs (thousands of files in a chain) cannot exhaust Python's call stack.
+    O(V+E) — every node is visited at most once.
+    """
     cycles: list[list[str]] = []
     visited: set[str] = set()
-    in_stack: set[str] = set()
 
-    def dfs(node: str, path: list[str]) -> None:
-        if node in in_stack:
-            # Found a cycle — extract the cycle portion.
-            start = path.index(node)
-            cycles.append(path[start:] + [node])
-            return
-        if node in visited:
-            return
-        visited.add(node)
-        in_stack.add(node)
-        for neighbour in imports_out.get(node, []):
-            dfs(neighbour, path + [node])
-        in_stack.discard(node)
-
-    for node in imports_out:
-        if node not in visited:
-            dfs(node, [])
+    for start in imports_out:
+        if start in visited:
+            continue
+        # Each stack frame: (node, path-so-far, in-stack set for this path)
+        stack: list[tuple[str, list[str], set[str]]] = [(start, [], set())]
+        while stack:
+            node, path, in_stack = stack.pop()
+            if node in in_stack:
+                idx = path.index(node)
+                cycles.append(path[idx:] + [node])
+                continue
+            if node in visited:
+                continue
+            visited.add(node)
+            new_in_stack = in_stack | {node}
+            for neighbour in imports_out.get(node, []):
+                stack.append((neighbour, path + [node], new_in_stack))
 
     return cycles
 

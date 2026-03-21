@@ -15,10 +15,15 @@ function while keeping everything else current, you need to manually cherry-
 pick lines.  ``muse checkout-symbol`` does this atomically against Muse's
 content-addressed symbol index.
 
+Security note: the file path component of ADDRESS is validated via
+``contain_path()`` before any disk access.  Paths that escape the repo root
+(e.g. ``../../etc/passwd::foo``) are rejected with exit 1.
+
 Usage::
 
     muse checkout-symbol "src/billing.py::compute_invoice_total" --commit HEAD~3
     muse checkout-symbol "src/auth.py::validate_token" --commit abc12345 --dry-run
+    muse checkout-symbol "src/billing.py::compute_invoice_total" --commit HEAD~3 --json
 
 Output (without --dry-run)::
 
@@ -41,6 +46,15 @@ Output (with --dry-run)::
     -    ...current body...
     +    ...historical body...
 
+JSON output (``--json``)::
+
+    {
+      "address": "src/billing.py::compute_invoice_total",
+      "file": "src/billing.py",
+      "restored_from": "abc12345",
+      "dry_run": false
+    }
+
 Flags:
 
 ``--commit, -c REF``
@@ -48,6 +62,9 @@ Flags:
 
 ``--dry-run``
     Print the diff without writing anything.
+
+``--json``
+    Emit result as JSON for agent consumption.
 """
 
 from __future__ import annotations
@@ -63,6 +80,7 @@ from muse.core.errors import ExitCode
 from muse.core.object_store import read_object
 from muse.core.repo import require_repo
 from muse.core.store import get_commit_snapshot_manifest, read_current_branch, resolve_commit_ref
+from muse.core.validation import contain_path
 from muse.plugins.code.ast_parser import parse_symbols
 
 logger = logging.getLogger(__name__)
@@ -117,6 +135,7 @@ def checkout_symbol(
         False, "--dry-run",
         help="Print the diff without writing anything.",
     ),
+    as_json: bool = typer.Option(False, "--json", help="Emit result as JSON for agent consumption."),
 ) -> None:
     """Restore a historical version of a specific symbol into the working tree.
 
@@ -127,6 +146,9 @@ def checkout_symbol(
     If the symbol does not exist at ``--commit``, the command exits with an
     error.  If the symbol does not exist in the current working tree (perhaps
     it was deleted), the historical version is appended to the end of the file.
+
+    The file path component of ADDRESS is validated against the repo root —
+    path-traversal addresses (e.g. ``../../etc/passwd::foo``) are rejected.
     """
     root = require_repo()
     repo_id = _read_repo_id(root)
@@ -137,6 +159,13 @@ def checkout_symbol(
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
     file_rel, sym_qualified = address.split("::", 1)
+
+    # Validate the file path stays inside the repo root.
+    try:
+        contain_path(root, file_rel)
+    except ValueError as exc:
+        typer.echo(f"❌ {exc}", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
@@ -170,7 +199,7 @@ def checkout_symbol(
         historical_raw, hist_rec["lineno"], hist_rec["end_lineno"]
     )
 
-    # Find the symbol in the current working tree.
+    # working_file is already validated as within root by contain_path above.
     working_file = root / file_rel
     current_lines = working_file.read_bytes().decode("utf-8", errors="replace").splitlines(
         keepends=True
@@ -178,25 +207,24 @@ def checkout_symbol(
 
     current_sym_range = _find_current_symbol_lines(working_file, address)
 
-    if dry_run:
-        typer.echo("Dry run — no files will be written.\n")
-
-    typer.echo(f"Restoring: {address}")
-    typer.echo(f"  from commit: {commit.commit_id[:8]} ({commit.committed_at.date()})")
-
     if current_sym_range is not None:
         cur_start, cur_end = current_sym_range
-        typer.echo(
-            f"  lines {cur_start}–{cur_end} → replaced with "
-            f"{len(historical_lines)} historical line(s)"
-        )
         new_lines = current_lines[:cur_start - 1] + historical_lines + current_lines[cur_end:]
     else:
-        typer.echo(f"  symbol not found in working tree — appending at end of file")
         new_lines = current_lines + ["\n"] + historical_lines
 
     if dry_run:
-        # Show unified diff.
+        if as_json:
+            typer.echo(json.dumps({
+                "address": address,
+                "file": file_rel,
+                "restored_from": commit.commit_id[:8],
+                "dry_run": True,
+            }, indent=2))
+            return
+        typer.echo("Dry run — no files will be written.\n")
+        typer.echo(f"Restoring: {address}")
+        typer.echo(f"  from commit: {commit.commit_id[:8]} ({commit.committed_at.date()})")
         diff = difflib.unified_diff(
             current_lines,
             new_lines,
@@ -207,6 +235,28 @@ def checkout_symbol(
         typer.echo("\n" + "".join(diff))
         return
 
+    if not as_json:
+        typer.echo(f"Restoring: {address}")
+        typer.echo(f"  from commit: {commit.commit_id[:8]} ({commit.committed_at.date()})")
+        if current_sym_range is not None:
+            cur_start, cur_end = current_sym_range
+            typer.echo(
+                f"  lines {cur_start}–{cur_end} → replaced with "
+                f"{len(historical_lines)} historical line(s)"
+            )
+        else:
+            typer.echo("  symbol not found in working tree — appending at end of file")
+
     # Write the patched file.
     working_file.write_text("".join(new_lines), encoding="utf-8")
+
+    if as_json:
+        typer.echo(json.dumps({
+            "address": address,
+            "file": file_rel,
+            "restored_from": commit.commit_id[:8],
+            "dry_run": False,
+        }, indent=2))
+        return
+
     typer.echo(f"✅ Written to {file_rel}")
