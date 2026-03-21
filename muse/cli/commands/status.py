@@ -80,7 +80,11 @@ def status(
 ) -> None:
     """Show working-tree drift against HEAD."""
     root = require_repo()
-    branch = read_current_branch(root)
+    try:
+        branch = read_current_branch(root)
+    except ValueError as exc:
+        typer.echo(f"fatal: {exc}", err=True)
+        raise typer.Exit(code=ExitCode.USER_ERROR)
     repo_id = _read_repo_id(root)
 
     if porcelain:
