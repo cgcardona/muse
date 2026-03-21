@@ -54,16 +54,13 @@ from typing import Literal
 import typer
 
 from muse.core.errors import ExitCode
-from muse.core.object_store import read_object
 from muse.core.repo import require_repo
 from muse.core.store import (
     get_all_commits,
-    get_commit_snapshot_manifest,
     read_current_branch,
     resolve_commit_ref,
 )
 from muse.plugins.code._query import flat_symbol_ops
-from muse.plugins.code.ast_parser import parse_symbols
 
 
 class _InsertFields:
@@ -126,21 +123,6 @@ def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-def _body_hash_for(root: pathlib.Path, manifest: dict[str, str], address: str) -> str | None:
-    """Return body_hash for *address* in *manifest*, or None if not found."""
-    if "::" not in address:
-        return None
-    file_path = address.split("::")[0]
-    obj_id = manifest.get(file_path)
-    if obj_id is None:
-        return None
-    raw = read_object(root, obj_id)
-    if raw is None:
-        return None
-    tree = parse_symbols(raw, file_path)
-    rec = tree.get(address)
-    return rec["body_hash"] if rec else None
-
 
 class _LineageEvent:
     def __init__(
@@ -196,25 +178,33 @@ def build_lineage(
     root: pathlib.Path,
     address: str,
 ) -> list[_LineageEvent]:
-    """Walk all commits oldest-first and build the provenance chain."""
+    """Walk all commits oldest-first and build the provenance chain.
+
+    Copy detection uses an incremental ``content_id → set[address]`` registry
+    maintained from structured_delta ops as commits are processed.  This is
+    O(total ops across all commits) — no blob re-parsing, no snapshot scans.
+    The previous implementation was O(commits × files × symbols) because it
+    re-parsed every blob in every snapshot to look for matching body_hashes.
+    """
     all_commits = sorted(
         get_all_commits(root),
         key=lambda c: c.committed_at,
     )
 
     events: list[_LineageEvent] = []
-    # Track whether we currently "own" this address (it exists in HEAD at each step).
     address_live = False
-    current_body_hash: str | None = None
+
+    # Incremental registry: content_id → set of live symbol addresses.
+    # Updated from structured_delta ops as we walk commits chronologically.
+    # Replaces the O(commits × files × symbols) blob-scan copy detection.
+    live_by_content_id: dict[str, set[str]] = {}
 
     for commit in all_commits:
         if commit.structured_delta is None:
             continue
         ops = commit.structured_delta.get("ops", [])
         committed_at = commit.committed_at.isoformat()
-        short = commit.commit_id[:8]
 
-        # Gather all symbol-level ops for this commit using discriminated access.
         inserts: dict[str, _InsertFields] = {}
         deletes: dict[str, _DeleteFields] = {}
         replaces: dict[str, _ReplaceFields] = {}
@@ -244,9 +234,7 @@ def build_lineage(
             rep = replaces[address]
             old_cid = rep.old_content_id
             new_cid = rep.new_content_id
-            old_sum = rep.old_summary
-            new_sum = rep.new_summary
-            detail = _classify_replace(old_cid, new_cid, old_sum, new_sum)
+            detail = _classify_replace(old_cid, new_cid, rep.old_summary, rep.new_summary)
             events.append(_LineageEvent(
                 commit_id=commit.commit_id,
                 committed_at=committed_at,
@@ -255,18 +243,20 @@ def build_lineage(
                 old_content_id=old_cid,
                 new_content_id=new_cid,
             ))
+            # Update registry: old content_id is no longer live at this address.
+            live_by_content_id.get(old_cid, set()).discard(address)
+            live_by_content_id.setdefault(new_cid, set()).add(address)
 
         if address in inserts:
             ins = inserts[address]
             ins_cid = ins.content_id
 
-            # Look for a DeleteOp with the same content_id in this commit →
-            # rename or move detection.
+            # Rename / move: DeleteOp in same commit with the same content_id.
             source_addr: str | None = None
             for del_addr, del_op in deletes.items():
                 if del_addr == address:
                     continue
-                if del_op.content_id and del_op.content_id == ins_cid:
+                if del_op.content_id == ins_cid:
                     source_addr = del_addr
                     break
 
@@ -282,27 +272,15 @@ def build_lineage(
                     new_content_id=ins_cid,
                 ))
             else:
-                # Check if another live symbol shares the body_hash → copy.
-                manifest = get_commit_snapshot_manifest(root, commit.commit_id) or {}
-                ins_body = _body_hash_for(root, manifest, address)
-                copy_source: str | None = None
-                if ins_body and not address_live:
-                    # Scan the snapshot for another address with the same body_hash.
-                    for file_path, obj_id in sorted(manifest.items()):
-                        raw = read_object(root, obj_id)
-                        if raw is None:
-                            continue
-                        tree = parse_symbols(raw, file_path)
-                        for other_addr, rec in tree.items():
-                            if other_addr != address and rec["body_hash"] == ins_body:
-                                copy_source = other_addr
-                                break
-                        if copy_source:
-                            break
-
-                if copy_source:
+                # Copy detection: check the incremental registry for another live
+                # address that already carries this content_id.  O(1) lookup —
+                # no blob re-parsing, no snapshot scan.
+                existing = live_by_content_id.get(ins_cid, set()) - {address}
+                if existing and not address_live:
+                    copy_source: str | None = next(iter(sorted(existing)))
                     ev_kind: EventKind = "copied_from"
                 else:
+                    copy_source = None
                     ev_kind = "created"
                 events.append(_LineageEvent(
                     commit_id=commit.commit_id,
@@ -311,8 +289,9 @@ def build_lineage(
                     detail=copy_source or "",
                     new_content_id=ins_cid,
                 ))
+
+            live_by_content_id.setdefault(ins_cid, set()).add(address)
             address_live = True
-            current_body_hash = ins_cid
 
         if address in deletes:
             del_f = deletes[address]
@@ -322,8 +301,17 @@ def build_lineage(
                 kind="deleted",
                 old_content_id=del_f.content_id,
             ))
+            live_by_content_id.get(del_f.content_id, set()).discard(address)
             address_live = False
-            current_body_hash = None
+
+        # Update registry for all other ops in this commit (not the target address),
+        # so copy detection is accurate for future commits.
+        for addr, ins in inserts.items():
+            if addr != address:
+                live_by_content_id.setdefault(ins.content_id, set()).add(addr)
+        for addr, del_op in deletes.items():
+            if addr != address:
+                live_by_content_id.get(del_op.content_id, set()).discard(addr)
 
     return events
 

@@ -153,7 +153,7 @@ class TestFetch:
         transport_mock.fetch_pack.return_value = bundle
 
         with unittest.mock.patch(
-            "muse.cli.commands.fetch.HttpTransport", return_value=transport_mock
+            "muse.cli.commands.fetch.make_transport", return_value=transport_mock
         ):
             result = runner.invoke(cli, ["fetch", "origin"])
 
@@ -175,7 +175,7 @@ class TestFetch:
         transport_mock.fetch_remote_info.return_value = info
 
         with unittest.mock.patch(
-            "muse.cli.commands.fetch.HttpTransport", return_value=transport_mock
+            "muse.cli.commands.fetch.make_transport", return_value=transport_mock
         ):
             # Options must precede positional args in add_typer groups.
             result = runner.invoke(cli, ["fetch", "--branch", "nonexistent", "origin"])
@@ -188,7 +188,7 @@ class TestFetch:
         transport_mock.fetch_remote_info.side_effect = TransportError("timeout", 0)
 
         with unittest.mock.patch(
-            "muse.cli.commands.fetch.HttpTransport", return_value=transport_mock
+            "muse.cli.commands.fetch.make_transport", return_value=transport_mock
         ):
             result = runner.invoke(cli, ["fetch", "origin"])
 
@@ -208,7 +208,7 @@ class TestPush:
         transport_mock.push_pack.return_value = push_result
 
         with unittest.mock.patch(
-            "muse.cli.commands.push.HttpTransport", return_value=transport_mock
+            "muse.cli.commands.push.make_transport", return_value=transport_mock
         ):
             result = runner.invoke(cli, ["push", "origin"])
 
@@ -227,7 +227,7 @@ class TestPush:
         transport_mock.push_pack.return_value = push_result
 
         with unittest.mock.patch(
-            "muse.cli.commands.push.HttpTransport", return_value=transport_mock
+            "muse.cli.commands.push.make_transport", return_value=transport_mock
         ):
             # Options must precede positional args in add_typer groups.
             result = runner.invoke(cli, ["push", "-u", "origin"])
@@ -240,7 +240,7 @@ class TestPush:
         transport_mock.push_pack.side_effect = TransportError("non-fast-forward", 409)
 
         with unittest.mock.patch(
-            "muse.cli.commands.push.HttpTransport", return_value=transport_mock
+            "muse.cli.commands.push.make_transport", return_value=transport_mock
         ):
             result = runner.invoke(cli, ["push", "origin"])
 
@@ -254,7 +254,7 @@ class TestPush:
 
         transport_mock = unittest.mock.MagicMock()
         with unittest.mock.patch(
-            "muse.cli.commands.push.HttpTransport", return_value=transport_mock
+            "muse.cli.commands.push.make_transport", return_value=transport_mock
         ):
             result = runner.invoke(cli, ["push", "origin"])
 
@@ -268,7 +268,7 @@ class TestPush:
         transport_mock.push_pack.return_value = push_result
 
         with unittest.mock.patch(
-            "muse.cli.commands.push.HttpTransport", return_value=transport_mock
+            "muse.cli.commands.push.make_transport", return_value=transport_mock
         ):
             result = runner.invoke(cli, ["push", "--force", "origin"])
 

@@ -38,7 +38,7 @@ from muse.core.store import (
     write_commit,
     write_snapshot,
 )
-from muse.core.transport import HttpTransport, TransportError
+from muse.core.transport import TransportError, make_transport
 from muse.core.workdir import apply_manifest
 from muse.domain import SnapshotManifest, StructuredMergePlugin
 from muse.plugins.registry import read_domain, resolve_plugin
@@ -96,7 +96,7 @@ def pull(
     current_branch = _current_branch(root)
     target_branch = branch or get_upstream(current_branch, root) or current_branch
 
-    transport = HttpTransport()
+    transport = make_transport(url)
 
     # ── Fetch ────────────────────────────────────────────────────────────────
     try:

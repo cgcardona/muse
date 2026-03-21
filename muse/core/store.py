@@ -594,6 +594,31 @@ def get_head_commit_id(repo_root: pathlib.Path, branch: str) -> str | None:
     return raw if raw else None
 
 
+def get_all_branch_heads(repo_root: pathlib.Path) -> dict[str, str]:
+    """Return a mapping of branch name → commit ID for every branch in *repo_root*.
+
+    Reads all ref files under ``.muse/refs/heads/``.  Branches whose ref file
+    is empty or contains an invalid commit ID are silently skipped.
+
+    Args:
+        repo_root: Repository root directory (contains ``.muse/``).
+
+    Returns:
+        ``{branch_name: commit_id}`` for every non-empty branch ref.
+    """
+    heads_dir = repo_root / ".muse" / "refs" / "heads"
+    if not heads_dir.is_dir():
+        return {}
+    result: dict[str, str] = {}
+    for ref_file in heads_dir.iterdir():
+        if not ref_file.is_file():
+            continue
+        raw = ref_file.read_text(encoding="utf-8").strip()
+        if raw:
+            result[ref_file.name] = raw
+    return result
+
+
 def get_head_snapshot_id(
     repo_root: pathlib.Path,
     repo_id: str,

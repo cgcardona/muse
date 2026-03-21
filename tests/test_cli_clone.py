@@ -108,7 +108,7 @@ class TestClone:
         bundle = _make_bundle()
         mock = _mock_transport(info, bundle)
 
-        with unittest.mock.patch("muse.cli.commands.clone.HttpTransport", return_value=mock):
+        with unittest.mock.patch("muse.cli.commands.clone.make_transport", return_value=mock):
             result = runner.invoke(
                 cli, ["clone", "https://hub.example.com/repos/r1", "my-repo"]
             )
@@ -124,7 +124,7 @@ class TestClone:
         bundle = _make_bundle()
         mock = _mock_transport(info, bundle)
 
-        with unittest.mock.patch("muse.cli.commands.clone.HttpTransport", return_value=mock):
+        with unittest.mock.patch("muse.cli.commands.clone.make_transport", return_value=mock):
             runner.invoke(
                 cli, ["clone", "https://hub.example.com/repos/r1", "my-repo"]
             )
@@ -140,7 +140,7 @@ class TestClone:
         bundle = _make_bundle()
         mock = _mock_transport(info, bundle)
 
-        with unittest.mock.patch("muse.cli.commands.clone.HttpTransport", return_value=mock):
+        with unittest.mock.patch("muse.cli.commands.clone.make_transport", return_value=mock):
             runner.invoke(
                 cli, ["clone", "https://hub.example.com/repos/r1", "my-repo"]
             )
@@ -156,7 +156,7 @@ class TestClone:
         bundle = _make_bundle()
         mock = _mock_transport(info, bundle)
 
-        with unittest.mock.patch("muse.cli.commands.clone.HttpTransport", return_value=mock):
+        with unittest.mock.patch("muse.cli.commands.clone.make_transport", return_value=mock):
             runner.invoke(
                 cli, ["clone", "https://hub.example.com/repos/r1", "dest"]
             )
@@ -173,7 +173,7 @@ class TestClone:
         bundle = _make_bundle()
         mock = _mock_transport(info, bundle)
 
-        with unittest.mock.patch("muse.cli.commands.clone.HttpTransport", return_value=mock):
+        with unittest.mock.patch("muse.cli.commands.clone.make_transport", return_value=mock):
             runner.invoke(
                 cli, ["clone", "https://hub.example.com/repos/r1", "dest"]
             )
@@ -190,7 +190,7 @@ class TestClone:
         bundle = _make_bundle()
         mock = _mock_transport(info, bundle)
 
-        with unittest.mock.patch("muse.cli.commands.clone.HttpTransport", return_value=mock):
+        with unittest.mock.patch("muse.cli.commands.clone.make_transport", return_value=mock):
             runner.invoke(
                 cli, ["clone", "https://hub.example.com/repos/r1", "dest"]
             )
@@ -207,7 +207,7 @@ class TestClone:
         bundle = _make_bundle()
         mock = _mock_transport(info, bundle)
 
-        with unittest.mock.patch("muse.cli.commands.clone.HttpTransport", return_value=mock):
+        with unittest.mock.patch("muse.cli.commands.clone.make_transport", return_value=mock):
             runner.invoke(cli, ["clone", "https://hub.example.com/repos/my-project"])
 
         assert (tmp_path / "my-project" / ".muse").is_dir()
@@ -219,7 +219,7 @@ class TestClone:
         mock = unittest.mock.MagicMock()
         mock.fetch_remote_info.side_effect = TransportError("connection refused", 0)
 
-        with unittest.mock.patch("muse.cli.commands.clone.HttpTransport", return_value=mock):
+        with unittest.mock.patch("muse.cli.commands.clone.make_transport", return_value=mock):
             result = runner.invoke(
                 cli, ["clone", "https://hub.example.com/repos/r1", "dest"]
             )
@@ -235,7 +235,7 @@ class TestClone:
         (tmp_path / "dest" / ".muse").mkdir(parents=True)
 
         mock = unittest.mock.MagicMock()
-        with unittest.mock.patch("muse.cli.commands.clone.HttpTransport", return_value=mock):
+        with unittest.mock.patch("muse.cli.commands.clone.make_transport", return_value=mock):
             result = runner.invoke(
                 cli, ["clone", "https://hub.example.com/repos/r1", "dest"]
             )
@@ -251,7 +251,7 @@ class TestClone:
         mock = unittest.mock.MagicMock()
         mock.fetch_remote_info.return_value = info
 
-        with unittest.mock.patch("muse.cli.commands.clone.HttpTransport", return_value=mock):
+        with unittest.mock.patch("muse.cli.commands.clone.make_transport", return_value=mock):
             result = runner.invoke(
                 cli, ["clone", "https://hub.example.com/repos/r1", "dest"]
             )
@@ -270,7 +270,7 @@ class TestClone:
         bundle = _make_bundle(commit_id="d" * 64, branch="dev")
         mock = _mock_transport(info, bundle)
 
-        with unittest.mock.patch("muse.cli.commands.clone.HttpTransport", return_value=mock):
+        with unittest.mock.patch("muse.cli.commands.clone.make_transport", return_value=mock):
             # Options must precede positional args in add_typer groups.
             result = runner.invoke(
                 cli,
