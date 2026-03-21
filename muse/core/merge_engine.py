@@ -56,6 +56,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, TypedDict
 
+from muse._version import __version__
 from muse.core.validation import contain_path, validate_object_id, validate_ref_id
 
 if TYPE_CHECKING:
@@ -380,14 +381,14 @@ def crdt_join_snapshots(
         "domain": domain,
         "vclock": a_vclock,
         "crdt_state": a_crdt_state,
-        "schema_version": 1,
+        "schema_version": __version__,
     }
     b_crdt: CRDTSnapshotManifest = {
         "files": b_snapshot,
         "domain": domain,
         "vclock": b_vclock,
         "crdt_state": b_crdt_state,
-        "schema_version": 1,
+        "schema_version": __version__,
     }
 
     result_crdt = plugin.join(a_crdt, b_crdt)

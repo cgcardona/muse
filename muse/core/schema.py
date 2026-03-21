@@ -213,8 +213,7 @@ class DomainSchema(TypedDict):
     - ``"three_way"`` — standard three-way merge (Phases 1–3).
     - ``"crdt"``      — convergent CRDT join.
 
-    ``schema_version`` tracks the schema format for future migrations.
-    It is always ``1``.
+    ``schema_version`` is the Muse package version (read from ``muse._version``).
     """
 
     domain: str
@@ -222,4 +221,4 @@ class DomainSchema(TypedDict):
     dimensions: list[DimensionSpec]
     top_level: ElementSchema
     merge_mode: Literal["three_way", "crdt"]
-    schema_version: Literal[1]
+    schema_version: str

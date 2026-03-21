@@ -30,6 +30,7 @@ import uuid
 
 import typer
 
+from muse._version import __version__ as _SCHEMA_VERSION
 from muse.core.errors import ExitCode
 from muse.core.repo import find_repo_root
 from muse.core.store import write_head_branch
@@ -38,8 +39,6 @@ from muse.core.validation import validate_branch_name, validate_domain_name
 logger = logging.getLogger(__name__)
 
 app = typer.Typer()
-
-_SCHEMA_VERSION = "2"
 
 _DEFAULT_CONFIG = """\
 [user]

@@ -64,6 +64,7 @@ import pathlib
 
 import typer
 
+from muse._version import __version__
 from muse.core.errors import ExitCode
 from muse.core.object_store import read_object
 from muse.core.repo import require_repo
@@ -239,7 +240,7 @@ def codemap(
     if as_json:
         typer.echo(json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": __version__,
                 "commit": commit.commit_id[:8],
                 "language_filter": language,
                 "modules": [

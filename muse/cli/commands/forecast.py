@@ -61,6 +61,7 @@ import pathlib
 
 import typer
 
+from muse._version import __version__
 from muse.core.coordination import active_reservations, load_all_intents
 from muse.core.repo import require_repo
 from muse.core.store import get_commit_snapshot_manifest, read_current_branch, resolve_commit_ref
@@ -213,7 +214,7 @@ def forecast(
     if as_json:
         typer.echo(json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": __version__,
                 "active_reservations": len(reservations),
                 "intents": len(intents),
                 "branch_filter": branch_filter,

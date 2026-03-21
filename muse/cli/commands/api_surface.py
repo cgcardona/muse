@@ -62,6 +62,7 @@ import pathlib
 
 import typer
 
+from muse._version import __version__
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import get_commit_snapshot_manifest, read_current_branch, resolve_commit_ref
@@ -183,7 +184,7 @@ def api_surface(
         if as_json:
             typer.echo(json.dumps(
                 {
-                    "schema_version": 1,
+                    "schema_version": __version__,
                     "commit": commit.commit_id[:8],
                     "language_filter": language,
                     "total": len(entries),
@@ -227,7 +228,7 @@ def api_surface(
     if as_json:
         typer.echo(json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": __version__,
                 "commit": commit.commit_id[:8],
                 "base_commit": base_commit.commit_id[:8],
                 "language_filter": language,

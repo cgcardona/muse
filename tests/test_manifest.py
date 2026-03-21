@@ -6,6 +6,7 @@ import pathlib
 import mido
 import pytest
 
+from muse._version import __version__
 from muse.plugins.midi._query import NoteInfo
 from muse.plugins.midi.manifest import (
     BarChunk,
@@ -140,7 +141,7 @@ class TestMusicManifestIO:
         track_manifest = build_track_manifest(notes, "t.mid", "fakehash123", 480)
         return MusicManifest(
             domain="midi",
-            schema_version=2,
+            schema_version=__version__,
             snapshot_id="snap-abc123",
             files={"t.mid": "fakehash123"},
             tracks={"t.mid": track_manifest},
@@ -161,7 +162,7 @@ class TestMusicManifestIO:
     def test_write_requires_snapshot_id(self, tmp_path: pathlib.Path) -> None:
         manifest = MusicManifest(
             domain="midi",
-            schema_version=2,
+            schema_version=__version__,
             snapshot_id="",
             files={},
             tracks={},
@@ -185,16 +186,16 @@ class TestDiffManifestsByBar:
         tm1 = build_track_manifest(notes1, "t.mid", "hash1", tpb)
         tm2 = build_track_manifest(notes2, "t.mid", "hash2", tpb)
 
-        base = MusicManifest(domain="midi", schema_version=2, snapshot_id="1" * 64,
+        base = MusicManifest(domain="midi", schema_version=__version__, snapshot_id="1" * 64,
                               files={"t.mid": "hash1"}, tracks={"t.mid": tm1})
-        target = MusicManifest(domain="midi", schema_version=2, snapshot_id="s2",
+        target = MusicManifest(domain="midi", schema_version=__version__, snapshot_id="s2",
                                 files={"t.mid": "hash2"}, tracks={"t.mid": tm2})
         return base, target
 
     def test_no_change_produces_empty_result(self) -> None:
         notes = [_note(60)]
         tm = build_track_manifest(notes, "t.mid", "hash1", 480)
-        base = MusicManifest(domain="midi", schema_version=2, snapshot_id="1" * 64,
+        base = MusicManifest(domain="midi", schema_version=__version__, snapshot_id="1" * 64,
                               files={"t.mid": "hash1"}, tracks={"t.mid": tm})
         changed = diff_manifests_by_bar(base, base)
         assert changed == {}
@@ -216,9 +217,9 @@ class TestDiffManifestsByBar:
     def test_added_track_reported_with_sentinel(self) -> None:
         notes = [_note(60)]
         tm = build_track_manifest(notes, "new.mid", "hashN", 480)
-        base = MusicManifest(domain="midi", schema_version=2, snapshot_id="1" * 64,
+        base = MusicManifest(domain="midi", schema_version=__version__, snapshot_id="1" * 64,
                               files={}, tracks={})
-        target = MusicManifest(domain="midi", schema_version=2, snapshot_id="s2",
+        target = MusicManifest(domain="midi", schema_version=__version__, snapshot_id="s2",
                                 files={"new.mid": "hashN"}, tracks={"new.mid": tm})
         changed = diff_manifests_by_bar(base, target)
         assert "new.mid" in changed

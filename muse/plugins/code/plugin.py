@@ -87,6 +87,7 @@ import hashlib
 import logging
 import pathlib
 
+from muse._version import __version__
 from muse.core.attributes import load_attributes, resolve_strategy
 from muse.core.diff_algorithms import snapshot_diff
 from muse.core.ignore import is_ignored, load_ignore_config, resolve_patterns
@@ -514,7 +515,7 @@ class CodePlugin:
                 ),
             ],
             merge_mode="three_way",
-            schema_version=1,
+            schema_version=__version__,
         )
 
     # ------------------------------------------------------------------

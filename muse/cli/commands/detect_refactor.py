@@ -79,6 +79,7 @@ import pathlib
 
 import typer
 
+from muse._version import __version__
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import CommitRecord, read_commit, read_current_branch, resolve_commit_ref
@@ -343,7 +344,7 @@ def detect_refactor(
     if as_json:
         typer.echo(json.dumps(
             {
-                "schema_version": 2,
+                "schema_version": __version__,
                 "from": from_label,
                 "to": to_label,
                 "total": len(all_events),

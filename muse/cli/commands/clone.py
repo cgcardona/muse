@@ -27,6 +27,7 @@ import uuid
 
 import typer
 
+from muse._version import __version__ as _SCHEMA_VERSION
 from muse.cli.config import set_remote, set_remote_head, set_upstream
 from muse.core.errors import ExitCode
 from muse.core.pack import apply_pack
@@ -37,8 +38,6 @@ from muse.core.workdir import apply_manifest
 logger = logging.getLogger(__name__)
 
 app = typer.Typer()
-
-_SCHEMA_VERSION = "2"
 
 _DEFAULT_CONFIG = """\
 [user]

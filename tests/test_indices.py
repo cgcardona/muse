@@ -28,7 +28,7 @@ index_info
     - Reports both indexes.
 
 Schema compliance
-    - schema_version == 1.
+    - schema_version == __version__.
     - updated_at is present and is a non-empty string.
     - index field matches the index name.
 """
@@ -38,6 +38,7 @@ import pathlib
 
 import pytest
 
+from muse._version import __version__
 from muse.core.indices import (
     HashOccurrenceIndex,
     SymbolHistoryEntry,
@@ -142,7 +143,7 @@ class TestSymbolHistoryIndex:
         index: SymbolHistoryIndex = {"x.py::f": [self._make_entry()]}
         save_symbol_history(tmp_path, index)
         raw = json.loads((tmp_path / ".muse" / "indices" / "symbol_history.json").read_text())
-        assert raw["schema_version"] == 1
+        assert raw["schema_version"] == __version__
         assert raw["index"] == "symbol_history"
         assert raw["updated_at"]  # non-empty string
         assert "x.py::f" in raw["entries"]
@@ -220,7 +221,7 @@ class TestHashOccurrenceIndex:
     def test_schema_compliance(self, tmp_path: pathlib.Path) -> None:
         save_hash_occurrence(tmp_path, {"h": ["a.py::f"]})
         raw = json.loads((tmp_path / ".muse" / "indices" / "hash_occurrence.json").read_text())
-        assert raw["schema_version"] == 1
+        assert raw["schema_version"] == __version__
         assert raw["index"] == "hash_occurrence"
         assert raw["updated_at"]
 

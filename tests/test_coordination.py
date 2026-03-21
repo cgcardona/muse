@@ -21,7 +21,7 @@ Intent
     - Corrupt intent file is skipped.
 
 Schema
-    - All records have schema_version == 1.
+    - All records have schema_version == __version__.
     - created_at and expires_at are ISO 8601 strings.
     - operation field is None-able for reservations.
 """
@@ -32,6 +32,7 @@ import pathlib
 
 import pytest
 
+from muse._version import __version__
 from muse.core.coordination import (
     Intent,
     Reservation,
@@ -82,7 +83,7 @@ class TestCreateReservation:
         assert data["run_id"] == "agent-1"
         assert data["branch"] == "feature-x"
         assert data["addresses"] == ["src/billing.py::compute_total"]
-        assert data["schema_version"] == 1
+        assert data["schema_version"] == __version__
 
     def test_default_ttl_sets_future_expiry(self, tmp_path: pathlib.Path) -> None:
         res = create_reservation(tmp_path, run_id="r", branch="main", addresses=[])
@@ -154,7 +155,7 @@ class TestReservationRoundTrip:
             reservation_id="x", run_id="r", branch="b",
             addresses=[], created_at=_now(), expires_at=_future(), operation=None
         )
-        assert res.to_dict()["schema_version"] == 1
+        assert res.to_dict()["schema_version"] == __version__
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +259,7 @@ class TestCreateIntent:
         assert data["reservation_id"] == "res-uuid"
         assert data["operation"] == "rename"
         assert data["detail"] == "rename to InvoiceRecord"
-        assert data["schema_version"] == 1
+        assert data["schema_version"] == __version__
 
     def test_empty_detail_defaults_to_empty_string(self, tmp_path: pathlib.Path) -> None:
         intent = create_intent(
@@ -307,7 +308,7 @@ class TestIntentRoundTrip:
             intent_id="x", reservation_id="", run_id="r", branch="b",
             addresses=[], operation="modify", created_at=_now(), detail="",
         )
-        assert intent.to_dict()["schema_version"] == 1
+        assert intent.to_dict()["schema_version"] == __version__
 
 
 # ---------------------------------------------------------------------------

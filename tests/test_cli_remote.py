@@ -9,6 +9,7 @@ import pathlib
 import pytest
 from typer.testing import CliRunner
 
+from muse._version import __version__
 from muse.cli.app import cli
 from muse.cli.config import get_remote, list_remotes
 
@@ -27,7 +28,7 @@ def repo(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Pat
     (muse_dir / "commits").mkdir()
     (muse_dir / "snapshots").mkdir()
     (muse_dir / "repo.json").write_text(
-        json.dumps({"repo_id": "test-repo", "schema_version": "2", "domain": "midi"})
+        json.dumps({"repo_id": "test-repo", "schema_version": __version__, "domain": "midi"})
     )
     (muse_dir / "HEAD").write_text("ref: refs/heads/main\n")
     (muse_dir / "refs" / "heads" / "main").write_text("")

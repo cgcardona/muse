@@ -58,6 +58,7 @@ import json
 import logging
 import pathlib
 
+from muse._version import __version__
 from muse.core.schema import (
     DimensionSpec,
     DomainSchema,
@@ -697,7 +698,7 @@ class MidiPlugin:
                 ),
             ],
             merge_mode="three_way",
-            schema_version=1,
+            schema_version=__version__,
         )
 
     # ------------------------------------------------------------------
