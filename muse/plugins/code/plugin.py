@@ -247,7 +247,9 @@ class CodePlugin:
             # call this instead of writing file-set algebra from scratch.
             return snapshot_diff(self.schema(), base, target)
 
-        ops = _semantic_ops(base_files, target_files, repo_root)
+        # Pass repo_root as workdir so uncommitted working-tree files can be
+        # read from disk when their blobs aren't in the object store yet.
+        ops = _semantic_ops(base_files, target_files, repo_root, workdir=repo_root)
         summary = delta_summary(ops)
         return StructuredDelta(domain=_DOMAIN_NAME, ops=ops, summary=summary)
 
@@ -689,12 +691,46 @@ def _file_level_ops(
     return ops
 
 
+def _read_blob(
+    repo_root: pathlib.Path,
+    content_id: str,
+    disk_fallback: pathlib.Path | None,
+) -> bytes | None:
+    """Read a blob from the object store; fall back to disk when not found.
+
+    When ``disk_fallback`` is provided and the object store returns ``None``
+    (blob not yet committed — typical during ``muse diff`` on the working
+    tree), we read the file directly from disk and verify its SHA-256 matches
+    ``content_id`` before returning it.  This guarantees we never parse stale
+    content from a file whose hash has changed since the snapshot was taken.
+    """
+    raw = read_object(repo_root, content_id)
+    if raw is not None:
+        return raw
+    if disk_fallback is None or not disk_fallback.is_file():
+        return None
+    try:
+        candidate = disk_fallback.read_bytes()
+    except OSError:
+        return None
+    if _hash_file(disk_fallback) == content_id:
+        return candidate
+    return None
+
+
 def _semantic_ops(
     base_files: dict[str, str],
     target_files: dict[str, str],
     repo_root: pathlib.Path,
+    workdir: pathlib.Path | None = None,
 ) -> list[DomainOp]:
-    """Produce symbol-level ops by reading files from the object store."""
+    """Produce symbol-level ops by reading files from the object store.
+
+    When *workdir* is supplied (working-tree diffs), blobs that are not yet
+    in the object store are read directly from disk and verified against their
+    content hash.  This enables full semantic diffing for ``muse diff`` before
+    a commit has been made.
+    """
     base_paths = set(base_files)
     target_paths = set(target_files)
     changed_paths = (
@@ -711,12 +747,13 @@ def _semantic_ops(
 
     for path in changed_paths:
         if path in base_files:
-            raw = read_object(repo_root, base_files[path])
+            raw = _read_blob(repo_root, base_files[path], None)
             if raw is not None:
                 base_trees[path] = _parse_with_fallback(raw, path)
 
         if path in target_files:
-            raw = read_object(repo_root, target_files[path])
+            disk_path = (workdir / path) if workdir is not None else None
+            raw = _read_blob(repo_root, target_files[path], disk_path)
             if raw is not None:
                 target_trees[path] = _parse_with_fallback(raw, path)
 

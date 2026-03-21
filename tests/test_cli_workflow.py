@@ -317,6 +317,57 @@ class TestTag:
         assert "emotion:joyful" in result.output
 
 
+class TestDiffWorkingTreeSymbols:
+    """Regression: muse diff must show semantic symbols for uncommitted files.
+
+    Before the fix, diff fell back to a plain ``A  file.md`` when the blob
+    wasn't in the object store (only written on commit).  After the fix, it
+    reads directly from disk (hash-verified) and extracts symbols via the
+    appropriate adapter.
+    """
+
+    def test_new_markdown_file_shows_sections(self, repo: pathlib.Path) -> None:
+        _write(repo, "first.py", "def setup(): pass")
+        runner.invoke(cli, ["commit", "-m", "init"])
+        _write(repo, "README.md", "# Overview\n\n## Installation\n\n## Usage\n")
+        result = runner.invoke(cli, ["diff"])
+        assert result.exit_code == 0
+        # Symbol-level output must list the heading sections.
+        assert "Overview" in result.output
+        assert "Installation" in result.output
+
+    def test_new_markdown_file_shows_A_prefix(self, repo: pathlib.Path) -> None:
+        _write(repo, "first.py", "def setup(): pass")
+        runner.invoke(cli, ["commit", "-m", "init"])
+        _write(repo, "README.md", "# Title\n\n## Intro\n")
+        result = runner.invoke(cli, ["diff"])
+        assert result.exit_code == 0
+        # The PatchOp for a newly-added file must use 'A' not 'M'.
+        lines = result.output.splitlines()
+        readme_line = next((l for l in lines if "README.md" in l), None)
+        assert readme_line is not None
+        assert readme_line.startswith("A"), f"Expected 'A  README.md', got: {readme_line!r}"
+
+    def test_new_python_file_shows_functions(self, repo: pathlib.Path) -> None:
+        runner.invoke(cli, ["commit", "-m", "empty"])
+        _write(repo, "utils.py", "def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n")
+        result = runner.invoke(cli, ["diff"])
+        assert result.exit_code == 0
+        assert "add" in result.output
+        assert "sub" in result.output
+
+    def test_modified_file_shows_M_prefix(self, repo: pathlib.Path) -> None:
+        _write(repo, "utils.py", "def foo(): pass\ndef bar(): pass\n")
+        runner.invoke(cli, ["commit", "-m", "First"])
+        _write(repo, "utils.py", "def foo(): pass\ndef bar(): return 1\n")
+        result = runner.invoke(cli, ["diff"])
+        assert result.exit_code == 0
+        lines = result.output.splitlines()
+        utils_line = next((l for l in lines if "utils.py" in l), None)
+        assert utils_line is not None
+        assert utils_line.startswith("M"), f"Expected 'M  utils.py', got: {utils_line!r}"
+
+
 class TestStash:
     def test_stash_and_pop(self, repo: pathlib.Path) -> None:
         _write(repo, "beat.mid")
