@@ -33,6 +33,7 @@ from __future__ import annotations
 import datetime
 import json
 import pathlib
+import tempfile
 from typing import Literal, TypedDict
 
 
@@ -77,6 +78,9 @@ def write_stage(root: pathlib.Path, entries: dict[str, StagedEntry]) -> None:
     Creates the ``.muse/code/`` directory if it does not exist.  Writing
     an empty dict clears the stage file (equivalent to calling
     :func:`clear_stage`).
+
+    Writes are atomic (temp file + rename) so a process crash mid-write
+    never leaves a corrupt stage file.
     """
     path = stage_path(root)
     if not entries:
@@ -85,7 +89,15 @@ def write_stage(root: pathlib.Path, entries: dict[str, StagedEntry]) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     index: StageIndex = {"version": _STAGE_VERSION, "entries": entries}
-    path.write_text(json.dumps(index, indent=2), encoding="utf-8")
+    payload = json.dumps(index, indent=2)
+    fd, tmp_str = tempfile.mkstemp(dir=path.parent, prefix=".stage-tmp-", suffix=".json")
+    try:
+        with open(fd, "w", encoding="utf-8") as fh:
+            fh.write(payload)
+        pathlib.Path(tmp_str).replace(path)
+    except Exception:
+        pathlib.Path(tmp_str).unlink(missing_ok=True)
+        raise
 
 
 def clear_stage(root: pathlib.Path) -> None:
