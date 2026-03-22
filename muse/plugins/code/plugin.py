@@ -112,9 +112,19 @@ from muse.domain import (
     PatchOp,
     ReplaceOp,
     SnapshotManifest,
+    StagedEntry,
+    StagePlugin,
+    StageStatus,
     StateDelta,
     StateSnapshot,
     StructuredDelta,
+)
+from muse.plugins.code.stage import (
+    clear_stage,
+    make_entry,
+    read_stage,
+    stage_path,
+    write_stage,
 )
 from muse.plugins.code.ast_parser import (
     SymbolTree,
@@ -150,11 +160,39 @@ _ALWAYS_IGNORE_DIRS: frozenset[str] = frozenset({
 })
 
 
+def _head_manifest_for(root: pathlib.Path) -> dict[str, str]:
+    """Return the manifest from the current HEAD commit (empty dict if none).
+
+    Used by ``snapshot()`` (to build the staged manifest) and ``stage_status()``
+    (to compute the unstaged diff).  Kept outside the class so it can be called
+    from module-level helpers without a plugin instance.
+    """
+    import json as _json
+    from muse.core.store import read_current_branch, read_commit, read_snapshot
+
+    try:
+        branch = read_current_branch(root)
+        ref = root / ".muse" / "refs" / "heads" / branch
+        if not ref.exists():
+            return {}
+        commit_id = ref.read_text().strip()
+        if not commit_id:
+            return {}
+        commit = read_commit(root, commit_id)
+        if commit is None:
+            return {}
+        snap = read_snapshot(root, commit.snapshot_id)
+        return dict(snap.manifest) if snap else {}
+    except Exception:
+        return {}
+
+
 class CodePlugin:
     """Muse domain plugin for software source code repositories.
 
     Implements all six core protocol methods plus the optional
-    :class:`~muse.domain.StructuredMergePlugin` OT extension.  The plugin
+    :class:`~muse.domain.StructuredMergePlugin` OT extension and the
+    :class:`~muse.domain.StagePlugin` selective-commit extension.  The plugin
     does not implement :class:`~muse.domain.CRDTPlugin` — source code is
     human-authored and benefits from explicit conflict resolution rather
     than automatic convergence.
@@ -222,7 +260,113 @@ class CodePlugin:
 
         cache.prune(set(files))
         cache.save()
+
+        # If a stage index is active, filter the manifest so that only staged
+        # files (using their staged object IDs) and previously-committed files
+        # (at their committed state) are included.  This is the core of the
+        # selective-commit model: unstaged working-tree changes are invisible
+        # to ``muse commit``.
+        stage = read_stage(workdir)
+        if stage:
+            committed = _head_manifest_for(workdir)
+            staged_manifest: dict[str, str] = {}
+            # Start from committed state.
+            staged_manifest.update(committed)
+            # Apply staged entries on top.
+            for rel_path, entry in stage.items():
+                if entry["mode"] == "D":
+                    staged_manifest.pop(rel_path, None)
+                else:
+                    staged_manifest[rel_path] = entry["object_id"]
+            return SnapshotManifest(files=staged_manifest, domain=_DOMAIN_NAME)
+
         return SnapshotManifest(files=files, domain=_DOMAIN_NAME)
+
+    # ------------------------------------------------------------------
+    # StagePlugin implementation
+    # ------------------------------------------------------------------
+
+    def stage_index_path(self, root: pathlib.Path) -> pathlib.Path:
+        """Return the absolute path of ``.muse/code/stage.json``."""
+        return stage_path(root)
+
+    def read_stage(self, root: pathlib.Path) -> dict[str, StagedEntry]:
+        """Read the code-domain stage index."""
+        return read_stage(root)
+
+    def write_stage(
+        self, root: pathlib.Path, entries: dict[str, StagedEntry]
+    ) -> None:
+        """Persist *entries* as the code-domain stage index."""
+        write_stage(root, entries)
+
+    def clear_stage(self, root: pathlib.Path) -> None:
+        """Remove the code-domain stage index."""
+        clear_stage(root)
+
+    def stage_status(self, root: pathlib.Path) -> StageStatus:
+        """Return a three-bucket view of the working tree vs the stage.
+
+        Compares:
+
+        1. The current stage against HEAD → **staged** bucket.
+        2. Working tree files against their HEAD/stage state → **unstaged**.
+        3. Files present on disk but neither tracked nor staged → **untracked**.
+        """
+        stage = read_stage(root)
+        committed = _head_manifest_for(root)
+
+        # Staged bucket: everything in the stage index.
+        staged: dict[str, StagedEntry] = dict(stage)
+
+        # Build the full working-tree manifest (reuse snapshot logic).
+        patterns = resolve_patterns(load_ignore_config(root), _DOMAIN_NAME)
+        cache = load_cache(root)
+        workdir_files: dict[str, str] = {}
+        root_str = str(root)
+        prefix_len = len(root_str) + 1
+        for dirpath, dirnames, filenames in os.walk(root_str, followlinks=False):
+            dirnames[:] = sorted(
+                d for d in dirnames
+                if not d.startswith(".") and d not in _ALWAYS_IGNORE_DIRS
+            )
+            for fname in sorted(filenames):
+                if fname.startswith("."):
+                    continue
+                abs_str = os.path.join(dirpath, fname)
+                try:
+                    st = os.lstat(abs_str)
+                except OSError:
+                    continue
+                if not _stat.S_ISREG(st.st_mode):
+                    continue
+                rel = abs_str[prefix_len:]
+                if os.sep != "/":
+                    rel = rel.replace(os.sep, "/")
+                if is_ignored(rel, patterns):
+                    continue
+                workdir_files[rel] = cache.get_cached(
+                    rel, abs_str, st.st_mtime, st.st_size
+                )
+
+        # Unstaged: tracked files with working-tree changes not yet staged.
+        unstaged: dict[str, str] = {}
+        for rel_path, committed_id in committed.items():
+            if rel_path in stage:
+                continue  # already staged — don't show in unstaged
+            current_id = workdir_files.get(rel_path)
+            if current_id is None:
+                unstaged[rel_path] = "deleted"
+            elif current_id != committed_id:
+                unstaged[rel_path] = "modified"
+
+        # Untracked: on disk, not committed, not staged.
+        all_known = set(committed) | set(stage)
+        untracked: list[str] = sorted(
+            rel_path for rel_path in workdir_files if rel_path not in all_known
+        )
+
+        return StageStatus(staged=staged, unstaged=unstaged, untracked=untracked)
 
     # ------------------------------------------------------------------
     # 2. diff

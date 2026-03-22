@@ -21,21 +21,152 @@ The code domain plugin treats a codebase as a **typed, content-addressed symbol 
 
 ## Contents
 
-1. [Symbol Identity Model](#1-symbol-identity-model)
-2. [Provenance & Topology Commands](#2-provenance--topology-commands)
-3. [Query & Temporal Search](#3-query--temporal-search)
-4. [Index Infrastructure](#4-index-infrastructure)
-5. [Symbol Identity Detail](#5-symbol-identity-detail)
-6. [Multi-Agent Coordination Layer](#6-multi-agent-coordination-layer)
-7. [Merge Engine & Architectural Enforcement](#7-merge-engine--architectural-enforcement)
-8. [Semantic Versioning](#8-semantic-versioning)
-9. [Call-Graph Tier Commands](#9-call-graph-tier-commands)
-10. [Architecture Internals](#10-architecture-internals)
-11. [Type Reference](#11-type-reference)
+1. [Selective Staging (`muse code add`)](#1-selective-staging-muse-code-add)
+2. [Symbol Identity Model](#2-symbol-identity-model)
+3. [Provenance & Topology Commands](#3-provenance--topology-commands)
+4. [Query & Temporal Search](#4-query--temporal-search)
+5. [Index Infrastructure](#5-index-infrastructure)
+6. [Symbol Identity Detail](#6-symbol-identity-detail)
+7. [Multi-Agent Coordination Layer](#7-multi-agent-coordination-layer)
+8. [Merge Engine & Architectural Enforcement](#8-merge-engine--architectural-enforcement)
+9. [Semantic Versioning](#9-semantic-versioning)
+10. [Call-Graph Tier Commands](#10-call-graph-tier-commands)
+11. [Architecture Internals](#11-architecture-internals)
+12. [Type Reference](#12-type-reference)
 
 ---
 
-## 1. Symbol Identity Model
+## 1. Selective Staging (`muse code add`)
+
+The code domain adds a **Git-style staging index** to Muse.  By default,
+`muse commit` snapshots the entire working tree.  Once you run `muse code add`,
+the next commit includes *only* what you have explicitly staged — everything
+else carries forward from the previous commit unchanged.
+
+This lets you commit a coherent, working subset of your in-progress changes
+without committing half-finished code.
+
+### Stage index location
+
+`.muse/code/stage.json` — a JSON file that maps workspace-relative paths to
+their staged object IDs and mode (`A` added / `M` modified / `D` deleted`).
+
+### `muse code add`
+
+```
+muse code add <file> [<file> …]     # stage one or more files
+muse code add <dir>                 # stage every file under a directory
+muse code add .                     # stage everything in the working tree
+muse code add -A / --all            # stage all changes, including new files
+muse code add -u / --update         # stage only tracked (already-committed) files
+                                    # modified or deleted on disk — no new files
+muse code add -p / --patch <file>   # interactive hunk-by-hunk staging
+muse code add -n / --dry-run …      # show what would be staged without staging
+muse code add -v / --verbose …      # print each file as it is staged
+```
+
+#### Patch mode (`-p`)
+
+Interactive hunk-by-hunk staging, mirroring `git add -p`.  For each diff
+hunk you are prompted:
+
+| Key | Action |
+|-----|--------|
+| `y` | Stage this hunk |
+| `n` | Skip this hunk |
+| `q` | Quit; commit hunks accepted so far |
+| `a` | Stage this and all remaining hunks in this file |
+| `d` | Skip the rest of this file |
+| `?` | Show help |
+
+The partial file (accepted hunks only) is hashed, written to the object store,
+and recorded in the stage index.  The working tree is **never modified**.
+
+Agents should use explicit file paths (`muse code add <file>`) and avoid
+`--patch`, which requires an interactive terminal.
+
+### `muse code reset`
+
+```
+muse code reset                     # unstage everything
+muse code reset <file>              # unstage a specific file
+muse code reset HEAD <file>         # same — mirrors Git syntax
+```
+
+Removes files from the stage index without touching the working tree.  The
+working tree copy is always preserved.
+
+### `muse commit` with an active stage
+
+When `.muse/code/stage.json` exists and is non-empty:
+
+- Staged files → committed at their **staged** object ID.
+- Tracked-but-unstaged files → carried forward at their **committed** (HEAD) object ID.
+- Untracked files → not included in the commit.
+
+After a successful commit the stage index is **cleared automatically**.
+
+### `muse status` with an active stage
+
+When a stage is active, `muse status` renders a three-bucket view:
+
+```
+On branch main
+
+Changes staged for commit:
+  (use "muse code reset HEAD <file>" to unstage)
+
+        new file:  src/auth.py
+        modified:  src/models.py
+
+Changes not staged for commit:
+  (use "muse code add <file>" to update what will be committed)
+
+        modified:  src/broken_wip.py
+
+Untracked files:
+  (use "muse code add <file>" to include in what will be committed)
+
+        tmp_experiment.py
+```
+
+With `--format json`:
+
+```json
+{
+  "branch": "main",
+  "clean": false,
+  "staged": {
+    "src/auth.py": {"mode": "A", "object_id": "<sha256>"}
+  },
+  "unstaged": {
+    "src/broken_wip.py": "modified"
+  },
+  "untracked": ["tmp_experiment.py"]
+}
+```
+
+### Workflow example
+
+```bash
+# Edit freely — nothing is committed until you stage.
+vim src/auth.py src/models.py src/wip.py
+
+# Stage only the production-ready files.
+muse code add src/auth.py src/models.py
+
+# Verify what will be committed.
+muse status
+
+# Commit exactly what was staged.
+muse commit -m "feat: add auth + models"
+
+# The working-tree copy of wip.py is untouched.
+```
+
+---
+
+## 2. Symbol Identity Model
 
 Every symbol carries four content-addressed hashes and two stable keys:
 
@@ -65,7 +196,7 @@ Two symbols are classified by comparing their four hashes:
 
 ---
 
-## 2. Provenance & Topology Commands
+## 3. Provenance & Topology Commands
 
 ### `muse code lineage ADDRESS`
 
@@ -230,7 +361,7 @@ muse code semantic-cherry-pick src/billing.py::compute_total --from v1.0 --dry-r
 
 ---
 
-## 3. Query & Temporal Search
+## 4. Query & Temporal Search
 
 ### `muse code query PREDICATE...`
 
@@ -328,7 +459,7 @@ muse code query-history kind=class --json
 
 ---
 
-## 4. Index Infrastructure
+## 5. Index Infrastructure
 
 ### `muse code index status`
 
@@ -397,7 +528,7 @@ Maps `body_hash → list[symbol_address]`.  Enables O(1) clone detection and `mu
 
 ---
 
-## 5. Symbol Identity Detail
+## 6. Symbol Identity Detail
 
 ### New `SymbolRecord` fields
 
@@ -444,7 +575,7 @@ With `--json`, emits `schema_version: 2` with a richer classification:
 
 ---
 
-## 6. Multi-Agent Coordination Layer
+## 7. Multi-Agent Coordination Layer
 
 The coordination layer enables thousands of agents to work on the same codebase simultaneously without stepping on each other.  It is **purely advisory** — the VCS engine never reads coordination data for correctness decisions.  Agents that ignore it still produce correct commits.
 
@@ -607,7 +738,7 @@ muse coord reconcile --json
 
 ---
 
-## 7. Merge Engine & Architectural Enforcement
+## 8. Merge Engine & Architectural Enforcement
 
 ### `ConflictRecord` — Structured Conflict Taxonomy
 
@@ -723,7 +854,7 @@ Every public function in `source_pattern` must have a corresponding test functio
 
 ---
 
-## 8. Semantic Versioning
+## 9. Semantic Versioning
 
 Muse automatically assigns semantic version bumps at commit time based on the `StructuredDelta`.
 
@@ -766,7 +897,7 @@ Breaking: src/billing.py::compute_total, src/billing.py::Invoice (+2 more)
 
 ---
 
-## 9. Call-Graph Tier Commands
+## 10. Call-Graph Tier Commands
 
 ### `muse code impact ADDRESS [OPTIONS]`
 
@@ -965,7 +1096,7 @@ muse code-check --rules my_rules.toml  # custom rules file inside the repo
 
 ---
 
-## 10. Architecture Internals
+## 11. Architecture Internals
 
 ### Module Map
 
@@ -1009,7 +1140,7 @@ muse/
 
 ---
 
-## 11. Type Reference
+## 12. Type Reference
 
 ### `SymbolRecord` (TypedDict)
 
