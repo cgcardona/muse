@@ -91,6 +91,7 @@ Tier 3 — Code domain commands (``muse code …``)::
     compare         languages       patch            query
     query-history   deps            find-symbol      impact
     dead            coverage        lineage          api-surface
+    add             reset
     codemap         clones          checkout-symbol  semantic-cherry-pick
     index           breakage        invariants       check
 
@@ -130,6 +131,7 @@ from muse.cli.commands import (
     clones,
     code_check,
     code_query,
+    code_stage,
     codemap,
     commit,
     compare,
@@ -435,6 +437,8 @@ def main(argv: list[str] | None = None) -> None:
     index_rebuild.register(code_subs)
     breakage.register(code_subs)
     invariants.register(code_subs)
+    code_stage.register_add(code_subs)
+    code_stage.register_reset(code_subs)
     code_check.register(code_subs)
     code_query.register(code_subs)
 
