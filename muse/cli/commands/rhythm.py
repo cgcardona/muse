@@ -79,7 +79,7 @@ def _swing_label(ratio: float) -> str:
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the rhythm subcommand."""
-    parser = subparsers.add_parser("rhythm", help="Quantify syncopation, swing, and quantisation accuracy in a MIDI track.", description=__doc__)
+    parser = subparsers.add_parser("rhythm", help="Quantify syncopation, swing, and quantisation accuracy in a MIDI track.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Analyse a historical snapshot instead of the working tree.")
     parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")

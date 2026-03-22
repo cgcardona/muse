@@ -41,6 +41,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "revert",
         help="Create a new commit that undoes a prior commit.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("ref", help="Commit to revert.")
     parser.add_argument("-m", "--message", default=None, help="Override revert commit message.")

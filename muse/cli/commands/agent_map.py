@@ -73,7 +73,7 @@ def _bar_set(notes: list[NoteInfo]) -> frozenset[int]:
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the agent-map subcommand."""
-    parser = subparsers.add_parser("agent-map", help="Show which agent last edited each bar of a MIDI track.", description=__doc__)
+    parser = subparsers.add_parser("agent-map", help="Show which agent last edited each bar of a MIDI track.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Start walking from this commit (default: HEAD).")
     parser.add_argument("--depth", "-d", metavar="N", type=int, default=50, help="Maximum commits to walk back (default 50).")

@@ -139,6 +139,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "api-surface",
         help="Show the public API surface and how it changed between two commits.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--commit", "-c", default=None, metavar="REF", dest="ref",

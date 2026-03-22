@@ -70,7 +70,7 @@ def _flat_ops(ops: list[DomainOp]) -> list[DomainOp]:
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the note-log subcommand."""
-    parser = subparsers.add_parser("note-log", help="Show the note-level commit history for a MIDI track.", description=__doc__)
+    parser = subparsers.add_parser("note-log", help="Show the note-level commit history for a MIDI track.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--from", metavar="REF", default=None, dest="from_ref", help="Start walking from this commit (default: HEAD).")
     parser.add_argument("--max", "-n", metavar="N", type=int, default=50, dest="max_commits", help="Maximum number of commits to walk (default: 50).")

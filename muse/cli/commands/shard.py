@@ -178,6 +178,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "shard",
         help="Partition the codebase into N low-coupling work zones for parallel agents.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--agents", "-n",

@@ -106,6 +106,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "log",
         help="Display commit history.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("ref", nargs="?", default=None, help="Branch or commit to start from.")
     parser.add_argument("--oneline", action="store_true", help="One line per commit.")

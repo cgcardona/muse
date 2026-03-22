@@ -82,6 +82,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "impact",
         help="Show the transitive blast-radius of changing a symbol.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "address", metavar="ADDRESS",

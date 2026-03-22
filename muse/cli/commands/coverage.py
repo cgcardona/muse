@@ -113,6 +113,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "coverage",
         help="Show which methods of a class are called anywhere in the snapshot.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "address", metavar="CLASS_ADDRESS",

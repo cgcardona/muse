@@ -65,6 +65,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "whoami",
         help='Show the current identity stored in ~/.muse/identity.toml.',
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--json", dest="json_output", action="store_true", help="Emit identity as JSON.")
     parser.add_argument("--all", dest="all_hubs", action="store_true", help="Show all hubs.")

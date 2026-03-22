@@ -46,6 +46,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "verify",
         help="Check repository integrity — commits, snapshots, and objects.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--quiet", "-q", action="store_true",
                         help="No output — exit code only.")

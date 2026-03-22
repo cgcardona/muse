@@ -320,6 +320,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "lineage",
         help="Show the full provenance chain of a symbol through commit history.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "address",

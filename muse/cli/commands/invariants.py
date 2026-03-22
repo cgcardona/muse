@@ -281,6 +281,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "invariants",
         help="Check architectural invariants from .muse/invariants.toml.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--commit", "-c",

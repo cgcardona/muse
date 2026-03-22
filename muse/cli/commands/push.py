@@ -54,6 +54,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "push",
         help="Upload local commits, snapshots, and objects to a remote.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("remote", nargs="?", default="origin", help="Remote name to push to (default: origin).")
     parser.add_argument("--branch", "-b", default=None, help="Local branch to push (default: current branch).")

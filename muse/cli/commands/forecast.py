@@ -108,6 +108,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "forecast",
         help="Predict merge conflicts from active reservations and intents.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--branch", "-b",

@@ -57,6 +57,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "tag",
         help="Attach and query semantic tags on commits.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
     subs.required = True

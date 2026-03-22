@@ -60,7 +60,7 @@ def _snap(tick: int, grid: int, strength: float) -> int:
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the quantize subcommand."""
-    parser = subparsers.add_parser("quantize", help="Snap note onsets to a rhythmic grid.", description=__doc__)
+    parser = subparsers.add_parser("quantize", help="Snap note onsets to a rhythmic grid.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--grid", "-g", metavar="GRID", default="16th", help="Quantisation grid: whole, half, quarter, 8th, 16th, 32nd, triplet-8th, triplet-16th.")
     parser.add_argument("--strength", "-s", metavar="S", type=float, default=1.0, help="Quantisation strength 0.0 (no change) – 1.0 (full snap). Default 1.0.")

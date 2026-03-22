@@ -68,7 +68,7 @@ def _read_branch(root: pathlib.Path) -> str:
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the find-phrase subcommand."""
-    parser = subparsers.add_parser("find-phrase", help="Search for a melodic phrase across MIDI commit history.", description=__doc__)
+    parser = subparsers.add_parser("find-phrase", help="Search for a melodic phrase across MIDI commit history.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to the .mid file to search in.")
     parser.add_argument("--query", "-q", metavar="QUERY_MIDI", required=True, help="Path to a short .mid file containing the phrase to search for.")
     parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Start the history walk from this commit (default: HEAD).")

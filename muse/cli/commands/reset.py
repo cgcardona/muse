@@ -38,6 +38,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "reset",
         help="Move HEAD to a prior commit.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("ref", help="Commit ID or branch to reset to.")
     parser.add_argument("--hard", action="store_true", help="Reset branch pointer AND restore state/.")

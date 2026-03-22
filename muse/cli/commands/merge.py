@@ -76,6 +76,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "merge",
         help="Three-way merge a branch into the current branch.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("branch", help="Branch to merge into the current branch.")
     parser.add_argument("--no-ff", action="store_true", help="Always create a merge commit, even for fast-forward.")

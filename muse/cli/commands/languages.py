@@ -60,6 +60,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "languages",
         help="Show the language composition of the repository.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--commit", "-c",

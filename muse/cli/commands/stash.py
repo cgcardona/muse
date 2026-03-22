@@ -113,6 +113,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "stash",
         help="Temporarily shelve uncommitted changes.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
     subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")

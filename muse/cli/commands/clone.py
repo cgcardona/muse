@@ -103,6 +103,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "clone",
         help="Create a local copy of a remote Muse repository.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("url", help="URL of the remote Muse repository to clone.")
     parser.add_argument("directory", nargs="?", default=None,

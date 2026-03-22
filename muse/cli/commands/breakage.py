@@ -186,6 +186,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "breakage",
         help="Detect symbol-level breakage in the working tree vs HEAD snapshot.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--language", "-l", default=None, metavar="LANG", dest="language",

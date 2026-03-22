@@ -262,6 +262,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "detect-refactor",
         help="Detect semantic refactoring operations across a commit range.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--from", default=None, metavar="REF", dest="from_ref",

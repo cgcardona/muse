@@ -149,6 +149,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "bundle",
         help="Pack and unpack commits into a single portable bundle file.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
     subs.required = True

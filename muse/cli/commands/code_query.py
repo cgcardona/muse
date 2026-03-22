@@ -59,6 +59,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "code-query",
         help="Query the code commit history using a structured predicate.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "query",

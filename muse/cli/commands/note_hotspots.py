@@ -67,7 +67,7 @@ def _bar_of_beat_summary(note_summary: str, tpb: int) -> int | None:
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the note-hotspots subcommand."""
-    parser = subparsers.add_parser("note-hotspots", help="Show the musical sections (bars) that change most often.", description=__doc__)
+    parser = subparsers.add_parser("note-hotspots", help="Show the musical sections (bars) that change most often.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--top", "-n", metavar="N", type=int, default=20, help="Number of bars to show (default: 20).")
     parser.add_argument("--track", "-t", metavar="TRACK", default=None, dest="track_filter", help="Restrict to a specific track file.")
     parser.add_argument("--from", metavar="REF", default=None, dest="from_ref", help="Exclusive start of the commit range (default: initial commit).")

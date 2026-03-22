@@ -154,6 +154,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "init",
         help="Initialise a new Muse repository.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--bare", action="store_true", help="Initialise as a bare repository.")
     parser.add_argument("--template", default=None, metavar="PATH", help="Copy PATH contents into the working tree.")

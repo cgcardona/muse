@@ -53,6 +53,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "blame",
         help="Show which commit last modified each line of a text file.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "file",

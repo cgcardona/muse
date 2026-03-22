@@ -40,7 +40,7 @@ _MIDI_VEL_MIN = 1
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the humanize subcommand."""
-    parser = subparsers.add_parser("humanize", help="Add subtle timing and velocity variation to quantised MIDI.", description=__doc__)
+    parser = subparsers.add_parser("humanize", help="Add subtle timing and velocity variation to quantised MIDI.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--timing", "-t", metavar="BEATS", type=float, default=0.01, help="Max timing jitter in beats (default 0.01 = 1%% of a beat).")
     parser.add_argument("--velocity", "-v", metavar="VEL", type=int, default=6, help="Max velocity jitter in MIDI units (default 6).")

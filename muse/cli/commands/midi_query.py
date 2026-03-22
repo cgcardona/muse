@@ -78,7 +78,7 @@ def _resolve_head(root: pathlib.Path, alias: str | None = None) -> str | None:
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the midi-query subcommand."""
-    parser = subparsers.add_parser("query", help="Query the MIDI note history using a MIDI DSL predicate.", description=__doc__)
+    parser = subparsers.add_parser("query", help="Query the MIDI note history using a MIDI DSL predicate.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("query_expr", metavar="QUERY", help=(
         "Music query DSL expression.  Examples: "
         "\"note.pitch_class == 'Eb'\", "

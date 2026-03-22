@@ -414,6 +414,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "find-symbol",
         help="Search across ALL commits (every branch) for a symbol.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--hash", default=None, metavar="HASH", dest="hash_prefix",

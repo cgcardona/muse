@@ -67,7 +67,7 @@ def _read_branch(root: pathlib.Path) -> str:
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the midi-check subcommand."""
-    parser = subparsers.add_parser("check", help="Enforce MIDI invariant rules against a commit's MIDI tracks.", description=__doc__)
+    parser = subparsers.add_parser("check", help="Enforce MIDI invariant rules against a commit's MIDI tracks.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("commit", nargs="?", metavar="COMMIT", default=None, help="Commit ID to check (default: HEAD).")
     parser.add_argument("--track", "-t", metavar="PATH", default=None, help="Restrict check to a single MIDI file path.")
     parser.add_argument("--rules", "-r", metavar="FILE", default=None, dest="rules_file", help="Path to a TOML invariant rules file (default: .muse/midi_invariants.toml).")

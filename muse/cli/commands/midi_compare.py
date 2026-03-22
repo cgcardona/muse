@@ -80,7 +80,7 @@ def _load(
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the compare subcommand."""
-    parser = subparsers.add_parser("compare", help="Compare two MIDI snapshots across musical dimensions.", description=__doc__)
+    parser = subparsers.add_parser("compare", help="Compare two MIDI snapshots across musical dimensions.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("ref_a", metavar="REF_A", help="First commit reference (older).")
     parser.add_argument("ref_b", nargs="?", metavar="REF_B", default=None, help="Second commit reference. Omit to compare REF_A against the working tree.")

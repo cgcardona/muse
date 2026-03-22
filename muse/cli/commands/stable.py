@@ -61,6 +61,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "stable",
         help="Show the symbols that have been unchanged the longest.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--top", "-n",

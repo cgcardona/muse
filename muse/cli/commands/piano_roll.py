@@ -162,7 +162,7 @@ def _render_piano_roll(
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the piano-roll subcommand."""
-    parser = subparsers.add_parser("piano-roll", help="Render an ASCII piano roll of a MIDI track.", description=__doc__)
+    parser = subparsers.add_parser("piano-roll", help="Render an ASCII piano roll of a MIDI track.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Render from a historical snapshot instead of the working tree.")
     parser.add_argument("--bars", "-b", metavar="START-END", default=None, dest="bars_range", help='Bar range to render, e.g. "1-8". Default: first 8 bars.')

@@ -52,6 +52,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "workspace",
         help="Compose multiple Muse repositories.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
     subs.required = True

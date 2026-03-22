@@ -126,6 +126,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "archive",
         help="Export any historical snapshot as a portable archive.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--ref", default=None,
