@@ -27,11 +27,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -46,8 +46,6 @@ from muse.core.store import get_commit_snapshot_manifest
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
 
 def _read_repo_id(root: pathlib.Path) -> str:
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
@@ -57,20 +55,39 @@ def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-@app.callback(invoke_without_command=True)
-def stable(
-    ctx: typer.Context,
-    top: int = typer.Option(20, "--top", "-n", metavar="N", help="Number of symbols to show (default: 20)."),
-    kind_filter: str | None = typer.Option(
-        None, "--kind", "-k", metavar="KIND",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the stable subcommand."""
+    parser = subparsers.add_parser(
+        "stable",
+        help="Show the symbols that have been unchanged the longest.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--top", "-n",
+        type=int,
+        default=20,
+        metavar="N",
+        help="Number of symbols to show (default: 20).",
+    )
+    parser.add_argument(
+        "--kind", "-k",
+        dest="kind_filter",
+        default=None,
+        metavar="KIND",
         help="Restrict to symbols of this kind (function, class, method, …).",
-    ),
-    language_filter: str | None = typer.Option(
-        None, "--language", "-l", metavar="LANG",
+    )
+    parser.add_argument(
+        "--language", "-l",
+        dest="language_filter",
+        default=None,
+        metavar="LANG",
         help="Restrict to symbols from files of this language.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+    )
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show the symbols that have been unchanged the longest.
 
     ``muse stable`` is the complement of ``muse hotspots``.  It identifies
@@ -80,14 +97,19 @@ def stable(
     These are the symbols safest to build on: they haven't changed because
     they don't need to.  They reveal your stable API surface.
     """
+    top: int = args.top
+    kind_filter: str | None = args.kind_filter
+    language_filter: str | None = args.language_filter
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     head_commit = resolve_commit_ref(root, repo_id, branch, None)
     if head_commit is None:
-        typer.echo("❌ No commits found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ No commits found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # 1. Collect all symbols that exist in HEAD snapshot.
     manifest = get_commit_snapshot_manifest(root, head_commit.commit_id) or {}
@@ -127,7 +149,7 @@ def stable(
     ranked = stability[:top]
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "commits_analysed": total_commits,
                 "stable": [
@@ -144,15 +166,15 @@ def stable(
         filters += f"  kind={kind_filter}"
     if language_filter:
         filters += f"  language={language_filter}"
-    typer.echo(f"\nSymbol stability — top {len(ranked)} most stable symbols{filters}")
-    typer.echo(f"Commits analysed: {total_commits}")
-    typer.echo("")
+    print(f"\nSymbol stability — top {len(ranked)} most stable symbols{filters}")
+    print(f"Commits analysed: {total_commits}")
+    print("")
 
     width = len(str(len(ranked)))
     for rank, (addr, count, since_first) in enumerate(ranked, 1):
         suffix = "  (since first commit)" if since_first else ""
         label = "commit" if count == 1 else "commits"
-        typer.echo(f"  {rank:>{width}}   {addr:<60}  unchanged for {count:>4} {label}{suffix}")
+        print(f"  {rank:>{width}}   {addr:<60}  unchanged for {count:>4} {label}{suffix}")
 
-    typer.echo("")
-    typer.echo("These are your bedrock. High stability = safe to build on.")
+    print("")
+    print("These are your bedrock. High stability = safe to build on.")

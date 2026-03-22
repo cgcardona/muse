@@ -35,12 +35,11 @@ Usage::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
 import sys
-
-import typer
 
 from muse.core.store import read_current_branch
 from muse.core.query_engine import format_matches, walk_history
@@ -49,21 +48,38 @@ from muse.plugins.code._code_query import build_evaluator
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
 
 def _current_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-@app.callback(invoke_without_command=True)
-def code_query(
-    ctx: typer.Context,
-    query: str = typer.Argument(..., help="Query expression (see muse code-query --help)."),
-    branch: str | None = typer.Option(None, "--branch", help="Branch to search (default: HEAD branch)."),
-    max_commits: int = typer.Option(200, "--max", help="Maximum commits to inspect."),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON array of matches."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the code-query subcommand."""
+    parser = subparsers.add_parser(
+        "code-query",
+        help="Query the code commit history using a structured predicate.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "query",
+        help="Query expression (see muse code-query --help).",
+    )
+    parser.add_argument(
+        "--branch", default=None,
+        help="Branch to search (default: HEAD branch).",
+    )
+    parser.add_argument(
+        "--max", type=int, default=200, dest="max_commits",
+        help="Maximum commits to inspect.",
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit JSON array of matches.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Query the code commit history using a structured predicate.
 
     Walks up to *max* commits from HEAD on the specified branch and returns
@@ -75,19 +91,24 @@ def code_query(
         muse code-query "agent_id contains 'claude' and sem_ver_bump == 'major'"
         muse code-query "file == 'muse/core/store.py'"
     """
+    query: str = args.query
+    branch: str | None = args.branch
+    max_commits: int = args.max_commits
+    as_json: bool = args.as_json
+
     root = require_repo()
 
     try:
         evaluator = build_evaluator(query)
     except ValueError as exc:
-        typer.echo(f"❌ Query parse error: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
+        print(f"❌ Query parse error: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
 
     resolved_branch = branch or _current_branch(root)
     matches = walk_history(root, resolved_branch, evaluator, max_commits=max_commits)
 
     if as_json:
-        typer.echo(json.dumps(list(matches)))
+        print(json.dumps(list(matches)))
         return
 
-    typer.echo(format_matches(matches))
+    print(format_matches(matches))

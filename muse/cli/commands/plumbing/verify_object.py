@@ -41,13 +41,13 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import logging
 import pathlib
+import sys
 from typing import TypedDict
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.object_store import object_path
@@ -55,8 +55,6 @@ from muse.core.repo import require_repo
 from muse.core.validation import validate_object_id
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _FORMAT_CHOICES = ("json", "text")
 _CHUNK = 65536  # 64 KiB read chunks — keeps the heap clean for large blobs
@@ -118,49 +116,55 @@ def _verify_one(root: pathlib.Path, object_id: str) -> _ObjectResult:
     return {"object_id": object_id, "ok": True, "size_bytes": size, "error": None}
 
 
-@app.callback(invoke_without_command=True)
-def verify_object(
-    ctx: typer.Context,
-    object_ids: list[str] = typer.Argument(
-        ..., help="One or more SHA-256 object IDs to verify."
-    ),
-    quiet: bool = typer.Option(
-        False,
-        "--quiet",
-        "-q",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the verify-object subcommand."""
+    parser = subparsers.add_parser(
+        "verify-object",
+        help="Re-hash stored objects to detect data corruption.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "object_ids",
+        nargs="+",
+        help="One or more SHA-256 object IDs to verify.",
+    )
+    parser.add_argument(
+        "--quiet", "-q",
+        action="store_true",
         help="No output. Exit 0 if all objects are intact, exit 1 otherwise.",
-    ),
-    fmt: str = typer.Option(
-        "json", "--format", "-f", help="Output format: json or text."
-    ),
-) -> None:
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
+        help="Output format: json or text. (default: json)",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Verify the integrity of one or more objects in the store.
 
     Re-hashes each object's on-disk content and confirms it matches the SHA-256
     identity used as its filename.  Any mismatch indicates silent data
     corruption and is reported as a failure.
-
-    Objects are streamed in 64 KiB chunks — no full blobs are held in memory —
-    so this command is safe to run against very large object stores.
-
-    Exit code is 0 only when *every* supplied object passes verification.
-    Use in CI or backup scripts to detect corruption early::
-
-        muse plumbing show-ref -f json \\
-          | jq -r '.refs[].commit_id' \\
-          | xargs muse plumbing verify-object
     """
+    fmt: str = args.fmt
+    object_ids: list[str] = args.object_ids
+    quiet: bool = args.quiet
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             json.dumps(
                 {"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"}
             )
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if not object_ids:
-        typer.echo(json.dumps({"error": "At least one object ID argument is required."}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": "At least one object ID argument is required."}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
 
@@ -169,19 +173,19 @@ def verify_object(
     failed_count = sum(1 for r in results if not r["ok"])
 
     if quiet:
-        raise typer.Exit(code=0 if all_ok else ExitCode.USER_ERROR)
+        raise SystemExit(0 if all_ok else ExitCode.USER_ERROR)
 
     if fmt == "text":
         for r in results:
             status = "OK  " if r["ok"] else "FAIL"
             size_str = f"  ({r['size_bytes']} bytes)" if r["size_bytes"] is not None else ""
             err_str = f"  {r['error']}" if not r["ok"] and r["error"] else ""
-            typer.echo(f"{status}  {r['object_id']}{size_str}{err_str}")
+            print(f"{status}  {r['object_id']}{size_str}{err_str}")
         if not all_ok:
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            raise SystemExit(ExitCode.USER_ERROR)
         return
 
-    typer.echo(
+    print(
         json.dumps(
             {
                 "results": [dict(r) for r in results],
@@ -193,4 +197,4 @@ def verify_object(
     )
 
     if not all_ok:
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)

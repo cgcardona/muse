@@ -25,13 +25,14 @@ Subcommands
 
 from __future__ import annotations
 
+import argparse
 import http.client
+import json
 import logging
+import sys
 import urllib.error
 import urllib.request
 from typing import IO
-
-import typer
 
 from muse.cli.config import clear_hub_url, get_hub_url, set_hub_url
 from muse.core.errors import ExitCode
@@ -39,8 +40,6 @@ from muse.core.identity import load_identity
 from muse.core.repo import find_repo_root
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer(no_args_is_help=True)
 
 _CONNECT_TIMEOUT = 8  # seconds for ping/status health check
 
@@ -149,14 +148,34 @@ def _ping_hub(url: str) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 
 
-@app.command()
-def connect(
-    url: str = typer.Argument(
-        ...,
-        metavar="URL",
-        help="MuseHub URL (e.g. https://musehub.ai or just musehub.ai).",
-    ),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the hub subcommand."""
+    parser = subparsers.add_parser(
+        "hub",
+        help="MuseHub fabric connection management.",
+        description=__doc__,
+    )
+    subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
+    subs.required = True
+
+    connect_p = subs.add_parser("connect", help="Attach this repository to a MuseHub instance.")
+    connect_p.add_argument("url", metavar="URL",
+                           help="MuseHub URL (e.g. https://musehub.ai or just musehub.ai).")
+    connect_p.set_defaults(func=run_connect)
+
+    status_p = subs.add_parser("status", help="Show the hub connection and identity for this repository.")
+    status_p.add_argument("--json", action="store_true", dest="json_output",
+                          help="Emit JSON instead of human-readable output.")
+    status_p.set_defaults(func=run_status)
+
+    disconnect_p = subs.add_parser("disconnect", help="Remove the hub association from this repository.")
+    disconnect_p.set_defaults(func=run_disconnect)
+
+    ping_p = subs.add_parser("ping", help="Test HTTP connectivity to the configured hub.")
+    ping_p.set_defaults(func=run_ping)
+
+
+def run_connect(args: argparse.Namespace) -> None:
     """Attach this repository to a MuseHub instance.
 
     Writes ``[hub] url`` to ``.muse/config.toml``.  Does not modify
@@ -168,23 +187,25 @@ def connect(
         muse auth login
         muse push
     """
+    url: str = args.url
+
     root = find_repo_root()
     if root is None:
-        typer.echo("❌ Not inside a Muse repository. Run `muse init` first.")
-        raise typer.Exit(code=ExitCode.REPO_NOT_FOUND)
+        print("❌ Not inside a Muse repository. Run `muse init` first.")
+        raise SystemExit(ExitCode.REPO_NOT_FOUND)
 
     try:
         normalised = _normalise_url(url)
     except ValueError as exc:
-        typer.echo(f"❌ {exc}")
-        raise typer.Exit(code=ExitCode.USER_ERROR) from exc
+        print(f"❌ {exc}")
+        raise SystemExit(ExitCode.USER_ERROR) from exc
     hostname = _hub_hostname(normalised)
 
     # Check for an existing connection and warn before overwriting.
     existing = get_hub_url(root)
     if existing and existing != normalised:
         existing_host = _hub_hostname(existing)
-        typer.echo(
+        print(
             f"⚠️  This repo was connected to {existing_host}.\n"
             f"   Switching to {hostname}.\n"
             f"   Your credentials for {existing_host} remain in ~/.muse/identity.toml.\n"
@@ -198,21 +219,14 @@ def connect(
     if identity is not None:
         name = identity.get("name") or "—"
         itype = identity.get("type") or "unknown"
-        typer.echo(f"✅ Connected to {hostname}")
-        typer.echo(f"   Authenticated as {itype} '{name}'")
+        print(f"✅ Connected to {hostname}")
+        print(f"   Authenticated as {itype} '{name}'")
     else:
-        typer.echo(f"✅ Connected to {hostname}")
-        typer.echo(f"   No identity stored yet — run: muse auth login")
+        print(f"✅ Connected to {hostname}")
+        print(f"   No identity stored yet — run: muse auth login")
 
 
-@app.command()
-def status(
-    json_output: bool = typer.Option(
-        False,
-        "--json",
-        help="Emit JSON instead of human-readable output.",
-    ),
-) -> None:
+def run_status(args: argparse.Namespace) -> None:
     """Show the hub connection and identity for this repository.
 
     Displays the hub URL, stored identity (if any), and whether the hub is
@@ -220,25 +234,25 @@ def status(
 
         muse hub status --json
     """
+    json_output: bool = args.json_output
+
     root = find_repo_root()
     if root is None:
-        typer.echo("❌ Not inside a Muse repository.")
-        raise typer.Exit(code=ExitCode.REPO_NOT_FOUND)
+        print("❌ Not inside a Muse repository.")
+        raise SystemExit(ExitCode.REPO_NOT_FOUND)
 
     hub_url = get_hub_url(root)
     if hub_url is None:
-        typer.echo(
+        print(
             "No hub connected.\n"
             "Run: muse hub connect <url>"
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     hostname = _hub_hostname(hub_url)
     identity = load_identity(hub_url)
 
     if json_output:
-        import json
-
         out: dict[str, str | bool] = {
             "hub_url": hub_url,
             "hostname": hostname,
@@ -254,33 +268,32 @@ def status(
             identity_id = identity.get("id", "")
             if identity_id:
                 out["identity_id"] = identity_id
-        typer.echo(json.dumps(out, indent=2))
+        print(json.dumps(out, indent=2))
         return
 
-    typer.echo("")
-    typer.echo("  Hub")
-    typer.echo(f"    URL:       {hub_url}")
+    print("")
+    print("  Hub")
+    print(f"    URL:       {hub_url}")
 
     if identity is None:
-        typer.echo(f"    Auth:      not authenticated — run `muse auth login`")
+        print(f"    Auth:      not authenticated — run `muse auth login`")
     else:
         itype = identity.get("type") or "unknown"
         name = identity.get("name") or "—"
         identity_id = identity.get("id") or "—"
         token = identity.get("token", "")
         caps = identity.get("capabilities") or []
-        typer.echo(f"    Type:      {itype}")
-        typer.echo(f"    Name:      {name}")
-        typer.echo(f"    ID:        {identity_id}")
-        typer.echo(f"    Token:     {'set (Bearer ***)' if token else 'not set'}")
+        print(f"    Type:      {itype}")
+        print(f"    Name:      {name}")
+        print(f"    ID:        {identity_id}")
+        print(f"    Token:     {'set (Bearer ***)' if token else 'not set'}")
         if caps:
-            typer.echo(f"    Caps:      {' '.join(caps)}")
+            print(f"    Caps:      {' '.join(caps)}")
 
-    typer.echo("")
+    print("")
 
 
-@app.command()
-def disconnect() -> None:
+def run_disconnect(args: argparse.Namespace) -> None:
     """Remove the hub association from this repository.
 
     Removes ``[hub] url`` from ``.muse/config.toml``.  Credentials in
@@ -289,25 +302,24 @@ def disconnect() -> None:
     """
     root = find_repo_root()
     if root is None:
-        typer.echo("❌ Not inside a Muse repository.")
-        raise typer.Exit(code=ExitCode.REPO_NOT_FOUND)
+        print("❌ Not inside a Muse repository.")
+        raise SystemExit(ExitCode.REPO_NOT_FOUND)
 
     hub_url = get_hub_url(root)
     if hub_url is None:
-        typer.echo("No hub connected — nothing to do.")
+        print("No hub connected — nothing to do.")
         return
 
     hostname = _hub_hostname(hub_url)
     clear_hub_url(root)
-    typer.echo(f"✅ Disconnected from {hostname}.")
-    typer.echo(
+    print(f"✅ Disconnected from {hostname}.")
+    print(
         f"   Credentials in ~/.muse/identity.toml are preserved.\n"
         f"   To remove them too: muse auth logout --hub {hub_url}"
     )
 
 
-@app.command()
-def ping() -> None:
+def run_ping(args: argparse.Namespace) -> None:
     """Test HTTP connectivity to the configured hub.
 
     Sends a GET request to ``<hub_url>/health`` and reports the result.
@@ -315,23 +327,23 @@ def ping() -> None:
     """
     root = find_repo_root()
     if root is None:
-        typer.echo("❌ Not inside a Muse repository.")
-        raise typer.Exit(code=ExitCode.REPO_NOT_FOUND)
+        print("❌ Not inside a Muse repository.")
+        raise SystemExit(ExitCode.REPO_NOT_FOUND)
 
     hub_url = get_hub_url(root)
     if hub_url is None:
-        typer.echo(
+        print(
             "No hub connected.\n"
             "Run: muse hub connect <url>"
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     hostname = _hub_hostname(hub_url)
-    typer.echo(f"Pinging {hostname}…", nl=False)
+    print(f"Pinging {hostname}…", end="", flush=True)
     reachable, message = _ping_hub(hub_url)
 
     if reachable:
-        typer.echo(f" ✅ {message}")
+        print(f" ✅ {message}")
     else:
-        typer.echo(f" ❌ {message}")
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(f" ❌ {message}")
+        raise SystemExit(ExitCode.INTERNAL_ERROR)

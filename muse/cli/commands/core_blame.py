@@ -23,12 +23,12 @@ Domain-specific blame (symbols, notes) lives under ``muse code`` and
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-from typing import Annotated
+import sys
 
-import typer
 
 from muse.core.blame import blame_file
 from muse.core.errors import ExitCode
@@ -37,7 +37,6 @@ from muse.core.store import get_head_commit_id, read_current_branch, resolve_com
 from muse.core.validation import sanitize_display
 
 logger = logging.getLogger(__name__)
-app = typer.Typer(help="Show which commit last modified each line of a text file.")
 
 
 def _read_branch(root: pathlib.Path) -> str:
@@ -48,25 +47,33 @@ def _read_repo_id(root: pathlib.Path) -> str:
     return str(__import__("json").loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
-@app.callback(invoke_without_command=True)
-def blame(
-    file: Annotated[
-        str,
-        typer.Argument(help="File path relative to state/ (e.g. README.md)."),
-    ],
-    ref: Annotated[
-        str | None,
-        typer.Option("--ref", "-r", help="Commit or branch to blame from (default: HEAD)."),
-    ] = None,
-    porcelain: Annotated[
-        bool,
-        typer.Option("--porcelain", "-p", help="Emit JSON objects instead of human-readable output."),
-    ] = False,
-    short: Annotated[
-        int,
-        typer.Option("--short", help="Length of commit SHA prefix to display."),
-    ] = 12,
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the blame subcommand."""
+    parser = subparsers.add_parser(
+        "blame",
+        help="Show which commit last modified each line of a text file.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "file",
+        help="Workspace-relative path to the file to blame.",
+    )
+    parser.add_argument(
+        "--ref", default=None,
+        help="Commit ref (SHA, branch, tag) to blame at (default: HEAD).",
+    )
+    parser.add_argument(
+        "--porcelain", action="store_true",
+        help="Emit one JSON object per line (machine-readable).",
+    )
+    parser.add_argument(
+        "--short", type=int, default=12, metavar="N",
+        help="Number of characters to show for each commit SHA (default: 12).",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show which commit last modified each line of a text file.
 
     Walks the commit history backwards and attributes each line to the
@@ -78,6 +85,11 @@ def blame(
         muse blame --ref v1.0.0 src/main.py
         muse blame --porcelain config.toml | jq '.commit_id'
     """
+    file: str = args.file
+    ref: str | None = args.ref
+    porcelain: bool = args.porcelain
+    short: int = args.short
+
     root = require_repo()
     branch = _read_branch(root)
     repo_id = _read_repo_id(root)
@@ -85,27 +97,27 @@ def blame(
     if ref is None:
         commit_id = get_head_commit_id(root, branch)
         if not commit_id:
-            typer.echo("❌ No commits yet on this branch.")
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print("❌ No commits yet on this branch.")
+            raise SystemExit(ExitCode.USER_ERROR)
     else:
         commit = resolve_commit_ref(root, repo_id, branch, ref)
         if commit is None:
-            typer.echo(f"❌ Ref '{sanitize_display(ref)}' not found.")
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Ref '{sanitize_display(ref)}' not found.")
+            raise SystemExit(ExitCode.USER_ERROR)
         commit_id = commit.commit_id
 
     lines = blame_file(root, file, commit_id)
     if lines is None:
-        typer.echo(f"❌ File '{sanitize_display(file)}' not found at {commit_id[:short]}.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ File '{sanitize_display(file)}' not found at {commit_id[:short]}.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if not lines:
-        typer.echo(f"(empty file '{sanitize_display(file)}')")
+        print(f"(empty file '{sanitize_display(file)}')")
         return
 
     if porcelain:
         for bl in lines:
-            typer.echo(json.dumps({
+            print(json.dumps({
                 "lineno": bl.lineno,
                 "commit_id": bl.commit_id,
                 "author": bl.author,
@@ -127,4 +139,4 @@ def blame(
         date = bl.committed_at[:date_w]
         lineno = str(bl.lineno).rjust(lineno_w)
         content = sanitize_display(bl.content)
-        typer.echo(f"{sha}  ({author}  {date})  {lineno}  {content}")
+        print(f"{sha}  ({author}  {date})  {lineno}  {content}")

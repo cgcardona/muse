@@ -42,12 +42,12 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
+import sys
 from typing import Literal
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.object_store import read_object
@@ -66,8 +66,6 @@ from muse.plugins.code.ast_parser import (
 )
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _KindFilter = Literal[
     "function", "async_function", "class", "method", "async_method",
@@ -157,20 +155,20 @@ def _print_human(
         lang_counts[lang] = lang_counts.get(lang, 0) + len(tree)
         total += len(tree)
 
-        typer.echo(f"\n{file_path}")
+        print(f"\n{file_path}")
         for addr, rec in sorted(tree.items(), key=lambda kv: kv[1]["lineno"]):
             icon = _KIND_ICON.get(rec["kind"], rec["kind"])
             name = rec["qualified_name"]
             line = rec["lineno"]
             hash_suffix = f"  {rec['content_id'][:8]}.." if show_hashes else ""
-            typer.echo(f"  {icon:<10}  {name:<40}  line {line:>4}{hash_suffix}")
+            print(f"  {icon:<10}  {name:<40}  line {line:>4}{hash_suffix}")
 
     if not symbol_map:
-        typer.echo("  (no semantic symbols found)")
+        print("  (no semantic symbols found)")
         return
 
     lang_str = "  ".join(f"{lang}: {count}" for lang, count in sorted(lang_counts.items()))
-    typer.echo(f"\n{total} symbol(s) across {len(symbol_map)} file(s)  ({lang_str})")
+    print(f"\n{total} symbol(s) across {len(symbol_map)} file(s)  ({lang_str})")
 
 
 def _emit_json(symbol_map: dict[str, SymbolTree]) -> None:
@@ -190,35 +188,47 @@ def _emit_json(symbol_map: dict[str, SymbolTree]) -> None:
                 "signature_id": rec["signature_id"],
             })
         out[file_path] = entries
-    typer.echo(json.dumps(out, indent=2))
+    print(json.dumps(out, indent=2))
 
 
-@app.callback(invoke_without_command=True)
-def symbols(
-    ctx: typer.Context,
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the symbols subcommand."""
+    parser = subparsers.add_parser(
+        "symbols",
+        help="List every semantic symbol (function, class, method…) in a snapshot.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--commit", "-c",
+        dest="ref",
+        default=None,
+        metavar="REF",
         help="Commit ID or branch to inspect (default: HEAD).",
-    ),
-    kind_filter: str | None = typer.Option(
-        None, "--kind", "-k", metavar="KIND",
-        help="Filter to symbols of a specific kind "
-             "(function, class, method, async_method, variable, import).",
-    ),
-    file_filter: str | None = typer.Option(
-        None, "--file", "-f", metavar="PATH",
+    )
+    parser.add_argument(
+        "--kind", "-k",
+        dest="kind_filter",
+        default=None,
+        metavar="KIND",
+        help=(
+            "Filter to symbols of a specific kind "
+            "(function, class, method, async_method, variable, import)."
+        ),
+    )
+    parser.add_argument(
+        "--file", "-f",
+        dest="file_filter",
+        default=None,
+        metavar="PATH",
         help="Show symbols from a single file only.",
-    ),
-    count_only: bool = typer.Option(
-        False, "--count", help="Print only the total count and language breakdown.",
-    ),
-    show_hashes: bool = typer.Option(
-        False, "--hashes", help="Include content hashes in the output.",
-    ),
-    as_json: bool = typer.Option(
-        False, "--json", help="Emit the full symbol table as JSON.",
-    ),
-) -> None:
+    )
+    parser.add_argument("--count", dest="count_only", action="store_true", help="Print only the total count and language breakdown.")
+    parser.add_argument("--hashes", dest="show_hashes", action="store_true", help="Include content hashes in the output.")
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit the full symbol table as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """List every semantic symbol (function, class, method…) in a snapshot.
 
     Unlike ``git grep`` or ``ctags``, ``muse symbols`` reads the semantic
@@ -230,6 +240,13 @@ def symbols(
     and ``--file`` to narrow the output.  Use ``--json`` for tooling
     integration.
     """
+    ref: str | None = args.ref
+    kind_filter: str | None = args.kind_filter
+    file_filter: str | None = args.file_filter
+    count_only: bool = args.count_only
+    show_hashes: bool = args.show_hashes
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
@@ -237,13 +254,13 @@ def symbols(
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
         label = ref or "HEAD"
-        typer.echo(f"❌ Commit '{label}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{label}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     manifest = get_commit_snapshot_manifest(root, commit.commit_id) or {}
     if not manifest:
-        typer.echo(f"❌ Snapshot for commit {commit.commit_id[:8]} has no files.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Snapshot for commit {commit.commit_id[:8]} has no files.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     symbol_map = _symbols_for_snapshot(root, manifest, kind_filter, file_filter)
 
@@ -254,12 +271,12 @@ def symbols(
             lang = _language_of(file_path)
             lang_counts[lang] = lang_counts.get(lang, 0) + len(tree)
         lang_str = "  ".join(f"{lang}: {count}" for lang, count in sorted(lang_counts.items()))
-        typer.echo(f"{total} symbol(s)  ({lang_str})")
+        print(f"{total} symbol(s)  ({lang_str})")
         return
 
     if as_json:
         _emit_json(symbol_map)
         return
 
-    typer.echo(f'commit {commit.commit_id[:8]}  "{commit.message}"')
+    print(f'commit {commit.commit_id[:8]}  "{commit.message}"')
     _print_human(symbol_map, show_hashes)

@@ -32,12 +32,12 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
+import sys
 from collections import Counter
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -54,8 +54,6 @@ from muse.plugins.midi._query import (
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
 
 def _read_repo_id(root: pathlib.Path) -> str:
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
@@ -65,16 +63,16 @@ def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-@app.callback(invoke_without_command=True)
-def harmony(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
-        help="Analyse a historical snapshot instead of the working tree.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the harmony subcommand."""
+    parser = subparsers.add_parser("harmony", help="Detect chords and key signature from a MIDI track's note content.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Analyse a historical snapshot instead of the working tree.")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Detect chords and key signature from a MIDI track's note content.
 
     ``muse harmony`` groups notes by bar, detects implied chords using a
@@ -88,6 +86,10 @@ def harmony(
     Use ``--commit`` to analyse a historical snapshot.  Use ``--json`` for
     agent-readable output suitable for further harmonic reasoning.
     """
+    track: str = args.track
+    ref: str | None = args.ref
+    as_json: bool = args.as_json
+
     root = require_repo()
 
     result: tuple[list[NoteInfo], int] | None
@@ -98,20 +100,20 @@ def harmony(
         branch = _read_branch(root)
         commit = resolve_commit_ref(root, repo_id, branch, ref)
         if commit is None:
-            typer.echo(f"❌ Commit '{ref}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Commit '{ref}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         result = load_track(root, commit.commit_id, track)
         commit_label = commit.commit_id[:8]
     else:
         result = load_track_from_workdir(root, track)
 
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     note_list, _tpb = result
     if not note_list:
-        typer.echo(f"  (no notes found in '{track}')")
+        print(f"  (no notes found in '{track}')")
         return
 
     key = key_signature_guess(note_list)
@@ -133,7 +135,7 @@ def harmony(
 
     if as_json:
         total_notes = len(note_list)
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "track": track,
                 "commit": commit_label,
@@ -157,18 +159,18 @@ def harmony(
         ))
         return
 
-    typer.echo(f"\nHarmonic analysis: {track} — {commit_label}")
-    typer.echo(f"Key signature (estimated): {key}")
-    typer.echo(f"Total notes: {len(note_list)}  ·  Bars: {len(bars)}")
-    typer.echo("")
-    typer.echo(f"  {'Bar':>4}  {'Chord':<10}  {'Notes':>5}  Pitch classes")
-    typer.echo("  " + "─" * 54)
+    print(f"\nHarmonic analysis: {track} — {commit_label}")
+    print(f"Key signature (estimated): {key}")
+    print(f"Total notes: {len(note_list)}  ·  Bars: {len(bars)}")
+    print("")
+    print(f"  {'Bar':>4}  {'Chord':<10}  {'Notes':>5}  Pitch classes")
+    print("  " + "─" * 54)
 
     for bar_num, chord_name, n_count, pc_name_list in bar_chords:
         pc_str = ", ".join(pc_name_list)
-        typer.echo(f"  {bar_num:>4}  {chord_name:<10}  {n_count:>5}  {pc_str}")
+        print(f"  {bar_num:>4}  {chord_name:<10}  {n_count:>5}  {pc_str}")
 
-    typer.echo("\nPitch class distribution:")
+    print("\nPitch class distribution:")
     total = max(sum(pc_counter.values()), 1)
     for pc in range(12):
         count = pc_counter.get(pc, 0)
@@ -177,4 +179,4 @@ def harmony(
         bar_len = min(int(count / total * 40), 40)
         bar_str = "█" * bar_len
         pct = count / total * 100
-        typer.echo(f"  {_PITCH_CLASSES[pc]:<3}  {bar_str:<40}  {count:>3}  ({pct:.1f}%)")
+        print(f"  {_PITCH_CLASSES[pc]:<3}  {bar_str:<40}  {count:>3}  ({pct:.1f}%)")

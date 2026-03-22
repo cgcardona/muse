@@ -19,12 +19,12 @@ Tag conventions::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
+import sys
 import uuid
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -42,15 +42,6 @@ from muse.core.validation import sanitize_display
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-add_app = typer.Typer()
-list_app = typer.Typer()
-remove_app = typer.Typer()
-
-app.add_typer(add_app, name="add", help="Attach a tag to a commit.")
-app.add_typer(list_app, name="list", help="List tags.")
-app.add_typer(remove_app, name="remove", help="Remove a tag from a commit.")
-
 
 def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
@@ -60,29 +51,55 @@ def _read_repo_id(root: pathlib.Path) -> str:
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
-@add_app.callback(invoke_without_command=True)
-def add(
-    ctx: typer.Context,
-    tag_name: str = typer.Argument(..., help="Tag string (e.g. emotion:joyful)."),
-    ref: str | None = typer.Argument(None, help="Commit ID or branch (default: HEAD)."),
-    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the tag subcommand."""
+    parser = subparsers.add_parser(
+        "tag",
+        help="Attach and query semantic tags on commits.",
+        description=__doc__,
+    )
+    subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
+    subs.required = True
+
+    add_p = subs.add_parser("add", help="Attach a tag to a commit.")
+    add_p.add_argument("tag_name", help="Tag string (e.g. emotion:joyful).")
+    add_p.add_argument("ref", nargs="?", default=None, help="Commit ID or branch (default: HEAD).")
+    add_p.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
+    add_p.set_defaults(func=run_add)
+
+    list_p = subs.add_parser("list", help="List tags.")
+    list_p.add_argument("ref", nargs="?", default=None, help="Commit ID to list tags for (default: all).")
+    list_p.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
+    list_p.set_defaults(func=run_list)
+
+    remove_p = subs.add_parser("remove", help="Remove a tag from a commit.")
+    remove_p.add_argument("tag_name", help="Tag string to remove (e.g. emotion:joyful).")
+    remove_p.add_argument("ref", nargs="?", default=None, help="Commit ID or branch (default: HEAD).")
+    remove_p.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
+    remove_p.set_defaults(func=run_remove)
+
+
+def run_add(args: argparse.Namespace) -> None:
     """Attach a tag to a commit.
 
     Agents should pass ``--format json`` to receive ``{tag_id, commit_id, tag}``
     rather than human-readable text.
     """
+    tag_name: str = args.tag_name
+    ref: str | None = args.ref
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{ref}' not found.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref}' not found.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     tag_id = str(uuid.uuid4())
     write_tag(root, TagRecord(
@@ -92,25 +109,23 @@ def add(
         tag=tag_name,
     ))
     if fmt == "json":
-        typer.echo(json.dumps({"tag_id": tag_id, "commit_id": commit.commit_id, "tag": tag_name}))
+        print(json.dumps({"tag_id": tag_id, "commit_id": commit.commit_id, "tag": tag_name}))
     else:
-        typer.echo(f"Tagged {commit.commit_id[:8]} with '{sanitize_display(tag_name)}'")
+        print(f"Tagged {commit.commit_id[:8]} with '{sanitize_display(tag_name)}'")
 
 
-@list_app.callback(invoke_without_command=True)
-def list_tags(
-    ctx: typer.Context,
-    ref: str | None = typer.Argument(None, help="Commit ID to list tags for (default: all)."),
-    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
-) -> None:
+def run_list(args: argparse.Namespace) -> None:
     """List tags.
 
     Agents should pass ``--format json`` to receive a JSON array of
     ``{tag_id, commit_id, tag}`` objects.
     """
+    ref: str | None = args.ref
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
@@ -118,29 +133,23 @@ def list_tags(
     if ref:
         commit = resolve_commit_ref(root, repo_id, branch, ref)
         if commit is None:
-            typer.echo(f"❌ Commit '{ref}' not found.")
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Commit '{ref}' not found.")
+            raise SystemExit(ExitCode.USER_ERROR)
         tags = get_tags_for_commit(root, repo_id, commit.commit_id)
     else:
         tags = get_all_tags(root, repo_id)
 
     if fmt == "json":
-        typer.echo(json.dumps([{
+        print(json.dumps([{
             "tag_id": t.tag_id, "commit_id": t.commit_id, "tag": t.tag,
         } for t in sorted(tags, key=lambda x: (x.tag, x.commit_id))]))
         return
 
     for t in sorted(tags, key=lambda x: (x.tag, x.commit_id)):
-        typer.echo(f"{t.commit_id[:8]}  {sanitize_display(t.tag)}")
+        print(f"{t.commit_id[:8]}  {sanitize_display(t.tag)}")
 
 
-@remove_app.callback(invoke_without_command=True)
-def remove_tag(
-    ctx: typer.Context,
-    tag_name: str = typer.Argument(..., help="Tag string to remove (e.g. emotion:joyful)."),
-    ref: str | None = typer.Argument(None, help="Commit ID or branch (default: HEAD)."),
-    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
-) -> None:
+def run_remove(args: argparse.Namespace) -> None:
     """Remove a tag from a commit.
 
     Finds all tags with the exact name on the given commit and deletes them.
@@ -151,38 +160,42 @@ def remove_tag(
         0 — tag removed
         1 — tag or commit not found
     """
+    tag_name: str = args.tag_name
+    ref: str | None = args.ref
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{sanitize_display(str(ref))}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{sanitize_display(str(ref))}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     tags = get_tags_for_commit(root, repo_id, commit.commit_id)
     matching = [t for t in tags if t.tag == tag_name]
     if not matching:
-        typer.echo(
+        print(
             f"❌ Tag '{sanitize_display(tag_name)}' not found on commit {commit.commit_id[:8]}.",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     for t in matching:
         delete_tag(root, repo_id, t.tag_id)
 
     if fmt == "json":
-        typer.echo(json.dumps({
+        print(json.dumps({
             "removed_count": len(matching),
             "commit_id": commit.commit_id,
             "tag": tag_name,
         }))
     else:
-        typer.echo(
+        print(
             f"Removed {len(matching)} tag(s) '{sanitize_display(tag_name)}' "
             f"from commit {commit.commit_id[:8]}."
         )

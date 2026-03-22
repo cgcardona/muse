@@ -53,11 +53,11 @@ JSON output — ``muse index rebuild --json``::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.indices import (
@@ -77,8 +77,6 @@ from muse.plugins.code._query import is_semantic
 from muse.plugins.code.ast_parser import parse_symbols
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer(name="index", help="Manage the optional local index layer.")
 
 
 # ---------------------------------------------------------------------------
@@ -191,11 +189,46 @@ def _build_hash_occurrence(root: pathlib.Path) -> HashOccurrenceIndex:
 # ---------------------------------------------------------------------------
 
 
-@app.command("status")
-def index_status(
-    as_json: bool = typer.Option(False, "--json", help="Emit index status as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the index subcommand."""
+    parser = subparsers.add_parser(
+        "index",
+        help="Manage the optional local index layer.",
+        description=__doc__,
+    )
+    subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
+    subs.required = True
+
+    status_p = subs.add_parser("status", help="Show the status and entry count of each local index.")
+    status_p.add_argument("--json", dest="as_json", action="store_true", help="Emit index status as JSON.")
+    status_p.set_defaults(func=run_status)
+
+    rebuild_p = subs.add_parser(
+        "rebuild",
+        help="Rebuild local indexes from the full commit history.",
+        description=(
+            "Rebuilds ``symbol_history`` and/or ``hash_occurrence`` indexes under "
+            "``.muse/indices/``.  Safe to run multiple times — overwrites existing data.\n\n"
+            "Both indexes are derived entirely from the commit history and working "
+            "snapshots; the canonical storage is never modified."
+        ),
+    )
+    rebuild_p.add_argument(
+        "--index", "-i",
+        dest="index_name",
+        default=None,
+        metavar="NAME",
+        help="Rebuild a specific index: symbol_history or hash_occurrence. Default: rebuild all.",
+    )
+    rebuild_p.add_argument("--verbose", "-v", action="store_true", help="Show progress.")
+    rebuild_p.add_argument("--json", dest="as_json", action="store_true", help="Emit rebuild summary as JSON.")
+    rebuild_p.set_defaults(func=run_rebuild)
+
+
+def run_status(args: argparse.Namespace) -> None:
     """Show the status and entry count of each local index."""
+    as_json: bool = args.as_json
+
     root = require_repo()
     infos = index_info(root)
 
@@ -208,35 +241,26 @@ def index_status(
                 "entries": int(info.get("entries", 0)),
                 "updated_at": info.get("updated_at") or None,
             })
-        typer.echo(json.dumps(out, indent=2))
+        print(json.dumps(out, indent=2))
         return
 
-    typer.echo("\nLocal index status:")
-    typer.echo("─" * 50)
+    print("\nLocal index status:")
+    print("─" * 50)
     for info in infos:
         status = info["status"]
         name = info["name"]
         updated = info.get("updated_at", "")[:19]
         entries = info.get("entries", "0")
         if status == "present":
-            typer.echo(f"  ✅  {name:<20}  {entries:>8} entries  (updated {updated})")
+            print(f"  ✅  {name:<20}  {entries:>8} entries  (updated {updated})")
         elif status == "absent":
-            typer.echo(f"  ⬜  {name:<20}  (not built — run: muse index rebuild)")
+            print(f"  ⬜  {name:<20}  (not built — run: muse index rebuild)")
         else:
-            typer.echo(f"  ❌  {name:<20}  corrupt — run: muse index rebuild")
-    typer.echo()
+            print(f"  ❌  {name:<20}  corrupt — run: muse index rebuild")
+    print()
 
 
-@app.command("rebuild")
-def index_rebuild(
-    index_name: str | None = typer.Option(
-        None, "--index", "-i", metavar="NAME",
-        help="Rebuild a specific index: symbol_history or hash_occurrence. "
-             "Default: rebuild all.",
-    ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show progress."),
-    as_json: bool = typer.Option(False, "--json", help="Emit rebuild summary as JSON."),
-) -> None:
+def run_rebuild(args: argparse.Namespace) -> None:
     """Rebuild local indexes from the full commit history.
 
     Rebuilds ``symbol_history`` and/or ``hash_occurrence`` indexes under
@@ -252,15 +276,19 @@ def index_rebuild(
         muse index rebuild --index symbol_history
         muse index rebuild --index hash_occurrence --verbose
     """
+    index_name: str | None = args.index_name
+    verbose: bool = args.verbose
+    as_json: bool = args.as_json
+
     root = require_repo()
 
     if index_name is not None and index_name not in ("symbol_history", "hash_occurrence"):
-        typer.echo(
+        print(
             f"❌ Unknown index '{index_name}'. "
             "Valid names: symbol_history, hash_occurrence.",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     build_all = index_name is None
     built: list[str] = []
@@ -268,33 +296,33 @@ def index_rebuild(
 
     if build_all or index_name == "symbol_history":
         if verbose and not as_json:
-            typer.echo("Building symbol_history index…")
+            print("Building symbol_history index…")
         idx = _build_symbol_history(root)
         save_symbol_history(root, idx)
         n_events = sum(len(evts) for evts in idx.values())
         result["symbol_history_addresses"] = len(idx)
         result["symbol_history_events"] = n_events
         if not as_json:
-            typer.echo(f"  ✅  symbol_history  — {len(idx)} addresses, {n_events} events")
+            print(f"  ✅  symbol_history  — {len(idx)} addresses, {n_events} events")
         built.append("symbol_history")
 
     if build_all or index_name == "hash_occurrence":
         if verbose and not as_json:
-            typer.echo("Building hash_occurrence index…")
+            print("Building hash_occurrence index…")
         idx2 = _build_hash_occurrence(root)
         save_hash_occurrence(root, idx2)
         n_clones = sum(len(addrs) for addrs in idx2.values())
         result["hash_occurrence_clusters"] = len(idx2)
         result["hash_occurrence_addresses"] = n_clones
         if not as_json:
-            typer.echo(f"  ✅  hash_occurrence — {len(idx2)} clone clusters, {n_clones} addresses")
+            print(f"  ✅  hash_occurrence — {len(idx2)} clone clusters, {n_clones} addresses")
         built.append("hash_occurrence")
 
     result["rebuilt"] = built
 
     if as_json:
-        typer.echo(json.dumps(result, indent=2))
+        print(json.dumps(result, indent=2))
         return
 
-    typer.echo(f"\nRebuilt {len(built)} index(es) under .muse/indices/")
-    typer.echo("Run 'muse index status' to verify.")
+    print(f"\nRebuilt {len(built)} index(es) under .muse/indices/")
+    print("Run 'muse index status' to verify.")

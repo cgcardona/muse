@@ -44,12 +44,11 @@ Usage::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
 import sys
-
-import typer
 
 from muse.core.repo import require_repo
 from muse.core.store import get_head_commit_id, read_current_branch
@@ -61,46 +60,30 @@ from muse.plugins.midi._invariants import (
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer(no_args_is_help=False)
-
 
 def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-@app.command(name="midi-check")
-def midi_check_cmd(
-    commit: str | None = typer.Argument(
-        None,
-        metavar="COMMIT",
-        help="Commit ID to check (default: HEAD).",
-    ),
-    track: str | None = typer.Option(
-        None,
-        "--track",
-        "-t",
-        metavar="PATH",
-        help="Restrict check to a single MIDI file path.",
-    ),
-    rules_file: str | None = typer.Option(
-        None,
-        "--rules",
-        "-r",
-        metavar="FILE",
-        help="Path to a TOML invariant rules file (default: .muse/midi_invariants.toml).",
-    ),
-    strict: bool = typer.Option(
-        False,
-        "--strict",
-        help="Exit with code 1 when any error-severity violations are found.",
-    ),
-    as_json: bool = typer.Option(
-        False,
-        "--json",
-        help="Output machine-readable JSON instead of formatted text.",
-    ),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the midi-check subcommand."""
+    parser = subparsers.add_parser("check", help="Enforce MIDI invariant rules against a commit's MIDI tracks.", description=__doc__)
+    parser.add_argument("commit", nargs="?", metavar="COMMIT", default=None, help="Commit ID to check (default: HEAD).")
+    parser.add_argument("--track", "-t", metavar="PATH", default=None, help="Restrict check to a single MIDI file path.")
+    parser.add_argument("--rules", "-r", metavar="FILE", default=None, dest="rules_file", help="Path to a TOML invariant rules file (default: .muse/midi_invariants.toml).")
+    parser.add_argument("--strict", action="store_true", help="Exit with code 1 when any error-severity violations are found.")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Output machine-readable JSON instead of formatted text.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Enforce MIDI invariant rules against a commit's MIDI tracks."""
+    commit: str | None = args.commit
+    track: str | None = args.track
+    rules_file: str | None = args.rules_file
+    strict: bool = args.strict
+    as_json: bool = args.as_json
+
     root = require_repo()
 
     commit_id = commit
@@ -108,8 +91,8 @@ def midi_check_cmd(
         branch = _read_branch(root)
         commit_id = get_head_commit_id(root, branch)
         if commit_id is None:
-            typer.echo("❌ No commits in this repository.", err=True)
-            raise typer.Exit(1)
+            print("❌ No commits in this repository.", file=sys.stderr)
+            raise SystemExit(1)
 
     # Load rules.
     rules_path: pathlib.Path | None = None
@@ -129,7 +112,7 @@ def midi_check_cmd(
         _print_report(report)
 
     if strict and report["has_errors"]:
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
 
 _SEVERITY_ICON = {
@@ -144,7 +127,7 @@ def _print_report(report: InvariantReport) -> None:
     violations = report["violations"]
 
     if not violations:
-        typer.echo(
+        print(
             f"✅ No violations found ({report['rules_checked']} rule-track checks)"
         )
         return
@@ -153,10 +136,10 @@ def _print_report(report: InvariantReport) -> None:
     for v in violations:
         if v["track"] != current_track:
             current_track = v["track"]
-            typer.echo(f"\n  {current_track}")
+            print(f"\n  {current_track}")
         icon = _SEVERITY_ICON.get(v["severity"], "•")
         bar_label = f"bar {v['bar']}" if v["bar"] > 0 else "track"
-        typer.echo(
+        print(
             f"    {icon} [{v['rule_name']}] {bar_label}: {v['description']}"
         )
 
@@ -174,7 +157,7 @@ def _print_report(report: InvariantReport) -> None:
 
     summary = ", ".join(parts)
     icon = "❌" if error_count else "⚠️" if warn_count else "ℹ️"
-    typer.echo(
+    print(
         f"\n{icon} {summary} in commit {report['commit_id'][:8]} "
         f"({report['rules_checked']} rule-track checks)"
     )

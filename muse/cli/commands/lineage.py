@@ -46,12 +46,12 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
+import sys
 from typing import Literal
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -98,8 +98,6 @@ class _ReplaceFields:
         self.new_summary = new_summary
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 EventKind = Literal[
     "created",
@@ -316,19 +314,30 @@ def build_lineage(
     return events
 
 
-@app.callback(invoke_without_command=True)
-def lineage(
-    ctx: typer.Context,
-    address: str = typer.Argument(
-        ..., metavar="ADDRESS",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the lineage subcommand."""
+    parser = subparsers.add_parser(
+        "lineage",
+        help="Show the full provenance chain of a symbol through commit history.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "address",
+        metavar="ADDRESS",
         help='Symbol address, e.g. "src/billing.py::compute_invoice_total".',
-    ),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
+    )
+    parser.add_argument(
+        "--commit", "-c",
+        dest="ref",
+        default=None,
+        metavar="REF",
         help="Walk history from this commit instead of HEAD.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+    )
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show the full provenance chain of a symbol through commit history.
 
     Classifies every event as: created, renamed_from, moved_from, copied_from,
@@ -338,11 +347,15 @@ def lineage(
     InsertOp pairs within the same commit.  Copy detection looks for another
     living symbol with the same body hash at the time of insertion.
     """
+    address: str = args.address
+    ref: str | None = args.ref
+    as_json: bool = args.as_json
+
     root = require_repo()
     events = build_lineage(root, address)
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "address": address,
                 "events": [e.to_dict() for e in events],
@@ -352,11 +365,11 @@ def lineage(
         ))
         return
 
-    typer.echo(f"\nLineage: {address}")
-    typer.echo("─" * 62)
+    print(f"\nLineage: {address}")
+    print("─" * 62)
 
     if not events:
-        typer.echo(
+        print(
             "\n  (no events found — address may not exist in this repository's history)"
         )
         return
@@ -367,11 +380,11 @@ def lineage(
         label: str = ev.kind
         if ev.detail:
             label = f"{ev.kind}  {ev.detail}"
-        typer.echo(f"  {date}  {short}  {label}")
+        print(f"  {date}  {short}  {label}")
 
-    typer.echo()
+    print()
     first = events[0].committed_at[:10]
     last = events[-1].committed_at[:10]
-    typer.echo(
+    print(
         f"  {len(events)} event(s) — first seen {first} · last seen {last}"
     )

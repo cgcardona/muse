@@ -29,11 +29,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -41,8 +41,6 @@ from muse.core.store import read_current_branch, resolve_commit_ref
 from muse.plugins.code._query import file_pairs, touched_files, walk_commits_range
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -53,24 +51,37 @@ def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-@app.callback(invoke_without_command=True)
-def coupling(
-    ctx: typer.Context,
-    top: int = typer.Option(20, "--top", "-n", metavar="N", help="Number of pairs to show (default: 20)."),
-    from_ref: str | None = typer.Option(
-        None, "--from", metavar="REF",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the coupling subcommand."""
+    parser = subparsers.add_parser(
+        "coupling",
+        help="Find files that change together most often — hidden dependencies.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--top", "-n", type=int, default=20, metavar="N",
+        help="Number of pairs to show (default: 20).",
+    )
+    parser.add_argument(
+        "--from", default=None, metavar="REF", dest="from_ref",
         help="Exclusive start of the commit range (default: initial commit).",
-    ),
-    to_ref: str | None = typer.Option(
-        None, "--to", metavar="REF",
+    )
+    parser.add_argument(
+        "--to", default=None, metavar="REF", dest="to_ref",
         help="Inclusive end of the commit range (default: HEAD).",
-    ),
-    min_count: int = typer.Option(
-        2, "--min", metavar="N",
+    )
+    parser.add_argument(
+        "--min", type=int, default=2, metavar="N", dest="min_count",
         help="Minimum co-change count to include in results (default: 2).",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit results as JSON.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Find files that change together most often — hidden dependencies.
 
     ``muse coupling`` identifies semantic co-change: file pairs that had
@@ -85,21 +96,27 @@ def coupling(
     Use ``--from`` / ``--to`` to scope the analysis to a sprint or release.
     Use ``--min`` to raise the minimum co-change threshold.
     """
+    top: int = args.top
+    from_ref: str | None = args.from_ref
+    to_ref: str | None = args.to_ref
+    min_count: int = args.min_count
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     to_commit = resolve_commit_ref(root, repo_id, branch, to_ref)
     if to_commit is None:
-        typer.echo(f"❌ Commit '{to_ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{to_ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     from_commit_id: str | None = None
     if from_ref is not None:
         from_commit = resolve_commit_ref(root, repo_id, branch, from_ref)
         if from_commit is None:
-            typer.echo(f"❌ Commit '{from_ref}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Commit '{from_ref}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         from_commit_id = from_commit.commit_id
 
     commits = walk_commits_range(root, to_commit.commit_id, from_commit_id)
@@ -119,7 +136,7 @@ def coupling(
     ranked = sorted(filtered.items(), key=lambda kv: kv[1], reverse=True)[:top]
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "commits_analysed": len(commits),
                 "pairs": [{"file_a": a, "file_b": b, "co_changes": c} for (a, b), c in ranked],
@@ -128,12 +145,12 @@ def coupling(
         ))
         return
 
-    typer.echo(f"\nFile co-change analysis — top {len(ranked)} most coupled pairs")
-    typer.echo(f"Commits analysed: {len(commits)}")
-    typer.echo("")
+    print(f"\nFile co-change analysis — top {len(ranked)} most coupled pairs")
+    print(f"Commits analysed: {len(commits)}")
+    print("")
 
     if not ranked:
-        typer.echo(f"  (no file pairs co-changed {min_count}+ times)")
+        print(f"  (no file pairs co-changed {min_count}+ times)")
         return
 
     width = len(str(len(ranked)))
@@ -141,10 +158,10 @@ def coupling(
     max_a = max(len(a) for (a, _), _ in ranked)
     for rank, ((a, b), count) in enumerate(ranked, 1):
         label = "commit" if count == 1 else "commits"
-        typer.echo(
+        print(
             f"  {rank:>{width}}   {a:<{max_a}}  ↔  {b:<50}  "
             f"co-changed in {count:>3} {label}"
         )
 
-    typer.echo("")
-    typer.echo("High coupling = hidden dependency. Consider extracting a shared interface.")
+    print("")
+    print("High coupling = hidden dependency. Consider extracting a shared interface.")

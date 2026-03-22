@@ -48,11 +48,12 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
+import fnmatch
 import json
 import logging
+import sys
 from typing import TypedDict
-
-import typer
 
 from muse.core.attributes import AttributeRule, load_attributes, resolve_strategy
 from muse.core.errors import ExitCode
@@ -60,8 +61,6 @@ from muse.core.repo import require_repo
 from muse.plugins.registry import read_domain
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _FORMAT_CHOICES = ("json", "text")
 
@@ -86,8 +85,6 @@ def _find_matching_rule(
     rules: list[AttributeRule], path: str, dimension: str
 ) -> AttributeRule | None:
     """Return the first rule that matches *path* and *dimension*, or ``None``."""
-    import fnmatch
-
     for rule in rules:
         path_match = fnmatch.fnmatch(path, rule.path_pattern)
         dim_match = (
@@ -111,51 +108,64 @@ def _rule_to_dict(rule: AttributeRule) -> _RuleDict:
     }
 
 
-@app.callback(invoke_without_command=True)
-def check_attr(
-    ctx: typer.Context,
-    paths: list[str] = typer.Argument(..., help="Workspace-relative paths to check."),
-    dimension: str = typer.Option(
-        "*",
-        "--dimension",
-        "-d",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the check-attr subcommand."""
+    parser = subparsers.add_parser(
+        "check-attr",
+        help="Query merge-strategy attributes for workspace paths.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "paths",
+        nargs="+",
+        help="Workspace-relative paths to check.",
+    )
+    parser.add_argument(
+        "--dimension", "-d",
+        default="*",
+        dest="dimension",
+        metavar="DIMENSION",
         help="Domain dimension to query (e.g. 'notes', 'pitch_bend'). "
-        "Use '*' to match any dimension.",
-    ),
-    fmt: str = typer.Option(
-        "json", "--format", "-f", help="Output format: json or text."
-    ),
-    all_rules: bool = typer.Option(
-        False,
-        "--all-rules",
-        "-A",
+             "Use '*' to match any dimension. (default: *)",
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
+        help="Output format: json or text. (default: json)",
+    )
+    parser.add_argument(
+        "--all-rules", "-A",
+        action="store_true",
+        dest="all_rules",
         help="For each path, list all matching rules (not just the first).",
-    ),
-) -> None:
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Query merge-strategy attributes for one or more paths.
 
     Reads ``.museattributes`` from the repository root and reports the
     strategy that would be applied to each path for the given dimension.
-    Domain context is read automatically from ``.muse/repo.json``.
-
-    Paths should be workspace-relative POSIX paths.  Use ``--dimension`` to
-    narrow the query to a specific domain axis (e.g. ``notes``, ``pitch_bend``,
-    ``symbols``); the default ``*`` matches any dimension.
-
-    Use ``--all-rules`` to see every rule that would apply to a path (in
-    priority order), not just the first-match winner.
     """
+    fmt: str = args.fmt
+    paths: list[str] = args.paths
+    dimension: str = args.dimension
+    all_rules: bool = args.all_rules
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             json.dumps(
                 {"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"}
             )
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if not paths:
-        typer.echo(json.dumps({"error": "At least one path argument is required."}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": "At least one path argument is required."}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     domain = read_domain(root)
@@ -163,13 +173,11 @@ def check_attr(
     try:
         rules = load_attributes(root, domain=domain)
     except ValueError as exc:
-        typer.echo(json.dumps({"error": str(exc)}))
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(json.dumps({"error": str(exc)}))
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     if all_rules:
         # Return every matching rule per path.
-        import fnmatch
-
         per_path: dict[str, list[_RuleDict]] = {}
         for path in paths:
             matching: list[_RuleDict] = []
@@ -187,17 +195,17 @@ def check_attr(
         if fmt == "text":
             for path, matched_rules in per_path.items():
                 if not matched_rules:
-                    typer.echo(f"{path}  (no matching rules)")
+                    print(f"{path}  (no matching rules)")
                 else:
                     for rd in matched_rules:
-                        typer.echo(
+                        print(
                             f"{path}  dimension={rd['dimension']}  "
                             f"strategy={rd['strategy']}  (rule {rd['source_index']}: "
                             f"{rd['path_pattern']})"
                         )
             return
 
-        typer.echo(
+        print(
             json.dumps(
                 {
                     "domain": domain,
@@ -233,13 +241,13 @@ def check_attr(
                 rule_info = f"(rule {rule_entry['source_index']}: {rule_entry['path_pattern']})"
             else:
                 rule_info = "(no matching rule)"
-            typer.echo(
+            print(
                 f"{res['path']}  dimension={res['dimension']}  "
                 f"strategy={res['strategy']}  {rule_info}"
             )
         return
 
-    typer.echo(
+    print(
         json.dumps(
             {
                 "domain": domain,

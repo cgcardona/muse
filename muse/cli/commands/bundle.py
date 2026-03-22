@@ -27,14 +27,13 @@ Exit codes::
 
 from __future__ import annotations
 
+import argparse
 import base64
 import hashlib
 import json
 import logging
 import pathlib
-from typing import Annotated
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.object_store import has_object, write_object
@@ -52,11 +51,6 @@ from muse.core.store import (
 from muse.core.validation import sanitize_display, validate_branch_name
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer(
-    help="Pack and unpack commits into a single portable bundle file.",
-    no_args_is_help=True,
-)
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -81,8 +75,8 @@ def _resolve_refs(
             if rec:
                 ids.append(rec.commit_id)
             else:
-                typer.echo(f"❌ Ref '{sanitize_display(ref)}' not found.", err=True)
-                raise typer.Exit(code=ExitCode.USER_ERROR)
+                print(f"❌ Ref '{sanitize_display(ref)}' not found.", file=sys.stderr)
+                raise SystemExit(ExitCode.USER_ERROR)
     return ids
 
 
@@ -91,15 +85,15 @@ def _load_bundle(file_path: pathlib.Path) -> PackBundle:
         raw = file_path.read_text(encoding="utf-8")
         parsed = json.loads(raw)
     except FileNotFoundError:
-        typer.echo(f"❌ Bundle file not found: {file_path}", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Bundle file not found: {file_path}", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     except json.JSONDecodeError as exc:
-        typer.echo(f"❌ Bundle is not valid JSON: {exc}", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Bundle is not valid JSON: {exc}", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if not isinstance(parsed, dict):
-        typer.echo("❌ Bundle has unexpected structure.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ Bundle has unexpected structure.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     bundle: PackBundle = {}
     if "commits" in parsed and isinstance(parsed["commits"], list):
@@ -114,63 +108,6 @@ def _load_bundle(file_path: pathlib.Path) -> PackBundle:
             if isinstance(k, str) and isinstance(v, str)
         }
     return bundle
-
-
-@app.command("create")
-def bundle_create(
-    file: Annotated[str, typer.Argument(help="Output bundle file path.")],
-    refs: Annotated[
-        list[str] | None,
-        typer.Argument(help="Refs to include (default: HEAD)."),
-    ] = None,
-    have: Annotated[
-        list[str] | None,
-        typer.Option("--have", "-H", help="Commits the receiver already has (exclude from bundle)."),
-    ] = None,
-) -> None:
-    """Create a bundle file containing commits reachable from <refs>.
-
-    ``--have`` prunes commits the receiver already has, reducing bundle size.
-    The output file is self-contained JSON — safe to copy, email, or sneak-net.
-
-    Examples::
-
-        muse bundle create repo.bundle             # HEAD → bundle
-        muse bundle create out.bundle feat/audio   # specific branch
-        muse bundle create out.bundle HEAD --have old-sha
-    """
-    root = require_repo()
-    repo_id = _read_repo_id(root)
-    branch = read_current_branch(root)
-
-    want_refs: list[str] = refs or ["HEAD"]
-    commit_ids = _resolve_refs(root, repo_id, branch, want_refs)
-
-    if not commit_ids:
-        typer.echo("❌ No commits to bundle.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
-
-    have_ids: list[str] = have or []
-
-    bundle = build_pack(root, commit_ids, have=have_ids)
-
-    # Add branch_heads for the resolved refs.
-    heads: dict[str, str] = {}
-    for br_name, cid in _iter_branches(root):
-        if cid in commit_ids or cid in _reachable_from(root, commit_ids):
-            heads[br_name] = cid
-    if heads:
-        bundle["branch_heads"] = heads
-
-    out_path = pathlib.Path(file)
-    out_path.write_text(json.dumps(bundle, indent=2), encoding="utf-8")
-
-    n_commits = len(bundle.get("commits", []))
-    n_objects = len(bundle.get("objects", []))
-    size_kb = out_path.stat().st_size / 1024
-    typer.echo(
-        f"✅ Bundle: {out_path}  ({n_commits} commits, {n_objects} objects, {size_kb:.1f} KiB)"
-    )
 
 
 def _iter_branches(root: pathlib.Path) -> list[tuple[str, str]]:
@@ -206,17 +143,109 @@ def _reachable_from(root: pathlib.Path, tip_ids: list[str]) -> set[str]:
     return seen
 
 
-@app.command("unbundle")
-def bundle_unbundle(
-    file: Annotated[str, typer.Argument(help="Bundle file to apply.")],
-    update_refs: Annotated[
-        bool,
-        typer.Option(
-            "--update-refs/--no-update-refs",
-            help="Update local branch refs from the bundle's branch_heads (default: on).",
-        ),
-    ] = True,
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the bundle subcommand."""
+    parser = subparsers.add_parser(
+        "bundle",
+        help="Pack and unpack commits into a single portable bundle file.",
+        description=__doc__,
+    )
+    subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
+    subs.required = True
+
+    # create
+    create_p = subs.add_parser("create", help="Create a bundle file containing commits reachable from <refs>.")
+    create_p.add_argument("file", help="Output bundle file path.")
+    create_p.add_argument("refs", nargs="*", default=None, help="Refs to include (default: HEAD).")
+    create_p.add_argument(
+        "--have", "-H", nargs="*", default=None, dest="have",
+        help="Commits the receiver already has (exclude from bundle).",
+    )
+    create_p.set_defaults(func=run_create)
+
+    # unbundle
+    unbundle_p = subs.add_parser("unbundle", help="Apply a bundle to the local store and optionally advance branch refs.")
+    unbundle_p.add_argument("file", help="Bundle file to apply.")
+    unbundle_p.add_argument(
+        "--no-update-refs", action="store_false", dest="update_refs",
+        help="Do not update local branch refs from the bundle's branch_heads.",
+    )
+    unbundle_p.set_defaults(func=run_unbundle, update_refs=True)
+
+    # verify
+    verify_p = subs.add_parser("verify", help="Verify the integrity of a bundle file.")
+    verify_p.add_argument("file", help="Bundle file to verify.")
+    verify_p.add_argument(
+        "--quiet", "-q", action="store_true", dest="quiet",
+        help="No output — exit 0 if clean, 1 on failure.",
+    )
+    verify_p.add_argument(
+        "--format", "-f", default="text", dest="fmt",
+        help="Output format: text or json.",
+    )
+    verify_p.set_defaults(func=run_verify)
+
+    # list-heads
+    list_heads_p = subs.add_parser("list-heads", help="List the branch heads recorded in a bundle file.")
+    list_heads_p.add_argument("file", help="Bundle file to inspect.")
+    list_heads_p.add_argument(
+        "--format", "-f", default="text", dest="fmt",
+        help="Output format: text or json.",
+    )
+    list_heads_p.set_defaults(func=run_list_heads)
+
+
+def run_create(args: argparse.Namespace) -> None:
+    """Create a bundle file containing commits reachable from <refs>.
+
+    ``--have`` prunes commits the receiver already has, reducing bundle size.
+    The output file is self-contained JSON — safe to copy, email, or sneak-net.
+
+    Examples::
+
+        muse bundle create repo.bundle             # HEAD → bundle
+        muse bundle create out.bundle feat/audio   # specific branch
+        muse bundle create out.bundle HEAD --have old-sha
+    """
+    file: str = args.file
+    refs: list[str] | None = args.refs
+    have: list[str] | None = args.have
+
+    root = require_repo()
+    repo_id = _read_repo_id(root)
+    branch = read_current_branch(root)
+
+    want_refs: list[str] = refs or ["HEAD"]
+    commit_ids = _resolve_refs(root, repo_id, branch, want_refs)
+
+    if not commit_ids:
+        print("❌ No commits to bundle.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
+
+    have_ids: list[str] = have or []
+
+    bundle = build_pack(root, commit_ids, have=have_ids)
+
+    # Add branch_heads for the resolved refs.
+    heads: dict[str, str] = {}
+    for br_name, cid in _iter_branches(root):
+        if cid in commit_ids or cid in _reachable_from(root, commit_ids):
+            heads[br_name] = cid
+    if heads:
+        bundle["branch_heads"] = heads
+
+    out_path = pathlib.Path(file)
+    out_path.write_text(json.dumps(bundle, indent=2), encoding="utf-8")
+
+    n_commits = len(bundle.get("commits", []))
+    n_objects = len(bundle.get("objects", []))
+    size_kb = out_path.stat().st_size / 1024
+    print(
+        f"✅ Bundle: {out_path}  ({n_commits} commits, {n_objects} objects, {size_kb:.1f} KiB)"
+    )
+
+
+def run_unbundle(args: argparse.Namespace) -> None:
     """Apply a bundle to the local store and optionally advance branch refs.
 
     This is the key porcelain value-add over ``muse plumbing unpack-objects``:
@@ -228,12 +257,15 @@ def bundle_unbundle(
         muse bundle unbundle repo.bundle
         muse bundle unbundle repo.bundle --no-update-refs
     """
+    file: str = args.file
+    update_refs: bool = args.update_refs
+
     root = require_repo()
     bundle = _load_bundle(pathlib.Path(file))
 
     result = apply_pack(root, bundle)
 
-    typer.echo(
+    print(
         f"Unpacked {result['commits_written']} commit(s), "
         f"{result['snapshots_written']} snapshot(s), "
         f"{result['objects_written']} object(s)  "
@@ -258,23 +290,12 @@ def bundle_unbundle(
             updated.append(br)
 
         if updated:
-            typer.echo(f"Updated refs: {', '.join(sanitize_display(b) for b in updated)}")
+            print(f"Updated refs: {', '.join(sanitize_display(b) for b in updated)}")
 
-    typer.echo("✅ Bundle applied.")
+    print("✅ Bundle applied.")
 
 
-@app.command("verify")
-def bundle_verify(
-    file: Annotated[str, typer.Argument(help="Bundle file to verify.")],
-    quiet: Annotated[
-        bool,
-        typer.Option("--quiet", "-q", help="No output — exit 0 if clean, 1 on failure."),
-    ] = False,
-    fmt: Annotated[
-        str,
-        typer.Option("--format", "-f", help="Output format: text or json."),
-    ] = "text",
-) -> None:
+def run_verify(args: argparse.Namespace) -> None:
     """Verify the integrity of a bundle file.
 
     Checks that every object's SHA-256 matches its declared ``object_id``
@@ -286,9 +307,13 @@ def bundle_verify(
         muse bundle verify repo.bundle
         muse bundle verify repo.bundle --quiet && echo "clean"
     """
+    file: str = args.file
+    quiet: bool = args.quiet
+    fmt: str = args.fmt
+
     if fmt not in {"text", "json"}:
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     bundle = _load_bundle(pathlib.Path(file))
 
@@ -329,34 +354,27 @@ def bundle_verify(
     all_ok = len(failures) == 0
 
     if quiet:
-        raise typer.Exit(code=0 if all_ok else ExitCode.USER_ERROR)
+        raise SystemExit(0 if all_ok else ExitCode.USER_ERROR)
 
     if fmt == "json":
-        typer.echo(json.dumps({
+        print(json.dumps({
             "objects_checked": objects_checked,
             "all_ok": all_ok,
             "failures": failures,
         }, indent=2))
     else:
-        typer.echo(f"Objects checked: {objects_checked}")
+        print(f"Objects checked: {objects_checked}")
         if all_ok:
-            typer.echo("✅ Bundle is clean.")
+            print("✅ Bundle is clean.")
         else:
-            typer.echo(f"❌ {len(failures)} failure(s):")
+            print(f"❌ {len(failures)} failure(s):")
             for f in failures:
-                typer.echo(f"  {f}")
+                print(f"  {f}")
 
-    raise typer.Exit(code=0 if all_ok else ExitCode.USER_ERROR)
+    raise SystemExit(0 if all_ok else ExitCode.USER_ERROR)
 
 
-@app.command("list-heads")
-def bundle_list_heads(
-    file: Annotated[str, typer.Argument(help="Bundle file to inspect.")],
-    fmt: Annotated[
-        str,
-        typer.Option("--format", "-f", help="Output format: text or json."),
-    ] = "text",
-) -> None:
+def run_list_heads(args: argparse.Namespace) -> None:
     """List the branch heads recorded in a bundle file.
 
     Examples::
@@ -364,18 +382,21 @@ def bundle_list_heads(
         muse bundle list-heads repo.bundle
         muse bundle list-heads repo.bundle --format json
     """
+    file: str = args.file
+    fmt: str = args.fmt
+
     if fmt not in {"text", "json"}:
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     bundle = _load_bundle(pathlib.Path(file))
     heads: dict[str, str] = bundle.get("branch_heads") or {}
 
     if fmt == "json":
-        typer.echo(json.dumps(heads, indent=2))
+        print(json.dumps(heads, indent=2))
     else:
         if not heads:
-            typer.echo("No branch heads in bundle.")
+            print("No branch heads in bundle.")
             return
         for branch, cid in sorted(heads.items()):
-            typer.echo(f"{cid[:12]}  {sanitize_display(branch)}")
+            print(f"{cid[:12]}  {sanitize_display(branch)}")

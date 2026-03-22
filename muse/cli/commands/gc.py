@@ -19,17 +19,15 @@ Exit codes::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
-from typing import Annotated
-
-import typer
+import sys
 
 from muse.core.gc import run_gc
 from muse.core.repo import require_repo
 
 logger = logging.getLogger(__name__)
-app = typer.Typer(help="Remove unreachable objects from the object store.")
 
 
 def _fmt_bytes(n: int) -> str:
@@ -41,21 +39,23 @@ def _fmt_bytes(n: int) -> str:
     return f"{n / (1024 * 1024):.1f} MiB"
 
 
-@app.callback(invoke_without_command=True)
-def gc(
-    dry_run: Annotated[
-        bool,
-        typer.Option("--dry-run", "-n", help="Show what would be removed without removing anything."),
-    ] = False,
-    verbose: Annotated[
-        bool,
-        typer.Option("--verbose", "-v", help="Print each collected object ID."),
-    ] = False,
-    fmt: Annotated[
-        str,
-        typer.Option("--format", "-f", help="Output format: text or json."),
-    ] = "text",
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the gc subcommand."""
+    parser = subparsers.add_parser(
+        "gc",
+        help="Remove unreachable objects from the Muse object store.",
+        description=__doc__,
+    )
+    parser.add_argument("--dry-run", "-n", action="store_true",
+                        help="Show what would be removed, touch nothing.")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="Print each removed object ID.")
+    parser.add_argument("--format", "-f", default="text", dest="fmt",
+                        help="Output format: text or json.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Remove unreachable objects from the Muse object store.
 
     Muse stores every tracked file as a content-addressed blob.  Blobs that are
@@ -75,16 +75,20 @@ def gc(
         muse gc --verbose     # show every removed object
         muse gc --format json # machine-readable
     """
+    dry_run: bool = args.dry_run
+    verbose: bool = args.verbose
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
         from muse.core.validation import sanitize_display
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=1)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(1)
 
     repo_root = require_repo()
     result = run_gc(repo_root, dry_run=dry_run)
 
     if fmt == "json":
-        typer.echo(json.dumps({
+        print(json.dumps({
             "collected_count": result.collected_count,
             "collected_bytes": result.collected_bytes,
             "reachable_count": result.reachable_count,
@@ -97,12 +101,12 @@ def gc(
     prefix = "[dry-run] " if dry_run else ""
 
     if verbose and result.collected_ids:
-        typer.echo(f"{prefix}Unreachable objects:")
+        print(f"{prefix}Unreachable objects:")
         for oid in sorted(result.collected_ids):
-            typer.echo(f"  {oid}")
+            print(f"  {oid}")
 
     action = "Would remove" if dry_run else "Removed"
-    typer.echo(
+    print(
         f"{prefix}{action} {result.collected_count} object(s) "
         f"({_fmt_bytes(result.collected_bytes)}) "
         f"in {result.elapsed_seconds:.3f}s  "

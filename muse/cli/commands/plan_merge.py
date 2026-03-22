@@ -62,11 +62,11 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse._version import __version__
 from muse.core.errors import ExitCode
@@ -76,8 +76,6 @@ from muse.plugins.code._query import symbols_for_snapshot
 from muse.plugins.code.ast_parser import SymbolRecord
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -176,13 +174,20 @@ def _classify_conflict(
     return _MergeItem(addr, "no_conflict", "no change", "no change", "auto-merge")
 
 
-@app.callback(invoke_without_command=True)
-def plan_merge(
-    ctx: typer.Context,
-    ours_ref: str = typer.Argument(..., metavar="OURS", help="Our commit/branch."),
-    theirs_ref: str = typer.Argument(..., metavar="THEIRS", help="Their commit/branch."),
-    as_json: bool = typer.Option(False, "--json", help="Emit the full plan as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the plan-merge subcommand."""
+    parser = subparsers.add_parser(
+        "plan-merge",
+        help="Dry-run semantic merge planning between two commits.",
+        description=__doc__,
+    )
+    parser.add_argument("ours_ref", metavar="OURS", help="Our commit/branch.")
+    parser.add_argument("theirs_ref", metavar="THEIRS", help="Their commit/branch.")
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit the full plan as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Dry-run semantic merge planning between two commits.
 
     Compares the symbol graphs of two commits — no base required — and
@@ -195,19 +200,23 @@ def plan_merge(
 
     Does not modify any files or the repository.
     """
+    ours_ref: str = args.ours_ref
+    theirs_ref: str = args.theirs_ref
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     ours_commit = resolve_commit_ref(root, repo_id, branch, ours_ref)
     if ours_commit is None:
-        typer.echo(f"❌ Ref '{ours_ref}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Ref '{ours_ref}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     theirs_commit = resolve_commit_ref(root, repo_id, branch, theirs_ref)
     if theirs_commit is None:
-        typer.echo(f"❌ Ref '{theirs_ref}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Ref '{theirs_ref}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     ours_manifest = get_commit_snapshot_manifest(root, ours_commit.commit_id) or {}
     theirs_manifest = get_commit_snapshot_manifest(root, theirs_commit.commit_id) or {}
@@ -237,7 +246,7 @@ def plan_merge(
     clean = [i for i in items if i.conflict_type == "no_conflict"]
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "schema_version": __version__,
                 "ours": ours_commit.commit_id[:8],
@@ -251,20 +260,20 @@ def plan_merge(
         ))
         return
 
-    typer.echo(
+    print(
         f"\nSemantic merge plan — {ours_commit.commit_id[:8]}  ← (merging)  {theirs_commit.commit_id[:8]}"
     )
-    typer.echo("─" * 62)
+    print("─" * 62)
 
     if not conflicts:
-        typer.echo(f"\n  ✅ No conflicts detected ({len(clean)} symbol(s) auto-merge safely)")
+        print(f"\n  ✅ No conflicts detected ({len(clean)} symbol(s) auto-merge safely)")
         return
 
     for item in conflicts:
         icon = "🔴" if "overlap" in item.conflict_type else "⚠️ "
-        typer.echo(f"\n{icon}  {item.conflict_type:<24}  {item.address}")
-        typer.echo(f"    ours:   {item.ours_change}")
-        typer.echo(f"    theirs: {item.theirs_change}")
-        typer.echo(f"    → {item.recommendation}")
+        print(f"\n{icon}  {item.conflict_type:<24}  {item.address}")
+        print(f"    ours:   {item.ours_change}")
+        print(f"    theirs: {item.theirs_change}")
+        print(f"    → {item.recommendation}")
 
-    typer.echo(f"\n  Summary: {len(conflicts)} conflict(s), {len(clean)} clean")
+    print(f"\n  Summary: {len(conflicts)} conflict(s), {len(clean)} clean")

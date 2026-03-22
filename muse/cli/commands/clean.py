@@ -22,12 +22,11 @@ Exit codes::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-from typing import Annotated
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.ignore import load_ignore_config, resolve_patterns
@@ -38,8 +37,6 @@ from muse.core.validation import sanitize_display
 from muse.plugins.registry import read_domain
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer(help="Remove untracked files from the working tree.")
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -58,25 +55,25 @@ def _is_ignored(path: str, patterns: list[str]) -> bool:
     return result
 
 
-@app.callback(invoke_without_command=True)
-def clean(
-    dry_run: Annotated[
-        bool,
-        typer.Option("--dry-run", "-n", help="Show what would be removed without removing anything."),
-    ] = False,
-    force: Annotated[
-        bool,
-        typer.Option("--force", "-f", help="Required flag to actually delete files (safety guard)."),
-    ] = False,
-    include_ignored: Annotated[
-        bool,
-        typer.Option("--include-ignored", "-x", help="Also remove files excluded by .museignore."),
-    ] = False,
-    directories: Annotated[
-        bool,
-        typer.Option("--directories", "-d", help="Also remove untracked empty directories."),
-    ] = False,
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the clean subcommand."""
+    parser = subparsers.add_parser(
+        "clean",
+        help="Remove untracked files from the working tree.",
+        description=__doc__,
+    )
+    parser.add_argument("-n", "--dry-run", action="store_true", dest="dry_run",
+                        help="Preview — show what would be removed.")
+    parser.add_argument("-f", "--force", action="store_true",
+                        help="Delete untracked files.")
+    parser.add_argument("-x", "--include-ignored", action="store_true", dest="include_ignored",
+                        help="Also delete .museignore-excluded files.")
+    parser.add_argument("-d", "--directories", action="store_true",
+                        help="Also delete untracked directories.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Remove untracked files from the working tree.
 
     Files not tracked in the HEAD snapshot are considered untracked.
@@ -92,13 +89,18 @@ def clean(
         muse clean -f          # delete untracked files
         muse clean -f -d -x    # delete untracked + empty dirs + ignored files
     """
+    dry_run: bool = args.dry_run
+    force: bool = args.force
+    include_ignored: bool = args.include_ignored
+    directories: bool = args.directories
+
     if not force and not dry_run:
-        typer.echo(
+        print(
             "⚠️  fatal: clean.requireForce is set to true.\n"
             "    Use --force to remove files, or --dry-run to preview.",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     repo_id = _read_repo_id(root)
@@ -138,7 +140,7 @@ def clean(
         untracked.append(rel_path)
 
     if not untracked:
-        typer.echo("Nothing to clean.")
+        print("Nothing to clean.")
         return
 
     prefix = "[dry-run] " if dry_run else ""
@@ -146,7 +148,7 @@ def clean(
 
     removed_dirs: set[pathlib.Path] = set()
     for rel_path in untracked:
-        typer.echo(f"{prefix}{verb}: {sanitize_display(rel_path)}")
+        print(f"{prefix}{verb}: {sanitize_display(rel_path)}")
         if not dry_run:
             target = root / rel_path
             try:
@@ -155,8 +157,8 @@ def clean(
                     parent = target.parent
                     removed_dirs.add(parent)
             except OSError as exc:
-                typer.echo(f"❌ Could not remove {sanitize_display(rel_path)}: {exc}", err=True)
-                raise typer.Exit(code=ExitCode.INTERNAL_ERROR) from exc
+                print(f"❌ Could not remove {sanitize_display(rel_path)}: {exc}", file=sys.stderr)
+                raise SystemExit(ExitCode.INTERNAL_ERROR) from exc
 
     # Remove empty directories (bottom-up).
     if not dry_run and directories:
@@ -167,12 +169,12 @@ def clean(
                 # Only remove if truly empty.
                 if d.is_dir() and not any(d.iterdir()):
                     d.rmdir()
-                    typer.echo(f"Removing directory: {sanitize_display(str(d.relative_to(root)))}")
+                    print(f"Removing directory: {sanitize_display(str(d.relative_to(root)))}")
             except OSError:
                 pass
 
     count = len(untracked)
     if dry_run:
-        typer.echo(f"\n{count} untracked file(s) would be removed.")
+        print(f"\n{count} untracked file(s) would be removed.")
     else:
-        typer.echo(f"\n✅ Removed {count} untracked file(s).")
+        print(f"\n✅ Removed {count} untracked file(s).")

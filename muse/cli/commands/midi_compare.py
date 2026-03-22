@@ -30,11 +30,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -48,7 +48,6 @@ from muse.plugins.midi._query import (
 )
 
 logger = logging.getLogger(__name__)
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -70,26 +69,26 @@ def _load(
 ) -> tuple[list[NoteInfo], int, str]:
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{ref}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     result = load_track(root, commit.commit_id, track)
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found in commit '{ref}'.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found in commit '{ref}'.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     return result[0], result[1], commit.commit_id[:8]
 
 
-@app.callback(invoke_without_command=True)
-def compare(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    ref_a: str = typer.Argument(..., metavar="REF_A", help="First commit reference (older)."),
-    ref_b: str | None = typer.Argument(
-        None, metavar="REF_B",
-        help="Second commit reference. Omit to compare REF_A against the working tree.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the compare subcommand."""
+    parser = subparsers.add_parser("compare", help="Compare two MIDI snapshots across musical dimensions.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("ref_a", metavar="REF_A", help="First commit reference (older).")
+    parser.add_argument("ref_b", nargs="?", metavar="REF_B", default=None, help="Second commit reference. Omit to compare REF_A against the working tree.")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Compare two MIDI snapshots across musical dimensions.
 
     ``muse compare`` goes beyond raw note diffs — it shows how key, density,
@@ -98,6 +97,11 @@ def compare(
     For agents: use this after a merge to verify that the merged result
     preserves the intended musical character of both parent branches.
     """
+    track: str = args.track
+    ref_a: str = args.ref_a
+    ref_b: str | None = args.ref_b
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
@@ -109,8 +113,8 @@ def compare(
     else:
         raw_b = load_track_from_workdir(root, track)
         if raw_b is None:
-            typer.echo(f"❌ Track '{track}' not found in working tree.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Track '{track}' not found in working tree.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         notes_b, _tpb_b = raw_b
         label_b = "working tree"
 
@@ -124,20 +128,20 @@ def compare(
     key_b = key_signature_guess(notes_b)
 
     if as_json:
-        typer.echo(json.dumps({
+        print(json.dumps({
             "track": track,
             "a": {"ref": ref_a, "sha": label_a, "rhythm": rh_a, "key": key_a, "density_avg": round(avg_dens_a, 2)},
             "b": {"ref": ref_b or "working tree", "sha": label_b, "rhythm": rh_b, "key": key_b, "density_avg": round(avg_dens_b, 2)},
         }, indent=2))
         return
 
-    typer.echo(f"\nSemantic comparison: {track}")
-    typer.echo(f"A: {ref_a} ({label_a})   B: {ref_b or 'working tree'} ({label_b})\n")
-    typer.echo(f"  {'Dimension':<22}  {'A':>16}  {'B':>16}  {'Δ':<30}")
-    typer.echo("  " + "─" * 90)
+    print(f"\nSemantic comparison: {track}")
+    print(f"A: {ref_a} ({label_a})   B: {ref_b or 'working tree'} ({label_b})\n")
+    print(f"  {'Dimension':<22}  {'A':>16}  {'B':>16}  {'Δ':<30}")
+    print("  " + "─" * 90)
 
     def row(dim: str, va: str, vb: str, delta: str) -> None:
-        typer.echo(f"  {dim:<22}  {va:>16}  {vb:>16}  {delta:<30}")
+        print(f"  {dim:<22}  {va:>16}  {vb:>16}  {delta:<30}")
 
     row("Notes", str(rh_a["total_notes"]), str(rh_b["total_notes"]),
         f"{rh_b['total_notes'] - rh_a['total_notes']:+d}")

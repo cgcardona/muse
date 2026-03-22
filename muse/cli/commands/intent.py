@@ -44,10 +44,10 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
-
-import typer
+import sys
 
 from muse.core.coordination import create_intent
 from muse.core.errors import ExitCode
@@ -56,38 +56,56 @@ from muse.core.store import read_current_branch
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
 _VALID_OPS = frozenset({
     "rename", "move", "modify", "extract", "delete", "inline", "split", "merge",
 })
 
 
-@app.callback(invoke_without_command=True)
-def intent(
-    ctx: typer.Context,
-    addresses: list[str] = typer.Argument(
-        ..., metavar="ADDRESS...",
-        help='Symbol addresses this intent applies to.',
-    ),
-    operation: str = typer.Option(
-        ..., "--op", metavar="OPERATION",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the intent subcommand."""
+    parser = subparsers.add_parser(
+        "intent",
+        help="Declare a specific operation before executing it.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "addresses",
+        nargs="+",
+        metavar="ADDRESS",
+        help="Symbol addresses this intent applies to.",
+    )
+    parser.add_argument(
+        "--op",
+        dest="operation",
+        required=True,
+        metavar="OPERATION",
         help="Operation to declare: rename, move, modify, extract, delete, inline, split, merge.",
-    ),
-    detail: str = typer.Option(
-        "", "--detail", metavar="TEXT",
+    )
+    parser.add_argument(
+        "--detail",
+        default="",
+        metavar="TEXT",
         help="Human-readable description of the intended change.",
-    ),
-    reservation_id: str = typer.Option(
-        "", "--reservation-id", metavar="UUID",
+    )
+    parser.add_argument(
+        "--reservation-id",
+        dest="reservation_id",
+        default="",
+        metavar="UUID",
         help="Link to an existing reservation.",
-    ),
-    run_id: str = typer.Option(
-        "unknown", "--run-id", metavar="ID",
+    )
+    parser.add_argument(
+        "--run-id",
+        dest="run_id",
+        default="unknown",
+        metavar="ID",
         help="Agent identifier (used when --reservation-id is not provided).",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit intent details as JSON."),
-) -> None:
+    )
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit intent details as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Declare a specific operation before executing it.
 
     ``muse intent`` extends a reservation with operational detail.  The
@@ -97,15 +115,22 @@ def intent(
     Intents are write-once records stored under ``.muse/coordination/intents/``.
     They are purely advisory and never affect VCS correctness.
     """
+    addresses: list[str] = args.addresses
+    operation: str = args.operation
+    detail: str = args.detail
+    reservation_id: str = args.reservation_id
+    run_id: str = args.run_id
+    as_json: bool = args.as_json
+
     root = require_repo()
 
     if operation not in _VALID_OPS:
-        typer.echo(
+        print(
             f"❌ Unknown operation '{operation}'. "
             f"Valid: {', '.join(sorted(_VALID_OPS))}",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     branch = read_current_branch(root)
 
@@ -120,10 +145,10 @@ def intent(
     )
 
     if as_json:
-        typer.echo(json.dumps(intent_record.to_dict(), indent=2))
+        print(json.dumps(intent_record.to_dict(), indent=2))
         return
 
-    typer.echo(
+    print(
         f"\n✅ Intent recorded\n"
         f"   Intent ID:      {intent_record.intent_id}\n"
         f"   Operation:      {operation}\n"
@@ -131,7 +156,7 @@ def intent(
         f"   Run ID:         {intent_record.run_id}"
     )
     if detail:
-        typer.echo(f"   Detail:         {detail}")
+        print(f"   Detail:         {detail}")
     if reservation_id:
-        typer.echo(f"   Reservation:    {reservation_id}")
-    typer.echo("\nRun 'muse forecast' to check for predicted conflicts.")
+        print(f"   Reservation:    {reservation_id}")
+    print("\nRun 'muse forecast' to check for predicted conflicts.")

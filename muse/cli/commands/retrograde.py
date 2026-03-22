@@ -19,10 +19,10 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.validation import contain_path
@@ -31,15 +31,17 @@ from muse.plugins.midi._query import NoteInfo, load_track_from_workdir, notes_to
 from muse.plugins.midi.midi_diff import _pitch_name
 
 logger = logging.getLogger(__name__)
-app = typer.Typer()
 
 
-@app.callback(invoke_without_command=True)
-def retrograde(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Preview without writing."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the retrograde subcommand."""
+    parser = subparsers.add_parser("retrograde", help="Reverse the pitch order of all notes (retrograde transformation).", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--dry-run", "-n", action="store_true", help="Preview without writing.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Reverse the pitch order of all notes (retrograde transformation).
 
     ``muse retrograde`` maps note positions: the note that was at tick T from
@@ -49,15 +51,18 @@ def retrograde(
     This is a foundational operation in serial/twelve-tone composition and is
     impossible to describe meaningfully in Git's binary-blob model.
     """
+    track: str = args.track
+    dry_run: bool = args.dry_run
+
     root = require_repo()
     result = load_track_from_workdir(root, track)
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     notes, tpb = result
     if not notes:
-        typer.echo(f"  (track '{track}' contains no notes — nothing to retrograde)")
+        print(f"  (track '{track}' contains no notes — nothing to retrograde)")
         return
 
     # Sort by start time to get the temporal order, then reverse pitches.
@@ -82,12 +87,12 @@ def retrograde(
     first_retro = _pitch_name(retro[0].pitch)
 
     if dry_run:
-        typer.echo(f"\n[dry-run] Would retrograde {track}")
-        typer.echo(f"  Notes:   {len(notes)}")
-        typer.echo(f"  Was:     first note = {first_orig}")
-        typer.echo(f"  Would:   first note = {first_retro}")
-        typer.echo(f"  Span:    {span_beats:.2f} beats (unchanged)")
-        typer.echo("  No changes written (--dry-run).")
+        print(f"\n[dry-run] Would retrograde {track}")
+        print(f"  Notes:   {len(notes)}")
+        print(f"  Was:     first note = {first_orig}")
+        print(f"  Would:   first note = {first_retro}")
+        print(f"  Span:    {span_beats:.2f} beats (unchanged)")
+        print("  No changes written (--dry-run).")
         return
 
     midi_bytes = notes_to_midi_bytes(retro, tpb)
@@ -95,12 +100,12 @@ def retrograde(
     try:
         work_path = contain_path(workdir, track)
     except ValueError as exc:
-        typer.echo(f"❌ Invalid track path: {exc}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Invalid track path: {exc}")
+        raise SystemExit(ExitCode.USER_ERROR)
     work_path.parent.mkdir(parents=True, exist_ok=True)
     work_path.write_bytes(midi_bytes)
 
-    typer.echo(f"\n✅ Retrograded {track}")
-    typer.echo(f"   {len(retro)} notes reversed  ({first_orig} → was last, now first)")
-    typer.echo(f"   Duration preserved  ·  original span: {span_beats:.2f} beats")
-    typer.echo("   Run `muse status` to review, then `muse commit`")
+    print(f"\n✅ Retrograded {track}")
+    print(f"   {len(retro)} notes reversed  ({first_orig} → was last, now first)")
+    print(f"   Duration preserved  ·  original span: {span_beats:.2f} beats")
+    print("   Run `muse status` to review, then `muse commit`")

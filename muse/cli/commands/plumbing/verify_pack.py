@@ -54,14 +54,14 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
 import base64
 import hashlib
 import json
 import logging
+import pathlib
 import sys
 from typing import TypedDict
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.object_store import has_object
@@ -69,8 +69,6 @@ from muse.core.repo import require_repo
 from muse.core.store import read_snapshot
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _FORMAT_CHOICES = ("json", "text")
 _CHUNK = 65536  # 64 KiB for streaming hash
@@ -90,32 +88,42 @@ class _VerifyPackResult(TypedDict):
     failures: list[_Failure]
 
 
-@app.callback(invoke_without_command=True)
-def verify_pack(
-    ctx: typer.Context,
-    bundle_file: str = typer.Option(
-        "",
-        "--file",
-        "-i",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the verify-pack subcommand."""
+    parser = subparsers.add_parser(
+        "verify-pack",
+        help="Verify the integrity of a PackBundle JSON.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--file", "-i",
+        default="",
+        dest="bundle_file",
+        metavar="PATH",
         help="Path to a PackBundle JSON file. Reads from stdin when omitted.",
-    ),
-    quiet: bool = typer.Option(
-        False,
-        "--quiet",
-        "-q",
+    )
+    parser.add_argument(
+        "--quiet", "-q",
+        action="store_true",
         help="No output. Exit 0 if all checks pass, exit 1 otherwise.",
-    ),
-    skip_local_check: bool = typer.Option(
-        False,
-        "--no-local",
-        "-L",
-        help="Skip checking the local store for missing snapshot/commit refs. "
-        "Useful when verifying a bundle in isolation.",
-    ),
-    fmt: str = typer.Option(
-        "json", "--format", "-f", help="Output format: json or text."
-    ),
-) -> None:
+    )
+    parser.add_argument(
+        "--no-local", "-L",
+        action="store_true",
+        dest="skip_local_check",
+        help="Skip checking the local store for missing snapshot/commit refs.",
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
+        help="Output format: json or text. (default: json)",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Verify the integrity of a PackBundle.
 
     Reads a PackBundle JSON from stdin or ``--file`` and checks:
@@ -124,17 +132,19 @@ def verify_pack(
     - Every snapshot's manifest references objects present in the bundle or
       the local store.
     - Every commit's snapshot ID is present in the bundle or the local store.
-
-    Use this before sending a bundle to a remote or after receiving one to
-    confirm it was not corrupted in transit.
     """
+    fmt: str = args.fmt
+    bundle_file: str = args.bundle_file
+    quiet: bool = args.quiet
+    skip_local_check: bool = args.skip_local_check
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             json.dumps(
                 {"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"}
             )
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Read input.
     if bundle_file:
@@ -142,27 +152,27 @@ def verify_pack(
             with open(bundle_file, encoding="utf-8") as fh:
                 raw = fh.read()
         except OSError as exc:
-            typer.echo(json.dumps({"error": f"Cannot read file: {exc}"}))
-            raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+            print(json.dumps({"error": f"Cannot read file: {exc}"}))
+            raise SystemExit(ExitCode.INTERNAL_ERROR)
     else:
         try:
             raw = sys.stdin.read()
         except OSError as exc:
-            typer.echo(json.dumps({"error": f"Cannot read stdin: {exc}"}))
-            raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+            print(json.dumps({"error": f"Cannot read stdin: {exc}"}))
+            raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     try:
         bundle = json.loads(raw)
     except json.JSONDecodeError as exc:
-        typer.echo(json.dumps({"error": f"Invalid JSON: {exc}"}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": f"Invalid JSON: {exc}"}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if not isinstance(bundle, dict):
-        typer.echo(json.dumps({"error": "PackBundle must be a JSON object."}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": "PackBundle must be a JSON object."}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # We need the repo root for local-store checks (optional).
-    root = require_repo() if not skip_local_check else None
+    root: pathlib.Path | None = require_repo() if not skip_local_check else None
 
     failures: list[_Failure] = []
 
@@ -172,8 +182,8 @@ def verify_pack(
     bundle_object_ids: set[str] = set()
     objects_raw = bundle.get("objects", [])
     if not isinstance(objects_raw, list):
-        typer.echo(json.dumps({"error": "'objects' field must be a list."}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": "'objects' field must be a list."}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     for entry in objects_raw:
         if not isinstance(entry, dict):
@@ -221,8 +231,8 @@ def verify_pack(
     bundle_snapshot_ids: set[str] = set()
     snapshots_raw = bundle.get("snapshots", [])
     if not isinstance(snapshots_raw, list):
-        typer.echo(json.dumps({"error": "'snapshots' field must be a list."}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": "'snapshots' field must be a list."}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     for snap_entry in snapshots_raw:
         if not isinstance(snap_entry, dict):
@@ -267,8 +277,8 @@ def verify_pack(
     # -----------------------------------------------------------------------
     commits_raw = bundle.get("commits", [])
     if not isinstance(commits_raw, list):
-        typer.echo(json.dumps({"error": "'commits' field must be a list."}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": "'commits' field must be a list."}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     for commit_entry in commits_raw:
         if not isinstance(commit_entry, dict):
@@ -307,17 +317,17 @@ def verify_pack(
     all_ok = len(failures) == 0
 
     if quiet:
-        raise typer.Exit(code=0 if all_ok else ExitCode.USER_ERROR)
+        raise SystemExit(0 if all_ok else ExitCode.USER_ERROR)
 
     if fmt == "text":
-        typer.echo(
+        print(
             f"objects={objects_checked}  snapshots={snapshots_checked}  "
             f"commits={commits_checked}  all_ok={all_ok}"
         )
         for f in failures:
-            typer.echo(f"  FAIL [{f['kind']}] {f['id'][:16]}…  {f['error']}")
+            print(f"  FAIL [{f['kind']}] {f['id'][:16]}…  {f['error']}")
         if not all_ok:
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            raise SystemExit(ExitCode.USER_ERROR)
         return
 
     result: _VerifyPackResult = {
@@ -327,6 +337,6 @@ def verify_pack(
         "all_ok": all_ok,
         "failures": failures,
     }
-    typer.echo(json.dumps(result))
+    print(json.dumps(result))
     if not all_ok:
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)

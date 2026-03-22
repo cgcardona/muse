@@ -46,12 +46,12 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
+import sys
 from typing import Literal
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -65,8 +65,6 @@ from muse.core.store import (
 from muse.domain import DomainOp
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _EventKind = Literal["created", "modified", "renamed", "moved", "deleted", "signature"]
 
@@ -238,11 +236,11 @@ def _find_events_in_commit(
 
 
 def _print_human(address: str, events: list[SymbolEvent]) -> None:
-    typer.echo(f"\nSymbol: {address}")
-    typer.echo("─" * 62)
+    print(f"\nSymbol: {address}")
+    print("─" * 62)
 
     if not events:
-        typer.echo("  (no events found — symbol may not exist in this repo)")
+        print("  (no events found — symbol may not exist in this repo)")
         return
 
     # Events are collected newest-first; reverse for chronological display.
@@ -253,36 +251,48 @@ def _print_human(address: str, events: list[SymbolEvent]) -> None:
         counts[ev.kind] = counts.get(ev.kind, 0) + 1
         date_str = ev.commit.committed_at.strftime("%Y-%m-%d")
         short_id = ev.commit.commit_id[:8]
-        typer.echo(f'\n● {short_id}  {date_str}  "{ev.commit.message}"')
-        typer.echo(f"  {ev.kind:<12}  {ev.detail}")
+        print(f'\n● {short_id}  {date_str}  "{ev.commit.message}"')
+        print(f"  {ev.kind:<12}  {ev.detail}")
         if ev.new_address:
-            typer.echo(f"  (tracking continues as {ev.new_address})")
+            print(f"  (tracking continues as {ev.new_address})")
 
     total = len(events)
     summary_parts = [f"{k}: {v}" for k, v in sorted(counts.items())]
-    typer.echo(f"\n{total} event(s)  ({',  '.join(summary_parts)})")
+    print(f"\n{total} event(s)  ({',  '.join(summary_parts)})")
 
 
-@app.callback(invoke_without_command=True)
-def symbol_log(
-    ctx: typer.Context,
-    address: str = typer.Argument(
-        ...,
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the symbol-log subcommand."""
+    parser = subparsers.add_parser(
+        "symbol-log",
+        help="Track a single symbol through the entire commit history.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "address",
         metavar="ADDRESS",
         help='Symbol address, e.g. "src/utils.py::calculate_total" or "src/models.py::User.save".',
-    ),
-    from_ref: str | None = typer.Option(
-        None, "--from", metavar="REF",
+    )
+    parser.add_argument(
+        "--from",
+        dest="from_ref",
+        default=None,
+        metavar="REF",
         help="Start walking from this commit / branch (default: HEAD).",
-    ),
-    max_commits: int = typer.Option(
-        500, "--max", metavar="N",
+    )
+    parser.add_argument(
+        "--max",
+        dest="max_commits",
+        type=int,
+        default=500,
+        metavar="N",
         help="Maximum number of commits to inspect (default: 500).",
-    ),
-    as_json: bool = typer.Option(
-        False, "--json", help="Emit the event list as JSON.",
-    ),
-) -> None:
+    )
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit the event list as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Track a single symbol through the entire commit history.
 
     ``muse symbol-log`` is impossible in Git: Git tracks file lines, not
@@ -296,6 +306,11 @@ def symbol_log(
         muse symbol-log "src/models.py::User.save"
         muse symbol-log "api/handlers.go::Server.HandleRequest"
     """
+    address: str = args.address
+    from_ref: str | None = args.from_ref
+    max_commits: int = args.max_commits
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
@@ -303,8 +318,8 @@ def symbol_log(
     start_commit = resolve_commit_ref(root, repo_id, branch, from_ref)
     if start_commit is None:
         label = from_ref or "HEAD"
-        typer.echo(f"❌ Commit '{label}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{label}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     commits = _walk_commits(root, start_commit.commit_id, max_commits)
 
@@ -317,7 +332,7 @@ def symbol_log(
         all_events.extend(evs)
 
     if as_json:
-        typer.echo(json.dumps([e.to_dict() for e in reversed(all_events)], indent=2))
+        print(json.dumps([e.to_dict() for e in reversed(all_events)], indent=2))
         return
 
     _print_human(address, all_events)

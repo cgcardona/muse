@@ -43,11 +43,11 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse._version import __version__
 from muse.core.errors import ExitCode
@@ -63,8 +63,6 @@ from muse.plugins.code._query import language_of, symbols_for_snapshot
 from muse.plugins.code.ast_parser import SymbolRecord
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -117,23 +115,38 @@ class _SymbolHistory:
         }
 
 
-@app.callback(invoke_without_command=True)
-def query_history(
-    ctx: typer.Context,
-    predicates: list[str] = typer.Argument(
-        ..., metavar="PREDICATE...",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the query-history subcommand."""
+    parser = subparsers.add_parser(
+        "query-history",
+        help="Search commit history for symbols matching a predicate expression.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "predicates",
+        nargs="+",
+        metavar="PREDICATE",
         help='One or more predicates, e.g. "kind=function" "language=Python".',
-    ),
-    from_ref: str | None = typer.Option(
-        None, "--from", metavar="REF",
+    )
+    parser.add_argument(
+        "--from",
+        dest="from_ref",
+        default=None,
+        metavar="REF",
         help="Start of range (exclusive; default: initial commit).",
-    ),
-    to_ref: str | None = typer.Option(
-        None, "--to", metavar="REF",
+    )
+    parser.add_argument(
+        "--to",
+        dest="to_ref",
+        default=None,
+        metavar="REF",
         help="End of range (inclusive; default: HEAD).",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+    )
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Search commit history for symbols matching a predicate expression.
 
     Walks the commit range from ``--from`` to ``--to`` (oldest-first),
@@ -151,32 +164,37 @@ def query_history(
         muse query-history "name~=validate" --from v1.0 --to HEAD
         muse query-history "kind=class" --json
     """
+    predicates: list[str] = args.predicates
+    from_ref: str | None = args.from_ref
+    to_ref: str | None = args.to_ref
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     if not predicates:
-        typer.echo("❌ At least one predicate is required.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ At least one predicate is required.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     try:
         predicate = parse_query(predicates)
     except PredicateError as exc:
-        typer.echo(f"❌ {exc}", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ {exc}", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Resolve range endpoints.
     to_commit = resolve_commit_ref(root, repo_id, branch, to_ref)
     if to_commit is None:
-        typer.echo(f"❌ --to ref '{to_ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ --to ref '{to_ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     from_commit_id: str | None = None
     if from_ref is not None:
         from_c = resolve_commit_ref(root, repo_id, branch, from_ref)
         if from_c is None:
-            typer.echo(f"❌ --from ref '{from_ref}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ --from ref '{from_ref}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         from_commit_id = from_c.commit_id
 
     # Walk commits oldest-first within the range.
@@ -209,7 +227,7 @@ def query_history(
     results = sorted(history.values(), key=lambda h: h.address)
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "schema_version": __version__,
                 "to_commit": to_commit.commit_id[:8],
@@ -223,24 +241,24 @@ def query_history(
         return
 
     pred_display = " AND ".join(predicates)
-    typer.echo(f"\nSymbol history — {pred_display} ({len(commits)} commit(s) scanned)")
-    typer.echo("─" * 62)
+    print(f"\nSymbol history — {pred_display} ({len(commits)} commit(s) scanned)")
+    print("─" * 62)
 
     if not results:
-        typer.echo("  (no matching symbols found in range)")
+        print("  (no matching symbols found in range)")
         return
 
     max_addr = max(len(r.address) for r in results)
     for r in results:
         change_label = f"{r.change_count} version(s)" if r.change_count > 1 else "stable"
         span = f"{r.first_committed_at[:10]}..{r.last_committed_at[:10]}"
-        typer.echo(
+        print(
             f"  {r.address:<{max_addr}}  {r.kind:<14}  "
             f"[{r.commit_count:>3} commit(s)]  {span}  {change_label}"
         )
         if r.first_commit_id:
-            typer.echo(f"    └─ introduced:  {r.first_commit_id[:8]}")
+            print(f"    └─ introduced:  {r.first_commit_id[:8]}")
         if r.first_commit_id != r.last_commit_id:
-            typer.echo(f"    └─ last seen:   {r.last_commit_id[:8]}")
+            print(f"    └─ last seen:   {r.last_commit_id[:8]}")
 
-    typer.echo(f"\n  {len(results)} symbol(s) found")
+    print(f"\n  {len(results)} symbol(s) found")

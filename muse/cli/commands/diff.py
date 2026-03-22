@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
 import difflib
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.object_store import read_object
@@ -18,8 +18,6 @@ from muse.domain import DomainOp, SnapshotManifest
 from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _read_branch(root: pathlib.Path) -> str:
@@ -34,19 +32,19 @@ _MAX_INLINE_CHILDREN = 12
 
 
 def _green(text: str) -> str:
-    return typer.style(text, fg=typer.colors.GREEN)
+    return f"\033[32m{text}\033[0m"
 
 
 def _red(text: str) -> str:
-    return typer.style(text, fg=typer.colors.RED)
+    return f"\033[31m{text}\033[0m"
 
 
 def _yellow(text: str) -> str:
-    return typer.style(text, fg=typer.colors.YELLOW)
+    return f"\033[33m{text}\033[0m"
 
 
 def _cyan(text: str) -> str:
-    return typer.style(text, fg=typer.colors.CYAN)
+    return f"\033[36m{text}\033[0m"
 
 
 _LOC_SEP = "  L"
@@ -108,10 +106,10 @@ def _print_child_ops(child_ops: list[DomainOp]) -> None:
         else:
             styled = label
         suffix = f"  {loc}" if loc else ""
-        typer.echo(f"   {connector} {styled}{suffix}")
+        print(f"   {connector} {styled}{suffix}")
 
     if overflow > 0:
-        typer.echo(f"   └─ … and {overflow} more")
+        print(f"   └─ … and {overflow} more")
 
 
 def _print_structured_delta(ops: list[DomainOp]) -> int:
@@ -128,13 +126,13 @@ def _print_structured_delta(ops: list[DomainOp]) -> int:
     """
     for op in ops:
         if op["op"] == "insert":
-            typer.echo(_green(f"A  {op['address']}"))
+            print(_green(f"A  {op['address']}"))
         elif op["op"] == "delete":
-            typer.echo(_red(f"D  {op['address']}"))
+            print(_red(f"D  {op['address']}"))
         elif op["op"] == "replace":
-            typer.echo(_yellow(f"M  {op['address']}"))
+            print(_yellow(f"M  {op['address']}"))
         elif op["op"] == "move":
-            typer.echo(
+            print(
                 _cyan(f"R  {op['address']}  ({op['from_position']} → {op['to_position']})")
             )
         elif op["op"] == "patch":
@@ -142,7 +140,7 @@ def _print_structured_delta(ops: list[DomainOp]) -> int:
             from_address = op.get("from_address")
             if from_address:
                 # File was renamed AND edited simultaneously.
-                typer.echo(_cyan(f"R  {from_address} → {op['address']}"))
+                print(_cyan(f"R  {from_address} → {op['address']}"))
             else:
                 # Classify the patch: all-inserts = new file, all-deletes =
                 # removed file, mixed = modification.  Use the right status
@@ -150,11 +148,11 @@ def _print_structured_delta(ops: list[DomainOp]) -> int:
                 all_insert = all(c["op"] == "insert" for c in child_ops)
                 all_delete = all(c["op"] == "delete" for c in child_ops)
                 if all_insert:
-                    typer.echo(_green(f"A  {op['address']}"))
+                    print(_green(f"A  {op['address']}"))
                 elif all_delete:
-                    typer.echo(_red(f"D  {op['address']}"))
+                    print(_red(f"D  {op['address']}"))
                 else:
-                    typer.echo(_yellow(f"M  {op['address']}"))
+                    print(_yellow(f"M  {op['address']}"))
             _print_child_ops(child_ops)
     return len(ops)
 
@@ -210,28 +208,35 @@ def _print_text_diff(
 
         for line in hunks:
             if line.startswith("---") or line.startswith("+++"):
-                typer.echo(typer.style(line, bold=True))
+                print(f"\033[1m{line}\033[0m")
             elif line.startswith("@@"):
-                typer.echo(_cyan(line))
+                print(_cyan(line))
             elif line.startswith("+"):
-                typer.echo(_green(line))
+                print(_green(line))
             elif line.startswith("-"):
-                typer.echo(_red(line))
+                print(_red(line))
             else:
-                typer.echo(line)
+                print(line)
 
     return len(changed)
 
 
-@app.callback(invoke_without_command=True)
-def diff(
-    ctx: typer.Context,
-    commit_a: str | None = typer.Argument(None, help="Base commit ID (default: HEAD)."),
-    commit_b: str | None = typer.Argument(None, help="Target commit ID (default: working tree)."),
-    stat: bool = typer.Option(False, "--stat", help="Show summary statistics only."),
-    text: bool = typer.Option(False, "--text", help="Show line-level unified diff instead of semantic symbols."),
-    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the diff subcommand."""
+    parser = subparsers.add_parser(
+        "diff",
+        help="Compare working tree against HEAD, or compare two commits.",
+        description=__doc__,
+    )
+    parser.add_argument("commit_a", nargs="?", default=None, help="Base commit ID (default: HEAD).")
+    parser.add_argument("commit_b", nargs="?", default=None, help="Target commit ID (default: working tree).")
+    parser.add_argument("--stat", action="store_true", help="Show summary statistics only.")
+    parser.add_argument("--text", action="store_true", help="Show line-level unified diff instead of semantic symbols.")
+    parser.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Compare working tree against HEAD, or compare two commits.
 
     Agents should pass ``--format json`` to receive a structured result::
@@ -244,9 +249,15 @@ def diff(
           "total_changes": 3
         }
     """
+    commit_a: str | None = args.commit_a
+    commit_b: str | None = args.commit_b
+    stat: bool = args.stat
+    text: bool = args.text
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
@@ -257,8 +268,8 @@ def diff(
         """Resolve a ref (branch, short SHA, full SHA) to its snapshot manifest."""
         resolved = resolve_commit_ref(root, repo_id, branch, ref)
         if resolved is None:
-            typer.echo(f"⚠️ Commit '{sanitize_display(ref)}' not found.")
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"⚠️ Commit '{sanitize_display(ref)}' not found.")
+            raise SystemExit(ExitCode.USER_ERROR)
         return get_commit_snapshot_manifest(root, resolved.commit_id) or {}
 
     if commit_a is None:
@@ -293,7 +304,7 @@ def diff(
             base_snap["files"], target_snap["files"], root, workdir
         )
         if changed == 0:
-            typer.echo("No differences.")
+            print("No differences.")
         return
 
     delta = plugin.diff(base_snap, target_snap, repo_root=root)
@@ -303,8 +314,7 @@ def diff(
         deleted = [op["address"] for op in delta["ops"] if op["op"] == "delete"]
         modified = [op["address"] for op in delta["ops"]
                     if op["op"] in ("replace", "patch", "mutate", "move")]
-        import json as _json
-        typer.echo(_json.dumps({
+        print(json.dumps({
             "summary": delta["summary"],
             "added": sorted(added),
             "deleted": sorted(deleted),
@@ -314,12 +324,12 @@ def diff(
         return
 
     if stat:
-        typer.echo(delta["summary"] if delta["ops"] else "No differences.")
+        print(delta["summary"] if delta["ops"] else "No differences.")
         return
 
     changed = _print_structured_delta(delta["ops"])
 
     if changed == 0:
-        typer.echo("No differences.")
+        print("No differences.")
     else:
-        typer.echo(f"\n{delta['summary']}")
+        print(f"\n{delta['summary']}")

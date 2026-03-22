@@ -50,12 +50,11 @@ JSON output (``--json``)::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
 import sys
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -63,8 +62,6 @@ from muse.core.validation import contain_path
 from muse.plugins.code.ast_parser import parse_symbols, validate_syntax
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _locate_symbol(file_path: pathlib.Path, address: str) -> tuple[int, int] | None:
@@ -94,23 +91,35 @@ def _read_new_body(body_arg: str) -> str | None:
     return src.read_text()
 
 
-@app.callback(invoke_without_command=True)
-def patch(
-    ctx: typer.Context,
-    address: str = typer.Argument(
-        ..., metavar="ADDRESS",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the patch subcommand."""
+    parser = subparsers.add_parser(
+        "patch",
+        help="Replace exactly one symbol's source — surgical precision for agents.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "address",
+        metavar="ADDRESS",
         help='Symbol address, e.g. "src/billing.py::compute_invoice_total".',
-    ),
-    body_arg: str = typer.Option(
-        ..., "--body", "-b", metavar="FILE",
+    )
+    parser.add_argument(
+        "--body", "-b",
+        dest="body_arg",
+        required=True,
+        metavar="FILE",
         help='File containing the replacement source (use "-" for stdin).',
-    ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", "-n",
+    )
+    parser.add_argument(
+        "--dry-run", "-n",
+        action="store_true",
         help="Print what would change without writing to disk.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit result as JSON for agent consumption."),
-) -> None:
+    )
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit result as JSON for agent consumption.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Replace exactly one symbol's source — surgical precision for agents.
 
     ``muse patch`` locates the symbol at ADDRESS in the working tree,
@@ -130,12 +139,17 @@ def patch(
     exactly what changed at the semantic level (implementation changed,
     signature changed, etc.).
     """
+    address: str = args.address
+    body_arg: str = args.body_arg
+    dry_run: bool = args.dry_run
+    as_json: bool = args.as_json
+
     root = require_repo()
 
     # Parse address to get file path.
     if "::" not in address:
-        typer.echo(f"❌ Invalid address '{address}' — must be 'file.py::SymbolName'.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Invalid address '{address}' — must be 'file.py::SymbolName'.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     rel_path, sym_name = address.split("::", 1)
 
@@ -143,30 +157,30 @@ def patch(
     try:
         file_path = contain_path(root, rel_path)
     except ValueError as exc:
-        typer.echo(f"❌ {exc}", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ {exc}", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if not file_path.exists():
-        typer.echo(f"❌ File '{rel_path}' not found in working tree.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ File '{rel_path}' not found in working tree.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Locate the symbol.
     location = _locate_symbol(file_path, address)
     if location is None:
-        typer.echo(
+        print(
             f"❌ Symbol '{address}' not found in {rel_path}.\n"
             f"   Run `muse symbols --file {rel_path}` to see available symbols.",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     start_line, end_line = location  # 1-indexed, inclusive
 
     # Read the replacement source.
     new_body = _read_new_body(body_arg)
     if new_body is None:
-        typer.echo(f"❌ Could not read body from '{body_arg}'.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Could not read body from '{body_arg}'.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Read current file.
     original = file_path.read_text(encoding="utf-8")
@@ -184,14 +198,14 @@ def patch(
     # Verify the patched file is still parseable for all supported languages.
     syntax_error = validate_syntax(new_content.encode("utf-8"), rel_path)
     if syntax_error is not None:
-        typer.echo(f"❌ Patched file has a {syntax_error}", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Patched file has a {syntax_error}", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     new_line_count = new_body.count(chr(10))
 
     if dry_run:
         if as_json:
-            typer.echo(json.dumps({
+            print(json.dumps({
                 "address": address,
                 "file": rel_path,
                 "lines_replaced": len(old_lines),
@@ -199,11 +213,11 @@ def patch(
                 "dry_run": True,
             }, indent=2))
             return
-        typer.echo(f"\n[dry-run] Would patch {rel_path}")
-        typer.echo(f"  Symbol:        {sym_name}")
-        typer.echo(f"  Replace lines: {start_line}–{end_line} ({len(old_lines)} line(s))")
-        typer.echo(f"  New source:    {new_line_count} line(s)")
-        typer.echo("  No changes written (--dry-run).")
+        print(f"\n[dry-run] Would patch {rel_path}")
+        print(f"  Symbol:        {sym_name}")
+        print(f"  Replace lines: {start_line}–{end_line} ({len(old_lines)} line(s))")
+        print(f"  New source:    {new_line_count} line(s)")
+        print("  No changes written (--dry-run).")
         return
 
     file_path.write_text(new_content, encoding="utf-8")
@@ -213,7 +227,7 @@ def patch(
     other_count = sum(1 for addr in remaining if addr != address)
 
     if as_json:
-        typer.echo(json.dumps({
+        print(json.dumps({
             "address": address,
             "file": rel_path,
             "lines_replaced": len(old_lines),
@@ -222,7 +236,7 @@ def patch(
         }, indent=2))
         return
 
-    typer.echo(f"\n✅ Patched {address}")
-    typer.echo(f"   Lines {start_line}–{end_line} replaced ({len(old_lines)} → {new_line_count} line(s))")
-    typer.echo(f"   Surrounding code untouched ({other_count} symbol(s) preserved)")
-    typer.echo("   Run `muse status` to review, then `muse commit`")
+    print(f"\n✅ Patched {address}")
+    print(f"   Lines {start_line}–{end_line} replaced ({len(old_lines)} → {new_line_count} line(s))")
+    print(f"   Surrounding code untouched ({other_count} symbol(s) preserved)")
+    print("   Run `muse status` to review, then `muse commit`")

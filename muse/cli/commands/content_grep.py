@@ -35,13 +35,14 @@ Exit codes::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
 import re
-from typing import Annotated, TypedDict
+import sys
+from typing import TypedDict
 
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.object_store import read_object
@@ -58,7 +59,6 @@ from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer(help="Full-text search across tracked files in a snapshot.")
 
 _BINARY_CHUNK = 8192
 _MAX_PATTERN_LEN = 500  # reject patterns that could cause catastrophic backtracking
@@ -132,33 +132,41 @@ def _read_repo_id(root: pathlib.Path) -> str:
     return str(json.loads((root / ".muse" / "repo.json").read_text(encoding="utf-8"))["repo_id"])
 
 
-@app.callback(invoke_without_command=True)
-def grep(
-    pattern: Annotated[
-        str,
-        typer.Option("--pattern", "-p", help="Pattern to search for (Python regex syntax)."),
-    ],
-    ref: Annotated[
-        str | None,
-        typer.Option("--ref", "-r", help="Branch name or commit SHA to search (default: HEAD)."),
-    ] = None,
-    ignore_case: Annotated[
-        bool,
-        typer.Option("--ignore-case", "-i", help="Case-insensitive matching."),
-    ] = False,
-    files_only: Annotated[
-        bool,
-        typer.Option("--files-only", "-l", help="Print only file paths with matches (no line content)."),
-    ] = False,
-    count_mode: Annotated[
-        bool,
-        typer.Option("--count", "-c", help="Print count of matching lines per file."),
-    ] = False,
-    fmt: Annotated[
-        str,
-        typer.Option("--format", "-f", help="Output format: text or json."),
-    ] = "text",
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the content-grep subcommand."""
+    parser = subparsers.add_parser(
+        "content-grep",
+        help="Search tracked file content for a pattern.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--pattern", "-p", required=True,
+        help="Regular expression pattern to search for.",
+    )
+    parser.add_argument(
+        "--ref", default=None,
+        help="Branch, tag, or commit SHA to search (default: HEAD).",
+    )
+    parser.add_argument(
+        "--ignore-case", "-i", action="store_true", dest="ignore_case",
+        help="Case-insensitive matching.",
+    )
+    parser.add_argument(
+        "--files-only", "-l", action="store_true", dest="files_only",
+        help="Print only file paths with matches.",
+    )
+    parser.add_argument(
+        "--count", "-c", action="store_true", dest="count_mode",
+        help="Print only match counts per file.",
+    )
+    parser.add_argument(
+        "--format", "-f", default="text", dest="fmt",
+        help="Output format: text or json.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Search tracked file content for a pattern.
 
     Reads objects from the content-addressed store and scans each for the
@@ -170,14 +178,21 @@ def grep(
 
     Examples::
 
-        muse grep --pattern "chorus"
-        muse grep --pattern "TODO|FIXME" --files-only
-        muse grep --pattern "tempo" --ignore-case --format json
-        muse grep --pattern "chord" --ref feat/harmony
+        muse content-grep --pattern "chorus"
+        muse content-grep --pattern "TODO|FIXME" --files-only
+        muse content-grep --pattern "tempo" --ignore-case --format json
+        muse content-grep --pattern "chord" --ref feat/harmony
     """
+    pattern: str = args.pattern
+    ref: str | None = args.ref
+    ignore_case: bool = args.ignore_case
+    files_only: bool = args.files_only
+    count_mode: bool = args.count_mode
+    fmt: str = args.fmt
+
     if fmt not in {"text", "json"}:
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     repo_id = _read_repo_id(root)
@@ -187,41 +202,41 @@ def grep(
     if ref is None:
         commit_id = get_head_commit_id(root, branch)
         if commit_id is None:
-            typer.echo("❌ No commits on current branch.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print("❌ No commits on current branch.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
     else:
         commit_rec = resolve_commit_ref(root, repo_id, branch, ref)
         if commit_rec is None:
-            typer.echo(f"❌ Ref '{sanitize_display(ref)}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Ref '{sanitize_display(ref)}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         commit_id = commit_rec.commit_id
 
     commit = read_commit(root, commit_id)
     if commit is None:
-        typer.echo(f"❌ Commit {commit_id[:12]} not found.", err=True)
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(f"❌ Commit {commit_id[:12]} not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     snap = read_snapshot(root, commit.snapshot_id)
     if snap is None:
-        typer.echo(f"❌ Snapshot {commit.snapshot_id[:12]} not found.", err=True)
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(f"❌ Snapshot {commit.snapshot_id[:12]} not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     # Guard against patterns so long they risk catastrophic backtracking.
     if len(pattern) > _MAX_PATTERN_LEN:
-        typer.echo(
+        print(
             f"❌ Pattern too long ({len(pattern)} chars, max {_MAX_PATTERN_LEN}). "
             "Use a shorter pattern or re.escape() for literal matches.",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Compile regex.
     flags = re.IGNORECASE if ignore_case else 0
     try:
         compiled: re.Pattern[str] = re.compile(pattern, flags)
     except re.error as exc:
-        typer.echo(f"❌ Invalid regex: {exc}", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR) from exc
+        print(f"❌ Invalid regex: {exc}", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR) from exc
 
     # Search all files.
     file_results: list[GrepFileResult] = []
@@ -238,17 +253,17 @@ def grep(
             ))
 
     if not file_results:
-        raise typer.Exit(code=ExitCode.USER_ERROR)  # exit 1 = no matches
+        raise SystemExit(ExitCode.USER_ERROR)  # exit 1 = no matches
 
     if fmt == "json":
-        typer.echo(json.dumps(file_results, indent=2))
+        print(json.dumps(file_results, indent=2))
     else:
         for fr in file_results:
             safe_path = sanitize_display(fr["path"])
             if files_only:
-                typer.echo(safe_path)
+                print(safe_path)
             elif count_mode:
-                typer.echo(f"{safe_path}:{fr['match_count']}")
+                print(f"{safe_path}:{fr['match_count']}")
             else:
                 for m in fr["matches"]:
-                    typer.echo(f"{safe_path}:{m['line_number']}:{sanitize_display(m['text'])}")
+                    print(f"{safe_path}:{m['line_number']}:{sanitize_display(m['text'])}")

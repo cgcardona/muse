@@ -28,11 +28,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -47,8 +47,6 @@ from muse.plugins.midi.midi_diff import NoteKey, _note_summary, extract_notes
 from muse.core.object_store import read_object
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -70,20 +68,17 @@ def _flat_ops(ops: list[DomainOp]) -> list[DomainOp]:
     return result
 
 
-@app.callback(invoke_without_command=True)
-def note_log(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    from_ref: str | None = typer.Option(
-        None, "--from", metavar="REF",
-        help="Start walking from this commit (default: HEAD).",
-    ),
-    max_commits: int = typer.Option(
-        50, "--max", "-n", metavar="N",
-        help="Maximum number of commits to walk (default: 50).",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the note-log subcommand."""
+    parser = subparsers.add_parser("note-log", help="Show the note-level commit history for a MIDI track.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--from", metavar="REF", default=None, dest="from_ref", help="Start walking from this commit (default: HEAD).")
+    parser.add_argument("--max", "-n", metavar="N", type=int, default=50, dest="max_commits", help="Maximum number of commits to walk (default: 50).")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show the note-level commit history for a MIDI track.
 
     ``muse note-log`` walks the commit history and, for each commit that
@@ -97,14 +92,19 @@ def note_log(
     Use ``--from`` to start at a different point in history.  Use ``--json``
     to pipe the output to an agent for further processing.
     """
+    track: str = args.track
+    from_ref: str | None = args.from_ref
+    max_commits: int = args.max_commits
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     start_commit = resolve_commit_ref(root, repo_id, branch, from_ref)
     if start_commit is None:
-        typer.echo(f"❌ Commit '{from_ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{from_ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     commits_with_manifest = walk_commits_for_track(
         root, start_commit.commit_id, track, max_commits=max_commits
@@ -158,19 +158,19 @@ def note_log(
                 "author": author,
                 "changes": [{"op": op, "note": note} for op, note in changes],
             })
-        typer.echo(json.dumps({"track": track, "events": out}, indent=2))
+        print(json.dumps({"track": track, "events": out}, indent=2))
         return
 
-    typer.echo(f"\nNote history: {track}")
-    typer.echo(f"Commits analysed: {len(commits_with_manifest)}")
+    print(f"\nNote history: {track}")
+    print(f"Commits analysed: {len(commits_with_manifest)}")
 
     if not events:
-        typer.echo("\n  (no note-level changes found for this track)")
+        print("\n  (no note-level changes found for this track)")
         return
 
     for short_id, date, msg, author, _full_id, changes in events:
-        typer.echo(f"\n{short_id}  {date}  \"{msg}\"  ({len(changes)} change(s))")
+        print(f"\n{short_id}  {date}  \"{msg}\"  ({len(changes)} change(s))")
         for op_kind, note_summary in changes:
             prefix = "  +" if op_kind == "+" else "  -"
             suffix = "  (removed)" if op_kind == "-" else ""
-            typer.echo(f"{prefix}  {note_summary}{suffix}")
+            print(f"{prefix}  {note_summary}{suffix}")

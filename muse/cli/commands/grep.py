@@ -31,12 +31,12 @@ Invalid regex syntax is caught and reported as exit 1 rather than crashing.
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
 import re
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -45,8 +45,6 @@ from muse.plugins.code._query import language_of, symbols_for_snapshot
 from muse.plugins.code.ast_parser import SymbolRecord
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 # Guard against ReDoS: reject patterns longer than this before compiling.
 _MAX_PATTERN_LEN: int = 512
@@ -70,33 +68,45 @@ def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-@app.callback(invoke_without_command=True)
-def grep(
-    ctx: typer.Context,
-    pattern: str = typer.Argument(..., metavar="PATTERN", help="Name pattern to search for."),
-    use_regex: bool = typer.Option(
-        False, "--regex", "-e",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the grep subcommand."""
+    parser = subparsers.add_parser(
+        "grep",
+        help="Search the symbol graph by name — not file text.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "pattern", metavar="PATTERN",
+        help="Name pattern to search for.",
+    )
+    parser.add_argument(
+        "--regex", "-e", action="store_true", dest="use_regex",
         help="Treat PATTERN as a regular expression (default: substring match).",
-    ),
-    kind_filter: str | None = typer.Option(
-        None, "--kind", "-k", metavar="KIND",
+    )
+    parser.add_argument(
+        "--kind", "-k", default=None, metavar="KIND", dest="kind_filter",
         help="Restrict to symbols of this kind (function, class, method, …).",
-    ),
-    language_filter: str | None = typer.Option(
-        None, "--language", "-l", metavar="LANG",
+    )
+    parser.add_argument(
+        "--language", "-l", default=None, metavar="LANG", dest="language_filter",
         help="Restrict to symbols from files of this language (Python, Go, …).",
-    ),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
+    )
+    parser.add_argument(
+        "--commit", "-c", default=None, metavar="REF", dest="ref",
         help="Search a historical commit instead of HEAD.",
-    ),
-    show_hashes: bool = typer.Option(
-        False, "--hashes", help="Include content hashes in output.",
-    ),
-    as_json: bool = typer.Option(
-        False, "--json", help="Emit results as JSON.",
-    ),
-) -> None:
+    )
+    parser.add_argument(
+        "--hashes", action="store_true", dest="show_hashes",
+        help="Include content hashes in output.",
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit results as JSON.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Search the symbol graph by name — not file text.
 
     ``muse grep`` searches the typed, content-addressed symbol graph.
@@ -112,21 +122,29 @@ def grep(
 
     Patterns are capped at 512 characters to guard against ReDoS.
     """
+    pattern: str = args.pattern
+    use_regex: bool = args.use_regex
+    kind_filter: str | None = args.kind_filter
+    language_filter: str | None = args.language_filter
+    ref: str | None = args.ref
+    show_hashes: bool = args.show_hashes
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     if len(pattern) > _MAX_PATTERN_LEN:
-        typer.echo(
+        print(
             f"❌ Pattern too long ({len(pattern)} chars) — maximum is {_MAX_PATTERN_LEN}.",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     manifest = get_commit_snapshot_manifest(root, commit.commit_id) or {}
 
@@ -135,8 +153,8 @@ def grep(
             re.escape(pattern), re.IGNORECASE
         )
     except re.error as exc:
-        typer.echo(f"❌ Invalid regex pattern: {exc}", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Invalid regex pattern: {exc}", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     symbol_map = symbols_for_snapshot(
         root, manifest,
@@ -164,11 +182,11 @@ def grep(
                 "language": language_of(addr.split("::")[0]),
                 "content_id": rec["content_id"],
             })
-        typer.echo(json.dumps(out, indent=2))
+        print(json.dumps(out, indent=2))
         return
 
     if not matches:
-        typer.echo(f"  (no symbols matching '{pattern}')")
+        print(f"  (no symbols matching '{pattern}')")
         return
 
     files_seen: set[str] = set()
@@ -178,6 +196,6 @@ def grep(
         name = rec["qualified_name"]
         line = rec["lineno"]
         hash_part = f"  {rec['content_id'][:8]}.." if show_hashes else ""
-        typer.echo(f"  {addr:<60}  {icon:<10}  line {line:>4}{hash_part}")
+        print(f"  {addr:<60}  {icon:<10}  line {line:>4}{hash_part}")
 
-    typer.echo(f"\n{len(matches)} match(es) across {len(files_seen)} file(s)")
+    print(f"\n{len(matches)} match(es) across {len(files_seen)} file(s)")

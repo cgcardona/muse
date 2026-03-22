@@ -32,12 +32,12 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
+import sys
 from typing import TypedDict
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -50,8 +50,6 @@ from muse.core.store import (
 from muse.core.validation import validate_object_id
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _FORMAT_CHOICES = ("json", "text")
 
@@ -121,67 +119,81 @@ def _resolve_to_snapshot_id(root: pathlib.Path, ref: str) -> str | None:
     return None
 
 
-@app.callback(invoke_without_command=True)
-def snapshot_diff(
-    ctx: typer.Context,
-    ref_a: str = typer.Argument(
-        ..., help="First snapshot ID, commit ID, branch name, or HEAD."
-    ),
-    ref_b: str = typer.Argument(
-        ..., help="Second snapshot ID, commit ID, branch name, or HEAD."
-    ),
-    fmt: str = typer.Option(
-        "json", "--format", "-f", help="Output format: json or text."
-    ),
-    stat: bool = typer.Option(
-        False,
-        "--stat",
-        "-s",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the snapshot-diff subcommand."""
+    parser = subparsers.add_parser(
+        "snapshot-diff",
+        help="Diff two snapshot manifests: added, modified, deleted paths.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "ref_a",
+        help="First snapshot ID, commit ID, branch name, or HEAD.",
+    )
+    parser.add_argument(
+        "ref_b",
+        help="Second snapshot ID, commit ID, branch name, or HEAD.",
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
+        help="Output format: json or text. (default: json)",
+    )
+    parser.add_argument(
+        "--stat", "-s",
+        action="store_true",
         help="Append a summary line: N added, M modified, D deleted.",
-    ),
-) -> None:
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Diff two snapshots and report added, modified, and deleted paths.
 
     Accepts snapshot IDs, commit IDs, branch names, or ``HEAD``.  When a commit
     ID or branch name is given, the snapshot recorded in that commit is used.
-
-    Useful for scripting change-set analysis between any two points in history,
-    constructing delta bundles, or driving domain-aware post-processing hooks.
     """
+    fmt: str = args.fmt
+    ref_a: str = args.ref_a
+    ref_b: str = args.ref_b
+    stat: bool = args.stat
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             json.dumps(
                 {"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"}
             )
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
 
     snap_id_a = _resolve_to_snapshot_id(root, ref_a)
     if snap_id_a is None:
-        typer.echo(json.dumps({"error": f"Cannot resolve ref: {ref_a!r}"}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": f"Cannot resolve ref: {ref_a!r}"}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     snap_id_b = _resolve_to_snapshot_id(root, ref_b)
     if snap_id_b is None:
-        typer.echo(json.dumps({"error": f"Cannot resolve ref: {ref_b!r}"}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": f"Cannot resolve ref: {ref_b!r}"}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     try:
         snap_a = read_snapshot(root, snap_id_a)
         snap_b = read_snapshot(root, snap_id_b)
     except Exception as exc:
         logger.debug("snapshot-diff I/O error: %s", exc)
-        typer.echo(json.dumps({"error": str(exc)}))
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(json.dumps({"error": str(exc)}))
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     if snap_a is None:
-        typer.echo(json.dumps({"error": f"Snapshot not found: {snap_id_a}"}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": f"Snapshot not found: {snap_id_a}"}))
+        raise SystemExit(ExitCode.USER_ERROR)
     if snap_b is None:
-        typer.echo(json.dumps({"error": f"Snapshot not found: {snap_id_b}"}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": f"Snapshot not found: {snap_id_b}"}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     manifest_a = snap_a.manifest
     manifest_b = snap_b.manifest
@@ -209,15 +221,13 @@ def snapshot_diff(
 
     if fmt == "text":
         for a_entry in sorted(added, key=lambda e: e["path"]):
-            typer.echo(f"A  {a_entry['path']}")
+            print(f"A  {a_entry['path']}")
         for m_entry in sorted(modified, key=lambda e: e["path"]):
-            typer.echo(f"M  {m_entry['path']}")
+            print(f"M  {m_entry['path']}")
         for d_entry in sorted(deleted, key=lambda e: e["path"]):
-            typer.echo(f"D  {d_entry['path']}")
+            print(f"D  {d_entry['path']}")
         if stat:
-            typer.echo(
-                f"\n{len(added)} added, {len(modified)} modified, {len(deleted)} deleted"
-            )
+            print(f"\n{len(added)} added, {len(modified)} modified, {len(deleted)} deleted")
         return
 
     result: _DiffResult = {
@@ -228,4 +238,4 @@ def snapshot_diff(
         "deleted": deleted,
         "total_changes": total,
     }
-    typer.echo(json.dumps(result))
+    print(json.dumps(result))

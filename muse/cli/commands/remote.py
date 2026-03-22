@@ -16,9 +16,9 @@ All remote URLs and tracking data are stored in ``.muse/config.toml`` and
 
 from __future__ import annotations
 
+import argparse
 import logging
-
-import typer
+import sys
 
 from muse.cli.config import (
     get_remote,
@@ -34,23 +34,52 @@ from muse.core.repo import require_repo
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
+
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the remote subcommand."""
+    parser = subparsers.add_parser(
+        "remote",
+        help="Manage remote repository connections.",
+        description=__doc__,
+    )
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="Show URL and upstream tracking branch.")
+    subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
+
+    add_p = subs.add_parser("add", help="Register a new remote repository connection.")
+    add_p.add_argument("name", help="Name for the new remote (e.g. origin).")
+    add_p.add_argument("url", help="URL of the remote repository.")
+    add_p.set_defaults(func=run_add)
+
+    remove_p = subs.add_parser("remove", help="Remove a remote and all its tracking refs.")
+    remove_p.add_argument("name", help="Name of the remote to remove.")
+    remove_p.set_defaults(func=run_remove)
+
+    rename_p = subs.add_parser("rename", help="Rename a remote and move its tracking refs.")
+    rename_p.add_argument("old_name", help="Current remote name.")
+    rename_p.add_argument("new_name", help="New remote name.")
+    rename_p.set_defaults(func=run_rename)
+
+    get_url_p = subs.add_parser("get-url", help="Print the URL of a remote.")
+    get_url_p.add_argument("name", help="Remote name.")
+    get_url_p.set_defaults(func=run_get_url)
+
+    set_url_p = subs.add_parser("set-url", help="Update the URL of an existing remote.")
+    set_url_p.add_argument("name", help="Remote name.")
+    set_url_p.add_argument("url", help="New URL for the remote.")
+    set_url_p.set_defaults(func=run_set_url)
+
+    parser.set_defaults(func=run)
 
 
-@app.callback(invoke_without_command=True)
-def remote_main(
-    ctx: typer.Context,
-    verbose: bool = typer.Option(
-        False, "-v", "--verbose", help="Show URL and upstream tracking branch."
-    ),
-) -> None:
+def run(args: argparse.Namespace) -> None:
     """Manage remote repository connections. With no subcommand, lists remotes."""
-    if ctx.invoked_subcommand is not None:
-        return
+    verbose: bool = args.verbose
+
     root = require_repo()
     remotes = list_remotes(root)
     if not remotes:
-        typer.echo("No remotes configured. Use 'muse remote add <name> <url>'.")
+        print("No remotes configured. Use 'muse remote add <name> <url>'.")
         return
     for r in remotes:
         if verbose:
@@ -58,83 +87,78 @@ def remote_main(
             head = get_remote_head(r["name"], upstream or "main", root)
             head_str = f" @ {head[:8]}" if head else ""
             tracking = f" -> {r['name']}/{upstream}" if upstream else ""
-            typer.echo(f"{r['name']}\t{r['url']}{tracking}{head_str}")
+            print(f"{r['name']}\t{r['url']}{tracking}{head_str}")
         else:
-            typer.echo(r["name"])
+            print(r["name"])
 
 
-@app.command("add")
-def remote_add(
-    name: str = typer.Argument(..., help="Name for the new remote (e.g. origin)."),
-    url: str = typer.Argument(..., help="URL of the remote repository."),
-) -> None:
+def run_add(args: argparse.Namespace) -> None:
     """Register a new remote repository connection."""
+    name: str = args.name
+    url: str = args.url
+
     root = require_repo()
     existing = get_remote(name, root)
     if existing is not None:
-        typer.echo(f"❌ Remote '{name}' already exists: {existing}")
-        typer.echo(f"  Use 'muse remote set-url {name} <url>' to update it.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Remote '{name}' already exists: {existing}")
+        print(f"  Use 'muse remote set-url {name} <url>' to update it.")
+        raise SystemExit(ExitCode.USER_ERROR)
     set_remote(name, url, root)
-    typer.echo(f"✅ Remote '{name}' added: {url}")
+    print(f"✅ Remote '{name}' added: {url}")
 
 
-@app.command("remove")
-def remote_remove(
-    name: str = typer.Argument(..., help="Name of the remote to remove."),
-) -> None:
+def run_remove(args: argparse.Namespace) -> None:
     """Remove a remote and all its tracking refs."""
+    name: str = args.name
+
     root = require_repo()
     try:
         remove_remote(name, root)
     except KeyError:
-        typer.echo(f"❌ Remote '{name}' does not exist.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
-    typer.echo(f"✅ Remote '{name}' removed.")
+        print(f"❌ Remote '{name}' does not exist.")
+        raise SystemExit(ExitCode.USER_ERROR)
+    print(f"✅ Remote '{name}' removed.")
 
 
-@app.command("rename")
-def remote_rename(
-    old_name: str = typer.Argument(..., help="Current remote name."),
-    new_name: str = typer.Argument(..., help="New remote name."),
-) -> None:
+def run_rename(args: argparse.Namespace) -> None:
     """Rename a remote and move its tracking refs."""
+    old_name: str = args.old_name
+    new_name: str = args.new_name
+
     root = require_repo()
     try:
         rename_remote(old_name, new_name, root)
     except KeyError:
-        typer.echo(f"❌ Remote '{old_name}' does not exist.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Remote '{old_name}' does not exist.")
+        raise SystemExit(ExitCode.USER_ERROR)
     except ValueError:
-        typer.echo(f"❌ Remote '{new_name}' already exists.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
-    typer.echo(f"✅ Remote '{old_name}' renamed to '{new_name}'.")
+        print(f"❌ Remote '{new_name}' already exists.")
+        raise SystemExit(ExitCode.USER_ERROR)
+    print(f"✅ Remote '{old_name}' renamed to '{new_name}'.")
 
 
-@app.command("get-url")
-def remote_get_url(
-    name: str = typer.Argument(..., help="Remote name."),
-) -> None:
+def run_get_url(args: argparse.Namespace) -> None:
     """Print the URL of a remote."""
+    name: str = args.name
+
     root = require_repo()
     url = get_remote(name, root)
     if url is None:
-        typer.echo(f"❌ Remote '{name}' does not exist.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
-    typer.echo(url)
+        print(f"❌ Remote '{name}' does not exist.")
+        raise SystemExit(ExitCode.USER_ERROR)
+    print(url)
 
 
-@app.command("set-url")
-def remote_set_url(
-    name: str = typer.Argument(..., help="Remote name."),
-    url: str = typer.Argument(..., help="New URL for the remote."),
-) -> None:
+def run_set_url(args: argparse.Namespace) -> None:
     """Update the URL of an existing remote."""
+    name: str = args.name
+    url: str = args.url
+
     root = require_repo()
     existing = get_remote(name, root)
     if existing is None:
-        typer.echo(f"❌ Remote '{name}' does not exist.")
-        typer.echo(f"  Use 'muse remote add {name} <url>' to create it.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Remote '{name}' does not exist.")
+        print(f"  Use 'muse remote add {name} <url>' to create it.")
+        raise SystemExit(ExitCode.USER_ERROR)
     set_remote(name, url, root)
-    typer.echo(f"✅ Remote '{name}' URL updated: {url}")
+    print(f"✅ Remote '{name}' URL updated: {url}")
