@@ -1,4 +1,34 @@
-"""muse diff — compare working tree against HEAD, or compare two commits."""
+"""muse diff — show what has changed since the last commit.
+
+``muse diff`` always answers: **what has changed since my last commit?**
+That means HEAD vs the actual working tree, regardless of what is staged.
+The stage is a commit-preparation tool; it does not change the meaning of diff.
+
+Usage
+-----
+
+Everything changed since last commit (default)::
+
+    muse diff
+
+What *will* be committed (staged changes vs HEAD)::
+
+    muse diff --staged
+
+What is *not yet* staged (working tree vs stage)::
+
+    muse diff --unstaged
+
+Two commits::
+
+    muse diff <commit_a> <commit_b>
+
+Limit output to specific files or directories::
+
+    muse diff -p muse/cli/commands/status.py
+    muse diff -p muse/cli/ -p muse/plugins/
+    muse diff --staged -p muse/cli/commands/status.py
+"""
 
 from __future__ import annotations
 
@@ -14,7 +44,7 @@ from muse.core.object_store import read_object
 from muse.core.repo import require_repo
 from muse.core.store import get_commit_snapshot_manifest, get_head_snapshot_manifest, read_current_branch, resolve_commit_ref
 from muse.core.validation import sanitize_display
-from muse.domain import DomainOp, SnapshotManifest
+from muse.domain import DomainOp, SnapshotManifest, StagePlugin
 from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
@@ -179,7 +209,7 @@ def _print_text_diff(
         # Read base content.
         if path in base_files:
             raw_base = read_object(root, base_files[path])
-            base_lines = raw_base.decode("utf-8", errors="replace").splitlines(keepends=True) if raw_base else []
+            base_lines = raw_base.decode("utf-8", errors="replace").splitlines() if raw_base else []
             base_label = f"a/{path}"
         else:
             base_lines = []
@@ -192,7 +222,7 @@ def _print_text_diff(
                 disk = workdir / path
                 if disk.is_file():
                     raw_target = disk.read_bytes()
-            target_lines = raw_target.decode("utf-8", errors="replace").splitlines(keepends=True) if raw_target else []
+            target_lines = raw_target.decode("utf-8", errors="replace").splitlines() if raw_target else []
             target_label = f"b/{path}"
         else:
             target_lines = []
@@ -231,14 +261,43 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
     )
     parser.add_argument("commit_a", nargs="?", default=None, help="Base commit ID (default: HEAD).")
     parser.add_argument("commit_b", nargs="?", default=None, help="Target commit ID (default: working tree).")
+    parser.add_argument("--path", "-p", dest="paths", action="append", default=[], metavar="path", help="Limit diff to this file or directory. Repeat for multiple paths.")
+    parser.add_argument("--staged", action="store_true", help="Show staged changes vs HEAD (what will be committed).")
+    parser.add_argument("--unstaged", action="store_true", help="Show working-tree changes not yet staged (working tree vs stage).")
     parser.add_argument("--stat", action="store_true", help="Show summary statistics only.")
     parser.add_argument("--text", action="store_true", help="Show line-level unified diff instead of semantic symbols.")
     parser.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
     parser.set_defaults(func=run)
 
 
+
+def _filter_manifest(manifest: dict[str, str], paths: list[str]) -> dict[str, str]:
+    """Return a copy of *manifest* restricted to entries matching *paths*.
+
+    Each entry in *paths* is treated as a prefix — it matches both exact file
+    paths (``muse/cli/commands/status.py``) and directory prefixes
+    (``muse/cli/``).  An empty *paths* list returns the manifest unchanged.
+    """
+    if not paths:
+        return manifest
+    # Normalise: ensure directory prefixes end with "/"
+    normalised: list[str] = []
+    for p in paths:
+        p = p.rstrip("/")
+        normalised.append(p)
+    return {
+        rel: oid
+        for rel, oid in manifest.items()
+        if any(rel == p or rel.startswith(p + "/") for p in normalised)
+    }
+
+
 def run(args: argparse.Namespace) -> None:
-    """Compare working tree against HEAD, or compare two commits.
+    """Show what has changed since the last commit.
+
+    Default: HEAD vs working tree (everything changed, staged or not).
+    Use ``--staged`` to see only what will be committed.
+    Use ``--unstaged`` to see only what is not yet staged.
 
     Agents should pass ``--format json`` to receive a structured result::
 
@@ -252,13 +311,20 @@ def run(args: argparse.Namespace) -> None:
     """
     commit_a: str | None = args.commit_a
     commit_b: str | None = args.commit_b
+    path_filter: list[str] = args.paths
+    staged: bool = args.staged
+    unstaged: bool = args.unstaged
     stat: bool = args.stat
     text: bool = args.text
     fmt: str = args.fmt
 
+    if staged and unstaged:
+        print("❌ --staged and --unstaged are mutually exclusive.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     if fmt not in ("text", "json"):
         print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
         raise SystemExit(ExitCode.USER_ERROR)
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
@@ -274,13 +340,30 @@ def run(args: argparse.Namespace) -> None:
         return get_commit_snapshot_manifest(root, resolved.commit_id) or {}
 
     if commit_a is None:
-        base_snap = SnapshotManifest(
-            files=get_head_snapshot_manifest(root, repo_id, branch) or {},
-            domain=domain,
-        )
-        target_snap = plugin.snapshot(root)
+        head_files = get_head_snapshot_manifest(root, repo_id, branch) or {}
+
+        if staged and isinstance(plugin, StagePlugin):
+            # --staged: what will be committed (stage vs HEAD).
+            # plugin.snapshot() returns the staged manifest when a stage is
+            # active — that is the exact comparison we want here.
+            base_snap = SnapshotManifest(files=head_files, domain=domain)
+            target_snap = plugin.snapshot(root)
+        elif unstaged and isinstance(plugin, StagePlugin):
+            # --unstaged: working-tree changes not yet added to the stage
+            # (working tree vs stage).
+            base_snap = plugin.snapshot(root)        # staged manifest
+            target_snap = plugin.workdir_snapshot(root)
+        elif isinstance(plugin, StagePlugin):
+            # Default with staging active: HEAD vs full working tree —
+            # "what changed since my last commit?" regardless of stage state.
+            base_snap = SnapshotManifest(files=head_files, domain=domain)
+            target_snap = plugin.workdir_snapshot(root)
+        else:
+            # No staging support: HEAD vs working tree (original behaviour).
+            base_snap = SnapshotManifest(files=head_files, domain=domain)
+            target_snap = plugin.snapshot(root)
     elif commit_b is None:
-        # Single ref provided: diff HEAD vs that ref's snapshot.
+        # Single ref: diff HEAD vs that commit's snapshot.
         base_snap = SnapshotManifest(
             files=get_head_snapshot_manifest(root, repo_id, branch) or {},
             domain=domain,
@@ -296,6 +379,18 @@ def run(args: argparse.Namespace) -> None:
         )
         target_snap = SnapshotManifest(
             files=_resolve_manifest(commit_b),
+            domain=domain,
+        )
+
+    if path_filter:
+        base_snap = SnapshotManifest(
+            files=_filter_manifest(base_snap["files"], path_filter),
+            domain=domain,
+        )
+        # For working-tree diffs the target snapshot is computed live; filter
+        # its manifest so symbol analysis is scoped to the requested paths.
+        target_snap = SnapshotManifest(
+            files=_filter_manifest(target_snap["files"], path_filter),
             domain=domain,
         )
 

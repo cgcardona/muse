@@ -1,35 +1,37 @@
-"""muse log — display commit history.
+"""muse log \033[1m—\033[0m display commit history.
 
 Output modes
 ------------
 
 Default::
 
-    commit a1b2c3d4 (HEAD -> main)
+    \033[33mcommit a1b2c3d4\033[0m \033[33m(\033[0m\033[1m\033[36mHEAD\033[0m -> \033[1m\033[32mmain\033[0m\033[33m)\033[0m
     Author: gabriel
-    Date:   2026-03-16 12:00:00 UTC
+    \033[2mDate:   2026-03-16 12:00:00 UTC\033[0m
 
         Add verse melody
 
---oneline::
+\033[1m--oneline\033[0m::
 
-    a1b2c3d4 (HEAD -> main) Add verse melody
-    f9e8d7c6 Initial commit
+    \033[33ma1b2c3d4\033[0m \033[33m(\033[0m\033[1m\033[36mHEAD\033[0m -> \033[1m\033[32mmain\033[0m\033[33m)\033[0m Add verse melody
+    \033[33mf9e8d7c6\033[0m Initial commit
 
---graph::
+\033[1m--graph\033[0m::
 
-    * a1b2c3d4 (HEAD -> main) Add verse melody
-    * f9e8d7c6 Initial commit
+    \033[1m*\033[0m \033[33ma1b2c3d4\033[0m \033[33m(\033[0m\033[1m\033[36mHEAD\033[0m -> \033[1m\033[32mmain\033[0m\033[33m)\033[0m Add verse melody
+    \033[1m*\033[0m \033[33mf9e8d7c6\033[0m Initial commit
 
---stat::
+\033[1m--stat\033[0m::
 
-    commit a1b2c3d4 (HEAD -> main)
-    Date: 2026-03-16 12:00:00 UTC
+    \033[33mcommit a1b2c3d4\033[0m \033[33m(\033[0m\033[1m\033[36mHEAD\033[0m -> \033[1m\033[32mmain\033[0m\033[33m)\033[0m
+    \033[2mDate:   2026-03-16 12:00:00 UTC\033[0m
 
         Add verse melody
 
-     tracks/drums.mid | added
-     1 file changed
+    \033[32m + tracks/drums.mid\033[0m
+    \033[2m 1 added, 0 removed\033[0m
+
+SemVer bumps are coloured: \033[32mPATCH\033[0m  \033[33mMINOR\033[0m  \033[31mMAJOR\033[0m
 
 Filters: --since, --until, --author, --section, --track, --emotion
 """
@@ -52,6 +54,43 @@ from muse.core.validation import sanitize_display
 logger = logging.getLogger(__name__)
 
 _DEFAULT_LIMIT = 1000
+
+# ANSI colour helpers — only emitted when stdout is a TTY.
+_RESET  = "\033[0m"
+_BOLD   = "\033[1m"
+_YELLOW = "\033[33m"
+_GREEN  = "\033[32m"
+_RED    = "\033[31m"
+_CYAN   = "\033[36m"
+_DIM    = "\033[2m"
+
+
+def _c(text: str, *codes: str, tty: bool) -> str:
+    """Wrap *text* in ANSI *codes* when *tty* is True."""
+    if not tty:
+        return text
+    return "".join(codes) + text + _RESET
+
+
+def _ref_label(branch: str, is_head: bool, tty: bool) -> str:
+    """Format the ``(HEAD -> branch)`` decoration."""
+    if not is_head:
+        return ""
+    if not tty:
+        return f" (HEAD -> {branch})"
+    head = _c("HEAD", _BOLD, _CYAN, tty=tty)
+    arrow = _c(" -> ", _RESET, tty=tty)
+    br = _c(branch, _BOLD, _GREEN, tty=tty)
+    paren_open  = _c("(", _YELLOW, tty=tty)
+    paren_close = _c(")", _YELLOW, tty=tty)
+    return f" {paren_open}{head}{arrow}{br}{paren_close}"
+
+
+_SEMVER_COLOUR: dict[str, str] = {
+    "major": _RED,
+    "minor": _YELLOW,
+    "patch": _GREEN,
+}
 
 
 def _read_branch(root: pathlib.Path) -> str:
@@ -209,41 +248,57 @@ def run(args: argparse.Namespace) -> None:
         return
 
     head_commit_id = filtered[0].commit_id if filtered else None
+    tty: bool = sys.stdout.isatty()
 
     for c in filtered:
         is_head = c.commit_id == head_commit_id
-        ref_label = f" (HEAD -> {branch})" if is_head else ""
+        decoration = _ref_label(branch, is_head, tty)
 
+        short_hash = _c(c.commit_id[:8], _YELLOW, tty=tty)
         msg = sanitize_display(c.message)
         author_display = sanitize_display(c.author)
 
         if oneline:
-            print(f"{c.commit_id[:8]}{ref_label} {msg}")
+            print(f"{short_hash}{decoration} {msg}")
 
         elif graph:
-            print(f"* {c.commit_id[:8]}{ref_label} {msg}")
+            bullet = _c("*", _BOLD, tty=tty)
+            print(f"{bullet} {short_hash}{decoration} {msg}")
 
         else:
-            print(f"commit {c.commit_id[:8]}{ref_label}")
+            commit_word = _c("commit", _YELLOW, tty=tty)
+            print(f"{commit_word} {short_hash}{decoration}")
             if author_display:
                 print(f"Author: {author_display}")
-            print(f"Date:   {_format_date(c.committed_at)}")
+            print(f"Date:   {_c(_format_date(c.committed_at), _DIM, tty=tty)}")
+
             if c.sem_ver_bump and c.sem_ver_bump != "none":
-                print(f"SemVer: {c.sem_ver_bump.upper()}")
+                bump_key = c.sem_ver_bump.lower()
+                bump_colour = _SEMVER_COLOUR.get(bump_key, "")
+                bump_label = _c(c.sem_ver_bump.upper(), bump_colour, tty=tty) if bump_colour else c.sem_ver_bump.upper()
+                print(f"SemVer: {bump_label}")
                 if c.breaking_changes:
                     safe_breaks = [sanitize_display(b) for b in c.breaking_changes[:3]]
-                    print(f"Breaking: {', '.join(safe_breaks)}"
-                          + (f" +{len(c.breaking_changes) - 3} more" if len(c.breaking_changes) > 3 else ""))
+                    breaking_text = ", ".join(safe_breaks)
+                    if len(c.breaking_changes) > 3:
+                        breaking_text += f" +{len(c.breaking_changes) - 3} more"
+                    print(f"Breaking: {_c(breaking_text, _RED, tty=tty)}")
+
             if c.metadata:
-                meta_parts = [f"{sanitize_display(k)}: {sanitize_display(v)}" for k, v in sorted(c.metadata.items())]
+                meta_parts = [
+                    f"{sanitize_display(k)}: {sanitize_display(v)}"
+                    for k, v in sorted(c.metadata.items())
+                ]
                 print(f"Meta:   {', '.join(meta_parts)}")
+
             print(f"\n    {msg}\n")
 
             if stat or patch:
                 added, removed = _file_diff(root, c)
                 for p in added:
-                    print(f" + {p}")
+                    print(_c(f" + {p}", _GREEN, tty=tty))
                 for p in removed:
-                    print(f" - {p}")
+                    print(_c(f" - {p}", _RED, tty=tty))
                 if added or removed:
-                    print(f" {len(added)} added, {len(removed)} removed\n")
+                    summary = f" {len(added)} added, {len(removed)} removed"
+                    print(_c(summary, _DIM, tty=tty) + "\n")

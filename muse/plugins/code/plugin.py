@@ -282,6 +282,43 @@ class CodePlugin:
 
         return SnapshotManifest(files=files, domain=_DOMAIN_NAME)
 
+    def workdir_snapshot(self, root: pathlib.Path) -> SnapshotManifest:
+        """Capture the raw working tree, bypassing any active stage.
+
+        Identical to :meth:`snapshot` but skips the stage-overlay logic,
+        so every on-disk file is reflected at its current content hash.
+        Used by ``muse diff --working``.
+        """
+        patterns = resolve_patterns(load_ignore_config(root), _DOMAIN_NAME)
+        cache = load_cache(root)
+        files: dict[str, str] = {}
+        root_str = str(root)
+        prefix_len = len(root_str) + 1
+
+        for dirpath, dirnames, filenames in os.walk(root_str, followlinks=False):
+            dirnames[:] = sorted(
+                d for d in dirnames
+                if not d.startswith(".") and d not in _ALWAYS_IGNORE_DIRS
+            )
+            for fname in sorted(filenames):
+                if fname.startswith("."):
+                    continue
+                abs_str = os.path.join(dirpath, fname)
+                try:
+                    st = os.lstat(abs_str)
+                except OSError:
+                    continue
+                if not _stat.S_ISREG(st.st_mode):
+                    continue
+                rel = abs_str[prefix_len:]
+                if os.sep != "/":
+                    rel = rel.replace(os.sep, "/")
+                if is_ignored(rel, patterns):
+                    continue
+                files[rel] = cache.get_cached(rel, abs_str, st.st_mtime, st.st_size)
+
+        return SnapshotManifest(files=files, domain=_DOMAIN_NAME)
+
     # ------------------------------------------------------------------
     # StagePlugin implementation
     # ------------------------------------------------------------------
@@ -349,11 +386,33 @@ class CodePlugin:
                     rel, abs_str, st.st_mtime, st.st_size
                 )
 
-        # Unstaged: tracked files with working-tree changes not yet staged.
+        # Unstaged: files whose working-tree content diverges from what is staged
+        # (or from HEAD for untracked-by-stage files).
+        #
+        # Two passes:
+        # 1. Staged files: compare working tree against the staged object.
+        #    A file modified after staging must appear in the unstaged bucket.
+        # 2. Committed files not in the stage: compare against HEAD.
         unstaged: dict[str, str] = {}
+
+        for rel_path, staged_entry in stage.items():
+            if staged_entry["mode"] == "D":
+                # Staged for deletion — if the file reappeared on disk, flag it.
+                if rel_path in workdir_files:
+                    unstaged[rel_path] = "modified"
+                continue
+            staged_oid = staged_entry["object_id"]
+            current_id = workdir_files.get(rel_path)
+            if current_id is None:
+                # Staged but deleted from disk since staging.
+                unstaged[rel_path] = "deleted"
+            elif current_id != staged_oid:
+                # Modified on disk after staging — not yet re-staged.
+                unstaged[rel_path] = "modified"
+
         for rel_path, committed_id in committed.items():
             if rel_path in stage:
-                continue  # already staged — don't show in unstaged
+                continue  # already covered in the stage pass above
             current_id = workdir_files.get(rel_path)
             if current_id is None:
                 unstaged[rel_path] = "deleted"
