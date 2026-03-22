@@ -159,10 +159,9 @@ class TestFindRepoRoot:
         assert result is None
 
     def test_require_repo_exits_when_no_repo(self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        import click
         monkeypatch.delenv("MUSE_REPO_ROOT", raising=False)
         monkeypatch.chdir(tmp_path)
-        with pytest.raises(click.exceptions.Exit):
+        with pytest.raises(SystemExit):
             require_repo()
 
 
