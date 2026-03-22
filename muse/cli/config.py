@@ -233,35 +233,46 @@ def _dump_toml(config: MuseConfig) -> str:
 # ---------------------------------------------------------------------------
 
 
-def get_auth_token(repo_root: pathlib.Path | None = None) -> str | None:
-    """Return the bearer token for this repository's configured hub.
+def get_auth_token(
+    repo_root: pathlib.Path | None = None,
+    remote_url: str | None = None,
+) -> str | None:
+    """Return the bearer token for a hub, keyed by the remote URL being contacted.
 
-    Reads the hub URL from ``[hub] url`` in ``.muse/config.toml``, then
-    resolves the token from ``~/.muse/identity.toml`` via
-    :func:`muse.core.identity.resolve_token`.
+    Resolution order:
+    1. If *remote_url* is given, extract its hostname (+ port) and look up the
+       token for that host in ``~/.muse/identity.toml``.  This lets
+       ``muse push local`` and ``muse push origin`` each use their own token
+       without any manual config swap.
+    2. Fall back to the hub URL recorded in ``[hub] url`` in
+       ``.muse/config.toml`` (original behaviour, used by commands that don't
+       know the remote URL ahead of time).
 
-    Returns ``None`` when no hub is configured or no identity is stored for
-    that hub.  The token value is **never** logged.
+    The token value is **never** logged.
 
     Args:
-        repo_root: Repository root. Defaults to ``Path.cwd()``.
+        repo_root:  Repository root.  Defaults to ``Path.cwd()``.
+        remote_url: URL of the specific remote being contacted (e.g.
+                    ``http://localhost:10003/gabriel/muse``).  When supplied,
+                    token resolution uses this URL's host rather than the
+                    global hub setting.
 
     Returns:
         Bearer token string, or ``None``.
     """
     from muse.core.identity import resolve_token  # avoid circular import at module level
 
-    hub_url = get_hub_url(repo_root)
-    if hub_url is None:
+    lookup_url: str | None = remote_url or get_hub_url(repo_root)
+    if lookup_url is None:
         logger.debug("⚠️ No hub configured — skipping auth token lookup")
         return None
 
-    token = resolve_token(hub_url)
+    token = resolve_token(lookup_url)
     if token is None:
-        logger.debug("⚠️ No identity for hub %s — run `muse auth login`", hub_url)
+        logger.debug("⚠️ No identity for hub %s — run `muse auth login`", lookup_url)
         return None
 
-    logger.debug("✅ Auth token resolved for hub %s (Bearer ***)", hub_url)
+    logger.debug("✅ Auth token resolved for hub %s (Bearer ***)", lookup_url)
     return token
 
 
