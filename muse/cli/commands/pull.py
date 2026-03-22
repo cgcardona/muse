@@ -92,7 +92,7 @@ def pull(
         typer.echo(f"  Add it with: muse remote add {remote} <url>")
         raise typer.Exit(code=ExitCode.USER_ERROR)
 
-    token = get_auth_token(root)
+    token = get_auth_token(root, remote_url=url)
     current_branch = _current_branch(root)
     target_branch = branch or get_upstream(current_branch, root) or current_branch
 
