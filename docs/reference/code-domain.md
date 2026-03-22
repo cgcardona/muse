@@ -1130,6 +1130,10 @@ muse/
 | C# | `.cs` | tree-sitter | class, interface, struct, method, constructor, enum |
 | Ruby | `.rb` | tree-sitter | class, module, method, singleton_method |
 | Kotlin | `.kt` `.kts` | tree-sitter | function, class, method |
+| Markdown / RST | `.md` `.rst` `.txt` | tree-sitter-markdown | section (ATX headings) |
+| HTML | `.html` `.htm` | tree-sitter-html | section (semantic elements, id-bearing elements) |
+| CSS / SCSS | `.css` `.scss` | tree-sitter-css | rule (rule-sets, @keyframes, @media) |
+| TOML | `.toml` | `tomllib` (stdlib, zero deps) | section (`[table]`, `[[array]]`), variable (scalar key-value) |
 
 ### Layer Rules
 
