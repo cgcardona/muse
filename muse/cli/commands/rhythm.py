@@ -22,11 +22,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -35,7 +35,6 @@ from muse.plugins.midi._analysis import RhythmAnalysis, analyze_rhythm
 from muse.plugins.midi._query import load_track, load_track_from_workdir
 
 logger = logging.getLogger(__name__)
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -78,16 +77,16 @@ def _swing_label(ratio: float) -> str:
     return "heavy swing"
 
 
-@app.callback(invoke_without_command=True)
-def rhythm(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
-        help="Analyse a historical snapshot instead of the working tree.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the rhythm subcommand."""
+    parser = subparsers.add_parser("rhythm", help="Quantify syncopation, swing, and quantisation accuracy in a MIDI track.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Analyse a historical snapshot instead of the working tree.")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Quantify syncopation, swing, and quantisation accuracy in a MIDI track.
 
     ``muse rhythm`` gives agents and composers a numerical fingerprint of a
@@ -98,6 +97,10 @@ def rhythm(
     Use ``--json`` for agent-readable output to drive automated rhythmic
     quality gates or style-matching pipelines.
     """
+    track: str = args.track
+    ref: str | None = args.ref
+    as_json: bool = args.as_json
+
     root = require_repo()
     commit_label = "working tree"
 
@@ -106,38 +109,38 @@ def rhythm(
         branch = _read_branch(root)
         commit = resolve_commit_ref(root, repo_id, branch, ref)
         if commit is None:
-            typer.echo(f"❌ Commit '{ref}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Commit '{ref}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         result = load_track(root, commit.commit_id, track)
         commit_label = commit.commit_id[:8]
     else:
         result = load_track_from_workdir(root, track)
 
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     notes, _tpb = result
     if not notes:
-        typer.echo(f"  (no notes found in '{track}')")
+        print(f"  (no notes found in '{track}')")
         return
 
     analysis: RhythmAnalysis = analyze_rhythm(notes)
 
     if as_json:
-        typer.echo(json.dumps({"track": track, "commit": commit_label, **analysis}, indent=2))
+        print(json.dumps({"track": track, "commit": commit_label, **analysis}, indent=2))
         return
 
-    typer.echo(f"\nRhythmic analysis: {track} — {commit_label}")
-    typer.echo(
+    print(f"\nRhythmic analysis: {track} — {commit_label}")
+    print(
         f"Notes: {analysis['total_notes']}  ·  "
         f"Bars: {analysis['bars']}  ·  "
         f"Notes/bar avg: {analysis['notes_per_bar_avg']}"
     )
-    typer.echo(f"Dominant subdivision: {analysis['dominant_subdivision']}")
+    print(f"Dominant subdivision: {analysis['dominant_subdivision']}")
     qs = analysis["quantization_score"]
     ss = analysis["syncopation_score"]
     sw = analysis["swing_ratio"]
-    typer.echo(f"Quantisation score:   {qs:.3f}  ({_quant_label(qs)})")
-    typer.echo(f"Syncopation score:    {ss:.3f}  ({_synco_label(ss)})")
-    typer.echo(f"Swing ratio:          {sw:.3f}  ({_swing_label(sw)})")
+    print(f"Quantisation score:   {qs:.3f}  ({_quant_label(qs)})")
+    print(f"Syncopation score:    {ss:.3f}  ({_synco_label(ss)})")
+    print(f"Swing ratio:          {sw:.3f}  ({_swing_label(sw)})")

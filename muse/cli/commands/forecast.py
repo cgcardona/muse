@@ -55,11 +55,10 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
 
 from muse._version import __version__
 from muse.core.coordination import active_reservations, load_all_intents
@@ -68,8 +67,6 @@ from muse.core.store import get_commit_snapshot_manifest, read_current_branch, r
 from muse.plugins.code._callgraph import build_reverse_graph, transitive_callers
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 class _ConflictPrediction:
@@ -105,15 +102,25 @@ def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-@app.callback(invoke_without_command=True)
-def forecast(
-    ctx: typer.Context,
-    branch_filter: str | None = typer.Option(
-        None, "--branch", "-b", metavar="BRANCH",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the forecast subcommand."""
+    parser = subparsers.add_parser(
+        "forecast",
+        help="Predict merge conflicts from active reservations and intents.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--branch", "-b",
+        dest="branch_filter",
+        default=None,
+        metavar="BRANCH",
         help="Restrict to reservations on this branch.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit forecast as JSON."),
-) -> None:
+    )
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit forecast as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Predict merge conflicts from active reservations and intents.
 
     Reads ``.muse/coordination/reservations/`` and ``intents/``, then:
@@ -126,6 +133,9 @@ def forecast(
     plan before this command becomes useful.
     """
     import pathlib
+
+    branch_filter: str | None = args.branch_filter
+    as_json: bool = args.as_json
 
     root = require_repo()
     repo_id = _read_repo_id(root)
@@ -212,7 +222,7 @@ def forecast(
             ))
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "schema_version": __version__,
                 "active_reservations": len(reservations),
@@ -227,30 +237,30 @@ def forecast(
         ))
         return
 
-    typer.echo(
+    print(
         f"\nConflict forecast — "
         f"{len(reservations)} active reservation(s), {len(intents)} intent(s)"
     )
-    typer.echo("─" * 62)
+    print("─" * 62)
 
     if not conflicts:
-        typer.echo("\n  ✅ No conflicts predicted.")
+        print("\n  ✅ No conflicts predicted.")
         if not reservations:
-            typer.echo("  (no active reservations — run 'muse reserve' first)")
+            print("  (no active reservations — run 'muse reserve' first)")
         return
 
     for c in conflicts:
         icon = "🔴" if c.confidence >= 0.9 else "⚠️ "
-        typer.echo(f"\n{icon}  {c.conflict_type}  (confidence {c.confidence:.2f})")
+        print(f"\n{icon}  {c.conflict_type}  (confidence {c.confidence:.2f})")
         for addr in c.addresses:
-            typer.echo(f"    {addr}")
+            print(f"    {addr}")
         for agent in c.agents:
-            typer.echo(f"    agent: {agent}")
-        typer.echo(f"    → {c.description}")
+            print(f"    agent: {agent}")
+        print(f"    → {c.description}")
 
     high = sum(1 for c in conflicts if c.confidence >= 0.9)
     med = sum(1 for c in conflicts if 0.5 <= c.confidence < 0.9)
-    typer.echo(
+    print(
         f"\n  {high} high-risk, {med} medium-risk conflict(s) predicted"
     )
-    typer.echo("  Run 'muse plan-merge' for a detailed merge strategy.")
+    print("  Run 'muse plan-merge' for a detailed merge strategy.")

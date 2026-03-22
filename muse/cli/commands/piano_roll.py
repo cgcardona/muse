@@ -30,11 +30,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -47,8 +47,6 @@ from muse.plugins.midi._query import (
 from muse.plugins.midi.midi_diff import _pitch_name
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _CELL_WIDTH = 3  # characters per cell in the grid
 
@@ -162,23 +160,17 @@ def _render_piano_roll(
     return lines
 
 
-@app.callback(invoke_without_command=True)
-def piano_roll(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
-        help="Render from a historical snapshot instead of the working tree.",
-    ),
-    bars_range: str | None = typer.Option(
-        None, "--bars", "-b", metavar="START-END",
-        help='Bar range to render, e.g. "1-8". Default: first 8 bars.',
-    ),
-    resolution: int = typer.Option(
-        2, "--resolution", "-r", metavar="N",
-        help="Grid cells per beat (1=quarter, 2=eighth, 4=sixteenth). Default: 2.",
-    ),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the piano-roll subcommand."""
+    parser = subparsers.add_parser("piano-roll", help="Render an ASCII piano roll of a MIDI track.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Render from a historical snapshot instead of the working tree.")
+    parser.add_argument("--bars", "-b", metavar="START-END", default=None, dest="bars_range", help='Bar range to render, e.g. "1-8". Default: first 8 bars.')
+    parser.add_argument("--resolution", "-r", metavar="N", type=int, default=2, help="Grid cells per beat (1=quarter, 2=eighth, 4=sixteenth). Default: 2.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Render an ASCII piano roll of a MIDI track.
 
     ``muse piano-roll`` produces a terminal-friendly piano roll view:
@@ -192,6 +184,11 @@ def piano_roll(
     This command works on any historical snapshot via ``--commit``, letting
     you visually compare compositions across commits.
     """
+    track: str = args.track
+    ref: str | None = args.ref
+    bars_range: str | None = args.bars_range
+    resolution: int = args.resolution
+
     root = require_repo()
 
     result: tuple[list[NoteInfo], int] | None
@@ -202,16 +199,16 @@ def piano_roll(
         branch = _read_branch(root)
         commit = resolve_commit_ref(root, repo_id, branch, ref)
         if commit is None:
-            typer.echo(f"❌ Commit '{ref}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Commit '{ref}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         result = load_track(root, commit.commit_id, track)
         commit_label = commit.commit_id[:8]
     else:
         result = load_track_from_workdir(root, track)
 
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     note_list, tpb = result
 
@@ -224,15 +221,15 @@ def piano_roll(
             bar_start = int(parts[0])
             bar_end = int(parts[1]) if len(parts) > 1 else bar_start + 7
         except ValueError:
-            typer.echo(f"❌ Invalid bar range '{bars_range}'. Use 'START-END' e.g. '1-8'.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Invalid bar range '{bars_range}'. Use 'START-END' e.g. '1-8'.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
 
-    typer.echo(
+    print(
         f"\nPiano roll: {track} — {commit_label}  "
         f"(bars {bar_start}–{bar_end},  res={resolution} cells/beat)"
     )
-    typer.echo("")
+    print("")
 
     lines = _render_piano_roll(note_list, tpb, bar_start, bar_end, resolution)
     for line in lines:
-        typer.echo(line)
+        print(line)

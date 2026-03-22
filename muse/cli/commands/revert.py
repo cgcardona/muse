@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
 import datetime
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -26,8 +26,6 @@ from muse.core.workdir import apply_manifest
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
 
 def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
@@ -37,54 +35,66 @@ def _read_repo_id(root: pathlib.Path) -> str:
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
-@app.callback(invoke_without_command=True)
-def revert(
-    ctx: typer.Context,
-    ref: str = typer.Argument(..., help="Commit to revert."),
-    message: str | None = typer.Option(None, "-m", "--message", help="Override revert commit message."),
-    no_commit: bool = typer.Option(False, "--no-commit", "-n", help="Apply changes but do not commit."),
-    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the revert subcommand."""
+    parser = subparsers.add_parser(
+        "revert",
+        help="Create a new commit that undoes a prior commit.",
+        description=__doc__,
+    )
+    parser.add_argument("ref", help="Commit to revert.")
+    parser.add_argument("-m", "--message", default=None, help="Override revert commit message.")
+    parser.add_argument("--no-commit", "-n", action="store_true", dest="no_commit", help="Apply changes but do not commit.")
+    parser.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Create a new commit that undoes a prior commit.
 
     Agents should pass ``--format json`` to receive ``{commit_id, branch,
     reverted_commit_id, message}`` rather than human-readable text.
     """
+    ref: str = args.ref
+    message: str | None = args.message
+    no_commit: bool = args.no_commit
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     target = resolve_commit_ref(root, repo_id, branch, ref)
     if target is None:
-        typer.echo(f"❌ Commit '{ref}' not found.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref}' not found.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # The revert of a commit restores its parent snapshot
     if target.parent_commit_id is None:
-        typer.echo("❌ Cannot revert the root commit (no parent to restore).")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ Cannot revert the root commit (no parent to restore).")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     parent_commit = read_commit(root, target.parent_commit_id)
     if parent_commit is None:
-        typer.echo(f"❌ Parent commit {target.parent_commit_id[:8]} not found.")
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(f"❌ Parent commit {target.parent_commit_id[:8]} not found.")
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     target_snapshot = read_snapshot(root, parent_commit.snapshot_id)
     if target_snapshot is None:
-        typer.echo(f"❌ Snapshot {parent_commit.snapshot_id[:8]} not found.")
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(f"❌ Snapshot {parent_commit.snapshot_id[:8]} not found.")
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     apply_manifest(root, target_snapshot.manifest)
 
     if no_commit:
         if fmt == "json":
-            typer.echo(json.dumps({"status": "applied", "commit_id": None,
-                                   "reverted_commit_id": target.commit_id, "branch": branch}))
+            print(json.dumps({"status": "applied", "commit_id": None,
+                              "reverted_commit_id": target.commit_id, "branch": branch}))
         else:
-            typer.echo(f"Reverted changes from {target.commit_id[:8]} applied to working tree. Run 'muse commit' to record.")
+            print(f"Reverted changes from {target.commit_id[:8]} applied to working tree. Run 'muse commit' to record.")
         return
 
     revert_message = message or f"Revert \"{target.message}\""
@@ -113,11 +123,11 @@ def revert(
     (root / ".muse" / "refs" / "heads" / branch).write_text(commit_id)
 
     if fmt == "json":
-        typer.echo(json.dumps({
+        print(json.dumps({
             "commit_id": commit_id,
             "branch": branch,
             "reverted_commit_id": target.commit_id,
             "message": revert_message,
         }))
     else:
-        typer.echo(f"[{sanitize_display(branch)} {commit_id[:8]}] {sanitize_display(revert_message)}")
+        print(f"[{sanitize_display(branch)} {commit_id[:8]}] {sanitize_display(revert_message)}")

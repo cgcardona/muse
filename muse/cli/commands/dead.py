@@ -61,11 +61,11 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -76,8 +76,6 @@ from muse.plugins.code.ast_parser import parse_symbols
 from muse.core.object_store import read_object
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -161,23 +159,33 @@ class _DeadCandidate:
         }
 
 
-@app.callback(invoke_without_command=True)
-def dead(
-    ctx: typer.Context,
-    kind_filter: str | None = typer.Option(
-        None, "--kind", "-k", metavar="KIND",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the dead subcommand."""
+    parser = subparsers.add_parser(
+        "dead",
+        help="Find symbols with no callers and no importers — dead code candidates.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--kind", "-k", default=None, metavar="KIND", dest="kind_filter",
         help="Restrict to symbols of this kind (function, class, method, …).",
-    ),
-    exclude_tests: bool = typer.Option(
-        False, "--exclude-tests",
+    )
+    parser.add_argument(
+        "--exclude-tests", action="store_true", dest="exclude_tests",
         help="Exclude symbols in files whose path contains 'test' or 'spec'.",
-    ),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
+    )
+    parser.add_argument(
+        "--commit", "-c", default=None, metavar="REF", dest="ref",
         help="Analyse a historical snapshot instead of HEAD.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit results as JSON.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Find symbols with no callers and no importers — dead code candidates.
 
     A symbol is flagged when its bare name appears in no ``ast.Call`` node
@@ -194,14 +202,19 @@ def dead(
     Limitations: dynamic dispatch, exported APIs, and entry points are not
     detected.  Treat results as *candidates*, not confirmed dead code.
     """
+    kind_filter: str | None = args.kind_filter
+    exclude_tests: bool = args.exclude_tests
+    ref: str | None = args.ref
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     manifest = get_commit_snapshot_manifest(root, commit.commit_id) or {}
 
@@ -239,7 +252,7 @@ def dead(
     candidates.sort(key=lambda c: (c.module_imported, c.address))
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "commit": commit.commit_id[:8],
                 "total_symbols_scanned": sum(len(t) for t in symbol_map.values()),
@@ -249,24 +262,24 @@ def dead(
         ))
         return
 
-    typer.echo(f"\nDead code candidates — commit {commit.commit_id[:8]}")
-    typer.echo("─" * 62)
+    print(f"\nDead code candidates — commit {commit.commit_id[:8]}")
+    print("─" * 62)
 
     if not candidates:
-        typer.echo("  ✅ No dead code candidates found.")
-        typer.echo(
+        print("  ✅ No dead code candidates found.")
+        print(
             "\n  Note: dynamic dispatch, exported APIs, and entry points are not detected."
         )
         return
 
     max_addr = max(len(c.address) for c in candidates)
     for c in candidates:
-        typer.echo(f"  {c.address:<{max_addr}}  {c.kind:<14}  ({c.reason})")
+        print(f"  {c.address:<{max_addr}}  {c.kind:<14}  ({c.reason})")
 
-    typer.echo(f"\n⚠️  {len(candidates)} potentially dead symbol(s)")
-    typer.echo(
+    print(f"\n⚠️  {len(candidates)} potentially dead symbol(s)")
+    print(
         "Note: dynamic dispatch, exported APIs, and entry points are not detected."
         "\nTreat these as candidates — verify before deleting."
     )
     if exclude_tests:
-        typer.echo("(test files excluded)")
+        print("(test files excluded)")

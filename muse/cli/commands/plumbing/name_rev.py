@@ -49,21 +49,19 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
+import sys
 from collections import deque
 from typing import TypedDict
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import read_commit
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _FORMAT_CHOICES = ("json", "text")
 _MAX_WALK = 50_000  # Safety ceiling — prevents runaway on pathological graphs
@@ -133,56 +131,64 @@ def _build_name_map(
     return visited
 
 
-@app.callback(invoke_without_command=True)
-def name_rev(
-    ctx: typer.Context,
-    commit_ids: list[str] = typer.Argument(
-        ..., help="One or more commit IDs to map to branch-relative names."
-    ),
-    name_only: bool = typer.Option(
-        False,
-        "--name-only",
-        "-n",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the name-rev subcommand."""
+    parser = subparsers.add_parser(
+        "name-rev",
+        help="Map commit IDs to descriptive branch-relative names.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "commit_ids",
+        nargs="+",
+        help="One or more commit IDs to map to branch-relative names.",
+    )
+    parser.add_argument(
+        "--name-only", "-n",
+        action="store_true",
+        dest="name_only",
         help="Emit only the name (or 'undefined'), not the commit ID.",
-    ),
-    undefined_name: str = typer.Option(
-        "undefined",
-        "--undefined",
-        "-u",
-        help="String to emit when a commit cannot be named (default: 'undefined').",
-    ),
-    fmt: str = typer.Option(
-        "json", "--format", "-f", help="Output format: json or text."
-    ),
-) -> None:
+    )
+    parser.add_argument(
+        "--undefined", "-u",
+        default="undefined",
+        dest="undefined_name",
+        metavar="STRING",
+        help="String to emit when a commit cannot be named. (default: 'undefined')",
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
+        help="Output format: json or text. (default: json)",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Map commit IDs to descriptive branch-relative names.
 
     For each commit ID, finds the branch tip that is closest (fewest parent
     hops) and returns a name of the form ``<branch>~N``.  When ``N`` is 0 the
     commit is the branch tip itself.
-
-    A single multi-source BFS from all branch tips is performed, so the
-    command is efficient regardless of the number of input IDs or branches.
-
-    Commits that are not reachable from any branch tip are reported as
-    ``undefined`` (or the value of ``--undefined``).
-
-    Example::
-
-        muse plumbing name-rev $(muse plumbing rev-parse HEAD -f text)
-        # → main~0
     """
+    fmt: str = args.fmt
+    commit_ids: list[str] = args.commit_ids
+    name_only: bool = args.name_only
+    undefined_name: str = args.undefined_name
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             json.dumps(
                 {"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"}
             )
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if not commit_ids:
-        typer.echo(json.dumps({"error": "At least one commit ID is required."}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": "At least one commit ID is required."}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
 
@@ -190,8 +196,8 @@ def name_rev(
         name_map = _build_name_map(root, set(commit_ids))
     except OSError as exc:
         logger.debug("name-rev I/O error: %s", exc)
-        typer.echo(json.dumps({"error": str(exc)}))
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(json.dumps({"error": str(exc)}))
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     results: list[_NameRevEntry] = []
     for cid in commit_ids:
@@ -222,9 +228,9 @@ def name_rev(
         for r in results:
             display_name = r["name"] if r["name"] is not None else undefined_name
             if name_only:
-                typer.echo(display_name)
+                print(display_name)
             else:
-                typer.echo(f"{r['commit_id']}  {display_name}")
+                print(f"{r['commit_id']}  {display_name}")
         return
 
-    typer.echo(json.dumps({"results": [dict(r) for r in results]}))
+    print(json.dumps({"results": [dict(r) for r in results]}))

@@ -23,13 +23,14 @@ Exit codes::
 
 from __future__ import annotations
 
+import argparse
+import sys
+
 import json
 import logging
 import pathlib
 from collections import defaultdict
-from typing import Annotated
 
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -42,8 +43,6 @@ from muse.core.store import (
 from muse.core.validation import sanitize_display
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer(help="Commit summary grouped by author or agent.")
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -84,33 +83,55 @@ def _build_groups(
     return dict(groups)
 
 
-@app.callback(invoke_without_command=True)
-def shortlog(
-    branch_opt: Annotated[
-        str | None,
-        typer.Option("--branch", "-b", help="Branch to summarise (default: current branch)."),
-    ] = None,
-    all_branches: Annotated[
-        bool,
-        typer.Option("--all", "-a", help="Summarise commits across all branches."),
-    ] = False,
-    numbered: Annotated[
-        bool,
-        typer.Option("--numbered", "-n", help="Sort by commit count (most active first)."),
-    ] = False,
-    by_email: Annotated[
-        bool,
-        typer.Option("--email", "-e", help="Include agent_id alongside author name."),
-    ] = False,
-    limit: Annotated[
-        int,
-        typer.Option("--limit", "-l", help="Maximum commits to walk per branch (0 = unlimited).", min=0),
-    ] = 0,
-    fmt: Annotated[
-        str,
-        typer.Option("--format", "-f", help="Output format: text or json."),
-    ] = "text",
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the shortlog subcommand."""
+    parser = subparsers.add_parser(
+        "shortlog",
+        help='Summarise commit history grouped by author or agent.',
+        description=__doc__,
+    )
+    parser.add_argument(
+        "branch_opt",
+        nargs="?",
+        default=None,
+        metavar="BRANCH",
+        help="Branch to summarise (default: current branch).",
+    )
+    parser.add_argument(
+        "--all",
+        dest="all_branches",
+        action="store_true",
+        help="Include all branches.",
+    )
+    parser.add_argument(
+        "--numbered",
+        action="store_true",
+        help="Sort by commit count (most active first).",
+    )
+    parser.add_argument(
+        "--email",
+        dest="by_email",
+        action="store_true",
+        help="Include agent_id alongside author.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Cap the number of commits loaded (0 = no limit).",
+    )
+    parser.add_argument(
+        "--format",
+        dest="fmt",
+        default="text",
+        choices=["text", "json"],
+        help="Output format: text (default) or json.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Summarise commit history grouped by author or agent.
 
     Each group lists the author, commit count, and (in text mode) each commit
@@ -126,9 +147,16 @@ def shortlog(
         muse shortlog --email              # include agent_id
         muse shortlog --format json        # JSON for agent consumption
     """
+    branch_opt: str | None = args.branch_opt
+    all_branches: bool = args.all_branches
+    numbered: bool = args.numbered
+    by_email: bool = args.by_email
+    limit: int = args.limit
+    fmt: str = args.fmt
+
     if fmt not in {"text", "json"}:
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     repo_id = _read_repo_id(root)
@@ -138,9 +166,9 @@ def shortlog(
         branches = _branch_names(root)
         if not branches:
             if fmt == "json":
-                typer.echo("[]")
+                print("[]")
             else:
-                typer.echo("No commits found.")
+                print("No commits found.")
             return
     else:
         branches = [branch_opt or read_current_branch(root)]
@@ -160,9 +188,9 @@ def shortlog(
 
     if not all_commits:
         if fmt == "json":
-            typer.echo("[]")
+            print("[]")
         else:
-            typer.echo("No commits found.")
+            print("No commits found.")
         return
 
     groups = _build_groups(all_commits, by_email=by_email)
@@ -190,11 +218,11 @@ def shortlog(
             }
             for key in sorted_keys
         ]
-        typer.echo(json.dumps(output, indent=2))
+        print(json.dumps(output, indent=2))
     else:
         for key in sorted_keys:
             commits_in_group = groups[key]
-            typer.echo(f"{sanitize_display(key)} ({len(commits_in_group)}):")
+            print(f"{sanitize_display(key)} ({len(commits_in_group)}):")
             for c in commits_in_group:
-                typer.echo(f"      {sanitize_display(c.message)}")
-            typer.echo("")
+                print(f"      {sanitize_display(c.message)}")
+            print("")

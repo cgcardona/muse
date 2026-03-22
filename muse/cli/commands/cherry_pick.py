@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
 import datetime
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.merge_engine import write_merge_state
@@ -32,8 +32,6 @@ from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
 
 def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
@@ -43,21 +41,32 @@ def _read_repo_id(root: pathlib.Path) -> str:
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
-@app.callback(invoke_without_command=True)
-def cherry_pick(
-    ctx: typer.Context,
-    ref: str = typer.Argument(..., help="Commit ID to apply."),
-    no_commit: bool = typer.Option(False, "-n", "--no-commit", help="Apply but do not commit."),
-    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the cherry-pick subcommand."""
+    parser = subparsers.add_parser(
+        "cherry-pick",
+        help="Apply a specific commit's changes on top of HEAD.",
+        description=__doc__,
+    )
+    parser.add_argument("ref", help="Commit ID to apply.")
+    parser.add_argument("-n", "--no-commit", action="store_true", dest="no_commit", help="Apply but do not commit.")
+    parser.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Apply a specific commit's changes on top of HEAD.
 
     Agents should pass ``--format json`` to receive ``{commit_id, branch,
     source_commit_id, conflicts}`` rather than human-readable text.
     """
+    ref: str = args.ref
+    no_commit: bool = args.no_commit
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
@@ -66,8 +75,8 @@ def cherry_pick(
 
     target = resolve_commit_ref(root, repo_id, branch, ref)
     if target is None:
-        typer.echo(f"❌ Commit '{ref}' not found.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref}' not found.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # The delta for this cherry-pick is: target vs its parent.
     # Applying that delta on top of HEAD is a three-way merge where the
@@ -99,27 +108,27 @@ def cherry_pick(
             conflict_paths=result.conflicts,
         )
         if fmt == "json":
-            typer.echo(json.dumps({
+            print(json.dumps({
                 "commit_id": None,
                 "branch": branch,
                 "source_commit_id": target.commit_id,
                 "conflicts": sorted(result.conflicts),
             }))
         else:
-            typer.echo(f"❌ Cherry-pick conflict in {len(result.conflicts)} file(s):")
+            print(f"❌ Cherry-pick conflict in {len(result.conflicts)} file(s):")
             for p in sorted(result.conflicts):
-                typer.echo(f"  CONFLICT (both modified): {sanitize_display(p)}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+                print(f"  CONFLICT (both modified): {sanitize_display(p)}")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     merged_manifest = result.merged["files"]
     apply_manifest(root, merged_manifest)
 
     if no_commit:
         if fmt == "json":
-            typer.echo(json.dumps({"commit_id": None, "branch": branch,
-                                   "source_commit_id": target.commit_id, "conflicts": []}))
+            print(json.dumps({"commit_id": None, "branch": branch,
+                              "source_commit_id": target.commit_id, "conflicts": []}))
         else:
-            typer.echo(f"Applied {target.commit_id[:8]} to working tree. Run 'muse commit' to record.")
+            print(f"Applied {target.commit_id[:8]} to working tree. Run 'muse commit' to record.")
         return
 
     head_commit_id = get_head_commit_id(root, branch)
@@ -148,11 +157,11 @@ def cherry_pick(
     ))
     (root / ".muse" / "refs" / "heads" / branch).write_text(commit_id)
     if fmt == "json":
-        typer.echo(json.dumps({
+        print(json.dumps({
             "commit_id": commit_id,
             "branch": branch,
             "source_commit_id": target.commit_id,
             "conflicts": [],
         }))
     else:
-        typer.echo(f"[{sanitize_display(branch)} {commit_id[:8]}] {sanitize_display(target.message)}")
+        print(f"[{sanitize_display(branch)} {commit_id[:8]}] {sanitize_display(target.message)}")

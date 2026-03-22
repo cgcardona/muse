@@ -33,11 +33,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -51,8 +51,6 @@ from muse.plugins.midi._query import (
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
 
 def _read_repo_id(root: pathlib.Path) -> str:
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
@@ -62,24 +60,18 @@ def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-@app.callback(invoke_without_command=True)
-def notes(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
-        help="Read from a historical commit instead of the working tree.",
-    ),
-    bar_filter: int | None = typer.Option(
-        None, "--bar", "-b", metavar="N",
-        help="Only show notes in bar N (1-indexed, assumes 4/4 time).",
-    ),
-    channel_filter: int | None = typer.Option(
-        None, "--channel", "-C", metavar="N",
-        help="Only show notes on MIDI channel N (0-based).",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the notes subcommand."""
+    parser = subparsers.add_parser("notes", help="Show every note in a MIDI track as structured musical data.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Read from a historical commit instead of the working tree.")
+    parser.add_argument("--bar", "-b", metavar="N", type=int, default=None, dest="bar_filter", help="Only show notes in bar N (1-indexed, assumes 4/4 time).")
+    parser.add_argument("--channel", "-C", metavar="N", type=int, default=None, dest="channel_filter", help="Only show notes on MIDI channel N (0-based).")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show every note in a MIDI track as structured musical data.
 
     ``muse notes`` parses the MIDI file and displays all notes with pitch
@@ -92,6 +84,12 @@ def notes(
     gives you the actual musical content at any point in history — sorted
     by time, readable as music notation.
     """
+    track: str = args.track
+    ref: str | None = args.ref
+    bar_filter: int | None = args.bar_filter
+    channel_filter: int | None = args.channel_filter
+    as_json: bool = args.as_json
+
     root = require_repo()
 
     result: tuple[list[NoteInfo], int] | None
@@ -102,16 +100,16 @@ def notes(
         branch = _read_branch(root)
         commit = resolve_commit_ref(root, repo_id, branch, ref)
         if commit is None:
-            typer.echo(f"❌ Commit '{ref}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Commit '{ref}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         result = load_track(root, commit.commit_id, track)
         commit_label = commit.commit_id[:8]
     else:
         result = load_track_from_workdir(root, track)
 
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     note_list, tpb = result
 
@@ -137,7 +135,7 @@ def notes(
             }
             for n in note_list
         ]
-        typer.echo(json.dumps({"track": track, "commit": commit_label, "notes": out}, indent=2))
+        print(json.dumps({"track": track, "commit": commit_label, "notes": out}, indent=2))
         return
 
     bars_seen: set[int] = {n.bar for n in note_list}
@@ -145,15 +143,15 @@ def notes(
     key = key_signature_guess(note_list) if not bar_filter and not channel_filter else ""
     key_line = f"\nKey signature (estimated): {key}" if key else ""
 
-    typer.echo(f"\n{track} — {len(note_list)} notes — {commit_label}{key_line}")
-    typer.echo("")
-    typer.echo(f"  {'Bar':>4}  {'Beat':>5}  {'Pitch':<6}  {'Vel':>3}  {'Dur':>10}  Channel")
-    typer.echo("  " + "─" * 50)
+    print(f"\n{track} — {len(note_list)} notes — {commit_label}{key_line}")
+    print("")
+    print(f"  {'Bar':>4}  {'Beat':>5}  {'Pitch':<6}  {'Vel':>3}  {'Dur':>10}  Channel")
+    print("  " + "─" * 50)
 
     for note in note_list:
-        typer.echo(
+        print(
             f"  {note.bar:>4}  {note.beat_in_bar:>5.2f}  {note.pitch_name:<6}  "
             f"{note.velocity:>3}  {note.beat_duration:>10.2f}  ch {note.channel}"
         )
 
-    typer.echo(f"\n{len(note_list)} note(s) across {len(bars_seen)} bar(s)")
+    print(f"\n{len(note_list)} note(s) across {len(bars_seen)} bar(s)")

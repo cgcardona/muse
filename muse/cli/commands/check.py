@@ -19,11 +19,11 @@ Usage::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.invariants import InvariantChecker, format_report
 from muse.core.repo import require_repo
@@ -31,8 +31,6 @@ from muse.core.store import get_head_commit_id, read_current_branch
 from muse.plugins.registry import read_domain
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _resolve_head(root: pathlib.Path) -> str | None:
@@ -51,45 +49,61 @@ def _get_checker(domain: str) -> InvariantChecker | None:
     return None
 
 
-@app.callback(invoke_without_command=True)
-def check(
-    ctx: typer.Context,
-    commit_arg: str | None = typer.Argument(None, help="Commit ID to check (default: HEAD)."),
-    strict: bool = typer.Option(False, "--strict", help="Exit 1 when any error-severity violation is found."),
-    output_json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
-    rules_file: str | None = typer.Option(None, "--rules", help="Path to a TOML invariants file."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the check subcommand."""
+    parser = subparsers.add_parser(
+        "check",
+        help="Run invariant checks for the current domain against a commit.",
+        description=__doc__,
+    )
+    parser.add_argument("commit_arg", nargs="?", default=None,
+                        help="Commit ID to check (default: HEAD).")
+    parser.add_argument("--strict", action="store_true",
+                        help="Exit 1 when any error-severity violation is found.")
+    parser.add_argument("--json", action="store_true", dest="output_json",
+                        help="Emit machine-readable JSON.")
+    parser.add_argument("--rules", default=None, dest="rules_file",
+                        help="Path to a TOML invariants file.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Run invariant checks for the current domain against a commit.
 
     Auto-detects the repository domain (code or midi) and dispatches to the
     appropriate checker.  Use ``muse code-check`` or ``muse midi-check`` for
     domain-specific options.
     """
+    commit_arg: str | None = args.commit_arg
+    strict: bool = args.strict
+    output_json: bool = args.output_json
+    rules_file: str | None = args.rules_file
+
     root = require_repo()
     domain = read_domain(root)
 
     commit_id = commit_arg or _resolve_head(root)
     if commit_id is None:
-        typer.echo("❌ No commit found.")
-        raise typer.Exit(code=1)
+        print("❌ No commit found.")
+        raise SystemExit(1)
 
     checker = _get_checker(domain)
     if checker is None:
-        typer.echo(f"⚠️  No invariant checker registered for domain {domain!r}.")
-        typer.echo("  Supported domains: code, midi")
-        raise typer.Exit(code=0)
+        print(f"⚠️  No invariant checker registered for domain {domain!r}.")
+        print("  Supported domains: code, midi")
+        raise SystemExit(0)
 
     rules_path = pathlib.Path(rules_file) if rules_file else None
     report = checker.check(root, commit_id, rules_file=rules_path)
 
     if output_json:
-        typer.echo(json.dumps(report))
+        print(json.dumps(report))
         if strict and report["has_errors"]:
-            raise typer.Exit(code=1)
+            raise SystemExit(1)
         return
 
-    typer.echo(f"\ncheck [{domain}] {commit_id[:8]} — {report['rules_checked']} rules")
-    typer.echo(format_report(report))
+    print(f"\ncheck [{domain}] {commit_id[:8]} — {report['rules_checked']} rules")
+    print(format_report(report))
 
     if strict and report["has_errors"]:
-        raise typer.Exit(code=1)
+        raise SystemExit(1)

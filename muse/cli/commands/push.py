@@ -21,10 +21,10 @@ relationship between the local branch and the remote branch so that future
 
 from __future__ import annotations
 
+import argparse
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.cli.config import (
     get_auth_token,
@@ -42,42 +42,45 @@ from muse.core.transport import TransportError, make_transport
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
 
 def _current_branch(root: pathlib.Path) -> str:
     """Return the current branch name from ``.muse/HEAD``."""
     return read_current_branch(root)
 
 
-@app.callback(invoke_without_command=True)
-def push(
-    ctx: typer.Context,
-    remote: str = typer.Argument(
-        "origin", help="Remote name to push to (default: origin)."
-    ),
-    branch: str | None = typer.Option(
-        None, "--branch", "-b", help="Local branch to push (default: current branch)."
-    ),
-    set_upstream_flag: bool = typer.Option(
-        False, "-u", "--set-upstream", help="Record upstream tracking for this branch."
-    ),
-    force: bool = typer.Option(
-        False, "--force", help="Force push even if the remote has diverged."
-    ),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the push subcommand."""
+    parser = subparsers.add_parser(
+        "push",
+        help="Upload local commits, snapshots, and objects to a remote.",
+        description=__doc__,
+    )
+    parser.add_argument("remote", nargs="?", default="origin", help="Remote name to push to (default: origin).")
+    parser.add_argument("--branch", "-b", default=None, help="Local branch to push (default: current branch).")
+    parser.add_argument("-u", "--set-upstream", action="store_true", dest="set_upstream_flag",
+                        help="Record upstream tracking for this branch.")
+    parser.add_argument("--force", action="store_true", help="Force push even if the remote has diverged.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Upload local commits, snapshots, and objects to a remote.
 
     Requires the remote to be a fast-forward of the local branch unless
     ``--force`` is specified.
     """
+    remote: str = args.remote
+    branch: str | None = args.branch
+    set_upstream_flag: bool = args.set_upstream_flag
+    force: bool = args.force
+
     root = require_repo()
 
     url = get_remote(remote, root)
     if url is None:
-        typer.echo(f"❌ Remote '{remote}' is not configured.")
-        typer.echo(f"  Add it with: muse remote add {remote} <url>")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Remote '{remote}' is not configured.")
+        print(f"  Add it with: muse remote add {remote} <url>")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     token = get_auth_token(root, remote_url=url)
     current_branch = _current_branch(root)
@@ -85,18 +88,18 @@ def push(
 
     local_head = get_head_commit_id(root, push_branch)
     if local_head is None:
-        typer.echo(f"❌ Branch '{push_branch}' has no commits to push.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Branch '{push_branch}' has no commits to push.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Determine what the remote already has (via tracking pointer).
     remote_head = get_remote_head(remote, push_branch, root)
     have: list[str] = [remote_head] if remote_head else []
 
     if remote_head == local_head:
-        typer.echo(f"Everything up to date. Remote {remote}/{push_branch} is already at {local_head[:8]}.")
+        print(f"Everything up to date. Remote {remote}/{push_branch} is already at {local_head[:8]}.")
         return
 
-    typer.echo(f"Pushing {push_branch} → {remote}/{push_branch} …")
+    print(f"Pushing {push_branch} → {remote}/{push_branch} …")
 
     bundle = build_pack(root, [local_head], have=have)
 
@@ -105,17 +108,17 @@ def push(
         result = transport.push_pack(url, token, bundle, push_branch, force)
     except TransportError as exc:
         if exc.status_code == 409:
-            typer.echo(
+            print(
                 f"❌ Push rejected — remote '{remote}/{push_branch}' has diverged.\n"
                 "  Pull first (muse pull) or use --force to override."
             )
         else:
-            typer.echo(f"❌ Push failed: {exc}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Push failed: {exc}")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if not result["ok"]:
-        typer.echo(f"❌ Push rejected by remote: {result['message']}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Push rejected by remote: {result['message']}")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Update local tracking pointer to reflect the new remote state.
     updated_head = result["branch_heads"].get(push_branch, local_head)
@@ -123,13 +126,13 @@ def push(
 
     if set_upstream_flag:
         set_upstream(push_branch, remote, root)
-        typer.echo(f"  Upstream set: {push_branch} → {remote}/{push_branch}")
+        print(f"  Upstream set: {push_branch} → {remote}/{push_branch}")
 
     commits_sent = len(bundle.get("commits") or [])
     objects_sent = len(bundle.get("objects") or [])
-    typer.echo(
+    print(
         f"✅ Pushed {commits_sent} commit(s), {objects_sent} object(s) "
         f"to {remote}/{push_branch} ({updated_head[:8]})"
     )
     if result["message"]:
-        typer.echo(f"   {result['message']}")
+        print(f"   {result['message']}")

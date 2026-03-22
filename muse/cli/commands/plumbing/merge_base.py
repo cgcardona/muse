@@ -31,11 +31,11 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.merge_engine import find_merge_base
@@ -44,8 +44,6 @@ from muse.core.store import get_head_commit_id, read_commit, read_current_branch
 from muse.core.validation import validate_object_id
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _FORMAT_CHOICES = ("json", "text")
 
@@ -73,60 +71,78 @@ def _resolve_ref(root: pathlib.Path, ref: str) -> str | None:
         return None
 
 
-@app.callback(invoke_without_command=True)
-def merge_base(
-    ctx: typer.Context,
-    commit_a: str = typer.Argument(..., help="First commit ID, branch name, or HEAD."),
-    commit_b: str = typer.Argument(..., help="Second commit ID, branch name, or HEAD."),
-    fmt: str = typer.Option(
-        "json", "--format", "-f", help="Output format: json or text."
-    ),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the merge-base subcommand."""
+    parser = subparsers.add_parser(
+        "merge-base",
+        help="Find the lowest common ancestor of two commits.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "commit_a",
+        help="First commit ID, branch name, or HEAD.",
+    )
+    parser.add_argument(
+        "commit_b",
+        help="Second commit ID, branch name, or HEAD.",
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
+        help="Output format: json or text. (default: json)",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Find the lowest common ancestor of two commits.
 
     Accepts full SHA-256 commit IDs, branch names, or ``HEAD``.  The result is
     the commit that is reachable from both inputs and is closest to both tips —
     the point at which their histories diverged.
-
-    Use this to compute how far apart two branches are before merging, or to
-    identify the base for a ``snapshot-diff`` range query.
     """
+    fmt: str = args.fmt
+    commit_a: str = args.commit_a
+    commit_b: str = args.commit_b
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             json.dumps(
                 {"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"}
             )
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
 
     resolved_a = _resolve_ref(root, commit_a)
     if resolved_a is None:
-        typer.echo(json.dumps({"error": f"Cannot resolve ref: {commit_a!r}"}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": f"Cannot resolve ref: {commit_a!r}"}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     resolved_b = _resolve_ref(root, commit_b)
     if resolved_b is None:
-        typer.echo(json.dumps({"error": f"Cannot resolve ref: {commit_b!r}"}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": f"Cannot resolve ref: {commit_b!r}"}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     try:
         base = find_merge_base(root, resolved_a, resolved_b)
     except Exception as exc:
         logger.debug("merge-base DAG walk failed: %s", exc)
-        typer.echo(json.dumps({"error": str(exc)}))
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(json.dumps({"error": str(exc)}))
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     if fmt == "text":
         if base is None:
-            typer.echo("(no common ancestor)")
+            print("(no common ancestor)")
         else:
-            typer.echo(base)
+            print(base)
         return
 
     if base is None:
-        typer.echo(
+        print(
             json.dumps(
                 {
                     "commit_a": resolved_a,
@@ -138,7 +154,7 @@ def merge_base(
         )
         return
 
-    typer.echo(
+    print(
         json.dumps(
             {
                 "commit_a": resolved_a,

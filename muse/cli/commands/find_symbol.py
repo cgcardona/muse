@@ -59,11 +59,11 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.object_store import read_object
@@ -74,8 +74,6 @@ from muse.plugins.code._query import symbols_for_snapshot
 from muse.plugins.code.ast_parser import SymbolRecord
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -410,31 +408,41 @@ def _branch_presence(
 # ---------------------------------------------------------------------------
 
 
-@app.callback(invoke_without_command=True)
-def find_symbol(
-    ctx: typer.Context,
-    hash_prefix: str | None = typer.Option(
-        None, "--hash", metavar="HASH",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the find-symbol subcommand."""
+    parser = subparsers.add_parser(
+        "find-symbol",
+        help="Search across ALL commits (every branch) for a symbol.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--hash", default=None, metavar="HASH", dest="hash_prefix",
         help="Find symbols whose content_id starts with this prefix.",
-    ),
-    name_pattern: str | None = typer.Option(
-        None, "--name", "-n", metavar="NAME",
+    )
+    parser.add_argument(
+        "--name", "-n", default=None, metavar="NAME", dest="name_pattern",
         help="Find symbols with this name (exact, case-insensitive). Append * for prefix.",
-    ),
-    kind_filter: str | None = typer.Option(
-        None, "--kind", "-k", metavar="KIND",
+    )
+    parser.add_argument(
+        "--kind", "-k", default=None, metavar="KIND", dest="kind_filter",
         help="Restrict to symbols of this kind (function, class, method, …).",
-    ),
-    all_branches: bool = typer.Option(
-        False, "--all-branches",
+    )
+    parser.add_argument(
+        "--all-branches", action="store_true", dest="all_branches",
         help="Also report which branch tips currently contain matching symbols.",
-    ),
-    first_only: bool = typer.Option(
-        False, "--first",
+    )
+    parser.add_argument(
+        "--first", action="store_true", dest="first_only",
         help="Show only the first appearance of each unique content_id.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit results as JSON.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Search across ALL commits (every branch) for a symbol.
 
     Closes two gaps in ``muse query``:
@@ -453,14 +461,21 @@ def find_symbol(
         muse find-symbol --name "compute*" --first
         muse find-symbol --hash a3f2c9 --all-branches
     """
+    hash_prefix: str | None = args.hash_prefix
+    name_pattern: str | None = args.name_pattern
+    kind_filter: str | None = args.kind_filter
+    all_branches: bool = args.all_branches
+    first_only: bool = args.first_only
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
 
     if not hash_prefix and not name_pattern and not kind_filter:
-        typer.echo(
-            "❌ At least one of --hash, --name, or --kind is required.", err=True
+        print(
+            "❌ At least one of --hash, --name, or --kind is required.", file=sys.stderr
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     appearances = _search_all_commits(
         root,
@@ -475,7 +490,7 @@ def find_symbol(
         branch_hits = _branch_presence(root, repo_id, hash_prefix, name_pattern, kind_filter)
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "query": {
                     "hash": hash_prefix,
@@ -491,7 +506,7 @@ def find_symbol(
         return
 
     # Human-readable output.
-    typer.echo(f"\nfind-symbol — searching {len(appearances)} match(es) across all commits")
+    print(f"\nfind-symbol — searching {len(appearances)} match(es) across all commits")
 
     query_parts: list[str] = []
     if hash_prefix:
@@ -500,30 +515,30 @@ def find_symbol(
         query_parts.append(f"name={name_pattern}")
     if kind_filter:
         query_parts.append(f"kind={kind_filter}")
-    typer.echo(f"Query: {',  '.join(query_parts)}")
-    typer.echo("─" * 62)
+    print(f"Query: {',  '.join(query_parts)}")
+    print("─" * 62)
 
     if not appearances:
-        typer.echo("  (no matching symbols found in commit history)")
+        print("  (no matching symbols found in commit history)")
     else:
         for ap in appearances:
             date_str = ap.commit.committed_at.strftime("%Y-%m-%d")
             short_id = ap.commit.commit_id[:8]
             branch_label = f"  [{ap.commit.branch}]" if ap.commit.branch else ""
-            typer.echo(
+            print(
                 f"\n  {ap.address}"
             )
-            typer.echo(
+            print(
                 f"  {short_id}  {date_str}  \"{ap.commit.message}\"{branch_label}"
             )
             if ap.content_id:
-                typer.echo(f"  content_id: {ap.content_id[:16]}..")
+                print(f"  content_id: {ap.content_id[:16]}..")
 
     if all_branches:
-        typer.echo(f"\nBranch presence ({len(branch_hits)} hit(s)):")
-        typer.echo("─" * 62)
+        print(f"\nBranch presence ({len(branch_hits)} hit(s)):")
+        print("─" * 62)
         if not branch_hits:
-            typer.echo("  (symbol not found in any branch HEAD)")
+            print("  (symbol not found in any branch HEAD)")
         else:
             for bh in branch_hits:
-                typer.echo(f"  [{bh.branch}]  {bh.address}  {bh.content_id[:16]}..")
+                print(f"  [{bh.branch}]  {bh.address}  {bh.content_id[:16]}..")

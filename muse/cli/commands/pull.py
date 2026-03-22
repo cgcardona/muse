@@ -14,11 +14,12 @@ Pass ``--no-merge`` to stop after the fetch step (equivalent to ``muse fetch``).
 
 from __future__ import annotations
 
+import argparse
 import datetime
 import json
 import logging
 import pathlib
-import typer
+import sys
 
 from muse.cli.config import get_auth_token, get_remote, get_remote_head, get_upstream, set_remote_head
 from muse.core.errors import ExitCode
@@ -45,8 +46,6 @@ from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
 
 def _current_branch(root: pathlib.Path) -> str:
     """Return the current branch name from ``.muse/HEAD``."""
@@ -63,34 +62,40 @@ def _restore_from_manifest(root: pathlib.Path, manifest: dict[str, str]) -> None
     apply_manifest(root, manifest)
 
 
-@app.callback(invoke_without_command=True)
-def pull(
-    ctx: typer.Context,
-    remote: str = typer.Argument(
-        "origin", help="Remote name to pull from (default: origin)."
-    ),
-    branch: str | None = typer.Option(
-        None, "--branch", "-b", help="Remote branch to pull (default: tracked branch or current branch)."
-    ),
-    no_merge: bool = typer.Option(
-        False, "--no-merge", help="Only fetch; do not merge into the current branch."
-    ),
-    message: str | None = typer.Option(
-        None, "-m", "--message", help="Override the merge commit message."
-    ),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the pull subcommand."""
+    parser = subparsers.add_parser(
+        "pull",
+        help="Fetch from a remote and merge into the current branch.",
+        description=__doc__,
+    )
+    parser.add_argument("remote", nargs="?", default="origin", help="Remote name to pull from (default: origin).")
+    parser.add_argument("--branch", "-b", default=None,
+                        help="Remote branch to pull (default: tracked branch or current branch).")
+    parser.add_argument("--no-merge", action="store_true", dest="no_merge",
+                        help="Only fetch; do not merge into the current branch.")
+    parser.add_argument("-m", "--message", default=None, help="Override the merge commit message.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Fetch from a remote and merge into the current branch.
 
     Equivalent to running ``muse fetch`` followed by ``muse merge``.
     Pass ``--no-merge`` to stop after the fetch step.
     """
+    remote: str = args.remote
+    branch: str | None = args.branch
+    no_merge: bool = args.no_merge
+    message: str | None = args.message
+
     root = require_repo()
 
     url = get_remote(remote, root)
     if url is None:
-        typer.echo(f"❌ Remote '{remote}' is not configured.")
-        typer.echo(f"  Add it with: muse remote add {remote} <url>")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Remote '{remote}' is not configured.")
+        print(f"  Add it with: muse remote add {remote} <url>")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     token = get_auth_token(root, remote_url=url)
     current_branch = _current_branch(root)
@@ -102,29 +107,29 @@ def pull(
     try:
         info = transport.fetch_remote_info(url, token)
     except TransportError as exc:
-        typer.echo(f"❌ Cannot reach remote '{remote}': {exc}")
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(f"❌ Cannot reach remote '{remote}': {exc}")
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     remote_commit_id = info["branch_heads"].get(target_branch)
     if remote_commit_id is None:
-        typer.echo(f"❌ Branch '{target_branch}' does not exist on remote '{remote}'.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Branch '{target_branch}' does not exist on remote '{remote}'.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     local_commit_ids = [c.commit_id for c in get_all_commits(root)]
-    typer.echo(f"Fetching {remote}/{target_branch} …")
+    print(f"Fetching {remote}/{target_branch} …")
 
     try:
         bundle = transport.fetch_pack(
             url, token, want=[remote_commit_id], have=local_commit_ids
         )
     except TransportError as exc:
-        typer.echo(f"❌ Fetch failed: {exc}")
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(f"❌ Fetch failed: {exc}")
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     apply_result = apply_pack(root, bundle)
     set_remote_head(remote, target_branch, remote_commit_id, root)
     commits_received = len(bundle.get("commits") or [])
-    typer.echo(
+    print(
         f"✅ Fetched {commits_received} commit(s), {apply_result['objects_written']} new object(s) "
         f"from {remote}/{target_branch} ({remote_commit_id[:8]})"
     )
@@ -147,17 +152,17 @@ def pull(
             snap = read_snapshot(root, theirs_commit.snapshot_id)
             if snap:
                 _restore_from_manifest(root, snap.manifest)
-        typer.echo(f"✅ Initialised {current_branch} at {theirs_commit_id[:8]}")
+        print(f"✅ Initialised {current_branch} at {theirs_commit_id[:8]}")
         return
 
     if ours_commit_id == theirs_commit_id:
-        typer.echo("Already up to date.")
+        print("Already up to date.")
         return
 
     base_commit_id = find_merge_base(root, ours_commit_id, theirs_commit_id)
 
     if base_commit_id == theirs_commit_id:
-        typer.echo("Already up to date.")
+        print("Already up to date.")
         return
 
     # Fast-forward: remote is a direct descendant of local HEAD.
@@ -170,7 +175,7 @@ def pull(
         (root / ".muse" / "refs" / "heads" / current_branch).write_text(
             theirs_commit_id
         )
-        typer.echo(
+        print(
             f"Fast-forward {current_branch} to {theirs_commit_id[:8]} "
             f"({remote}/{target_branch})"
         )
@@ -217,7 +222,7 @@ def pull(
     if result.applied_strategies:
         for p, strategy in sorted(result.applied_strategies.items()):
             if strategy != "manual":
-                typer.echo(f"  ✔ [{strategy}] {p}")
+                print(f"  ✔ [{strategy}] {p}")
 
     if not result.is_clean:
         write_merge_state(
@@ -228,11 +233,11 @@ def pull(
             conflict_paths=result.conflicts,
             other_branch=f"{remote}/{target_branch}",
         )
-        typer.echo(f"❌ Merge conflict in {len(result.conflicts)} file(s):")
+        print(f"❌ Merge conflict in {len(result.conflicts)} file(s):")
         for p in sorted(result.conflicts):
-            typer.echo(f"  CONFLICT (both modified): {p}")
-        typer.echo('\nFix conflicts and run "muse commit" to complete the merge.')
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"  CONFLICT (both modified): {p}")
+        print('\nFix conflicts and run "muse commit" to complete the merge.')
+        raise SystemExit(ExitCode.USER_ERROR)
 
     merged_manifest = result.merged["files"]
     _restore_from_manifest(root, merged_manifest)
@@ -264,6 +269,6 @@ def pull(
         ),
     )
     (root / ".muse" / "refs" / "heads" / current_branch).write_text(commit_id)
-    typer.echo(
+    print(
         f"✅ Merged {remote}/{target_branch} into {current_branch} ({commit_id[:8]})"
     )

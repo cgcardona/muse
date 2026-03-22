@@ -33,7 +33,7 @@ Output (default — no flags)::
 
 from __future__ import annotations
 
-import http.client
+import argparse
 import json
 import logging
 import pathlib
@@ -43,16 +43,12 @@ import urllib.error
 import urllib.request
 from typing import Literal, TypedDict
 
-import typer
-
 from muse.cli.config import get_auth_token, get_hub_url
 from muse.core.repo import find_repo_root
 from muse.domain import CRDTPlugin, MuseDomainPlugin, StructuredMergePlugin
 from muse.plugins.registry import _REGISTRY
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 # ---------------------------------------------------------------------------
 # Internal types
@@ -151,16 +147,16 @@ def _scaffold_new_domain(name: str) -> None:
     dest = pathlib.Path(__file__).parents[2] / "plugins" / name
 
     if dest.exists():
-        typer.echo(f"❌ Plugin directory already exists: {dest}", err=True)
-        raise typer.Exit(1)
+        print(f"❌ Plugin directory already exists: {dest}", file=sys.stderr)
+        raise SystemExit(1)
 
     if not scaffold_src.exists():
-        typer.echo(
+        print(
             f"❌ Scaffold source not found: {scaffold_src}\n"
             "Make sure muse/plugins/scaffold/ exists.",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     shutil.copytree(str(scaffold_src), str(dest))
 
@@ -176,16 +172,16 @@ def _scaffold_new_domain(name: str) -> None:
         )
         py_file.write_text(text)
 
-    typer.echo(f"✅ Scaffolded new domain plugin: muse/plugins/{name}/")
-    typer.echo(f"   Class name: {class_name}")
-    typer.echo("")
-    typer.echo("Next steps:")
-    typer.echo(f"  1. Implement every NotImplementedError in muse/plugins/{name}/plugin.py")
-    typer.echo("  2. Register the plugin in muse/plugins/registry.py:")
-    typer.echo(f'       from muse.plugins.{name}.plugin import {class_name}')
-    typer.echo(f'       _REGISTRY["{name}"] = {class_name}()')
-    typer.echo(f'  3. muse init --domain {name}')
-    typer.echo("  4. See docs/guide/plugin-authoring-guide.md for the full walkthrough")
+    print(f"✅ Scaffolded new domain plugin: muse/plugins/{name}/")
+    print(f"   Class name: {class_name}")
+    print("")
+    print("Next steps:")
+    print(f"  1. Implement every NotImplementedError in muse/plugins/{name}/plugin.py")
+    print("  2. Register the plugin in muse/plugins/registry.py:")
+    print(f'       from muse.plugins.{name}.plugin import {class_name}')
+    print(f'       _REGISTRY["{name}"] = {class_name}()')
+    print(f'  3. muse init --domain {name}')
+    print("  4. See docs/guide/plugin-authoring-guide.md for the full walkthrough")
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +217,7 @@ def _emit_json(active_domain: str | None) -> None:
         except NotImplementedError:
             pass
         result.append(entry)
-    typer.echo(json.dumps(result, indent=2))
+    print(json.dumps(result, indent=2))
 
 
 # ---------------------------------------------------------------------------
@@ -248,14 +244,14 @@ def _print_dashboard(active_domain: str | None) -> None:
     Args:
         active_domain: Domain of the current repo (highlighted with ●), or ``None``.
     """
-    typer.echo("╔" + "═" * (_WIDTH - 2) + "╗")
-    typer.echo(_box_line("Muse Domain Plugin Dashboard"))
-    typer.echo("╚" + "═" * (_WIDTH - 2) + "╝")
-    typer.echo("")
+    print("╔" + "═" * (_WIDTH - 2) + "╗")
+    print(_box_line("Muse Domain Plugin Dashboard"))
+    print("╚" + "═" * (_WIDTH - 2) + "╝")
+    print("")
 
     count = len(_REGISTRY)
-    typer.echo(f"Registered domains: {count}")
-    typer.echo(_hr())
+    print(f"Registered domains: {count}")
+    print(_hr())
 
     for domain_name, plugin in sorted(_REGISTRY.items()):
         caps = _capabilities(plugin)
@@ -263,33 +259,33 @@ def _print_dashboard(active_domain: str | None) -> None:
         bullet = "●" if is_active else "○"
         module_path = _plugin_module_path(domain_name)
 
-        typer.echo("")
+        print("")
         active_suffix = "  ← active repo domain" if is_active else ""
-        typer.echo(f"  {bullet}  {domain_name}{active_suffix}")
-        typer.echo(f"     Module:        plugins/{module_path}")
-        typer.echo(f"     Capabilities:  {' · '.join(caps)}")
+        print(f"  {bullet}  {domain_name}{active_suffix}")
+        print(f"     Module:        plugins/{module_path}")
+        print(f"     Capabilities:  {' · '.join(caps)}")
 
         try:
             s = plugin.schema()
             dim_names = [d["name"] for d in s["dimensions"]]
             top_kind = s["top_level"]["kind"]
-            typer.echo(
+            print(
                 f"     Schema:        v{s['schema_version']} · "
                 f"top_level: {top_kind} · merge_mode: {s['merge_mode']}"
             )
-            typer.echo(f"     Dimensions:    {', '.join(dim_names)}")
-            typer.echo(f"     Description:   {s['description'][:55]}")
+            print(f"     Dimensions:    {', '.join(dim_names)}")
+            print(f"     Description:   {s['description'][:55]}")
         except NotImplementedError:
-            typer.echo("     Schema:        (not declared)")
+            print("     Schema:        (not declared)")
 
-    typer.echo("")
-    typer.echo(_hr())
-    typer.echo("To scaffold a new domain:")
-    typer.echo("  muse domains --new <name>")
-    typer.echo("To see machine-readable output:")
-    typer.echo("  muse domains --json")
-    typer.echo("See docs/guide/plugin-authoring-guide.md for the full walkthrough.")
-    typer.echo(_hr())
+    print("")
+    print(_hr())
+    print("To scaffold a new domain:")
+    print("  muse domains --new <name>")
+    print("To see machine-readable output:")
+    print("  muse domains --json")
+    print("See docs/guide/plugin-authoring-guide.md for the full walkthrough.")
+    print(_hr())
 
 
 # ---------------------------------------------------------------------------
@@ -407,62 +403,7 @@ def _post_json(url: str, payload: _PublishPayload, token: str) -> _PublishRespon
     )
 
 
-@app.command("publish")
-def publish(
-    author_slug: str = typer.Option(
-        ...,
-        "--author",
-        metavar="SLUG",
-        help="Your MuseHub username (owner of the domain, e.g. 'cgcardona').",
-    ),
-    slug: str = typer.Option(
-        ...,
-        "--slug",
-        metavar="SLUG",
-        help="URL-safe domain name (e.g. 'genomics', 'spatial-3d').",
-    ),
-    display_name: str = typer.Option(
-        ...,
-        "--name",
-        metavar="NAME",
-        help="Human-readable marketplace name (e.g. 'Genomics').",
-    ),
-    description: str = typer.Option(
-        ...,
-        "--description",
-        metavar="TEXT",
-        help="What this domain models and why it benefits from semantic VCS.",
-    ),
-    viewer_type: str = typer.Option(
-        ...,
-        "--viewer-type",
-        metavar="TYPE",
-        help="Primary viewer identifier (e.g. 'midi', 'code', 'spatial', 'genome').",
-    ),
-    version: str = typer.Option(
-        "0.1.0",
-        "--version",
-        metavar="SEMVER",
-        help="Semver release string (default: 0.1.0).",
-    ),
-    capabilities_json: str | None = typer.Option(
-        None,
-        "--capabilities",
-        metavar="JSON",
-        help=(
-            "Full capabilities manifest as a JSON string.  "
-            "Required keys: dimensions, artifact_types, merge_semantics, supported_commands.  "
-            "When omitted the active repo's domain plugin schema is used."
-        ),
-    ),
-    hub_url: str | None = typer.Option(
-        None,
-        "--hub",
-        metavar="URL",
-        help="Override the MuseHub base URL (default: read from .muse/config.toml).",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit result as JSON."),
-) -> None:
+def run_publish(args: argparse.Namespace) -> None:
     """Publish a Muse domain plugin to the MuseHub marketplace.
 
     Registers ``@{author}/{slug}`` so agents and users can discover and install
@@ -486,6 +427,16 @@ def publish(
             --viewer-type spatial \\
             --capabilities '{"dimensions":[{"name":"geometry","description":"Mesh data"}],...}'
     """
+    author_slug: str = args.author_slug
+    slug: str = args.slug
+    display_name: str = args.display_name
+    description: str = args.description
+    viewer_type: str = args.viewer_type
+    version: str = args.version
+    capabilities_json: str | None = args.capabilities_json
+    hub_url: str | None = args.hub_url
+    as_json: bool = args.as_json
+
     # ── Resolve hub URL and auth token ─────────────────────────────────────────
     repo_root = find_repo_root()
     resolved_hub = hub_url or get_hub_url(repo_root) or "https://musehub.ai"
@@ -493,14 +444,14 @@ def publish(
 
     token = get_auth_token(repo_root)
     if not token:
-        typer.echo(
+        print(
             "❌ No MuseHub token found.  Run:\n"
             "   muse auth login\n"
             "or set your token with:\n"
             "   muse config set hub.token <your-token>",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     # ── Build capabilities manifest ────────────────────────────────────────────
     capabilities: _Capabilities
@@ -520,8 +471,8 @@ def publish(
                 supported_commands=[str(c) for c in raw_caps.get("supported_commands", []) if isinstance(c, str)],
             )
         except (json.JSONDecodeError, ValueError) as exc:
-            typer.echo(f"❌ --capabilities is not valid JSON: {exc}", err=True)
-            raise typer.Exit(1) from exc
+            print(f"❌ --capabilities is not valid JSON: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
     else:
         # Derive from the active domain plugin schema if available.
         active_domain_name: str | None = None
@@ -553,16 +504,16 @@ def publish(
             capabilities = _Capabilities()
 
         if not capabilities_ok:
-            typer.echo(
+            print(
                 "⚠️  Could not derive capabilities from active plugin. "
                 "Provide --capabilities '<json>' to set them explicitly.",
-                err=True,
+                file=sys.stderr,
             )
-            typer.echo(
+            print(
                 "  Required keys: dimensions, artifact_types, merge_semantics, supported_commands",
-                err=True,
+                file=sys.stderr,
             )
-            raise typer.Exit(1)
+            raise SystemExit(1)
 
     # ── POST to MuseHub ────────────────────────────────────────────────────────
     endpoint = f"{resolved_hub}/api/v1/domains"
@@ -581,58 +532,110 @@ def publish(
     except urllib.error.HTTPError as exc:
         body = exc.read().decode(errors="replace")
         if exc.code == 409:
-            typer.echo(
+            print(
                 f"❌ Domain '@{author_slug}/{slug}' is already registered. "
                 "Use a different slug or bump the version.",
-                err=True,
+                file=sys.stderr,
             )
         elif exc.code == 401:
-            typer.echo("❌ Authentication failed — is your MuseHub token valid?", err=True)
+            print("❌ Authentication failed — is your MuseHub token valid?", file=sys.stderr)
         else:
-            typer.echo(f"❌ MuseHub returned HTTP {exc.code}: {body}", err=True)
-        raise typer.Exit(1) from exc
+            print(f"❌ MuseHub returned HTTP {exc.code}: {body}", file=sys.stderr)
+        raise SystemExit(1) from exc
     except urllib.error.URLError as exc:
-        typer.echo(f"❌ Could not reach MuseHub at {resolved_hub}: {exc.reason}", err=True)
-        raise typer.Exit(1) from exc
+        print(f"❌ Could not reach MuseHub at {resolved_hub}: {exc.reason}", file=sys.stderr)
+        raise SystemExit(1) from exc
     except ValueError as exc:
-        typer.echo(f"❌ Unexpected response from MuseHub: {exc}", err=True)
-        raise typer.Exit(1) from exc
+        print(f"❌ Unexpected response from MuseHub: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
 
     # ── Emit result ────────────────────────────────────────────────────────────
     if as_json:
-        typer.echo(json.dumps(result, indent=2))
+        print(json.dumps(result, indent=2))
         return
 
     scoped_id = result.get("scoped_id") or f"@{author_slug}/{slug}"
     manifest_hash = result.get("manifest_hash") or ""
-    typer.echo(f"✅ Domain published: {scoped_id}")
-    typer.echo(f"   manifest_hash: {manifest_hash}")
-    typer.echo(f"   Discoverable at: {resolved_hub}/domains/@{author_slug}/{slug}")
-    typer.echo("")
-    typer.echo("Agents can now use it:")
-    typer.echo(f'   musehub_get_domain(scoped_id="{scoped_id}")')
-    typer.echo(f'   musehub_create_repo(domain="{scoped_id}", ...)')
+    print(f"✅ Domain published: {scoped_id}")
+    print(f"   manifest_hash: {manifest_hash}")
+    print(f"   Discoverable at: {resolved_hub}/domains/@{author_slug}/{slug}")
+    print("")
+    print("Agents can now use it:")
+    print(f'   musehub_get_domain(scoped_id="{scoped_id}")')
+    print(f'   musehub_create_repo(domain="{scoped_id}", ...)')
 
 
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 
-@app.callback(invoke_without_command=True)
-def domains(
-    ctx: typer.Context,
-    new: str | None = typer.Option(
-        None,
-        "--new",
-        metavar="NAME",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the domains subcommand."""
+    parser = subparsers.add_parser(
+        "domains",
+        help="Domain plugin dashboard — list registered domains and their capabilities.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--new", default=None, metavar="NAME",
         help="Scaffold a new domain plugin with the given name.",
-    ),
-    as_json: bool = typer.Option(
-        False,
-        "--json",
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
         help="Emit domain registry as JSON.",
-    ),
-) -> None:
+    )
+    parser.set_defaults(func=run)
+
+    subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
+
+    publish_p = subs.add_parser(
+        "publish",
+        help="Publish a Muse domain plugin to the MuseHub marketplace.",
+    )
+    publish_p.add_argument(
+        "--author", required=True, metavar="SLUG", dest="author_slug",
+        help="Your MuseHub username (owner of the domain, e.g. 'cgcardona').",
+    )
+    publish_p.add_argument(
+        "--slug", required=True, metavar="SLUG",
+        help="URL-safe domain name (e.g. 'genomics', 'spatial-3d').",
+    )
+    publish_p.add_argument(
+        "--name", required=True, metavar="NAME", dest="display_name",
+        help="Human-readable marketplace name (e.g. 'Genomics').",
+    )
+    publish_p.add_argument(
+        "--description", required=True, metavar="TEXT",
+        help="What this domain models and why it benefits from semantic VCS.",
+    )
+    publish_p.add_argument(
+        "--viewer-type", required=True, metavar="TYPE", dest="viewer_type",
+        help="Primary viewer identifier (e.g. 'midi', 'code', 'spatial', 'genome').",
+    )
+    publish_p.add_argument(
+        "--version", default="0.1.0", metavar="SEMVER",
+        help="Semver release string (default: 0.1.0).",
+    )
+    publish_p.add_argument(
+        "--capabilities", default=None, metavar="JSON", dest="capabilities_json",
+        help=(
+            "Full capabilities manifest as a JSON string.  "
+            "Required keys: dimensions, artifact_types, merge_semantics, supported_commands.  "
+            "When omitted the active repo's domain plugin schema is used."
+        ),
+    )
+    publish_p.add_argument(
+        "--hub", default=None, metavar="URL", dest="hub_url",
+        help="Override the MuseHub base URL (default: read from .muse/config.toml).",
+    )
+    publish_p.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit result as JSON.",
+    )
+    publish_p.set_defaults(func=run_publish)
+
+
+def run(args: argparse.Namespace) -> None:
     """Domain plugin dashboard — list registered domains and their capabilities.
 
     Without flags: prints a human-readable table of all registered domains,
@@ -644,8 +647,8 @@ def domains(
 
     Use ``--json`` for machine-readable output.
     """
-    if ctx.invoked_subcommand is not None:
-        return
+    new: str | None = args.new
+    as_json: bool = args.as_json
 
     if new is not None:
         _scaffold_new_domain(new)

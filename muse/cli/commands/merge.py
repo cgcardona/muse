@@ -11,11 +11,12 @@ Algorithm
 
 from __future__ import annotations
 
+import argparse
 import datetime
 import json
 import logging
 import pathlib
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.merge_engine import (
@@ -44,8 +45,6 @@ from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
 
 def _read_branch(root: pathlib.Path) -> str:
     """Return the current branch name by reading ``.muse/HEAD``."""
@@ -71,28 +70,40 @@ def _restore_from_manifest(root: pathlib.Path, manifest: dict[str, str]) -> None
     apply_manifest(root, manifest)
 
 
-@app.callback(invoke_without_command=True)
-def merge(
-    ctx: typer.Context,
-    branch: str = typer.Argument(..., help="Branch to merge into the current branch."),
-    no_ff: bool = typer.Option(False, "--no-ff", help="Always create a merge commit, even for fast-forward."),
-    message: str | None = typer.Option(None, "-m", "--message", help="Override the merge commit message."),
-    rerere_autoupdate: bool = typer.Option(
-        True,
-        "--rerere-autoupdate/--no-rerere-autoupdate",
-        help="Automatically apply cached rerere resolutions to matching conflicts (default: on).",
-    ),
-    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the merge subcommand."""
+    parser = subparsers.add_parser(
+        "merge",
+        help="Three-way merge a branch into the current branch.",
+        description=__doc__,
+    )
+    parser.add_argument("branch", help="Branch to merge into the current branch.")
+    parser.add_argument("--no-ff", action="store_true", help="Always create a merge commit, even for fast-forward.")
+    parser.add_argument("-m", "--message", default=None, help="Override the merge commit message.")
+    parser.add_argument("--rerere-autoupdate", action="store_true", default=True, dest="rerere_autoupdate",
+                        help="Automatically apply cached rerere resolutions to matching conflicts (default: on).")
+    parser.add_argument("--no-rerere-autoupdate", action="store_false", dest="rerere_autoupdate",
+                        help="Disable rerere auto-update.")
+    parser.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Three-way merge a branch into the current branch.
 
     Agents should pass ``--format json`` to receive a structured result with
     ``status`` (merged|fast_forward|conflict|up_to_date), ``commit_id``,
     ``branch``, ``current_branch``, and ``conflicts`` list.
     """
+    branch: str = args.branch
+    no_ff: bool = args.no_ff
+    message: str | None = args.message
+    rerere_autoupdate: bool = args.rerere_autoupdate
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     current_branch = _read_branch(root)
@@ -100,28 +111,28 @@ def merge(
     plugin = resolve_plugin(root)
 
     if branch == current_branch:
-        typer.echo("❌ Cannot merge a branch into itself.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ Cannot merge a branch into itself.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     ours_commit_id = get_head_commit_id(root, current_branch)
     theirs_commit_id = get_head_commit_id(root, branch)
 
     if theirs_commit_id is None:
-        typer.echo(f"❌ Branch '{branch}' has no commits.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Branch '{branch}' has no commits.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if ours_commit_id is None:
-        typer.echo("❌ Current branch has no commits.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ Current branch has no commits.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     base_commit_id = find_merge_base(root, ours_commit_id, theirs_commit_id)
 
     if base_commit_id == theirs_commit_id:
         if fmt == "json":
-            typer.echo(json.dumps({"status": "up_to_date", "commit_id": ours_commit_id,
-                                   "branch": branch, "current_branch": current_branch, "conflicts": []}))
+            print(json.dumps({"status": "up_to_date", "commit_id": ours_commit_id,
+                              "branch": branch, "current_branch": current_branch, "conflicts": []}))
         else:
-            typer.echo("Already up to date.")
+            print("Already up to date.")
         return
 
     if base_commit_id == ours_commit_id and not no_ff:
@@ -133,8 +144,8 @@ def merge(
         try:
             validate_branch_name(current_branch)
         except ValueError as exc:
-            typer.echo(f"❌ Current branch name is invalid: {exc}")
-            raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+            print(f"❌ Current branch name is invalid: {exc}")
+            raise SystemExit(ExitCode.INTERNAL_ERROR)
         (root / ".muse" / "refs" / "heads" / current_branch).write_text(theirs_commit_id)
         append_reflog(
             root, current_branch, old_id=ours_commit_id, new_id=theirs_commit_id,
@@ -142,10 +153,10 @@ def merge(
             operation=f"merge: fast-forward {sanitize_display(branch)} → {sanitize_display(current_branch)}",
         )
         if fmt == "json":
-            typer.echo(json.dumps({"status": "fast_forward", "commit_id": theirs_commit_id,
-                                   "branch": branch, "current_branch": current_branch, "conflicts": []}))
+            print(json.dumps({"status": "fast_forward", "commit_id": theirs_commit_id,
+                              "branch": branch, "current_branch": current_branch, "conflicts": []}))
         else:
-            typer.echo(f"Fast-forward to {theirs_commit_id[:8]}")
+            print(f"Fast-forward to {theirs_commit_id[:8]}")
         return
 
     ours_manifest = get_head_snapshot_manifest(root, repo_id, current_branch) or {}
@@ -195,9 +206,9 @@ def merge(
                     f"{sanitize_display(d)}={sanitize_display(str(v))}"
                     for d, v in sorted(dim_detail.items())
                 )
-                typer.echo(f"  ✔ dimension-merge: {safe_p} ({dim_summary})")
+                print(f"  ✔ dimension-merge: {safe_p} ({dim_summary})")
             elif strategy != "manual":
-                typer.echo(f"  ✔ [{safe_strategy}] {safe_p}")
+                print(f"  ✔ [{safe_strategy}] {safe_p}")
 
     if not result.is_clean:
         # Try to auto-resolve conflicts using cached rerere resolutions.
@@ -216,7 +227,7 @@ def merge(
                 plugin,
             )
             for p in sorted(rerere_resolved):
-                typer.echo(f"  ✔ [rerere] auto-resolved: {sanitize_display(p)}")
+                print(f"  ✔ [rerere] auto-resolved: {sanitize_display(p)}")
 
         if remaining_conflicts:
             write_merge_state(
@@ -228,7 +239,7 @@ def merge(
                 other_branch=branch,
             )
             if fmt == "json":
-                typer.echo(json.dumps({
+                print(json.dumps({
                     "status": "conflict",
                     "commit_id": None,
                     "branch": branch,
@@ -236,11 +247,11 @@ def merge(
                     "conflicts": sorted(remaining_conflicts),
                 }))
             else:
-                typer.echo(f"❌ Merge conflict in {len(remaining_conflicts)} file(s):")
+                print(f"❌ Merge conflict in {len(remaining_conflicts)} file(s):")
                 for p in sorted(remaining_conflicts):
-                    typer.echo(f"  CONFLICT (both modified): {sanitize_display(p)}")
-                typer.echo('\nFix conflicts and run "muse commit" to complete the merge.')
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+                    print(f"  CONFLICT (both modified): {sanitize_display(p)}")
+                print('\nFix conflicts and run "muse commit" to complete the merge.')
+            raise SystemExit(ExitCode.USER_ERROR)
 
         # All conflicts resolved by rerere — rebuild result and fall through
         # to the clean-merge path so a merge commit is created normally.
@@ -282,8 +293,8 @@ def merge(
     try:
         validate_branch_name(current_branch)
     except ValueError as exc:
-        typer.echo(f"❌ Current branch name is invalid: {exc}")
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(f"❌ Current branch name is invalid: {exc}")
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
     (root / ".muse" / "refs" / "heads" / current_branch).write_text(commit_id)
 
     append_reflog(
@@ -293,7 +304,7 @@ def merge(
     )
 
     if fmt == "json":
-        typer.echo(json.dumps({
+        print(json.dumps({
             "status": "merged",
             "commit_id": commit_id,
             "branch": branch,
@@ -301,4 +312,4 @@ def merge(
             "conflicts": [],
         }))
     else:
-        typer.echo(f"Merged '{sanitize_display(branch)}' into '{sanitize_display(current_branch)}' ({commit_id[:8]})")
+        print(f"Merged '{sanitize_display(branch)}' into '{sanitize_display(current_branch)}' ({commit_id[:8]})")

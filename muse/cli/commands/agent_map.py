@@ -27,12 +27,12 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
+import sys
 from typing import TypedDict
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -46,7 +46,6 @@ from muse.plugins.midi._query import (
 )
 
 logger = logging.getLogger(__name__)
-app = typer.Typer()
 
 
 class BarAttribution(TypedDict):
@@ -72,20 +71,17 @@ def _bar_set(notes: list[NoteInfo]) -> frozenset[int]:
     return frozenset(notes_by_bar(notes).keys())
 
 
-@app.callback(invoke_without_command=True)
-def agent_map(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
-        help="Start walking from this commit (default: HEAD).",
-    ),
-    depth: int = typer.Option(
-        50, "--depth", "-d", metavar="N",
-        help="Maximum commits to walk back (default 50).",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the agent-map subcommand."""
+    parser = subparsers.add_parser("agent-map", help="Show which agent last edited each bar of a MIDI track.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Start walking from this commit (default: HEAD).")
+    parser.add_argument("--depth", "-d", metavar="N", type=int, default=50, help="Maximum commits to walk back (default 50).")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show which agent last edited each bar of a MIDI track.
 
     ``muse agent-map`` walks the commit graph from HEAD (or ``--commit``)
@@ -96,9 +92,14 @@ def agent_map(
     Git cannot do this: it has no model of bars or note-level changes.
     Muse tracks note-level diffs at every commit, enabling per-bar blame.
     """
+    track: str = args.track
+    ref: str | None = args.ref
+    depth: int = args.depth
+    as_json: bool = args.as_json
+
     if depth < 1 or depth > 10_000:
-        typer.echo(f"❌ --depth must be between 1 and 10,000 (got {depth}).", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ --depth must be between 1 and 10,000 (got {depth}).", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
@@ -106,8 +107,8 @@ def agent_map(
     start_ref = ref or "HEAD"
     start_commit = resolve_commit_ref(root, repo_id, branch, start_ref)
     if start_commit is None:
-        typer.echo(f"❌ Commit '{start_ref}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{start_ref}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     history = walk_commits_for_track(root, start_commit.commit_id, track, max_commits=depth)
 
@@ -138,22 +139,22 @@ def agent_map(
         prev_bars = cur_bars
 
     if not bar_attr:
-        typer.echo(f"  (no bar attribution data found for '{track}')")
+        print(f"  (no bar attribution data found for '{track}')")
         return
 
     attributions = sorted(bar_attr.values(), key=lambda a: a["bar"])
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {"track": track, "start_ref": start_ref, "attributions": list(attributions)},
             indent=2,
         ))
         return
 
-    typer.echo(f"\nAgent map: {track}\n")
-    typer.echo(f"  {'Bar':>4}  {'Last author':<28}  {'Commit':<10}  Message")
-    typer.echo("  " + "─" * 76)
+    print(f"\nAgent map: {track}\n")
+    print(f"  {'Bar':>4}  {'Last author':<28}  {'Commit':<10}  Message")
+    print("  " + "─" * 76)
     for attr in attributions:
-        typer.echo(
+        print(
             f"  {attr['bar']:>4}  {attr['author']:<28}  {attr['commit_id']:<10}  {attr['message']}"
         )

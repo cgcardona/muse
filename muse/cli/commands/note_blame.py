@@ -25,11 +25,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -43,8 +43,6 @@ from muse.plugins.midi._query import (
 from muse.plugins.midi.midi_diff import NoteKey, _note_content_id
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -67,17 +65,17 @@ def _cid_for_note(note: NoteInfo) -> str:
     return _note_content_id(key)
 
 
-@app.callback(invoke_without_command=True)
-def note_blame(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    bar: int = typer.Option(..., "--bar", "-b", metavar="N", help="Bar number (1-indexed, assumes 4/4 time)."),
-    from_ref: str | None = typer.Option(
-        None, "--from", metavar="REF",
-        help="Start search from this commit (default: HEAD).",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the note-blame subcommand."""
+    parser = subparsers.add_parser("note-blame", help="Show which commit introduced the notes in a specific bar.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--bar", "-b", metavar="N", type=int, required=True, help="Bar number (1-indexed, assumes 4/4 time).")
+    parser.add_argument("--from", metavar="REF", default=None, dest="from_ref", help="Start search from this commit (default: HEAD).")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show which commit introduced the notes in a specific bar.
 
     ``muse note-blame`` walks the commit history and finds the commit that
@@ -90,25 +88,30 @@ def note_blame(
     Use ``--bar`` to specify the bar number (1-indexed, 4/4 time assumed).
     Use ``--from`` to start the search at a different point in history.
     """
+    track: str = args.track
+    bar: int = args.bar
+    from_ref: str | None = args.from_ref
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     start_commit = resolve_commit_ref(root, repo_id, branch, from_ref)
     if start_commit is None:
-        typer.echo(f"❌ Commit '{from_ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{from_ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     track_result = load_track(root, start_commit.commit_id, track)
     if track_result is None:
-        typer.echo(f"❌ Track '{track}' not found in this commit.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found in this commit.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     current_notes, _tpb = track_result
     bar_notes = [n for n in current_notes if n.bar == bar]
 
     if not bar_notes:
-        typer.echo(f"  (no notes found in bar {bar} of '{track}')")
+        print(f"  (no notes found in bar {bar} of '{track}')")
         return
 
     # Build a set of content IDs for the bar's notes.
@@ -138,7 +141,7 @@ def note_blame(
                         )
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "track": track,
                 "bar": bar,
@@ -158,15 +161,15 @@ def note_blame(
         ))
         return
 
-    typer.echo(f"\nNote attribution: {track}  bar {bar}")
-    typer.echo("")
+    print(f"\nNote attribution: {track}  bar {bar}")
+    print("")
     for n in bar_notes:
-        typer.echo(
+        print(
             f"  {n.pitch_name:<5}  vel={n.velocity:<3}  "
             f"@beat={n.beat_in_bar:.2f}  dur={n.beat_duration:.2f}  ch {n.channel}"
         )
 
-    typer.echo("")
+    print("")
 
     commit_counts: dict[tuple[str, str, str, str], int] = {}
     for n in bar_notes:
@@ -175,13 +178,13 @@ def note_blame(
             commit_counts[origin] = commit_counts.get(origin, 0) + 1
 
     if not commit_counts:
-        typer.echo("  (could not trace origin — notes may predate the tracked history)")
+        print("  (could not trace origin — notes may predate the tracked history)")
         return
 
     for (short_id, date, author, message), count in sorted(
         commit_counts.items(), key=lambda kv: kv[1], reverse=True
     ):
         label = "note" if count == 1 else "notes"
-        typer.echo(f"  {count} {label} in bar {bar} introduced by:")
-        typer.echo(f"  {short_id}  {date}  {author}  \"{message}\"")
-        typer.echo("")
+        print(f"  {count} {label} in bar {bar} introduced by:")
+        print(f"  {short_id}  {date}  {author}  \"{message}\"")
+        print("")

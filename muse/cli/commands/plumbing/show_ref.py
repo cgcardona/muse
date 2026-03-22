@@ -35,13 +35,13 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
 import fnmatch
 import json
 import logging
 import pathlib
+import sys
 from typing import TypedDict
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -52,8 +52,6 @@ from muse.core.store import (
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
 _FORMAT_CHOICES = ("json", "text")
 
 
@@ -62,16 +60,16 @@ class _RefEntry(TypedDict):
     commit_id: str
 
 
-class _ShowRefResult(TypedDict):
-    refs: list[_RefEntry]
-    head: _HeadInfo | None
-    count: int
-
-
 class _HeadInfo(TypedDict):
     ref: str
     branch: str
     commit_id: str
+
+
+class _ShowRefResult(TypedDict):
+    refs: list[_RefEntry]
+    head: _HeadInfo | None
+    count: int
 
 
 def _list_branch_refs(root: pathlib.Path) -> list[_RefEntry]:
@@ -107,83 +105,88 @@ def _head_info(root: pathlib.Path) -> _HeadInfo | None:
     }
 
 
-@app.callback(invoke_without_command=True)
-def show_ref(
-    ctx: typer.Context,
-    pattern: str = typer.Option(
-        "",
-        "--pattern",
-        "-p",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the show-ref subcommand."""
+    parser = subparsers.add_parser(
+        "show-ref",
+        help="List all branch refs and their commit IDs.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--pattern", "-p",
+        default="",
+        dest="pattern",
+        metavar="GLOB",
         help="fnmatch glob filter applied to the full ref name (e.g. 'refs/heads/feat/*').",
-    ),
-    head_only: bool = typer.Option(
-        False,
-        "--head",
-        "-H",
+    )
+    parser.add_argument(
+        "--head", "-H",
+        action="store_true",
+        dest="head_only",
         help="Print only the HEAD ref and its commit ID.",
-    ),
-    verify: str = typer.Option(
-        "",
-        "--verify",
-        "-v",
+    )
+    parser.add_argument(
+        "--verify", "-v",
+        default="",
+        dest="verify_ref",
+        metavar="REF",
         help="Exit 0 if the given ref exists, exit 1 otherwise (no other output).",
-    ),
-    fmt: str = typer.Option(
-        "json", "--format", "-f", help="Output format: json or text."
-    ),
-) -> None:
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
+        help="Output format: json or text. (default: json)",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """List all refs known to this repository.
 
     Reads every branch pointer from ``.muse/refs/heads/`` and reports their
     commit IDs.  The output is sorted lexicographically by ref name.
-
-    Use ``--pattern`` to restrict output to refs matching a given glob
-    (e.g. ``'refs/heads/feat/*'``).
-
-    Use ``--verify`` to check whether a specific ref exists — exits 0 on
-    success, exits 1 if absent, and produces no other output.  Designed for
-    use in shell conditionals:
-
-    .. code-block:: sh
-
-        muse plumbing show-ref --verify refs/heads/my-branch && echo exists
-
-    Use ``--head`` to query only the currently checked-out branch.
     """
+    fmt: str = args.fmt
+    pattern: str = args.pattern
+    head_only: bool = args.head_only
+    verify_ref: str = args.verify_ref
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             json.dumps(
                 {"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"}
             )
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
 
     # --verify mode: silent existence check, no normal output.
-    if verify:
+    if verify_ref:
         try:
             all_refs = _list_branch_refs(root)
         except Exception as exc:
             logger.debug("show-ref I/O error: %s", exc)
-            raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
-        exists = any(r["ref"] == verify for r in all_refs)
-        raise typer.Exit(code=0 if exists else ExitCode.USER_ERROR)
+            raise SystemExit(ExitCode.INTERNAL_ERROR)
+        exists = any(r["ref"] == verify_ref for r in all_refs)
+        raise SystemExit(0 if exists else ExitCode.USER_ERROR)
 
     # --head mode: only HEAD.
     if head_only:
         info = _head_info(root)
         if info is None:
             if fmt == "text":
-                typer.echo("(no HEAD commit)")
+                print("(no HEAD commit)")
             else:
-                typer.echo(json.dumps({"head": None}))
+                print(json.dumps({"head": None}))
             return
 
         if fmt == "text":
-            typer.echo(f"{info['commit_id']}  {info['ref']}  (HEAD)")
+            print(f"{info['commit_id']}  {info['ref']}  (HEAD)")
         else:
-            typer.echo(json.dumps({"head": dict(info)}))
+            print(json.dumps({"head": dict(info)}))
         return
 
     # Normal mode: all refs, optionally filtered.
@@ -191,8 +194,8 @@ def show_ref(
         refs = _list_branch_refs(root)
     except Exception as exc:
         logger.debug("show-ref I/O error: %s", exc)
-        typer.echo(json.dumps({"error": str(exc)}))
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(json.dumps({"error": str(exc)}))
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     if pattern:
         refs = [r for r in refs if fnmatch.fnmatch(r["ref"], pattern)]
@@ -204,7 +207,7 @@ def show_ref(
         for r in refs:
             marker = "* " if r["ref"] == head_ref else "  "
             suffix = "  (HEAD)" if r["ref"] == head_ref else ""
-            typer.echo(f"{r['commit_id']}  {marker}{r['ref']}{suffix}")
+            print(f"{r['commit_id']}  {marker}{r['ref']}{suffix}")
         return
 
     result: _ShowRefResult = {
@@ -212,4 +215,4 @@ def show_ref(
         "head": head,
         "count": len(refs),
     }
-    typer.echo(json.dumps(result))
+    print(json.dumps(result))

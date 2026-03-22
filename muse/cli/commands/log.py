@@ -36,13 +36,13 @@ Filters: --since, --until, --author, --section, --track, --emotion
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
 import re
+import sys
 from datetime import datetime, timedelta, timezone
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -50,8 +50,6 @@ from muse.core.store import CommitRecord, get_commit_snapshot_manifest, get_comm
 from muse.core.validation import sanitize_display
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _DEFAULT_LIMIT = 1000
 
@@ -102,23 +100,30 @@ def _format_date(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S UTC") if dt.tzinfo else str(dt)
 
 
-@app.callback(invoke_without_command=True)
-def log(
-    ctx: typer.Context,
-    ref: str | None = typer.Argument(None, help="Branch or commit to start from."),
-    oneline: bool = typer.Option(False, "--oneline", help="One line per commit."),
-    graph: bool = typer.Option(False, "--graph", help="ASCII graph."),
-    stat: bool = typer.Option(False, "--stat", help="Show file change summary."),
-    patch: bool = typer.Option(False, "--patch", "-p", help="Show file change summary (added/removed/modified counts) alongside each commit."),
-    limit: int = typer.Option(_DEFAULT_LIMIT, "-n", "--max-count", help="Limit number of commits."),
-    since: str | None = typer.Option(None, "--since", help="Show commits after date."),
-    until: str | None = typer.Option(None, "--until", help="Show commits before date."),
-    author: str | None = typer.Option(None, "--author", help="Filter by author."),
-    section: str | None = typer.Option(None, "--section", help="Filter by section metadata."),
-    track: str | None = typer.Option(None, "--track", help="Filter by track metadata."),
-    emotion: str | None = typer.Option(None, "--emotion", help="Filter by emotion metadata."),
-    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the log subcommand."""
+    parser = subparsers.add_parser(
+        "log",
+        help="Display commit history.",
+        description=__doc__,
+    )
+    parser.add_argument("ref", nargs="?", default=None, help="Branch or commit to start from.")
+    parser.add_argument("--oneline", action="store_true", help="One line per commit.")
+    parser.add_argument("--graph", action="store_true", help="ASCII graph.")
+    parser.add_argument("--stat", action="store_true", help="Show file change summary.")
+    parser.add_argument("--patch", "-p", action="store_true", help="Show file change summary (added/removed/modified counts) alongside each commit.")
+    parser.add_argument("-n", "--max-count", type=int, default=_DEFAULT_LIMIT, dest="limit", help="Limit number of commits.")
+    parser.add_argument("--since", default=None, help="Show commits after date.")
+    parser.add_argument("--until", default=None, help="Show commits before date.")
+    parser.add_argument("--author", default=None, help="Filter by author.")
+    parser.add_argument("--section", default=None, help="Filter by section metadata.")
+    parser.add_argument("--track", default=None, help="Filter by track metadata.")
+    parser.add_argument("--emotion", default=None, help="Filter by emotion metadata.")
+    parser.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Display commit history.
 
     Agents should pass ``--format json`` to receive a JSON array where each
@@ -126,12 +131,26 @@ def log(
     ``message``, ``author``, ``committed_at``, ``parent_commit_id``,
     ``snapshot_id``, ``metadata``, and ``sem_ver_bump``.
     """
+    ref: str | None = args.ref
+    oneline: bool = args.oneline
+    graph: bool = args.graph
+    stat: bool = args.stat
+    patch: bool = args.patch
+    limit: int = args.limit
+    since: str | None = args.since
+    until: str | None = args.until
+    author: str | None = args.author
+    section: str | None = args.section
+    track: str | None = args.track
+    emotion: str | None = args.emotion
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     if limit < 1:
-        typer.echo("❌ --max-count must be at least 1.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ --max-count must be at least 1.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = ref or _read_branch(root)
@@ -169,13 +188,13 @@ def log(
 
     if not filtered:
         if fmt == "json":
-            typer.echo("[]")
+            print("[]")
         else:
-            typer.echo("(no commits)")
+            print("(no commits)")
         return
 
     if fmt == "json":
-        typer.echo(json.dumps([{
+        print(json.dumps([{
             "commit_id": c.commit_id,
             "branch": c.branch,
             "message": c.message,
@@ -195,35 +214,35 @@ def log(
         ref_label = f" (HEAD -> {branch})" if is_head else ""
 
         msg = sanitize_display(c.message)
-        author = sanitize_display(c.author)
+        author_display = sanitize_display(c.author)
 
         if oneline:
-            typer.echo(f"{c.commit_id[:8]}{ref_label} {msg}")
+            print(f"{c.commit_id[:8]}{ref_label} {msg}")
 
         elif graph:
-            typer.echo(f"* {c.commit_id[:8]}{ref_label} {msg}")
+            print(f"* {c.commit_id[:8]}{ref_label} {msg}")
 
         else:
-            typer.echo(f"commit {c.commit_id[:8]}{ref_label}")
-            if author:
-                typer.echo(f"Author: {author}")
-            typer.echo(f"Date:   {_format_date(c.committed_at)}")
+            print(f"commit {c.commit_id[:8]}{ref_label}")
+            if author_display:
+                print(f"Author: {author_display}")
+            print(f"Date:   {_format_date(c.committed_at)}")
             if c.sem_ver_bump and c.sem_ver_bump != "none":
-                typer.echo(f"SemVer: {c.sem_ver_bump.upper()}")
+                print(f"SemVer: {c.sem_ver_bump.upper()}")
                 if c.breaking_changes:
                     safe_breaks = [sanitize_display(b) for b in c.breaking_changes[:3]]
-                    typer.echo(f"Breaking: {', '.join(safe_breaks)}"
-                               + (f" +{len(c.breaking_changes) - 3} more" if len(c.breaking_changes) > 3 else ""))
+                    print(f"Breaking: {', '.join(safe_breaks)}"
+                          + (f" +{len(c.breaking_changes) - 3} more" if len(c.breaking_changes) > 3 else ""))
             if c.metadata:
                 meta_parts = [f"{sanitize_display(k)}: {sanitize_display(v)}" for k, v in sorted(c.metadata.items())]
-                typer.echo(f"Meta:   {', '.join(meta_parts)}")
-            typer.echo(f"\n    {msg}\n")
+                print(f"Meta:   {', '.join(meta_parts)}")
+            print(f"\n    {msg}\n")
 
             if stat or patch:
                 added, removed = _file_diff(root, c)
                 for p in added:
-                    typer.echo(f" + {p}")
+                    print(f" + {p}")
                 for p in removed:
-                    typer.echo(f" - {p}")
+                    print(f" - {p}")
                 if added or removed:
-                    typer.echo(f" {len(added)} added, {len(removed)} removed\n")
+                    print(f" {len(added)} added, {len(removed)} removed\n")

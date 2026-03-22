@@ -69,12 +69,12 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import difflib
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.object_store import read_object
@@ -84,8 +84,6 @@ from muse.core.validation import contain_path
 from muse.plugins.code.ast_parser import parse_symbols
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -120,23 +118,33 @@ def _find_current_symbol_lines(
     return rec["lineno"], rec["end_lineno"]
 
 
-@app.callback(invoke_without_command=True)
-def checkout_symbol(
-    ctx: typer.Context,
-    address: str = typer.Argument(
-        ..., metavar="ADDRESS",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the checkout-symbol subcommand."""
+    parser = subparsers.add_parser(
+        "checkout-symbol",
+        help="Restore a historical version of a specific symbol into the working tree.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "address", metavar="ADDRESS",
         help='Symbol address, e.g. "src/billing.py::compute_invoice_total".',
-    ),
-    ref: str = typer.Option(
-        ..., "--commit", "-c", metavar="REF",
+    )
+    parser.add_argument(
+        "--commit", "-c", required=True, metavar="REF", dest="ref",
         help="Commit to restore the symbol from (required).",
-    ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", dest="dry_run",
         help="Print the diff without writing anything.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit result as JSON for agent consumption."),
-) -> None:
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit result as JSON for agent consumption.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Restore a historical version of a specific symbol into the working tree.
 
     Extracts the symbol body from the given historical commit and splices it
@@ -150,13 +158,18 @@ def checkout_symbol(
     The file path component of ADDRESS is validated against the repo root —
     path-traversal addresses (e.g. ``../../etc/passwd::foo``) are rejected.
     """
+    address: str = args.address
+    ref: str = args.ref
+    dry_run: bool = args.dry_run
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     if "::" not in address:
-        typer.echo("❌ ADDRESS must be a symbol address like 'src/billing.py::func'.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ ADDRESS must be a symbol address like 'src/billing.py::func'.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     file_rel, sym_qualified = address.split("::", 1)
 
@@ -164,36 +177,36 @@ def checkout_symbol(
     try:
         contain_path(root, file_rel)
     except ValueError as exc:
-        typer.echo(f"❌ {exc}", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ {exc}", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{ref}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Read the historical blob.
     manifest = get_commit_snapshot_manifest(root, commit.commit_id) or {}
     obj_id = manifest.get(file_rel)
     if obj_id is None:
-        typer.echo(
-            f"❌ '{file_rel}' is not in snapshot {commit.commit_id[:8]}.", err=True
+        print(
+            f"❌ '{file_rel}' is not in snapshot {commit.commit_id[:8]}.", file=sys.stderr
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     historical_raw = read_object(root, obj_id)
     if historical_raw is None:
-        typer.echo(f"❌ Blob {obj_id[:8]} missing from object store.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Blob {obj_id[:8]} missing from object store.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Find the symbol in the historical blob.
     hist_tree = parse_symbols(historical_raw, file_rel)
     hist_rec = hist_tree.get(address)
     if hist_rec is None:
-        typer.echo(
-            f"❌ Symbol '{address}' not found in commit {commit.commit_id[:8]}.", err=True
+        print(
+            f"❌ Symbol '{address}' not found in commit {commit.commit_id[:8]}.", file=sys.stderr
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     historical_lines = _extract_lines(
         historical_raw, hist_rec["lineno"], hist_rec["end_lineno"]
@@ -215,16 +228,16 @@ def checkout_symbol(
 
     if dry_run:
         if as_json:
-            typer.echo(json.dumps({
+            print(json.dumps({
                 "address": address,
                 "file": file_rel,
                 "restored_from": commit.commit_id[:8],
                 "dry_run": True,
             }, indent=2))
             return
-        typer.echo("Dry run — no files will be written.\n")
-        typer.echo(f"Restoring: {address}")
-        typer.echo(f"  from commit: {commit.commit_id[:8]} ({commit.committed_at.date()})")
+        print("Dry run — no files will be written.\n")
+        print(f"Restoring: {address}")
+        print(f"  from commit: {commit.commit_id[:8]} ({commit.committed_at.date()})")
         diff = difflib.unified_diff(
             current_lines,
             new_lines,
@@ -232,26 +245,26 @@ def checkout_symbol(
             tofile="historical",
             lineterm="",
         )
-        typer.echo("\n" + "".join(diff))
+        print("\n" + "".join(diff))
         return
 
     if not as_json:
-        typer.echo(f"Restoring: {address}")
-        typer.echo(f"  from commit: {commit.commit_id[:8]} ({commit.committed_at.date()})")
+        print(f"Restoring: {address}")
+        print(f"  from commit: {commit.commit_id[:8]} ({commit.committed_at.date()})")
         if current_sym_range is not None:
             cur_start, cur_end = current_sym_range
-            typer.echo(
+            print(
                 f"  lines {cur_start}–{cur_end} → replaced with "
                 f"{len(historical_lines)} historical line(s)"
             )
         else:
-            typer.echo("  symbol not found in working tree — appending at end of file")
+            print("  symbol not found in working tree — appending at end of file")
 
     # Write the patched file.
     working_file.write_text("".join(new_lines), encoding="utf-8")
 
     if as_json:
-        typer.echo(json.dumps({
+        print(json.dumps({
             "address": address,
             "file": file_rel,
             "restored_from": commit.commit_id[:8],
@@ -259,4 +272,4 @@ def checkout_symbol(
         }, indent=2))
         return
 
-    typer.echo(f"✅ Written to {file_rel}")
+    print(f"✅ Written to {file_rel}")

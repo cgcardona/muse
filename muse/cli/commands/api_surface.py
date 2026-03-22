@@ -56,11 +56,11 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse._version import __version__
 from muse.core.errors import ExitCode
@@ -70,8 +70,6 @@ from muse.plugins.code._query import language_of, symbols_for_snapshot
 from muse.plugins.code.ast_parser import SymbolRecord
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _PUBLIC_KINDS: frozenset[str] = frozenset({
     "function", "async_function", "class", "method", "async_method",
@@ -135,23 +133,33 @@ class _ApiEntry:
         }
 
 
-@app.callback(invoke_without_command=True)
-def api_surface(
-    ctx: typer.Context,
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the api-surface subcommand."""
+    parser = subparsers.add_parser(
+        "api-surface",
+        help="Show the public API surface and how it changed between two commits.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--commit", "-c", default=None, metavar="REF", dest="ref",
         help="Show surface at this commit (default: HEAD).",
-    ),
-    diff_ref: str | None = typer.Option(
-        None, "--diff", metavar="REF",
+    )
+    parser.add_argument(
+        "--diff", default=None, metavar="REF", dest="diff_ref",
         help="Compare HEAD (or --commit) against this ref.",
-    ),
-    language: str | None = typer.Option(
-        None, "--language", "-l", metavar="LANG",
+    )
+    parser.add_argument(
+        "--language", "-l", default=None, metavar="LANG", dest="language",
         help="Filter to this language (Python, Go, Rust, …).",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit results as JSON.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show the public API surface and how it changed between two commits.
 
     A symbol is public when its kind is function/class/method (not import) and
@@ -163,14 +171,19 @@ def api_surface(
     This command runs against committed snapshots only — no working-tree
     parsing, no test execution.
     """
+    ref: str | None = args.ref
+    diff_ref: str | None = args.diff_ref
+    language: str | None = args.language
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     manifest = get_commit_snapshot_manifest(root, commit.commit_id) or {}
     current_surface = _public_symbols(root, manifest, language)
@@ -182,7 +195,7 @@ def api_surface(
             for addr, rec in sorted(current_surface.items())
         ]
         if as_json:
-            typer.echo(json.dumps(
+            print(json.dumps(
                 {
                     "schema_version": __version__,
                     "commit": commit.commit_id[:8],
@@ -194,24 +207,24 @@ def api_surface(
             ))
             return
 
-        typer.echo(f"\nPublic API surface — commit {commit.commit_id[:8]}")
+        print(f"\nPublic API surface — commit {commit.commit_id[:8]}")
         if language:
-            typer.echo(f"  (language: {language})")
-        typer.echo("─" * 62)
+            print(f"  (language: {language})")
+        print("─" * 62)
         if not entries:
-            typer.echo("  (no public symbols found)")
+            print("  (no public symbols found)")
             return
         max_addr = max(len(e.address) for e in entries)
         for e in entries:
-            typer.echo(f"  {e.address:<{max_addr}}  {e.rec['kind']}")
-        typer.echo(f"\n  {len(entries)} public symbol(s)")
+            print(f"  {e.address:<{max_addr}}  {e.rec['kind']}")
+        print(f"\n  {len(entries)} public symbol(s)")
         return
 
     # Diff mode.
     base_commit = resolve_commit_ref(root, repo_id, branch, diff_ref)
     if base_commit is None:
-        typer.echo(f"❌ Diff ref '{diff_ref}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Diff ref '{diff_ref}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     base_manifest = get_commit_snapshot_manifest(root, base_commit.commit_id) or {}
     base_surface = _public_symbols(root, base_manifest, language)
@@ -226,7 +239,7 @@ def api_surface(
                 changed[addr] = (base_surface[addr], current_surface[addr], cls)
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "schema_version": __version__,
                 "commit": commit.commit_id[:8],
@@ -250,33 +263,33 @@ def api_surface(
         ))
         return
 
-    typer.echo(
+    print(
         f"\nPublic API surface — commit {commit.commit_id[:8]}  vs  {base_commit.commit_id[:8]}"
     )
     if language:
-        typer.echo(f"  (language: {language})")
-    typer.echo("─" * 62)
+        print(f"  (language: {language})")
+    print("─" * 62)
 
     all_addrs = sorted(set(list(added) + list(removed) + list(changed)))
     max_addr = max((len(a) for a in all_addrs), default=40)
 
     if added:
-        typer.echo(f"\nAdded ({len(added)}):")
+        print(f"\nAdded ({len(added)}):")
         for addr, rec in sorted(added.items()):
-            typer.echo(f"  + {addr:<{max_addr}}  {rec['kind']}")
+            print(f"  + {addr:<{max_addr}}  {rec['kind']}")
 
     if removed:
-        typer.echo(f"\nRemoved ({len(removed)}):")
+        print(f"\nRemoved ({len(removed)}):")
         for addr, rec in sorted(removed.items()):
-            typer.echo(f"  - {addr:<{max_addr}}  {rec['kind']}")
+            print(f"  - {addr:<{max_addr}}  {rec['kind']}")
 
     if changed:
-        typer.echo(f"\nChanged ({len(changed)}):")
+        print(f"\nChanged ({len(changed)}):")
         for addr, (_, new, cls) in sorted(changed.items()):
-            typer.echo(f"  ~ {addr:<{max_addr}}  {new['kind']}  ({cls})")
+            print(f"  ~ {addr:<{max_addr}}  {new['kind']}  ({cls})")
 
     if not added and not removed and not changed:
-        typer.echo("\n  ✅ No public API changes detected.")
+        print("\n  ✅ No public API changes detected.")
     else:
         n = len(added) + len(removed) + len(changed)
-        typer.echo(f"\n  {n} public API change(s)")
+        print(f"\n  {n} public API change(s)")

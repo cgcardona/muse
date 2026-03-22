@@ -51,12 +51,12 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
+import sys
 from typing import Literal
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.object_store import read_object
@@ -66,8 +66,6 @@ from muse.core.validation import contain_path
 from muse.plugins.code.ast_parser import parse_symbols
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 ApplyStatus = Literal["applied", "not_found", "file_missing", "parse_error", "already_current"]
 
@@ -185,23 +183,36 @@ def _apply_symbol(
     return _PickResult(address, "applied", detail, old_count, len(src_symbol_lines))
 
 
-@app.callback(invoke_without_command=True)
-def semantic_cherry_pick(
-    ctx: typer.Context,
-    addresses: list[str] = typer.Argument(
-        ..., metavar="ADDRESS...",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the semantic-cherry-pick subcommand."""
+    parser = subparsers.add_parser(
+        "semantic-cherry-pick",
+        help="Cherry-pick specific named symbols from a historical commit.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "addresses",
+        nargs="+",
+        metavar="ADDRESS",
         help='Symbol addresses to cherry-pick, e.g. "src/auth.py::validate_token".',
-    ),
-    from_ref: str = typer.Option(
-        ..., "--from", metavar="REF",
+    )
+    parser.add_argument(
+        "--from",
+        dest="from_ref",
+        required=True,
+        metavar="REF",
         help="Commit or branch to cherry-pick symbols from (required).",
-    ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
         help="Print what would change without writing anything.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit per-symbol results as JSON."),
-) -> None:
+    )
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit per-symbol results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Cherry-pick specific named symbols from a historical commit.
 
     Extracts each listed symbol from the source commit and splices it into
@@ -214,18 +225,23 @@ def semantic_cherry_pick(
     ``--dry-run`` shows what would change without writing anything.
     ``--json`` emits per-symbol results for machine consumption.
     """
+    addresses: list[str] = args.addresses
+    from_ref: str = args.from_ref
+    dry_run: bool = args.dry_run
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     if not addresses:
-        typer.echo("❌ At least one ADDRESS is required.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ At least one ADDRESS is required.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     from_commit = resolve_commit_ref(root, repo_id, branch, from_ref)
     if from_commit is None:
-        typer.echo(f"❌ --from ref '{from_ref}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ --from ref '{from_ref}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     src_manifest = get_commit_snapshot_manifest(root, from_commit.commit_id) or {}
 
@@ -235,7 +251,7 @@ def semantic_cherry_pick(
         results.append(result)
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "from_commit": from_commit.commit_id[:8],
                 "dry_run": dry_run,
@@ -249,8 +265,8 @@ def semantic_cherry_pick(
         return
 
     action = "Dry-run" if dry_run else "Semantic cherry-pick"
-    typer.echo(f"\n{action} from commit {from_commit.commit_id[:8]}")
-    typer.echo("─" * 62)
+    print(f"\n{action} from commit {from_commit.commit_id[:8]}")
+    print("─" * 62)
 
     max_addr = max(len(r.address) for r in results)
     applied = 0
@@ -268,8 +284,8 @@ def semantic_cherry_pick(
             icon = "❌"
             label = f"{r.status}  ({r.detail})"
             failed += 1
-        typer.echo(f"\n  {icon}  {r.address:<{max_addr}}  {label}")
+        print(f"\n  {icon}  {r.address:<{max_addr}}  {label}")
 
-    typer.echo(f"\n  {applied} applied, {failed} failed")
+    print(f"\n  {applied} applied, {failed} failed")
     if dry_run:
-        typer.echo("  (dry run — no files were written)")
+        print("  (dry run — no files were written)")

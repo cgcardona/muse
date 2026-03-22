@@ -24,11 +24,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -37,7 +37,6 @@ from muse.plugins.midi._analysis import compute_tension
 from muse.plugins.midi._query import load_track, load_track_from_workdir
 
 logger = logging.getLogger(__name__)
-app = typer.Typer()
 
 _BAR_WIDTH = 20
 
@@ -59,16 +58,16 @@ def _tension_bar(tension: float) -> str:
     return block * level
 
 
-@app.callback(invoke_without_command=True)
-def tension(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
-        help="Analyse a historical snapshot instead of the working tree.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the tension subcommand."""
+    parser = subparsers.add_parser("tension", help="Show the harmonic tension arc of a MIDI track bar by bar.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Analyse a historical snapshot instead of the working tree.")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show the harmonic tension arc of a MIDI track bar by bar.
 
     ``muse tension`` uses interval dissonance weights to score each bar's
@@ -78,6 +77,10 @@ def tension(
     Agents can use this as an automated quality gate: if tension is flat or
     unresolved at expected cadence points, the composition needs revision.
     """
+    track: str = args.track
+    ref: str | None = args.ref
+    as_json: bool = args.as_json
+
     root = require_repo()
     commit_label = "working tree"
 
@@ -86,35 +89,35 @@ def tension(
         branch = _read_branch(root)
         commit = resolve_commit_ref(root, repo_id, branch, ref)
         if commit is None:
-            typer.echo(f"❌ Commit '{ref}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Commit '{ref}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         result = load_track(root, commit.commit_id, track)
         commit_label = commit.commit_id[:8]
     else:
         result = load_track_from_workdir(root, track)
 
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     notes, _tpb = result
     if not notes:
-        typer.echo(f"  (no notes found in '{track}')")
+        print(f"  (no notes found in '{track}')")
         return
 
     bars = compute_tension(notes)
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {"track": track, "commit": commit_label, "bars": list(bars)},
             indent=2,
         ))
         return
 
-    typer.echo(f"\nHarmonic tension: {track} — {commit_label}\n")
+    print(f"\nHarmonic tension: {track} — {commit_label}\n")
     for b in bars:
         bar_str = _tension_bar(b["tension"])
-        typer.echo(
+        print(
             f"  bar {b['bar']:>3}  {bar_str:<{_BAR_WIDTH}}"
             f"  {b['tension']:.3f}  {b['label']}"
         )

@@ -26,10 +26,12 @@ Layout::
 
 from __future__ import annotations
 
+import argparse
+import sys
+
 import json
 import logging
 
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -43,10 +45,6 @@ from muse.core.worktree import (
 )
 
 logger = logging.getLogger(__name__)
-app = typer.Typer(
-    help="Manage multiple simultaneous branch checkouts.",
-    no_args_is_help=True,
-)
 
 
 def _fmt_info(wt: WorktreeInfo) -> str:
@@ -55,12 +53,46 @@ def _fmt_info(wt: WorktreeInfo) -> str:
     return f"{prefix}{wt.name:<24} {sanitize_display(wt.branch):<30} {head}  {sanitize_display(str(wt.path))}"
 
 
-@app.command("add")
-def worktree_add(
-    name: str = typer.Argument(..., help="Short identifier for the worktree (no spaces)."),
-    branch: str = typer.Argument(..., help="Branch to check out in the new worktree."),
-    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the worktree subcommand."""
+    parser = subparsers.add_parser(
+        "worktree",
+        help="Manage multiple simultaneous branch checkouts.",
+        description=__doc__,
+    )
+    subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
+    subs.required = True
+
+    add_p = subs.add_parser("add", help="Create a new linked worktree checked out at a branch.")
+    add_p.add_argument("name", metavar="NAME", help="Worktree name.")
+    add_p.add_argument("branch", metavar="BRANCH", help="Branch to check out.")
+    add_p.add_argument(
+        "--format", dest="fmt", default="text", choices=["text", "json"],
+        help="Output format: text (default) or json.",
+    )
+    add_p.set_defaults(func=run_worktree_add)
+
+    list_p = subs.add_parser("list", help="List all worktrees (main + linked).")
+    list_p.add_argument(
+        "--format", dest="fmt", default="text", choices=["text", "json"],
+        help="Output format: text (default) or json.",
+    )
+    list_p.set_defaults(func=run_worktree_list)
+
+    remove_p = subs.add_parser("remove", help="Remove a linked worktree and its state/ directory.")
+    remove_p.add_argument("name", metavar="NAME", help="Worktree name to remove.")
+    remove_p.add_argument("--force", action="store_true", help="Force removal even with uncommitted changes.")
+    remove_p.add_argument(
+        "--format", dest="fmt", default="text", choices=["text", "json"],
+        help="Output format: text (default) or json.",
+    )
+    remove_p.set_defaults(func=run_worktree_remove)
+
+    prune_p = subs.add_parser("prune", help="Remove metadata entries for missing worktrees.")
+    prune_p.set_defaults(func=run_worktree_prune)
+
+
+def run_worktree_add(args: argparse.Namespace) -> None:
     """Create a new linked worktree checked out at *branch*.
 
     The new worktree is created as a sibling directory of the repository root,
@@ -73,38 +105,41 @@ def worktree_add(
         muse worktree add feat-audio feat/audio
         muse worktree add hotfix-001 hotfix/001
     """
+    name: str = args.name
+    branch: str = args.branch
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     try:
         wt_path = add_worktree(root, name, branch)
     except ValueError as exc:
-        typer.echo(f"❌ {exc}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ {exc}")
+        raise SystemExit(ExitCode.USER_ERROR)
     if fmt == "json":
-        typer.echo(json.dumps({"name": name, "branch": branch, "path": str(wt_path)}))
+        print(json.dumps({"name": name, "branch": branch, "path": str(wt_path)}))
     else:
-        typer.echo(f"✅ Worktree '{sanitize_display(name)}' created at {wt_path}")
-        typer.echo(f"   Branch: {sanitize_display(branch)}")
+        print(f"✅ Worktree '{sanitize_display(name)}' created at {wt_path}")
+        print(f"   Branch: {sanitize_display(branch)}")
 
 
-@app.command("list")
-def worktree_list(
-    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
-) -> None:
+def run_worktree_list(args: argparse.Namespace) -> None:
     """List all worktrees (main + linked).
 
     Agents should pass ``--format json`` to receive a JSON array of
     ``{name, branch, path, head_commit, is_main}`` objects.
     """
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     worktrees = list_worktrees(root)
     if fmt == "json":
-        typer.echo(json.dumps([{
+        print(json.dumps([{
             "name": wt.name,
             "branch": wt.branch,
             "path": str(wt.path),
@@ -113,21 +148,16 @@ def worktree_list(
         } for wt in worktrees]))
         return
     if not worktrees:
-        typer.echo("No worktrees.")
+        print("No worktrees.")
         return
     header = f"{'  name':<26} {'branch':<30} {'HEAD':12}  path"
-    typer.echo(header)
-    typer.echo("-" * len(header))
+    print(header)
+    print("-" * len(header))
     for wt in worktrees:
-        typer.echo(_fmt_info(wt))
+        print(_fmt_info(wt))
 
 
-@app.command("remove")
-def worktree_remove(
-    name: str = typer.Argument(..., help="Name of the worktree to remove."),
-    force: bool = typer.Option(False, "--force", "-f", help="Remove even if the worktree has unsaved changes."),
-    fmt: str = typer.Option("text", "--format", help="Output format: text or json."),
-) -> None:
+def run_worktree_remove(args: argparse.Namespace) -> None:
     """Remove a linked worktree and its state/ directory.
 
     The branch itself is not deleted — only the worktree directory and its
@@ -135,29 +165,32 @@ def worktree_remove(
     the shared store.  Agents should pass ``--format json`` to receive
     ``{name, status}`` rather than human-readable text.
     """
+    name: str = args.name
+    force: bool = args.force
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     try:
         remove_worktree(root, name, force=force)
     except ValueError as exc:
-        typer.echo(f"❌ {exc}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ {exc}")
+        raise SystemExit(ExitCode.USER_ERROR)
     if fmt == "json":
-        typer.echo(json.dumps({"name": name, "status": "removed"}))
+        print(json.dumps({"name": name, "status": "removed"}))
     else:
-        typer.echo(f"✅ Worktree '{sanitize_display(name)}' removed.")
+        print(f"✅ Worktree '{sanitize_display(name)}' removed.")
 
 
-@app.command("prune")
-def worktree_prune() -> None:
+def run_worktree_prune(args: argparse.Namespace) -> None:
     """Remove metadata entries for worktrees whose directories no longer exist."""
     root = require_repo()
     pruned = prune_worktrees(root)
     if not pruned:
-        typer.echo("Nothing to prune.")
+        print("Nothing to prune.")
         return
     for name in pruned:
-        typer.echo(f"  pruned: {sanitize_display(name)}")
-    typer.echo(f"Pruned {len(pruned)} stale worktree(s).")
+        print(f"  pruned: {sanitize_display(name)}")
+    print(f"Pruned {len(pruned)} stale worktree(s).")

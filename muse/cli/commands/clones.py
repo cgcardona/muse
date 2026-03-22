@@ -61,12 +61,12 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
+import sys
 from typing import Literal
-
-import typer
 
 from muse._version import __version__
 from muse.core.errors import ExitCode
@@ -76,8 +76,6 @@ from muse.plugins.code._query import language_of, symbols_for_snapshot
 from muse.plugins.code.ast_parser import SymbolRecord
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 CloneTier = Literal["exact", "near", "both"]
 
@@ -164,27 +162,37 @@ def find_clones(
     return clusters
 
 
-@app.callback(invoke_without_command=True)
-def clones(
-    ctx: typer.Context,
-    tier: str = typer.Option(
-        "both", "--tier", "-t",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the clones subcommand."""
+    parser = subparsers.add_parser(
+        "clones",
+        help="Find exact and near-duplicate symbols in the committed snapshot.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--tier", "-t", default="both",
         help="Tier to report: exact, near, or both.",
-    ),
-    kind_filter: str | None = typer.Option(
-        None, "--kind", "-k", metavar="KIND",
+    )
+    parser.add_argument(
+        "--kind", "-k", default=None, metavar="KIND", dest="kind_filter",
         help="Restrict to symbols of this kind.",
-    ),
-    min_cluster: int = typer.Option(
-        2, "--min-cluster", "-m", metavar="N",
+    )
+    parser.add_argument(
+        "--min-cluster", "-m", type=int, default=2, metavar="N", dest="min_cluster",
         help="Only show clusters with at least N members.",
-    ),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
+    )
+    parser.add_argument(
+        "--commit", "-c", default=None, metavar="REF", dest="ref",
         help="Analyse this commit instead of HEAD.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit results as JSON.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Find exact and near-duplicate symbols in the committed snapshot.
 
     Exact clones share the same ``body_hash`` (identical implementation).
@@ -195,18 +203,24 @@ def clones(
     Uses content-addressed hashes from the snapshot — no AST recomputation
     or file parsing at query time.
     """
+    tier: str = args.tier
+    kind_filter: str | None = args.kind_filter
+    min_cluster: int = args.min_cluster
+    ref: str | None = args.ref
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     if tier not in ("exact", "near", "both"):
-        typer.echo(f"❌ --tier must be 'exact', 'near', or 'both' (got: {tier!r})", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ --tier must be 'exact', 'near', or 'both' (got: {tier!r})", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     manifest = get_commit_snapshot_manifest(root, commit.commit_id) or {}
     # Validated above — safe to narrow.
@@ -221,7 +235,7 @@ def clones(
     near_clusters = [c for c in cluster_list if c.tier == "near"]
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "schema_version": __version__,
                 "commit": commit.commit_id[:8],
@@ -236,29 +250,29 @@ def clones(
         ))
         return
 
-    typer.echo(f"\nClone analysis — commit {commit.commit_id[:8]}")
+    print(f"\nClone analysis — commit {commit.commit_id[:8]}")
     if kind_filter:
-        typer.echo(f"  (kind: {kind_filter})")
-    typer.echo("─" * 62)
+        print(f"  (kind: {kind_filter})")
+    print("─" * 62)
 
     if not cluster_list:
-        typer.echo("\n  ✅ No clones detected.")
+        print("\n  ✅ No clones detected.")
         return
 
     if exact_clusters and tier in ("exact", "both"):
-        typer.echo(f"\nExact clones ({len(exact_clusters)} cluster(s)):")
+        print(f"\nExact clones ({len(exact_clusters)} cluster(s)):")
         for cl in exact_clusters:
-            typer.echo(f"  body_hash {cl.hash_value[:8]}:")
+            print(f"  body_hash {cl.hash_value[:8]}:")
             for addr, rec in cl.members:
-                typer.echo(f"    {addr}  {rec['kind']}")
+                print(f"    {addr}  {rec['kind']}")
 
     if near_clusters and tier in ("near", "both"):
-        typer.echo(f"\nNear-clones — same signature ({len(near_clusters)} cluster(s)):")
+        print(f"\nNear-clones — same signature ({len(near_clusters)} cluster(s)):")
         for cl in near_clusters:
-            typer.echo(f"  signature_id {cl.hash_value[:8]}:")
+            print(f"  signature_id {cl.hash_value[:8]}:")
             for addr, rec in cl.members:
-                typer.echo(f"    {addr}  {rec['kind']}  (body {rec['body_hash'][:8]})")
+                print(f"    {addr}  {rec['kind']}  (body {rec['body_hash'][:8]})")
 
     total = sum(len(c.members) for c in cluster_list)
-    typer.echo(f"\n  {len(cluster_list)} clone cluster(s), {total} total symbol(s) involved")
-    typer.echo("  Consider consolidating behind shared abstractions.")
+    print(f"\n  {len(cluster_list)} clone cluster(s), {total} total symbol(s) involved")
+    print("  Consider consolidating behind shared abstractions.")

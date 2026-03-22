@@ -23,11 +23,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -36,7 +36,6 @@ from muse.plugins.midi._analysis import detect_scale
 from muse.plugins.midi._query import load_track, load_track_from_workdir
 
 logger = logging.getLogger(__name__)
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -49,17 +48,17 @@ def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-@app.callback(invoke_without_command=True)
-def scale_detect(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
-        help="Analyse a historical snapshot instead of the working tree.",
-    ),
-    top: int = typer.Option(3, "--top", "-n", metavar="N", help="Number of top scale matches to show."),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the scale subcommand."""
+    parser = subparsers.add_parser("scale", help="Detect the scale or mode of a MIDI track by pitch-class analysis.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Analyse a historical snapshot instead of the working tree.")
+    parser.add_argument("--top", "-n", metavar="N", type=int, default=3, help="Number of top scale matches to show.")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Detect the scale or mode of a MIDI track by pitch-class analysis.
 
     ``muse scale`` tests every root × scale combination and ranks them by the
@@ -70,6 +69,11 @@ def scale_detect(
     For agents: combine with ``muse harmony`` to get both the implied chord
     progression and the underlying scale in one pipeline.
     """
+    track: str = args.track
+    ref: str | None = args.ref
+    top: int = args.top
+    as_json: bool = args.as_json
+
     root = require_repo()
     commit_label = "working tree"
 
@@ -78,35 +82,35 @@ def scale_detect(
         branch = _read_branch(root)
         commit = resolve_commit_ref(root, repo_id, branch, ref)
         if commit is None:
-            typer.echo(f"❌ Commit '{ref}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Commit '{ref}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         result = load_track(root, commit.commit_id, track)
         commit_label = commit.commit_id[:8]
     else:
         result = load_track_from_workdir(root, track)
 
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     notes, _tpb = result
     if not notes:
-        typer.echo(f"  (no notes found in '{track}')")
+        print(f"  (no notes found in '{track}')")
         return
 
     matches = detect_scale(notes)[: max(1, top)]
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {"track": track, "commit": commit_label, "matches": list(matches)},
             indent=2,
         ))
         return
 
-    typer.echo(f"\nScale analysis: {track} — {commit_label}\n")
-    typer.echo(f"  {'Rank':>4}  {'Root':<5}  {'Scale':<20}  {'Confidence':>10}  {'Out-of-scale':>12}")
-    typer.echo("  " + "─" * 57)
+    print(f"\nScale analysis: {track} — {commit_label}\n")
+    print(f"  {'Rank':>4}  {'Root':<5}  {'Scale':<20}  {'Confidence':>10}  {'Out-of-scale':>12}")
+    print("  " + "─" * 57)
     for i, m in enumerate(matches, 1):
-        typer.echo(
+        print(
             f"  {i:>4}  {m['root']:<5}  {m['name']:<20}  {m['confidence']:>10.3f}  {m['out_of_scale_notes']:>12}"
         )

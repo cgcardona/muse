@@ -24,11 +24,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import logging
 import pathlib
 import random
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.validation import contain_path
@@ -36,7 +36,6 @@ from muse.core.repo import require_repo
 from muse.plugins.midi._query import NoteInfo, load_track_from_workdir, notes_to_midi_bytes
 
 logger = logging.getLogger(__name__)
-app = typer.Typer()
 
 _RATE_FRACTIONS: dict[str, float] = {
     "quarter": 1.0,
@@ -80,21 +79,18 @@ def _order_cluster(cluster: list[NoteInfo], order: str, rng: random.Random) -> l
     return shuffled
 
 
-@app.callback(invoke_without_command=True)
-def arpeggiate(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    rate: str = typer.Option(
-        "16th", "--rate", "-r", metavar="RATE",
-        help="Arpeggio note rate: quarter, 8th, 16th, 32nd.",
-    ),
-    order: str = typer.Option(
-        "up", "--order", "-o", metavar="ORDER",
-        help="Arpeggio order: up, down, up-down, random.",
-    ),
-    seed: int | None = typer.Option(None, "--seed", metavar="INT", help="Random seed (for --order random)."),
-    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Preview without writing."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the arpeggiate subcommand."""
+    parser = subparsers.add_parser("arpeggiate", help="Spread chord voicings into a sequential arpeggio pattern.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--rate", "-r", metavar="RATE", default="16th", help="Arpeggio note rate: quarter, 8th, 16th, 32nd.")
+    parser.add_argument("--order", "-o", metavar="ORDER", default="up", help="Arpeggio order: up, down, up-down, random.")
+    parser.add_argument("--seed", metavar="INT", type=int, default=None, help="Random seed (for --order random).")
+    parser.add_argument("--dry-run", "-n", action="store_true", help="Preview without writing.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Spread chord voicings into a sequential arpeggio pattern.
 
     ``muse arpeggiate`` groups overlapping notes into chord clusters, then
@@ -104,22 +100,28 @@ def arpeggiate(
     Durations are set to one grid step; original velocities are preserved.
     Use ``--order up-down`` for a ping-pong arpeggio.
     """
+    track: str = args.track
+    rate: str = args.rate
+    order: str = args.order
+    seed: int | None = args.seed
+    dry_run: bool = args.dry_run
+
     if rate not in _RATE_FRACTIONS:
-        typer.echo(f"❌ Unknown rate '{rate}'.  Valid: {', '.join(_RATE_FRACTIONS)}", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown rate '{rate}'.  Valid: {', '.join(_RATE_FRACTIONS)}", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     if order not in _VALID_ORDERS:
-        typer.echo(f"❌ Unknown order '{order}'.  Valid: {', '.join(_VALID_ORDERS)}", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown order '{order}'.  Valid: {', '.join(_VALID_ORDERS)}", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     result = load_track_from_workdir(root, track)
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     notes, tpb = result
     if not notes:
-        typer.echo(f"  (track '{track}' contains no notes — nothing to arpeggiate)")
+        print(f"  (track '{track}' contains no notes — nothing to arpeggiate)")
         return
 
     rng = random.Random(seed)
@@ -141,10 +143,10 @@ def arpeggiate(
             ))
 
     if dry_run:
-        typer.echo(f"\n[dry-run] Would arpeggiate {track}  ({rate}-note rate, {order} order)")
-        typer.echo(f"  Chord clusters:   {len(clusters)}")
-        typer.echo(f"  Output notes:     {len(arpeggiated)}")
-        typer.echo("  No changes written (--dry-run).")
+        print(f"\n[dry-run] Would arpeggiate {track}  ({rate}-note rate, {order} order)")
+        print(f"  Chord clusters:   {len(clusters)}")
+        print(f"  Output notes:     {len(arpeggiated)}")
+        print("  No changes written (--dry-run).")
         return
 
     midi_bytes = notes_to_midi_bytes(arpeggiated, tpb)
@@ -152,11 +154,11 @@ def arpeggiate(
     try:
         work_path = contain_path(workdir, track)
     except ValueError as exc:
-        typer.echo(f"❌ Invalid track path: {exc}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Invalid track path: {exc}")
+        raise SystemExit(ExitCode.USER_ERROR)
     work_path.parent.mkdir(parents=True, exist_ok=True)
     work_path.write_bytes(midi_bytes)
 
-    typer.echo(f"\n✅ Arpeggiated {track}  ({rate}-note rate, {order} order)")
-    typer.echo(f"   {len(clusters)} chord clusters → {len(arpeggiated)} arpeggio notes")
-    typer.echo("   Run `muse status` to review, then `muse commit`")
+    print(f"\n✅ Arpeggiated {track}  ({rate}-note rate, {order} order)")
+    print(f"   {len(clusters)} chord clusters → {len(arpeggiated)} arpeggio notes")
+    print("   Run `muse status` to review, then `muse commit`")

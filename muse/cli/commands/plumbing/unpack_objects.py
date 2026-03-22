@@ -28,11 +28,10 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import sys
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.pack import PackBundle, apply_pack
@@ -40,45 +39,41 @@ from muse.core.repo import require_repo
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
-
 _FORMAT_CHOICES = ("json", "text")
 
 
-@app.callback(invoke_without_command=True)
-def unpack_objects(
-    ctx: typer.Context,
-    fmt: str = typer.Option(
-        "json", "--format", "-f",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the unpack-objects subcommand."""
+    parser = subparsers.add_parser(
+        "unpack-objects",
+        help="Read a PackBundle JSON from stdin, write to the local store.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
         help="Output format: json (default) or text (human-readable summary).",
-    ),
-) -> None:
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Read a PackBundle JSON from stdin and write to the local store.
 
     Idempotent: if a commit, snapshot, or object already exists in the store
     it is silently skipped.  Partial packs (interrupted transfers) are safe
     to re-apply.  The exit code is 0 as long as the store is consistent at
     the end of the operation.
-
-    Output (``--format json``, default)::
-
-        {
-          "commits_written":   12,
-          "snapshots_written": 12,
-          "objects_written":   47,
-          "objects_skipped":   3
-        }
-
-    Output (``--format text``)::
-
-        Wrote 12 commits, 12 snapshots, 47 objects (3 skipped).
     """
+    fmt: str = args.fmt
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             json.dumps({"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"})
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
 
@@ -86,8 +81,8 @@ def unpack_objects(
     try:
         raw_dict = json.loads(raw_bytes)
     except json.JSONDecodeError as exc:
-        typer.echo(json.dumps({"error": f"Invalid JSON from stdin: {exc}"}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": f"Invalid JSON from stdin: {exc}"}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # json.loads returns a dynamically-typed dict; PackBundle is a TypedDict
     # with the same shape.  We extract each key explicitly so the bundle is
@@ -102,7 +97,7 @@ def unpack_objects(
     result = apply_pack(root, bundle)
 
     if fmt == "text":
-        typer.echo(
+        print(
             f"Wrote {result['commits_written']} commits, "
             f"{result['snapshots_written']} snapshots, "
             f"{result['objects_written']} objects "
@@ -110,7 +105,7 @@ def unpack_objects(
         )
         return
 
-    typer.echo(json.dumps({
+    print(json.dumps({
         "commits_written": result["commits_written"],
         "snapshots_written": result["snapshots_written"],
         "objects_written": result["objects_written"],

@@ -18,10 +18,11 @@ Exit codes::
 
 from __future__ import annotations
 
-import logging
-from typing import Annotated
+import argparse
+import sys
 
-import typer
+import logging
+
 
 from muse.core.errors import ExitCode
 from muse.core.identity import IdentityEntry, list_all_identities, load_identity
@@ -29,8 +30,6 @@ from muse.core.validation import sanitize_display
 from muse.cli.config import get_hub_url
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer(help="Show the current identity (shortcut for muse auth whoami).")
 
 
 def _display(hub: str, entry: IdentityEntry, *, json_output: bool) -> None:
@@ -46,35 +45,40 @@ def _display(hub: str, entry: IdentityEntry, *, json_output: bool) -> None:
         caps: list[str] = entry.get("capabilities") or []
         if caps:
             out["capabilities"] = caps
-        typer.echo(_json.dumps(out, indent=2))
+        print(_json.dumps(out, indent=2))
     else:
         itype = entry.get("type") or "unknown"
         name = entry.get("name") or "—"
         uid = entry.get("id") or "—"
         token = entry.get("token", "")
         token_status = "set" if (isinstance(token, str) and token) else "not set"
-        typer.echo(f"  hub:    {sanitize_display(hub)}")
-        typer.echo(f"  type:   {sanitize_display(str(itype))}")
-        typer.echo(f"  name:   {sanitize_display(str(name))}")
-        typer.echo(f"  id:     {sanitize_display(str(uid))}")
-        typer.echo(f"  token:  {token_status}")
+        print(f"  hub:    {sanitize_display(hub)}")
+        print(f"  type:   {sanitize_display(str(itype))}")
+        print(f"  name:   {sanitize_display(str(name))}")
+        print(f"  id:     {sanitize_display(str(uid))}")
+        print(f"  token:  {token_status}")
 
 
-@app.callback(invoke_without_command=True)
-def whoami(
-    json_output: Annotated[
-        bool,
-        typer.Option("--json", "-j", help="Emit JSON instead of human-readable output."),
-    ] = False,
-    all_hubs: Annotated[
-        bool,
-        typer.Option("--all", "-a", help="Show identities for all configured hubs."),
-    ] = False,
-    fmt: Annotated[
-        str,
-        typer.Option("--format", "-f", help="Output format: text or json (alias for --json)."),
-    ] = "text",
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the whoami subcommand."""
+    parser = subparsers.add_parser(
+        "whoami",
+        help='Show the current identity stored in ~/.muse/identity.toml.',
+        description=__doc__,
+    )
+    parser.add_argument("--json", dest="json_output", action="store_true", help="Emit identity as JSON.")
+    parser.add_argument("--all", dest="all_hubs", action="store_true", help="Show all hubs.")
+    parser.add_argument(
+        "--format",
+        dest="fmt",
+        default="text",
+        choices=["text", "json"],
+        help="Output format: text (default) or json.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show the current identity stored in ~/.muse/identity.toml.
 
     Exits non-zero when no identity is stored so agents can branch on
@@ -102,32 +106,36 @@ def whoami(
         muse whoami --format json
         muse whoami --all
     """
+    json_output: bool = args.json_output
+    all_hubs: bool = args.all_hubs
+    fmt: str = args.fmt
+
     # --format json is an alias for --json for CLI consistency across all commands.
     if fmt == "json":
         json_output = True
     if all_hubs:
         identities = list_all_identities()
         if not identities:
-            typer.echo("No identities stored. Run `muse auth login` to authenticate.")
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print("No identities stored. Run `muse auth login` to authenticate.")
+            raise SystemExit(ExitCode.USER_ERROR)
         for hostname, entry in sorted(identities.items()):
             _display(hostname, entry, json_output=json_output)
         return
 
     hub_url = get_hub_url(None)
     if hub_url is None:
-        typer.echo(
+        print(
             "No hub configured. Run `muse hub connect <url>` or `muse auth login --hub <url>`."
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     loaded = load_identity(hub_url)
     if loaded is None:
-        typer.echo(
+        print(
             f"No identity stored for {hub_url}.\n"
             f"Run: muse auth login --hub {hub_url}"
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     hub_display = hub_url.rstrip("/").split("://")[-1].split("/")[0]
     _display(hub_display, loaded, json_output=json_output)

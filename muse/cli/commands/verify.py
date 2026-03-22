@@ -27,11 +27,10 @@ Exit codes::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
-from typing import Annotated
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -40,24 +39,24 @@ from muse.core.verify import run_verify
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer(help="Whole-repository integrity check (re-hash objects, verify DAG).")
+
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the verify subcommand."""
+    parser = subparsers.add_parser(
+        "verify",
+        help="Check repository integrity — commits, snapshots, and objects.",
+        description=__doc__,
+    )
+    parser.add_argument("--quiet", "-q", action="store_true",
+                        help="No output — exit code only.")
+    parser.add_argument("--no-objects", action="store_true", dest="no_objects",
+                        help="Existence check only (faster).")
+    parser.add_argument("--format", "-f", default="text", dest="fmt",
+                        help="Output format: text or json.")
+    parser.set_defaults(func=run)
 
 
-@app.callback(invoke_without_command=True)
-def verify(
-    quiet: Annotated[
-        bool,
-        typer.Option("--quiet", "-q", help="No output — exit 0 if clean, 1 on any failure."),
-    ] = False,
-    no_objects: Annotated[
-        bool,
-        typer.Option("--no-objects", "-O", help="Skip object re-hashing (existence check only)."),
-    ] = False,
-    fmt: Annotated[
-        str,
-        typer.Option("--format", "-f", help="Output format: text or json."),
-    ] = "text",
-) -> None:
+def run(args: argparse.Namespace) -> None:
     """Check repository integrity — commits, snapshots, and objects.
 
     Walks every reachable commit from every branch ref.  For each commit,
@@ -74,9 +73,13 @@ def verify(
         muse verify --quiet && echo "healthy"
         muse verify --format json | jq '.failures'
     """
+    quiet: bool = args.quiet
+    no_objects: bool = args.no_objects
+    fmt: str = args.fmt
+
     if fmt not in {"text", "json"}:
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
 
@@ -84,26 +87,26 @@ def verify(
         result = run_verify(root, check_objects=not no_objects)
     except OSError as exc:
         if not quiet:
-            typer.echo(f"❌ I/O error during verify: {exc}", err=True)
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR) from exc
+            print(f"❌ I/O error during verify: {exc}", file=sys.stderr)
+        raise SystemExit(ExitCode.INTERNAL_ERROR) from exc
 
     if quiet:
-        raise typer.Exit(code=0 if result["all_ok"] else ExitCode.USER_ERROR)
+        raise SystemExit(0 if result["all_ok"] else ExitCode.USER_ERROR)
 
     if fmt == "json":
-        typer.echo(json.dumps(dict(result), indent=2))
+        print(json.dumps(dict(result), indent=2))
     else:
-        typer.echo(f"Checking refs...        {result['refs_checked']} ref(s)")
-        typer.echo(f"Checking commits...     {result['commits_checked']} commit(s)")
-        typer.echo(f"Checking snapshots...   {result['snapshots_checked']} snapshot(s)")
+        print(f"Checking refs...        {result['refs_checked']} ref(s)")
+        print(f"Checking commits...     {result['commits_checked']} commit(s)")
+        print(f"Checking snapshots...   {result['snapshots_checked']} snapshot(s)")
         action = "checked" if not no_objects else "verified (existence only)"
-        typer.echo(f"Checking objects...     {result['objects_checked']} object(s) {action}")
+        print(f"Checking objects...     {result['objects_checked']} object(s) {action}")
 
         if result["all_ok"]:
-            typer.echo("✅ Repository is healthy.")
+            print("✅ Repository is healthy.")
         else:
-            typer.echo(f"\n❌ {len(result['failures'])} integrity failure(s):")
+            print(f"\n❌ {len(result['failures'])} integrity failure(s):")
             for f in result["failures"]:
-                typer.echo(f"  {f['kind']:<10} {f['id'][:24]}  {f['error']}")
+                print(f"  {f['kind']:<10} {f['id'][:24]}  {f['error']}")
 
-    raise typer.Exit(code=0 if result["all_ok"] else ExitCode.USER_ERROR)
+    raise SystemExit(0 if result["all_ok"] else ExitCode.USER_ERROR)

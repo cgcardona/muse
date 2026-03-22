@@ -29,20 +29,17 @@ See ``muse/plugins/midi/_midi_query.py`` for the full grammar reference.
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
 import sys
-
-import typer
 
 from muse.core.repo import require_repo
 from muse.core.store import get_head_commit_id, read_commit, read_current_branch
 from muse.plugins.midi._midi_query import run_query
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer(no_args_is_help=True)
 
 
 def _read_branch(root: pathlib.Path) -> str:
@@ -79,58 +76,38 @@ def _resolve_head(root: pathlib.Path, alias: str | None = None) -> str | None:
     return current or alias
 
 
-@app.command(name="midi-query")
-def midi_query_cmd(
-    query_expr: str = typer.Argument(
-        ...,
-        metavar="QUERY",
-        help=(
-            "Music query DSL expression.  Examples: "
-            "\"note.pitch_class == 'Eb'\", "
-            "\"harmony.quality == 'dim' and bar == 8\", "
-            "\"agent_id == 'my-bot' and note.velocity > 80\""
-        ),
-    ),
-    track: str | None = typer.Option(
-        None,
-        "--track",
-        "-t",
-        metavar="PATH",
-        help="Restrict search to a single MIDI file path.",
-    ),
-    start: str | None = typer.Option(
-        None,
-        "--from",
-        "-f",
-        metavar="COMMIT",
-        help="Start commit (default: HEAD).",
-    ),
-    stop: str | None = typer.Option(
-        None,
-        "--to",
-        metavar="COMMIT",
-        help="Stop before this commit (exclusive).",
-    ),
-    max_results: int = typer.Option(
-        100,
-        "--max-results",
-        "-n",
-        metavar="N",
-        help="Maximum number of matches to return.",
-    ),
-    as_json: bool = typer.Option(
-        False,
-        "--json",
-        help="Output machine-readable JSON instead of formatted text.",
-    ),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the midi-query subcommand."""
+    parser = subparsers.add_parser("query", help="Query the MIDI note history using a MIDI DSL predicate.", description=__doc__)
+    parser.add_argument("query_expr", metavar="QUERY", help=(
+        "Music query DSL expression.  Examples: "
+        "\"note.pitch_class == 'Eb'\", "
+        "\"harmony.quality == 'dim' and bar == 8\", "
+        "\"agent_id == 'my-bot' and note.velocity > 80\""
+    ))
+    parser.add_argument("--track", "-t", metavar="PATH", default=None, help="Restrict search to a single MIDI file path.")
+    parser.add_argument("--from", "-f", metavar="COMMIT", default=None, dest="start", help="Start commit (default: HEAD).")
+    parser.add_argument("--to", metavar="COMMIT", default=None, dest="stop", help="Stop before this commit (exclusive).")
+    parser.add_argument("--max-results", "-n", metavar="N", type=int, default=100, help="Maximum number of matches to return.")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Output machine-readable JSON instead of formatted text.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Query the MIDI note history using a MIDI DSL predicate."""
+    query_expr: str = args.query_expr
+    track: str | None = args.track
+    start: str | None = args.start
+    stop: str | None = args.stop
+    max_results: int = args.max_results
+    as_json: bool = args.as_json
+
     root = require_repo()
 
     start_id = _resolve_head(root, start)
     if start_id is None:
-        typer.echo("❌ No commits in this repository.", err=True)
-        raise typer.Exit(1)
+        print("❌ No commits in this repository.", file=sys.stderr)
+        raise SystemExit(1)
 
     try:
         matches = run_query(
@@ -142,11 +119,11 @@ def midi_query_cmd(
             max_results=max_results,
         )
     except ValueError as exc:
-        typer.echo(f"❌ Query parse error: {exc}", err=True)
-        raise typer.Exit(1)
+        print(f"❌ Query parse error: {exc}", file=sys.stderr)
+        raise SystemExit(1)
 
     if not matches:
-        typer.echo("No matches found.")
+        print("No matches found.")
         return
 
     if as_json:
@@ -154,17 +131,17 @@ def midi_query_cmd(
         return
 
     for m in matches:
-        typer.echo(
+        print(
             f"commit {m['commit_short']}  {m['committed_at'][:19]}  "
             f"author={m['author']}  agent={m['agent_id'] or '—'}"
         )
-        typer.echo(f"  track={m['track']}  bar={m['bar']}  chord={m['chord'] or '—'}")
+        print(f"  track={m['track']}  bar={m['bar']}  chord={m['chord'] or '—'}")
         for n in m["notes"]:
-            typer.echo(
+            print(
                 f"    {n['pitch_class']:3} (MIDI {n['pitch']:3})  "
                 f"vel={n['velocity']:3}  ch={n['channel']}  "
                 f"beat={n['beat']:.2f}  dur={n['duration_beats']:.2f}"
             )
-        typer.echo("")
+        print("")
 
-    typer.echo(f"— {len(matches)} match{'es' if len(matches) != 1 else ''} —")
+    print(f"— {len(matches)} match{'es' if len(matches) != 1 else ''} —")

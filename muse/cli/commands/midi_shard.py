@@ -27,10 +27,10 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -38,7 +38,6 @@ from muse.core.validation import contain_path
 from muse.plugins.midi._query import NoteInfo, load_track_from_workdir, notes_by_bar, notes_to_midi_bytes
 
 logger = logging.getLogger(__name__)
-app = typer.Typer()
 
 
 def _shard_notes(
@@ -71,24 +70,18 @@ def _shard_notes(
     return shards
 
 
-@app.callback(invoke_without_command=True)
-def shard(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    num_shards: int | None = typer.Option(
-        None, "--shards", "-n", metavar="N",
-        help="Number of shards to split into (mutually exclusive with --bars-per-shard).",
-    ),
-    bars_per_shard: int | None = typer.Option(
-        None, "--bars-per-shard", "-b", metavar="N",
-        help="Bars per shard (mutually exclusive with --shards).",
-    ),
-    output_dir: str = typer.Option(
-        "shards", "--output-dir", "-o", metavar="DIR",
-        help="Directory to write shard files (default: shards/).",
-    ),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview shard plan without writing."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the shard subcommand."""
+    parser = subparsers.add_parser("shard", help="Split a MIDI track into N bar-range shards for parallel agent work.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--shards", "-n", metavar="N", type=int, default=None, dest="num_shards", help="Number of shards to split into (mutually exclusive with --bars-per-shard).")
+    parser.add_argument("--bars-per-shard", "-b", metavar="N", type=int, default=None, help="Bars per shard (mutually exclusive with --shards).")
+    parser.add_argument("--output-dir", "-o", metavar="DIR", default="shards", help="Directory to write shard files (default: shards/).")
+    parser.add_argument("--dry-run", action="store_true", help="Preview shard plan without writing.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Split a MIDI track into N bar-range shards for parallel agent work.
 
     ``muse shard`` is the musical equivalent of partitioning a codebase for
@@ -99,28 +92,34 @@ def shard(
     Specify either ``--shards N`` (divide evenly) or ``--bars-per-shard N``
     (fixed shard size with a remainder shard at the end).
     """
+    track: str = args.track
+    num_shards: int | None = args.num_shards
+    bars_per_shard: int | None = args.bars_per_shard
+    output_dir: str = args.output_dir
+    dry_run: bool = args.dry_run
+
     if num_shards is not None and bars_per_shard is not None:
-        typer.echo("❌ --shards and --bars-per-shard are mutually exclusive.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ --shards and --bars-per-shard are mutually exclusive.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     if num_shards is None and bars_per_shard is None:
         num_shards = 4
 
     root = require_repo()
     result = load_track_from_workdir(root, track)
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     notes, tpb = result
     if not notes:
-        typer.echo(f"  (track '{track}' contains no notes — nothing to shard)")
+        print(f"  (track '{track}' contains no notes — nothing to shard)")
         return
 
     bars = notes_by_bar(notes)
     all_bars = sorted(bars.keys())
     total_bars = len(all_bars)
     if total_bars == 0:
-        typer.echo("  (no bars detected)")
+        print("  (no bars detected)")
         return
 
     first_bar = all_bars[0]
@@ -147,20 +146,20 @@ def shard(
 
     track_stem = pathlib.Path(track).stem
 
-    typer.echo(f"\nShard plan: {track}  →  {len(bar_ranges)} shards")
-    typer.echo(f"Total bars: {total_bars}  ·  ~{bps} bars per shard\n")
+    print(f"\nShard plan: {track}  →  {len(bar_ranges)} shards")
+    print(f"Total bars: {total_bars}  ·  ~{bps} bars per shard\n")
 
     shard_notes_list = _shard_notes(notes, bar_ranges)
 
     try:
         out_dir = contain_path(root, output_dir)
     except ValueError as exc:
-        typer.echo(f"❌ Invalid --output-dir: {exc}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Invalid --output-dir: {exc}")
+        raise SystemExit(ExitCode.USER_ERROR)
     for idx, ((lo, hi), shard_notes) in enumerate(zip(bar_ranges, shard_notes_list)):
         out_name = f"{track_stem}_shard_{idx}.mid"
         out_path = out_dir / out_name
-        typer.echo(
+        print(
             f"  Shard {idx}  bars {lo:>3}–{hi:>3}  →  {output_dir}/{out_name}"
             f"  ({len(shard_notes)} notes)"
         )
@@ -170,6 +169,6 @@ def shard(
             out_path.write_bytes(midi_bytes)
 
     if dry_run:
-        typer.echo("\n  No files written (--dry-run).")
+        print("\n  No files written (--dry-run).")
     else:
-        typer.echo(f"\n✅ {len(bar_ranges)} shards written to {output_dir}/")
+        print(f"\n✅ {len(bar_ranges)} shards written to {output_dir}/")

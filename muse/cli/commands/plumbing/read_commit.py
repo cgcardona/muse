@@ -36,10 +36,10 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -48,22 +48,31 @@ from muse.core.validation import validate_object_id
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
-
 _FORMAT_CHOICES = ("json", "text")
 
 
-@app.callback(invoke_without_command=True)
-def read_commit_cmd(
-    ctx: typer.Context,
-    commit_id: str = typer.Argument(
-        ..., help="Full or abbreviated SHA-256 commit ID."
-    ),
-    fmt: str = typer.Option(
-        "json", "--format", "-f", help="Output format: json (default) or text."
-    ),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the read-commit subcommand."""
+    parser = subparsers.add_parser(
+        "read-commit",
+        help="Emit full commit metadata as JSON.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "commit_id",
+        help="Full or abbreviated SHA-256 commit ID.",
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
+        help="Output format: json (default) or text.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Emit full commit metadata as JSON (default) or a compact text summary.
 
     Accepts a full 64-character commit ID or a unique prefix.  The JSON output
@@ -74,11 +83,15 @@ def read_commit_cmd(
 
         <commit_id>  <branch>  <author>  <committed_at>  <message>
     """
+    fmt: str = args.fmt
+    commit_id: str = args.commit_id
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             json.dumps({"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"})
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
+
     root = require_repo()
 
     record = None
@@ -87,17 +100,15 @@ def read_commit_cmd(
         try:
             validate_object_id(commit_id)
         except ValueError as exc:
-            # JSON to stdout so scripts that parse this command's output can
-            # detect the error without switching to stderr.
-            typer.echo(json.dumps({"error": f"Invalid commit ID: {exc}"}))
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(json.dumps({"error": f"Invalid commit ID: {exc}"}))
+            raise SystemExit(ExitCode.USER_ERROR)
         record = read_commit(root, commit_id)
     else:
         matches = find_commits_by_prefix(root, commit_id)
         if len(matches) == 1:
             record = matches[0]
         elif len(matches) > 1:
-            typer.echo(
+            print(
                 json.dumps(
                     {
                         "error": "ambiguous prefix",
@@ -105,18 +116,18 @@ def read_commit_cmd(
                     }
                 )
             )
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            raise SystemExit(ExitCode.USER_ERROR)
 
     if record is None:
-        typer.echo(json.dumps({"error": f"Commit not found: {commit_id}"}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": f"Commit not found: {commit_id}"}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if fmt == "text":
         msg = (record.message or "").replace("\n", " ")
-        typer.echo(
+        print(
             f"{record.commit_id[:12]}  {record.branch}  {record.author or ''}  "
             f"{record.committed_at.isoformat()}  {msg}"
         )
         return
 
-    typer.echo(json.dumps(record.to_dict(), indent=2, default=str))
+    print(json.dumps(record.to_dict(), indent=2, default=str))

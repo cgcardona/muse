@@ -22,11 +22,11 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.object_store import write_object_from_path
@@ -35,22 +35,33 @@ from muse.core.snapshot import hash_file
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
 _FORMAT_CHOICES = ("json", "text")
 
 
-@app.callback(invoke_without_command=True)
-def hash_object(
-    ctx: typer.Context,
-    path: pathlib.Path = typer.Argument(..., help="File to hash."),
-    write: bool = typer.Option(
-        False, "--write", "-w", help="Store the object in .muse/objects/."
-    ),
-    fmt: str = typer.Option(
-        "json", "--format", "-f", help="Output format: json or text."
-    ),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the hash-object subcommand."""
+    parser = subparsers.add_parser(
+        "hash-object",
+        help="SHA-256 a file; optionally store it in the object store.",
+        description=__doc__,
+    )
+    parser.add_argument("path", type=pathlib.Path, help="File to hash.")
+    parser.add_argument(
+        "--write", "-w",
+        action="store_true",
+        help="Store the object in .muse/objects/.",
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
+        help="Output format: json or text. (default: json)",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Compute the SHA-256 object ID of a file.
 
     Analogous to ``git hash-object``.  The object ID is deterministic —
@@ -58,19 +69,23 @@ def hash_object(
     store the object so it can be referenced by future ``muse plumbing
     commit-tree`` calls.
     """
+    fmt: str = args.fmt
+    path: pathlib.Path = args.path
+    write: bool = args.write
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             f"❌ Unknown format {fmt!r}. Valid choices: {', '.join(_FORMAT_CHOICES)}",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if not path.exists():
-        typer.echo(f"❌ Path does not exist: {path}", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Path does not exist: {path}", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     if path.is_dir():
-        typer.echo(f"❌ Path is a directory, not a file: {path}", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Path is a directory, not a file: {path}", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     object_id = hash_file(path)
     stored = False
@@ -78,8 +93,8 @@ def hash_object(
     if write:
         root = find_repo_root(pathlib.Path.cwd())
         if root is None:
-            typer.echo("❌ Not inside a Muse repository. Cannot write object.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print("❌ Not inside a Muse repository. Cannot write object.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         try:
             # write_object_from_path streams the file at 64 KiB at a time via
             # shutil.copy2, so arbitrarily large blobs never spike the heap.
@@ -88,17 +103,17 @@ def hash_object(
             stored = write_object_from_path(root, object_id, path)
         except ValueError as exc:
             # File changed between hash_file() and the integrity re-check.
-            typer.echo(
+            print(
                 f"❌ Integrity check failed (file may have changed during write): {exc}",
-                err=True,
+                file=sys.stderr,
             )
-            raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+            raise SystemExit(ExitCode.INTERNAL_ERROR)
         except OSError as exc:
-            typer.echo(f"❌ Failed to write object: {exc}", err=True)
-            raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+            print(f"❌ Failed to write object: {exc}", file=sys.stderr)
+            raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     if fmt == "text":
-        typer.echo(object_id)
+        print(object_id)
         return
 
-    typer.echo(json.dumps({"object_id": object_id, "stored": stored}))
+    print(json.dumps({"object_id": object_id, "stored": stored}))

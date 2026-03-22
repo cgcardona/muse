@@ -26,13 +26,13 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
+import sys
 from dataclasses import dataclass
 from typing import Literal
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -41,8 +41,6 @@ from muse.domain import DomainOp
 from muse.plugins.code._query import walk_commits
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _EventKind = Literal["created", "modified", "renamed", "moved", "deleted", "signature"]
 
@@ -121,25 +119,33 @@ def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-@app.callback(invoke_without_command=True)
-def blame(
-    ctx: typer.Context,
-    address: str = typer.Argument(
-        ..., metavar="ADDRESS",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the blame subcommand."""
+    parser = subparsers.add_parser(
+        "blame",
+        help="Show which commit last touched a specific symbol.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "address", metavar="ADDRESS",
         help='Symbol address, e.g. "src/billing.py::compute_invoice_total".',
-    ),
-    from_ref: str | None = typer.Option(
-        None, "--from", metavar="REF",
+    )
+    parser.add_argument(
+        "--from", default=None, metavar="REF", dest="from_ref",
         help="Start walking from this commit / branch (default: HEAD).",
-    ),
-    show_all: bool = typer.Option(
-        False, "--all", "-a",
+    )
+    parser.add_argument(
+        "--all", "-a", action="store_true", dest="show_all",
         help="Show the full change history, not just the three most recent events.",
-    ),
-    as_json: bool = typer.Option(
-        False, "--json", help="Emit attribution as JSON.",
-    ),
-) -> None:
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit attribution as JSON.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show which commit last touched a specific symbol.
 
     ``muse blame`` attributes the symbol as a semantic unit — one answer
@@ -151,14 +157,19 @@ def blame(
     file, ``muse blame`` gives a single clear answer: *this commit last
     changed this symbol, and this is what changed*.
     """
+    address: str = args.address
+    from_ref: str | None = args.from_ref
+    show_all: bool = args.show_all
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     start_commit = resolve_commit_ref(root, repo_id, branch, from_ref)
     if start_commit is None:
-        typer.echo(f"❌ Commit '{from_ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{from_ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     commits = walk_commits(root, start_commit.commit_id)
 
@@ -169,17 +180,17 @@ def blame(
         all_events.extend(evs)
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {"address": address, "events": [e.to_dict() for e in reversed(all_events)]},
             indent=2,
         ))
         return
 
-    typer.echo(f"\n{address}")
-    typer.echo("─" * 62)
+    print(f"\n{address}")
+    print("─" * 62)
 
     if not all_events:
-        typer.echo("  (no events found — symbol may not exist in this repository)")
+        print("  (no events found — symbol may not exist in this repository)")
         return
 
     events_to_show = all_events if show_all else all_events[:3]
@@ -189,11 +200,11 @@ def blame(
         label = labels[idx] if idx < len(labels) else "            :"
         date_str = ev.commit.committed_at.strftime("%Y-%m-%d")
         short_id = ev.commit.commit_id[:8]
-        typer.echo(f"{label}  {short_id}  {date_str}")
+        print(f"{label}  {short_id}  {date_str}")
         if idx == 0:
-            typer.echo(f"author:        {ev.commit.author or 'unknown'}")
-            typer.echo(f'message:       "{ev.commit.message}"')
-        typer.echo(f"change:        {ev.detail}")
+            print(f"author:        {ev.commit.author or 'unknown'}")
+            print(f'message:       "{ev.commit.message}"')
+        print(f"change:        {ev.detail}")
         if ev.new_address:
-            typer.echo(f"               (tracking continues as {ev.new_address})")
-        typer.echo("")
+            print(f"               (tracking continues as {ev.new_address})")
+        print("")

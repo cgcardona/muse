@@ -21,11 +21,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import logging
 import pathlib
 import random
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.validation import contain_path
@@ -33,30 +33,23 @@ from muse.core.repo import require_repo
 from muse.plugins.midi._query import NoteInfo, load_track_from_workdir, notes_to_midi_bytes
 
 logger = logging.getLogger(__name__)
-app = typer.Typer()
 
 _MIDI_VEL_MAX = 127
 _MIDI_VEL_MIN = 1
 
 
-@app.callback(invoke_without_command=True)
-def humanize(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    timing: float = typer.Option(
-        0.01, "--timing", "-t", metavar="BEATS",
-        help="Max timing jitter in beats (default 0.01 = 1% of a beat).",
-    ),
-    velocity: int = typer.Option(
-        6, "--velocity", "-v", metavar="VEL",
-        help="Max velocity jitter in MIDI units (default 6).",
-    ),
-    seed: int | None = typer.Option(
-        None, "--seed", metavar="INT",
-        help="Random seed for reproducible humanisation.",
-    ),
-    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Preview without writing."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the humanize subcommand."""
+    parser = subparsers.add_parser("humanize", help="Add subtle timing and velocity variation to quantised MIDI.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--timing", "-t", metavar="BEATS", type=float, default=0.01, help="Max timing jitter in beats (default 0.01 = 1%% of a beat).")
+    parser.add_argument("--velocity", "-v", metavar="VEL", type=int, default=6, help="Max velocity jitter in MIDI units (default 6).")
+    parser.add_argument("--seed", metavar="INT", type=int, default=None, help="Random seed for reproducible humanisation.")
+    parser.add_argument("--dry-run", "-n", action="store_true", help="Preview without writing.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Add subtle timing and velocity variation to quantised MIDI.
 
     ``muse humanize`` applies small random perturbations drawn from a
@@ -68,28 +61,34 @@ def humanize(
     that need deterministic audio output.  After humanising, commit with
     ``muse commit`` to record the transformation with full attribution.
     """
+    track: str = args.track
+    timing: float = args.timing
+    velocity: int = args.velocity
+    seed: int | None = args.seed
+    dry_run: bool = args.dry_run
+
     if timing < 0:
-        typer.echo("❌ --timing must be ≥ 0.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ --timing must be ≥ 0.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     if timing > 1.0:
-        typer.echo("❌ --timing must be ≤ 1.0 beat (to prevent degenerate output).", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ --timing must be ≤ 1.0 beat (to prevent degenerate output).", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     if velocity < 0:
-        typer.echo("❌ --velocity must be ≥ 0.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ --velocity must be ≥ 0.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     if velocity > 127:
-        typer.echo("❌ --velocity must be ≤ 127 (MIDI max).", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ --velocity must be ≤ 127 (MIDI max).", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     result = load_track_from_workdir(root, track)
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     notes, tpb = result
     if not notes:
-        typer.echo(f"  (track '{track}' contains no notes — nothing to humanise)")
+        print(f"  (track '{track}' contains no notes — nothing to humanise)")
         return
 
     rng = random.Random(seed)
@@ -111,12 +110,12 @@ def humanize(
         ))
 
     if dry_run:
-        typer.echo(f"\n[dry-run] Would humanise {track}")
-        typer.echo(f"  Notes:            {len(notes)}")
-        typer.echo(f"  Timing jitter:    ±{timing} beats  (±{timing_ticks} ticks)")
-        typer.echo(f"  Velocity jitter:  ±{velocity}")
-        typer.echo(f"  Seed:             {seed!r}")
-        typer.echo("  No changes written (--dry-run).")
+        print(f"\n[dry-run] Would humanise {track}")
+        print(f"  Notes:            {len(notes)}")
+        print(f"  Timing jitter:    ±{timing} beats  (±{timing_ticks} ticks)")
+        print(f"  Velocity jitter:  ±{velocity}")
+        print(f"  Seed:             {seed!r}")
+        print("  No changes written (--dry-run).")
         return
 
     midi_bytes = notes_to_midi_bytes(humanised, tpb)
@@ -124,12 +123,12 @@ def humanize(
     try:
         work_path = contain_path(workdir, track)
     except ValueError as exc:
-        typer.echo(f"❌ Invalid track path: {exc}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Invalid track path: {exc}")
+        raise SystemExit(ExitCode.USER_ERROR)
     work_path.parent.mkdir(parents=True, exist_ok=True)
     work_path.write_bytes(midi_bytes)
 
-    typer.echo(f"\n✅ Humanised {track}")
-    typer.echo(f"   {len(humanised)} notes adjusted")
-    typer.echo(f"   Timing jitter: ±{timing} beats  ·  Velocity jitter: ±{velocity}")
-    typer.echo("   Run `muse status` to review, then `muse commit`")
+    print(f"\n✅ Humanised {track}")
+    print(f"   {len(humanised)} notes adjusted")
+    print(f"   Timing jitter: ±{timing} beats  ·  Velocity jitter: ±{velocity}")
+    print("   Run `muse status` to review, then `muse commit`")

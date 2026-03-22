@@ -45,11 +45,11 @@ Usage::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse._version import __version__
 from muse.core.errors import ExitCode
@@ -60,8 +60,6 @@ from muse.plugins.code._query import language_of, symbols_for_snapshot
 from muse.plugins.code.ast_parser import SymbolRecord  # used in _query_all_commits signature
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _KIND_ICON: dict[str, str] = {
     "function": "fn",
@@ -165,32 +163,41 @@ def _manifest_for_commit(
         return {}
 
 
-@app.callback(invoke_without_command=True)
-def query(
-    ctx: typer.Context,
-    predicates: list[str] = typer.Argument(
-        ..., metavar="PREDICATE...",
-        help="One or more predicates, e.g. \"kind=function\" \"name~=validate\".",
-    ),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the query subcommand."""
+    parser = subparsers.add_parser(
+        "query",
+        help="Query the symbol graph with a predicate DSL.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "predicates",
+        nargs="+",
+        metavar="PREDICATE",
+        help='One or more predicates, e.g. "kind=function" "name~=validate".',
+    )
+    parser.add_argument(
+        "--commit", "-c",
+        dest="ref",
+        default=None,
+        metavar="REF",
         help="Query a historical snapshot instead of HEAD.",
-    ),
-    all_commits: bool = typer.Option(
-        False, "--all-commits",
+    )
+    parser.add_argument(
+        "--all-commits",
+        action="store_true",
         help=(
             "Search across ALL commits (every branch). "
             "Enables temporal hash= queries: find when a function body first appeared. "
             "Mutually exclusive with --commit."
         ),
-    ),
-    show_hashes: bool = typer.Option(
-        False, "--hashes", help="Include content hashes in output.",
-    ),
-    as_json: bool = typer.Option(
-        False, "--json", help="Emit results as JSON.",
-    ),
-) -> None:
+    )
+    parser.add_argument("--hashes", dest="show_hashes", action="store_true", help="Include content hashes in output.")
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Query the symbol graph with a predicate DSL.
 
     ``muse query`` is SQL for your codebase.  Every predicate is evaluated
@@ -216,17 +223,23 @@ def query(
         muse query "hash=a3f2c9" --all-commits   # when did it first appear?
         muse query "name~=validate" --all-commits --json
     """
+    predicates: list[str] = args.predicates
+    ref: str | None = args.ref
+    all_commits: bool = args.all_commits
+    show_hashes: bool = args.show_hashes
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     if not predicates:
-        typer.echo("❌ At least one predicate is required.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ At least one predicate is required.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if all_commits and ref is not None:
-        typer.echo("❌ --all-commits and --commit are mutually exclusive.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ --all-commits and --commit are mutually exclusive.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Parse predicates using the predicate grammar (OR / NOT / grouping supported).
     # Each CLI argument is joined with implicit AND; a single argument may
@@ -234,8 +247,8 @@ def query(
     try:
         combined_predicate: Predicate = parse_query(predicates)
     except PredicateError as exc:
-        typer.echo(f"❌ {exc}", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ {exc}", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     filters: list[Predicate] = [combined_predicate]
 
     # ----------------------------------------------------------------
@@ -244,7 +257,7 @@ def query(
     if all_commits:
         historical = _query_all_commits(root, filters)
         if as_json:
-            typer.echo(json.dumps(
+            print(json.dumps(
                 {
                     "schema_version": __version__,
                     "mode": "all-commits",
@@ -255,7 +268,7 @@ def query(
             return
         if not historical:
             pred_display = "  AND  ".join(predicates)
-            typer.echo(f"  (no symbols matching: {pred_display}  [searched all commits])")
+            print(f"  (no symbols matching: {pred_display}  [searched all commits])")
             return
         # Deduplicate for display: show unique addresses with their first-seen commit.
         seen_addrs: set[str] = set()
@@ -265,14 +278,14 @@ def query(
                 seen_addrs.add(h.address)
                 unique.append(h)
         pred_display = "  AND  ".join(predicates)
-        typer.echo(f"\n{len(unique)} unique symbol(s) matching [{pred_display}] across all commits\n")
+        print(f"\n{len(unique)} unique symbol(s) matching [{pred_display}] across all commits\n")
         for h in unique:
             date_str = h.commit.committed_at.strftime("%Y-%m-%d")
             short_id = h.commit.commit_id[:8]
             icon = _KIND_ICON.get(h.rec["kind"], h.rec["kind"])
             hash_part = f"  {h.rec['content_id'][:8]}.." if show_hashes else ""
             branch_label = f"  [{h.commit.branch}]" if h.commit.branch else ""
-            typer.echo(
+            print(
                 f"  {h.address:<60}  {icon:<8}"
                 f"  first seen {short_id} {date_str}{branch_label}{hash_part}"
             )
@@ -283,8 +296,8 @@ def query(
     # ----------------------------------------------------------------
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     manifest = get_commit_snapshot_manifest(root, commit.commit_id) or {}
     symbol_map = symbols_for_snapshot(root, manifest)
@@ -312,7 +325,7 @@ def query(
                 "body_hash": rec["body_hash"],
                 "signature_id": rec["signature_id"],
             })
-        typer.echo(json.dumps(
+        print(json.dumps(
             {"schema_version": __version__, "commit": commit.commit_id[:8], "results": out},
             indent=2,
         ))
@@ -320,7 +333,7 @@ def query(
 
     if not matches:
         pred_str = "  AND  ".join(predicates)
-        typer.echo(f"  (no symbols matching: {pred_str})")
+        print(f"  (no symbols matching: {pred_str})")
         return
 
     files_seen: set[str] = set()
@@ -330,7 +343,7 @@ def query(
         name = rec["qualified_name"]
         line = rec["lineno"]
         hash_part = f"  {rec['content_id'][:8]}.." if show_hashes else ""
-        typer.echo(f"  {addr:<60}  {icon:<10}  line {line:>4}{hash_part}")
+        print(f"  {addr:<60}  {icon:<10}  line {line:>4}{hash_part}")
 
     pred_display = "  AND  ".join(predicates)
-    typer.echo(f"\n{len(matches)} match(es) across {len(files_seen)} file(s)  [{pred_display}]")
+    print(f"\n{len(matches)} match(es) across {len(files_seen)} file(s)  [{pred_display}]")

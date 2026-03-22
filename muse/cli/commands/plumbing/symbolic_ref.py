@@ -37,12 +37,12 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
+import sys
 from typing import TypedDict
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -50,8 +50,6 @@ from muse.core.store import get_head_commit_id, read_current_branch, write_head_
 from muse.core.validation import validate_branch_name
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _FORMAT_CHOICES = ("json", "text")
 
@@ -80,29 +78,42 @@ def _branch_exists(root: pathlib.Path, branch: str) -> bool:
     return (root / ".muse" / "refs" / "heads" / branch).exists()
 
 
-@app.callback(invoke_without_command=True)
-def symbolic_ref(
-    ctx: typer.Context,
-    _ref: str = typer.Argument(
-        "HEAD",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the symbolic-ref subcommand."""
+    parser = subparsers.add_parser(
+        "symbolic-ref",
+        help="Read or write HEAD's symbolic branch reference.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "ref",
+        nargs="?",
+        default="HEAD",
         help="The symbolic ref to query or update. Currently only HEAD is supported.",
-    ),
-    set_branch: str = typer.Option(
-        "",
-        "--set",
-        "-s",
+    )
+    parser.add_argument(
+        "--set", "-s",
+        default="",
+        dest="set_branch",
+        metavar="BRANCH",
         help="Branch name to point HEAD at (write mode).",
-    ),
-    fmt: str = typer.Option(
-        "json", "--format", "-f", help="Output format: json or text."
-    ),
-    short: bool = typer.Option(
-        False,
-        "--short",
-        "-S",
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
+        help="Output format: json or text. (default: json)",
+    )
+    parser.add_argument(
+        "--short", "-S",
+        action="store_true",
         help="In text mode, emit only the branch name rather than the full ref path.",
-    ),
-) -> None:
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Read or write HEAD's symbolic reference.
 
     With no ``--set`` flag, reads the current branch HEAD points to and
@@ -111,25 +122,24 @@ def symbolic_ref(
     With ``--set <branch>``, updates HEAD to point to *branch*.  The branch
     must already exist (have at least one ref entry); this command does not
     create new branches.
-
-    Only ``HEAD`` is supported as the *ref* argument in this version.  Future
-    Muse versions may support other symbolic refs for worktree and namespace
-    operations.
     """
+    fmt: str = args.fmt
+    ref: str = args.ref
+    set_branch: str = args.set_branch
+    short: bool = args.short
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             json.dumps(
                 {"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"}
             )
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
-    ref_upper = _ref.upper()
+    ref_upper = ref.upper()
     if ref_upper != "HEAD":
-        typer.echo(
-            json.dumps({"error": f"Unsupported ref {_ref!r}. Only HEAD is supported."})
-        )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": f"Unsupported ref {ref!r}. Only HEAD is supported."}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
 
@@ -138,21 +148,19 @@ def symbolic_ref(
         try:
             validate_branch_name(set_branch)
         except ValueError as exc:
-            typer.echo(json.dumps({"error": str(exc)}))
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(json.dumps({"error": str(exc)}))
+            raise SystemExit(ExitCode.USER_ERROR)
 
         if not _branch_exists(root, set_branch):
-            typer.echo(
-                json.dumps({"error": f"Branch {set_branch!r} does not exist."})
-            )
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(json.dumps({"error": f"Branch {set_branch!r} does not exist."}))
+            raise SystemExit(ExitCode.USER_ERROR)
 
         try:
             write_head_branch(root, set_branch)
         except OSError as exc:
             logger.debug("symbolic-ref write error: %s", exc)
-            typer.echo(json.dumps({"error": str(exc)}))
-            raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+            print(json.dumps({"error": str(exc)}))
+            raise SystemExit(ExitCode.INTERNAL_ERROR)
 
         result: _SymbolicRefResult = {
             "ref": "HEAD",
@@ -162,11 +170,11 @@ def symbolic_ref(
         }
         if fmt == "text":
             if short:
-                typer.echo(set_branch)
+                print(set_branch)
             else:
-                typer.echo(f"refs/heads/{set_branch}")
+                print(f"refs/heads/{set_branch}")
             return
-        typer.echo(json.dumps(dict(result)))
+        print(json.dumps(dict(result)))
         return
 
     # Read mode
@@ -174,14 +182,14 @@ def symbolic_ref(
         result = _read_symbolic_ref(root)
     except OSError as exc:
         logger.debug("symbolic-ref read error: %s", exc)
-        typer.echo(json.dumps({"error": str(exc)}))
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(json.dumps({"error": str(exc)}))
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     if fmt == "text":
         if short:
-            typer.echo(result["branch"])
+            print(result["branch"])
         else:
-            typer.echo(result["symbolic_target"])
+            print(result["symbolic_target"])
         return
 
-    typer.echo(json.dumps(dict(result)))
+    print(json.dumps(dict(result)))

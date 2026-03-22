@@ -35,21 +35,19 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
 import fnmatch
 import json
 import logging
 import pathlib
+import sys
 from typing import TypedDict
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import get_head_commit_id, read_commit
+from muse.core.store import read_commit
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _FORMAT_CHOICES = ("json", "text")
 _SORT_FIELDS = ("ref", "branch", "commit_id", "author", "committed_at", "message")
@@ -85,61 +83,73 @@ def _list_all_refs(root: pathlib.Path) -> list[tuple[str, str]]:
     return pairs
 
 
-@app.callback(invoke_without_command=True)
-def for_each_ref(
-    ctx: typer.Context,
-    pattern: str = typer.Option(
-        "",
-        "--pattern",
-        "-p",
-        help="fnmatch glob filter applied to the full ref name "
-        "(e.g. 'refs/heads/feat/*').",
-    ),
-    sort_by: str = typer.Option(
-        "ref",
-        "--sort",
-        "-s",
-        help=f"Field to sort by. One of: {', '.join(_SORT_FIELDS)}.",
-    ),
-    descending: bool = typer.Option(
-        False,
-        "--desc",
-        "-d",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the for-each-ref subcommand."""
+    parser = subparsers.add_parser(
+        "for-each-ref",
+        help="Iterate all refs with rich commit metadata.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--pattern", "-p",
+        default="",
+        dest="pattern",
+        metavar="GLOB",
+        help="fnmatch glob filter applied to the full ref name (e.g. 'refs/heads/feat/*').",
+    )
+    parser.add_argument(
+        "--sort", "-s",
+        default="ref",
+        dest="sort_by",
+        metavar="FIELD",
+        help=f"Field to sort by. One of: {', '.join(_SORT_FIELDS)}. (default: ref)",
+    )
+    parser.add_argument(
+        "--desc", "-d",
+        action="store_true",
+        dest="descending",
         help="Reverse the sort order (descending).",
-    ),
-    count: int = typer.Option(
-        0,
-        "--count",
-        "-n",
+    )
+    parser.add_argument(
+        "--count", "-n",
+        type=int,
+        default=0,
+        dest="count_limit",
+        metavar="N",
         help="Limit output to the first N refs after sorting (0 = unlimited).",
-    ),
-    fmt: str = typer.Option(
-        "json", "--format", "-f", help="Output format: json or text."
-    ),
-) -> None:
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
+        help="Output format: json or text. (default: json)",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Iterate all branch refs with full commit metadata.
 
     Emits each branch ref together with the commit it points to, including
-    the author, message, timestamp, and snapshot ID.  Supports sorting by any
-    commit field and limiting the output count.
-
-    Useful for scripts that need to process all branches in timestamp order,
-    find the most recently updated branch, or filter branches by pattern.
-
-    Example — find the three most recently committed branches::
-
-        muse plumbing for-each-ref --sort committed_at --desc --count 3
+    the author, message, timestamp, and snapshot ID.
     """
+    fmt: str = args.fmt
+    pattern: str = args.pattern
+    sort_by: str = args.sort_by
+    descending: bool = args.descending
+    count_limit: int = args.count_limit
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             json.dumps(
                 {"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"}
             )
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if sort_by not in _SORT_FIELDS:
-        typer.echo(
+        print(
             json.dumps(
                 {
                     "error": f"Unknown sort field {sort_by!r}. "
@@ -147,7 +157,7 @@ def for_each_ref(
                 }
             )
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
 
@@ -155,8 +165,8 @@ def for_each_ref(
         pairs = _list_all_refs(root)
     except OSError as exc:
         logger.debug("for-each-ref I/O error listing refs: %s", exc)
-        typer.echo(json.dumps({"error": str(exc)}))
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(json.dumps({"error": str(exc)}))
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     # Apply glob filter.
     if pattern:
@@ -213,15 +223,13 @@ def for_each_ref(
     details.sort(key=_sort_key, reverse=descending)
 
     # Limit.
-    if count > 0:
-        details = details[:count]
+    if count_limit > 0:
+        details = details[:count_limit]
 
     if fmt == "text":
         for d in details:
-            typer.echo(
-                f"{d['commit_id']}  {d['ref']}  {d['committed_at']}  {d['author']}"
-            )
+            print(f"{d['commit_id']}  {d['ref']}  {d['committed_at']}  {d['author']}")
         return
 
     result: _ForEachRefResult = {"refs": details, "count": len(details)}
-    typer.echo(json.dumps(result))
+    print(json.dumps(result))

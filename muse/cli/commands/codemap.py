@@ -58,11 +58,11 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse._version import __version__
 from muse.core.errors import ExitCode
@@ -74,8 +74,6 @@ from muse.plugins.code._query import language_of, symbols_for_snapshot
 from muse.plugins.code.ast_parser import parse_symbols
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _PY_SUFFIXES: frozenset[str] = frozenset({".py", ".pyi"})
 
@@ -165,23 +163,33 @@ def _find_cycles(imports_out: dict[str, list[str]]) -> list[list[str]]:
     return cycles
 
 
-@app.callback(invoke_without_command=True)
-def codemap(
-    ctx: typer.Context,
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the codemap subcommand."""
+    parser = subparsers.add_parser(
+        "codemap",
+        help="Generate a semantic topology map of the repository.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--commit", "-c", default=None, metavar="REF", dest="ref",
         help="Analyse this commit instead of HEAD.",
-    ),
-    language: str | None = typer.Option(
-        None, "--language", "-l", metavar="LANG",
+    )
+    parser.add_argument(
+        "--language", "-l", default=None, metavar="LANG", dest="language",
         help="Restrict analysis to this language.",
-    ),
-    top: int = typer.Option(
-        15, "--top", "-n", metavar="N",
+    )
+    parser.add_argument(
+        "--top", "-n", type=int, default=15, metavar="N", dest="top",
         help="Number of entries to show in each ranked section.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit results as JSON.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Generate a semantic topology map of the repository.
 
     Ranks modules by size, detects import cycles, finds high-centrality
@@ -191,14 +199,19 @@ def codemap(
     hidden cycles, and safe parallel-work zones — without reading a single
     working-tree file.
     """
+    ref: str | None = args.ref
+    language: str | None = args.language
+    top: int = args.top
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     manifest = get_commit_snapshot_manifest(root, commit.commit_id) or {}
 
@@ -242,7 +255,7 @@ def codemap(
     )[:top]
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "schema_version": __version__,
                 "commit": commit.commit_id[:8],
@@ -270,38 +283,38 @@ def codemap(
         ))
         return
 
-    typer.echo(f"\nSemantic codemap — commit {commit.commit_id[:8]}")
+    print(f"\nSemantic codemap — commit {commit.commit_id[:8]}")
     if language:
-        typer.echo(f"  (language: {language})")
-    typer.echo("─" * 62)
+        print(f"  (language: {language})")
+    print("─" * 62)
 
-    typer.echo(f"\nTop modules by size (top {min(top, len(ranked))}):")
+    print(f"\nTop modules by size (top {min(top, len(ranked))}):")
     if ranked:
         max_fp = max(len(fp) for fp, _ in ranked)
         for fp, cnt in ranked:
             imp = in_degree.get(fp, 0)
             imp_label = f"({imp} importers)" if imp else "(not imported)"
-            typer.echo(f"  {fp:<{max_fp}}  {cnt:>3} symbols  {imp_label}")
+            print(f"  {fp:<{max_fp}}  {cnt:>3} symbols  {imp_label}")
     else:
-        typer.echo("  (no semantic files found)")
+        print("  (no semantic files found)")
 
-    typer.echo(f"\nImport cycles ({len(cycles)}):")
+    print(f"\nImport cycles ({len(cycles)}):")
     if cycles:
         for cycle in cycles[:top]:
-            typer.echo("  " + " → ".join(cycle))
+            print("  " + " → ".join(cycle))
     else:
-        typer.echo("  ✅ No import cycles detected")
+        print("  ✅ No import cycles detected")
 
-    typer.echo(f"\nHigh-centrality symbols — most callers (Python):")
+    print(f"\nHigh-centrality symbols — most callers (Python):")
     if centrality:
         for name, cnt in centrality:
-            typer.echo(f"  {name:<40}  {cnt} caller(s)")
+            print(f"  {name:<40}  {cnt} caller(s)")
     else:
-        typer.echo("  (no Python call graph available)")
+        print("  (no Python call graph available)")
 
-    typer.echo(f"\nBoundary files — high fan-out, zero fan-in:")
+    print(f"\nBoundary files — high fan-out, zero fan-in:")
     if boundaries:
         for fp, fo, fi in boundaries:
-            typer.echo(f"  {fp}  imports {fo}  ← imported by {fi}")
+            print(f"  {fp}  imports {fo}  ← imported by {fi}")
     else:
-        typer.echo("  (none detected)")
+        print("  (none detected)")
