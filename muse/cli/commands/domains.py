@@ -575,6 +575,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "domains",
         help="Domain plugin dashboard — list registered domains and their capabilities.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--new", default=None, metavar="NAME",
@@ -591,6 +592,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
     publish_p = subs.add_parser(
         "publish",
         help="Publish a Muse domain plugin to the MuseHub marketplace.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     publish_p.add_argument(
         "--author", required=True, metavar="SLUG", dest="author_slug",

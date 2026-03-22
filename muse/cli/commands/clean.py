@@ -61,6 +61,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "clean",
         help="Remove untracked files from the working tree.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("-n", "--dry-run", action="store_true", dest="dry_run",
                         help="Preview — show what would be removed.")

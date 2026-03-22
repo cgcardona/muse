@@ -66,6 +66,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "code-check",
         help="Enforce code invariant rules against a commit snapshot.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "commit_arg", nargs="?", default=None,

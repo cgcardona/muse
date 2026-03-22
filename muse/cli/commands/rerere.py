@@ -104,6 +104,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "rerere",
         help="Reuse recorded resolutions for merge conflicts.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--dry-run", "-n", action="store_true",
                         help="Show what would be auto-resolved without writing files.")

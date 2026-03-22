@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the mix subcommand."""
-    parser = subparsers.add_parser("mix", help="Combine notes from two MIDI tracks into a single output track.", description=__doc__)
+    parser = subparsers.add_parser("mix", help="Combine notes from two MIDI tracks into a single output track.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track_a", metavar="TRACK-A", help="First source .mid file.")
     parser.add_argument("track_b", metavar="TRACK-B", help="Second source .mid file.")
     parser.add_argument("--output", "-o", metavar="OUTPUT", required=True, help="Destination .mid file path (workspace-relative).")

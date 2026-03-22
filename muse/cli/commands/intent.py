@@ -67,6 +67,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "intent",
         help="Declare a specific operation before executing it.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "addresses",

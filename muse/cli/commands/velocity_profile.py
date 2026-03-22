@@ -86,7 +86,7 @@ def _read_branch(root: pathlib.Path) -> str:
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the velocity-profile subcommand."""
-    parser = subparsers.add_parser("velocity-profile", help="Analyse the dynamic range and velocity distribution of a MIDI track.", description=__doc__)
+    parser = subparsers.add_parser("velocity-profile", help="Analyse the dynamic range and velocity distribution of a MIDI track.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Analyse a historical snapshot instead of the working tree.")
     parser.add_argument("--by-bar", "-b", action="store_true", help="Show per-bar average velocity instead of the overall histogram.")

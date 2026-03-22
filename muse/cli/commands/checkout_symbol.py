@@ -124,6 +124,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "checkout-symbol",
         help="Restore a historical version of a specific symbol into the working tree.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "address", metavar="ADDRESS",

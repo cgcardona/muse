@@ -57,6 +57,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "coupling",
         help="Find files that change together most often — hidden dependencies.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--top", "-n", type=int, default=20, metavar="N",

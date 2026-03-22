@@ -38,6 +38,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "fetch",
         help="Download commits, snapshots, and objects from a remote.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("remote", nargs="?", default="origin", help="Remote name to fetch from (default: origin).")
     parser.add_argument("--branch", "-b", default=None,

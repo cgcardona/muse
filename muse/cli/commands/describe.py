@@ -49,6 +49,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "describe",
         help="Label a commit by its nearest tag and hop distance.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--ref", default=None,

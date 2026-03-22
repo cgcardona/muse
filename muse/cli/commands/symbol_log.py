@@ -267,6 +267,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "symbol-log",
         help="Track a single symbol through the entire commit history.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "address",

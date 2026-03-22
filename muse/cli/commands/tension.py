@@ -60,7 +60,7 @@ def _tension_bar(tension: float) -> str:
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the tension subcommand."""
-    parser = subparsers.add_parser("tension", help="Show the harmonic tension arc of a MIDI track bar by bar.", description=__doc__)
+    parser = subparsers.add_parser("tension", help="Show the harmonic tension arc of a MIDI track bar by bar.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Analyse a historical snapshot instead of the working tree.")
     parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")

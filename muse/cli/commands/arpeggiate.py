@@ -81,7 +81,7 @@ def _order_cluster(cluster: list[NoteInfo], order: str, rng: random.Random) -> l
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the arpeggiate subcommand."""
-    parser = subparsers.add_parser("arpeggiate", help="Spread chord voicings into a sequential arpeggio pattern.", description=__doc__)
+    parser = subparsers.add_parser("arpeggiate", help="Spread chord voicings into a sequential arpeggio pattern.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--rate", "-r", metavar="RATE", default="16th", help="Arpeggio note rate: quarter, 8th, 16th, 32nd.")
     parser.add_argument("--order", "-o", metavar="ORDER", default="up", help="Arpeggio order: up, down, up-down, random.")

@@ -57,6 +57,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "show",
         help="Inspect a commit: metadata, diff, and files.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("ref", nargs="?", default=None, help="Commit ID or branch (default: HEAD).")
     parser.add_argument("--stat", action="store_true", default=True, help="Show file change summary.")

@@ -88,6 +88,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "status",
         help="Show working-tree drift against HEAD.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--short", "-s", action="store_true", help="Condensed output.")
     parser.add_argument("--porcelain", action="store_true", help="Machine-readable output (no color).")

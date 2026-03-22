@@ -47,7 +47,7 @@ def _rescale(velocity: int, src_lo: int, src_hi: int, dst_lo: int, dst_hi: int) 
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the normalize subcommand."""
-    parser = subparsers.add_parser("normalize", help="Rescale note velocities to a target dynamic range.", description=__doc__)
+    parser = subparsers.add_parser("normalize", help="Rescale note velocities to a target dynamic range.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--min", metavar="VEL", type=int, default=40, dest="min_vel", help="Target minimum velocity (default 40).")
     parser.add_argument("--max", metavar="VEL", type=int, default=110, dest="max_vel", help="Target maximum velocity (default 110).")

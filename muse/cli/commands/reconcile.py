@@ -88,6 +88,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "reconcile",
         help="Recommend merge ordering and integration strategy.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--json", dest="as_json", action="store_true", help="Emit report as JSON.")
     parser.set_defaults(func=run)

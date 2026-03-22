@@ -89,6 +89,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "shortlog",
         help='Summarise commit history grouped by author or agent.',
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "branch_opt",

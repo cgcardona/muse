@@ -50,7 +50,7 @@ def _read_branch(root: pathlib.Path) -> str:
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the tempo subcommand."""
-    parser = subparsers.add_parser("tempo", help="Estimate the BPM of a MIDI track from inter-onset intervals.", description=__doc__)
+    parser = subparsers.add_parser("tempo", help="Estimate the BPM of a MIDI track from inter-onset intervals.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Analyse a historical snapshot instead of the working tree.")
     parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")

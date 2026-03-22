@@ -79,6 +79,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "hotspots",
         help="Show the symbols that change most often — the churn leaderboard.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--top", "-n", type=int, default=20, metavar="N", dest="top",

@@ -67,7 +67,7 @@ def _parse_pivot(pivot_str: str) -> int | None:
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the invert subcommand."""
-    parser = subparsers.add_parser("invert", help="Apply melodic inversion: reflect all intervals around a pivot pitch.", description=__doc__)
+    parser = subparsers.add_parser("invert", help="Apply melodic inversion: reflect all intervals around a pivot pitch.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--pivot", "-p", metavar="PITCH", default=None, help="Pivot pitch as note name (C4, A#3) or MIDI number (0–127). Defaults to the first note.")
     parser.add_argument("--clamp", action="store_true", help="Clamp out-of-range pitches to 0–127.")

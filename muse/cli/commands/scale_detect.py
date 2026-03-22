@@ -50,7 +50,7 @@ def _read_branch(root: pathlib.Path) -> str:
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the scale subcommand."""
-    parser = subparsers.add_parser("scale", help="Detect the scale or mode of a MIDI track by pitch-class analysis.", description=__doc__)
+    parser = subparsers.add_parser("scale", help="Detect the scale or mode of a MIDI track by pitch-class analysis.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Analyse a historical snapshot instead of the working tree.")
     parser.add_argument("--top", "-n", metavar="N", type=int, default=3, help="Number of top scale matches to show.")

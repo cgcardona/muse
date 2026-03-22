@@ -189,6 +189,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "semantic-cherry-pick",
         help="Cherry-pick specific named symbols from a historical commit.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "addresses",

@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the retrograde subcommand."""
-    parser = subparsers.add_parser("retrograde", help="Reverse the pitch order of all notes (retrograde transformation).", description=__doc__)
+    parser = subparsers.add_parser("retrograde", help="Reverse the pitch order of all notes (retrograde transformation).", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--dry-run", "-n", action="store_true", help="Preview without writing.")
     parser.set_defaults(func=run)

@@ -169,6 +169,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "query",
         help="Query the symbol graph with a predicate DSL.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "predicates",

@@ -168,6 +168,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "clones",
         help="Find exact and near-duplicate symbols in the committed snapshot.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--tier", "-t", default="both",

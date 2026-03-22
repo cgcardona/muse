@@ -157,6 +157,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "deps",
         help="Show the import graph or call graph for a file or symbol.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "target", metavar="TARGET",

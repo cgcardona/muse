@@ -85,6 +85,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "commit",
         help="Record the current state as a new version.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("-m", "--message", default=None, help="Commit message.")
     parser.add_argument("--allow-empty", action="store_true", help="Allow committing with no changes.")

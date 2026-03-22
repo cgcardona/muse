@@ -41,6 +41,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "remote",
         help="Manage remote repository connections.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Show URL and upstream tracking branch.")

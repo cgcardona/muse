@@ -121,6 +121,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "query-history",
         help="Search commit history for symbols matching a predicate expression.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "predicates",

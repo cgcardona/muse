@@ -55,6 +55,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "check",
         help="Run invariant checks for the current domain against a commit.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("commit_arg", nargs="?", default=None,
                         help="Commit ID to check (default: HEAD).")

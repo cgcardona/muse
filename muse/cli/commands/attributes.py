@@ -25,6 +25,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "attributes",
         help="Display the .museattributes merge-strategy rules.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--json", action="store_true", dest="output_json",
                         help="Output rules as JSON.")

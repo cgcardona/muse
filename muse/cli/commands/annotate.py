@@ -50,6 +50,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "annotate",
         help="Attach CRDT-backed annotations to an existing commit.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "commit_arg", nargs="?", default=None,

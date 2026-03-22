@@ -48,7 +48,7 @@ _MIDI_MAX = 127
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the transpose subcommand."""
-    parser = subparsers.add_parser("transpose", help="Transpose all notes in a MIDI track by N semitones.", description=__doc__)
+    parser = subparsers.add_parser("transpose", help="Transpose all notes in a MIDI track by N semitones.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--semitones", "-s", metavar="N", type=int, required=True, help="Number of semitones to shift (positive = up, negative = down).")
     parser.add_argument("--dry-run", "-n", action="store_true", help="Preview what would change without writing to disk.")

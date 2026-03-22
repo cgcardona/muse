@@ -138,6 +138,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "content-grep",
         help="Search tracked file content for a pattern.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--pattern", "-p", required=True,

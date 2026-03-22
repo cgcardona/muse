@@ -62,7 +62,7 @@ def _read_branch(root: pathlib.Path) -> str:
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the notes subcommand."""
-    parser = subparsers.add_parser("notes", help="Show every note in a MIDI track as structured musical data.", description=__doc__)
+    parser = subparsers.add_parser("notes", help="Show every note in a MIDI track as structured musical data.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Read from a historical commit instead of the working tree.")
     parser.add_argument("--bar", "-b", metavar="N", type=int, default=None, dest="bar_filter", help="Only show notes in bar N (1-indexed, assumes 4/4 time).")

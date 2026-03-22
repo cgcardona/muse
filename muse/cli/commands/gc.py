@@ -45,6 +45,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "gc",
         help="Remove unreachable objects from the Muse object store.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--dry-run", "-n", action="store_true",
                         help="Show what would be removed, touch nothing.")

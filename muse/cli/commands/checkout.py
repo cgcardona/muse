@@ -110,6 +110,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "checkout",
         help="Switch branches or restore working tree from a commit.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("target", help="Branch name or commit ID to check out.")
     parser.add_argument("-b", "--create", action="store_true", help="Create a new branch.")

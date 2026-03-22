@@ -195,6 +195,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "index",
         help="Manage the optional local index layer.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
     subs.required = True
@@ -212,6 +213,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
             "Both indexes are derived entirely from the commit history and working "
             "snapshots; the canonical storage is never modified."
         ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     rebuild_p.add_argument(
         "--index", "-i",

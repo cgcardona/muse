@@ -126,6 +126,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "compare",
         help="Deep semantic comparison between any two historical snapshots.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("ref_a", metavar="REF-A", help="Base commit (older).")
     parser.add_argument("ref_b", metavar="REF-B", help="Target commit (newer).")

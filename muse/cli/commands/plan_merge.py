@@ -180,6 +180,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "plan-merge",
         help="Dry-run semantic merge planning between two commits.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("ours_ref", metavar="OURS", help="Our commit/branch.")
     parser.add_argument("theirs_ref", metavar="THEIRS", help="Their commit/branch.")

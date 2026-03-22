@@ -67,7 +67,7 @@ def _cid_for_note(note: NoteInfo) -> str:
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the note-blame subcommand."""
-    parser = subparsers.add_parser("note-blame", help="Show which commit introduced the notes in a specific bar.", description=__doc__)
+    parser = subparsers.add_parser("note-blame", help="Show which commit introduced the notes in a specific bar.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--bar", "-b", metavar="N", type=int, required=True, help="Bar number (1-indexed, assumes 4/4 time).")
     parser.add_argument("--from", metavar="REF", default=None, dest="from_ref", help="Start search from this commit (default: HEAD).")

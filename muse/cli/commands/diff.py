@@ -227,6 +227,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "diff",
         help="Compare working tree against HEAD, or compare two commits.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("commit_a", nargs="?", default=None, help="Base commit ID (default: HEAD).")
     parser.add_argument("commit_b", nargs="?", default=None, help="Target commit ID (default: working tree).")

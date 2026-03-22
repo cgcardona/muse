@@ -97,6 +97,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "patch",
         help="Replace exactly one symbol's source — surgical precision for agents.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "address",

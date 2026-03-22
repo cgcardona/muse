@@ -53,6 +53,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "branch",
         help="List, create, or delete branches.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("name", nargs="?", default=None, help="Branch name to create.")
     parser.add_argument("-d", "--delete", default=None, help="Delete a branch.")

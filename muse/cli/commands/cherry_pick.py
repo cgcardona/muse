@@ -47,6 +47,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "cherry-pick",
         help="Apply a specific commit's changes on top of HEAD.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("ref", help="Commit ID to apply.")
     parser.add_argument("-n", "--no-commit", action="store_true", dest="no_commit", help="Apply but do not commit.")

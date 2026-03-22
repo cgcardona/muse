@@ -74,6 +74,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "grep",
         help="Search the symbol graph by name — not file text.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "pattern", metavar="PATTERN",

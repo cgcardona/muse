@@ -229,6 +229,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "bisect",
         help="Binary search through commit history to find regressions.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
     subs.required = True

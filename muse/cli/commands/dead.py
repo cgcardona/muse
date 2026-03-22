@@ -165,6 +165,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "dead",
         help="Find symbols with no callers and no importers — dead code candidates.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--kind", "-k", default=None, metavar="KIND", dest="kind_filter",

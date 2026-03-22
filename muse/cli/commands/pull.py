@@ -68,6 +68,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "pull",
         help="Fetch from a remote and merge into the current branch.",
         description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("remote", nargs="?", default="origin", help="Remote name to pull from (default: origin).")
     parser.add_argument("--branch", "-b", default=None,

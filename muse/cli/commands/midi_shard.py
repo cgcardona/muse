@@ -72,7 +72,7 @@ def _shard_notes(
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the shard subcommand."""
-    parser = subparsers.add_parser("shard", help="Split a MIDI track into N bar-range shards for parallel agent work.", description=__doc__)
+    parser = subparsers.add_parser("shard", help="Split a MIDI track into N bar-range shards for parallel agent work.", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
     parser.add_argument("--shards", "-n", metavar="N", type=int, default=None, dest="num_shards", help="Number of shards to split into (mutually exclusive with --bars-per-shard).")
     parser.add_argument("--bars-per-shard", "-b", metavar="N", type=int, default=None, help="Bars per shard (mutually exclusive with --shards).")
