@@ -21,6 +21,7 @@ Protocol in :mod:`muse.core.transport`.
 from __future__ import annotations
 
 import base64
+import collections
 import logging
 import pathlib
 from typing import TypedDict
@@ -146,10 +147,12 @@ def build_pack(
     # BFS walk from every tip, treating have_set as already-visited.
     commits_to_send: list[CommitRecord] = []
     seen: set[str] = set(have_set)
-    queue: list[str] = [cid for cid in commit_ids if cid not in seen]
+    queue: collections.deque[str] = collections.deque(
+        cid for cid in commit_ids if cid not in seen
+    )
 
     while queue:
-        cid = queue.pop(0)
+        cid = queue.popleft()
         if cid in seen:
             continue
         seen.add(cid)

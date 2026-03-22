@@ -1087,3 +1087,21 @@ class StagePlugin(MuseDomainPlugin, Protocol):
             A :class:`StageStatus` TypedDict with the three buckets.
         """
         ...
+
+    def workdir_snapshot(self, root: pathlib.Path) -> SnapshotManifest:
+        """Capture the raw working tree, bypassing any active stage.
+
+        Unlike :meth:`~MuseDomainPlugin.snapshot`, this method always reflects
+        the actual on-disk state — staged entries are not substituted.  This
+        is used by ``muse diff --working`` to show what has changed in the
+        working tree relative to HEAD, including files that have not yet been
+        staged.
+
+        Args:
+            root: Repository root directory.
+
+        Returns:
+            A :class:`SnapshotManifest` mapping workspace-relative POSIX paths
+            to their content hashes.
+        """
+        ...
