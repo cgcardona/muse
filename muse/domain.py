@@ -77,6 +77,9 @@ __all__ = [
     "CRDTSnapshotManifest",
     "CRDTPlugin",
     "RererePlugin",
+    "StagedEntry",
+    "StageStatus",
+    "StagePlugin",
 ]
 
 if TYPE_CHECKING:
@@ -948,5 +951,139 @@ class RererePlugin(MuseDomainPlugin, Protocol):
 
         Returns:
             64-char lowercase hex fingerprint.
+        """
+        ...
+
+
+# ---------------------------------------------------------------------------
+# Staging optional extension — code-domain selective commit index
+# ---------------------------------------------------------------------------
+
+
+class StagedEntry(TypedDict):
+    """One file's staging record inside the code-domain stage index.
+
+    ``object_id`` is the SHA-256 of the *staged* version of the file (which
+    may differ from the current working-tree version if the file was modified
+    after staging).  ``mode`` records why this file is staged:
+
+    - ``"A"`` — added (new file not present in the previous commit)
+    - ``"M"`` — modified (file exists in the previous commit)
+    - ``"D"`` — deleted (file will be removed from the next commit)
+
+    ``staged_at`` is an ISO-8601 timestamp set when the entry was created.
+    """
+
+    object_id: str
+    mode: Literal["A", "M", "D"]
+    staged_at: str
+
+
+class StageStatus(TypedDict):
+    """Three-bucket view of working-tree state when a stage is active.
+
+    Returned by :meth:`StagePlugin.stage_status` and consumed by
+    ``muse status`` to render the familiar Git-style staged/unstaged split.
+
+    ``staged``
+        Files whose next-commit version is pinned in the stage index.
+        Maps path → ``{"mode": "A"|"M"|"D"}``.
+
+    ``unstaged``
+        Tracked files with working-tree changes that have *not* been staged.
+        Maps path → human label (``"modified"``, ``"deleted"``).
+
+    ``untracked``
+        Files present on disk but not tracked by the previous commit and not
+        in the stage.
+    """
+
+    staged: dict[str, StagedEntry]
+    unstaged: dict[str, str]
+    untracked: list[str]
+
+
+@runtime_checkable
+class StagePlugin(MuseDomainPlugin, Protocol):
+    """Optional extension for plugins that support selective commit staging.
+
+    Implementing this sub-protocol adds a Git-like index layer to a domain:
+    ``muse code add`` stages specific files, and ``muse commit`` commits only
+    what is staged, leaving unstaged changes invisible to the commit.
+
+    The core engine detects support at runtime via::
+
+        isinstance(plugin, StagePlugin)
+
+    Plugins that do not implement ``StagePlugin`` commit the full working
+    tree on every ``muse commit`` (the original Muse behaviour).
+
+    The stage index persists at ``.muse/code/stage.json`` (the path is
+    determined by :meth:`stage_index_path`).  Its format is defined by
+    :class:`~muse.plugins.code.stage.StageIndex`.
+    """
+
+    def stage_index_path(self, root: pathlib.Path) -> pathlib.Path:
+        """Return the absolute path of the stage index file.
+
+        Conventionally ``.muse/<domain>/stage.json``.  Exposing this on the
+        protocol lets ``muse status`` and ``muse commit`` locate the index
+        without hard-coding a domain-specific path.
+
+        Args:
+            root: Repository root directory (contains ``.muse/``).
+
+        Returns:
+            Absolute :class:`pathlib.Path` of the stage index file.
+        """
+        ...
+
+    def read_stage(self, root: pathlib.Path) -> dict[str, StagedEntry]:
+        """Read the stage index, returning an empty dict when no stage exists.
+
+        Args:
+            root: Repository root directory.
+
+        Returns:
+            Mapping of workspace-relative POSIX path → :class:`StagedEntry`.
+        """
+        ...
+
+    def write_stage(
+        self, root: pathlib.Path, entries: dict[str, StagedEntry]
+    ) -> None:
+        """Persist *entries* as the stage index.
+
+        Passing an empty dict clears the stage (removes the index file).
+
+        Args:
+            root:    Repository root directory.
+            entries: New stage contents.
+        """
+        ...
+
+    def clear_stage(self, root: pathlib.Path) -> None:
+        """Remove the stage index, resetting to full-snapshot mode.
+
+        Args:
+            root: Repository root directory.
+        """
+        ...
+
+    def stage_status(self, root: pathlib.Path) -> StageStatus:
+        """Return a three-bucket view of the working tree against the stage.
+
+        Compares the current working tree against both the stage index and the
+        most recent commit to produce three disjoint sets:
+
+        1. **staged** — files whose committed version will be the staged blob.
+        2. **unstaged** — tracked files with working-tree changes not yet staged.
+        3. **untracked** — files on disk that are not tracked and not staged.
+
+        Args:
+            root: Repository root directory.
+
+        Returns:
+            A :class:`StageStatus` TypedDict with the three buckets.
         """
         ...

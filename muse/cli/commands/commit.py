@@ -51,7 +51,7 @@ from muse.core.store import (
 )
 from muse.core.reflog import append_reflog
 from muse.core.validation import sanitize_display, validate_branch_name
-from muse.domain import SemVerBump, SnapshotManifest, StructuredDelta, infer_sem_ver_bump
+from muse.domain import SemVerBump, SnapshotManifest, StagePlugin, StructuredDelta, infer_sem_ver_bump
 from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
@@ -256,6 +256,11 @@ def run(args: argparse.Namespace) -> None:
 
     ref_path.parent.mkdir(parents=True, exist_ok=True)
     ref_path.write_text(commit_id)
+
+    # Clear the stage after a successful commit so the next muse commit
+    # returns to full-snapshot mode unless the user runs muse code add again.
+    if isinstance(plugin, StagePlugin):
+        plugin.clear_stage(root)
 
     append_reflog(
         root,

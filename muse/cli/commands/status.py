@@ -45,8 +45,8 @@ import sys
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import get_head_snapshot_manifest, read_current_branch
-from muse.domain import SnapshotManifest
-from muse.plugins.registry import resolve_plugin_by_domain
+from muse.domain import SnapshotManifest, StagePlugin
+from muse.plugins.registry import resolve_plugin, resolve_plugin_by_domain
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,14 @@ def run(args: argparse.Namespace) -> None:
     is_tty = sys.stdout.isatty() and not porcelain and fmt != "json"
 
     head_manifest = get_head_snapshot_manifest(root, repo_id, branch) or {}
-    plugin = resolve_plugin_by_domain(domain)
+    plugin = resolve_plugin(root)
+
+    # If the active plugin supports staging and a stage is active, show the
+    # three-bucket Git-style view instead of the simple drift report.
+    if isinstance(plugin, StagePlugin) and plugin.stage_index_path(root).exists():
+        _render_staged_status(root, plugin, branch, fmt, short, porcelain, is_tty)
+        return
+
     committed_snap = SnapshotManifest(files=head_manifest, domain=domain)
     report = plugin.drift(committed_snap, root)
     delta = report.delta
@@ -184,3 +191,97 @@ def run(args: argparse.Namespace) -> None:
         print(f"\t{_color('    new file:', _GREEN, is_tty)} {p}")
     for p in sorted(deleted):
         print(f"\t{_color('     deleted:', _RED, is_tty)} {p}")
+
+
+def _render_staged_status(
+    root: pathlib.Path,
+    plugin: StagePlugin,
+    branch: str,
+    fmt: str,
+    short: bool,
+    porcelain: bool,
+    is_tty: bool,
+) -> None:
+    """Render the three-bucket staged/unstaged/untracked view.
+
+    Displayed when the active plugin implements :class:`StagePlugin` and a
+    stage index is present.  Mirrors ``git status`` output exactly.
+    """
+    status = plugin.stage_status(root)
+    staged = status["staged"]
+    unstaged = status["unstaged"]
+    untracked = status["untracked"]
+
+    clean = not staged and not unstaged and not untracked
+
+    _MODE_LABEL: dict[str, str] = {
+        "A": "new file",
+        "M": "modified",
+        "D": "deleted",
+    }
+
+    if fmt == "json":
+        print(json.dumps({
+            "branch": branch,
+            "clean": clean,
+            "staged": {
+                p: {"mode": e["mode"], "object_id": e["object_id"]}
+                for p, e in staged.items()
+            },
+            "unstaged": unstaged,
+            "untracked": untracked,
+        }))
+        return
+
+    if porcelain:
+        for p, entry in sorted(staged.items()):
+            print(f"{entry['mode']}  {p}")
+        for p, label in sorted(unstaged.items()):
+            pu_letter = "M" if label == "modified" else "D"
+            print(f" {pu_letter} {p}")
+        for p in untracked:
+            print(f"?? {p}")
+        return
+
+    if short:
+        for p, entry in sorted(staged.items()):
+            s_mode = entry["mode"]
+            color = _GREEN if s_mode == "A" else _YELLOW if s_mode == "M" else _RED
+            print(f"{_color(s_mode, color, is_tty)}  {p}")
+        for p, label in sorted(unstaged.items()):
+            u_letter = "M" if label == "modified" else "D"
+            u_color = _YELLOW if label == "modified" else _RED
+            print(f" {_color(u_letter, u_color, is_tty)} {p}")
+        for p in untracked:
+            print(f"?? {p}")
+        return
+
+    # Long form — mirrors git status exactly.
+    if staged:
+        print("\nChanges staged for commit:")
+        print('  (use "muse code reset HEAD <file>" to unstage)\n')
+        for p, entry in sorted(staged.items()):
+            label = _MODE_LABEL.get(entry["mode"], entry["mode"])
+            color = _GREEN if entry["mode"] == "A" else _YELLOW if entry["mode"] == "M" else _RED
+            pad = max(0, 10 - len(label))
+            print(f"\t{_color(label + ':', color, is_tty)}{' ' * pad} {p}")
+
+    if unstaged:
+        print("\nChanges not staged for commit:")
+        print('  (use "muse code add <file>" to update what will be committed)\n')
+        for p, label in sorted(unstaged.items()):
+            color = _YELLOW if label == "modified" else _RED
+            pad = max(0, 10 - len(label))
+            print(f"\t{_color(label + ':', color, is_tty)}{' ' * pad} {p}")
+
+    if untracked:
+        print("\nUntracked files:")
+        print('  (use "muse code add <file>" to include in what will be committed)\n')
+        for p in untracked:
+            print(f"\t{p}")
+
+    if clean:
+        print("\nNothing to commit, working tree clean")
+
+    if staged:
+        print()  # trailing newline after last section
