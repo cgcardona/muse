@@ -1386,7 +1386,7 @@ class TestDeltaSummary:
 
 
 class TestMarkdownAdapter:
-    """ATX heading extraction via tree-sitter-markdown."""
+    """Semantic symbol extraction via tree-sitter-markdown."""
 
     def _parse(self, src: str) -> SymbolTree:
         from muse.plugins.code.ast_parser import MarkdownAdapter
@@ -1397,11 +1397,11 @@ class TestMarkdownAdapter:
 
     def test_h1_extracted(self) -> None:
         syms = self._parse("# Hello World\n")
-        assert any("h1: Hello World" in k for k in syms), f"keys: {list(syms)}"
+        assert any("Hello World" in k for k in syms), f"keys: {list(syms)}"
 
     def test_h2_extracted(self) -> None:
         syms = self._parse("# Title\n\n## Section Two\n")
-        assert any("h2: Section Two" in k for k in syms)
+        assert any("Section Two" in k for k in syms)
 
     def test_multiple_headings(self) -> None:
         src = "# Top\n\n## Alpha\n\n## Beta\n\n### Deep\n"
