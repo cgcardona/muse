@@ -198,6 +198,67 @@ class TestStoreGaps:
         commits = get_commits_for_branch(root, "test-repo", "main")
         assert commits == []
 
+    def _seed_chain(self, root: pathlib.Path, n: int) -> list[str]:
+        """Write a linear chain of *n* commits on ``main`` and return their IDs (newest first)."""
+        import hashlib
+        now = datetime.datetime.now(datetime.timezone.utc)
+        ids: list[str] = []
+        parent_id: str | None = None
+        for i in range(n):
+            snap_id = hashlib.sha256(f"snap-{i}".encode()).hexdigest()
+            write_snapshot(root, SnapshotRecord(snapshot_id=snap_id, manifest={}))
+            commit_id = hashlib.sha256(f"commit-{i}".encode()).hexdigest()
+            commit = CommitRecord(
+                commit_id=commit_id,
+                repo_id="test-repo",
+                branch="main",
+                snapshot_id=snap_id,
+                message=f"commit {i}",
+                committed_at=now,
+                parent_commit_id=parent_id,
+            )
+            write_commit(root, commit)
+            ids.append(commit_id)
+            parent_id = commit_id
+        # HEAD points at the last (newest) commit
+        (root / ".muse" / "refs" / "heads" / "main").write_text(ids[-1])
+        ids.reverse()  # newest first, matching get_commits_for_branch order
+        return ids
+
+    def test_get_commits_for_branch_max_count_stops_early(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """max_count caps the walk — only that many commits are returned."""
+        root = self._make_repo(tmp_path)
+        all_ids = self._seed_chain(root, 5)
+
+        result = get_commits_for_branch(root, "test-repo", "main", max_count=2)
+        assert len(result) == 2
+        assert result[0].commit_id == all_ids[0]
+        assert result[1].commit_id == all_ids[1]
+
+    def test_get_commits_for_branch_max_count_zero_returns_all(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """max_count=0 (the default) returns the full chain."""
+        root = self._make_repo(tmp_path)
+        all_ids = self._seed_chain(root, 5)
+
+        result = get_commits_for_branch(root, "test-repo", "main", max_count=0)
+        assert len(result) == 5
+        assert [c.commit_id for c in result] == all_ids
+
+    def test_get_commits_for_branch_max_count_larger_than_chain(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """max_count larger than the chain length returns every commit without error."""
+        root = self._make_repo(tmp_path)
+        all_ids = self._seed_chain(root, 3)
+
+        result = get_commits_for_branch(root, "test-repo", "main", max_count=100)
+        assert len(result) == 3
+        assert [c.commit_id for c in result] == all_ids
+
     def test_resolve_commit_ref_with_none_returns_head(self, tmp_path: pathlib.Path) -> None:
         root = self._make_repo(tmp_path)
         snap = SnapshotRecord(snapshot_id="s" * 64, manifest={"a.mid": "h" * 64})
