@@ -37,6 +37,7 @@ import tempfile
 from typing import Literal
 
 from muse.core.errors import ExitCode
+from muse.core.ignore import is_ignored, load_ignore_config, resolve_patterns
 from muse.core.object_store import read_object, write_object_from_path
 from muse.core.repo import require_repo
 from muse.core.snapshot import hash_file
@@ -223,18 +224,22 @@ def _collect_paths(
 
     1. **``-u`` / ``update_only``** — every path in ``head_manifest``,
        whether it still exists on disk or not.  Deleted files are included
-       so they can be recorded as mode-D entries.
-    2. **``-A`` / ``all_files``, or no paths given** — full ``os.walk`` of
-       the working tree (same scope as an unstaged ``muse commit``).
-    3. **Explicit paths** — expanded recursively if a directory; allowed to
+       so they can be recorded as mode-D entries.  New untracked files are
+       excluded.
+    2. **``-A`` / ``all_files``** — full ``os.walk`` of the working tree
+       (new files + modifications) *plus* every tracked file that has been
+       deleted from disk (so deletions are staged too).
+    3. **No paths given** — full ``os.walk`` of the repo root (new files +
+       modifications only; deletions are excluded, mirroring ``git add .``).
+    4. **Explicit paths** — expanded recursively if a directory; allowed to
        name files that are absent from disk *iff* they appear in
        ``head_manifest`` (staged deletion).
 
     Args:
         root:          Repository root directory.
         raw_paths:     User-supplied path strings (may be relative or absolute).
-        update_only:   ``-u`` flag — only tracked files.
-        all_files:     ``-A`` flag — include untracked new files.
+        update_only:   ``-u`` flag — only tracked files, including deletions.
+        all_files:     ``-A`` flag — everything: new, modified, and deleted.
         head_manifest: The committed manifest (path → object_id).
 
     Returns:
@@ -248,8 +253,18 @@ def _collect_paths(
         for rel in head_manifest:
             paths.append(root / pathlib.Path(rel))
 
-    elif all_files or (not raw_paths):
-        # Stage the entire working tree.
+    elif all_files:
+        # Stage the entire working tree (new + modified) …
+        paths = _walk_tree(root)
+        # … plus tracked files that have been deleted from disk.
+        on_disk = {str(p.relative_to(root)).replace("\\", "/") for p in paths}
+        for rel in head_manifest:
+            if rel not in on_disk:
+                paths.append(root / pathlib.Path(rel))
+
+    elif not raw_paths:
+        # No explicit paths: stage everything currently on disk (new +
+        # modified).  Deletions are NOT included — use -A or -u for that.
         paths = _walk_tree(root)
 
     else:
@@ -658,6 +673,22 @@ def run_add(args: argparse.Namespace) -> None:
         head_manifest=head_manifest,
     )
 
+    # Filter out files matched by .museignore so that staging never silently
+    # commits files the user has explicitly excluded from version control.
+    # Deleted tracked files (mode "D") are exempt — they must always be
+    # stageable so the user can record their removal.
+    _ignore_patterns = resolve_patterns(load_ignore_config(root), "code")
+    root_str = str(root)
+    prefix_len = len(root_str) + 1
+    filtered: list[pathlib.Path] = []
+    for p in collected:
+        rel = str(p)[prefix_len:].replace("\\", "/") if str(p).startswith(root_str) else str(p)
+        if not p.exists() and rel in head_manifest:
+            filtered.append(p)   # staged deletion — always allowed
+        elif not is_ignored(rel, _ignore_patterns):
+            filtered.append(p)
+    collected = filtered
+
     if not collected and not update:
         if raw_paths:
             print("❌ No matching files found.", file=sys.stderr)
@@ -702,6 +733,17 @@ def run_add(args: argparse.Namespace) -> None:
         except OSError as exc:
             print(f"❌ Cannot read {sanitize_display(rel)}: {exc}", file=sys.stderr)
             raise SystemExit(ExitCode.INTERNAL_ERROR)
+
+        # Skip if the file's content is identical to the last committed version.
+        # Without this check, `muse code add .` would stage every file in the
+        # working tree regardless of whether anything actually changed — because
+        # the "skip if already staged" guard below only fires after the first
+        # `muse code add` run.
+        committed_id = head_manifest.get(rel)
+        if committed_id == object_id:
+            if verbose:
+                print(f"  (unchanged) {sanitize_display(rel)}")
+            continue
 
         # Skip if the staged version is already current.
         existing = updated_stage.get(rel)

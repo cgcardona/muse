@@ -52,6 +52,7 @@ Stress:
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 
 import pytest
@@ -698,3 +699,76 @@ class TestStageStress:
         snap = read_snapshot(code_repo, commit.snapshot_id)
         assert snap is not None
         assert len(snap.manifest) >= 100
+
+
+def test_add_all_stages_deletions(
+    code_repo: pathlib.Path,
+) -> None:
+    """``muse code add -A`` must stage tracked files that have been deleted.
+
+    Regression test: before the fix, ``-A`` used ``_walk_tree`` which only
+    returns files present on disk.  Deleted tracked files were therefore
+    silently omitted and the deletion was never recorded in the stage.
+    """
+    # code_repo already has auth.py and models.py committed.
+    os.remove(code_repo / "auth.py")
+
+    r = runner.invoke(cli, ["code", "add", "-A"], env=_env(code_repo))
+    assert r.exit_code == 0, r.output
+
+    from muse.plugins.code.stage import read_stage
+    stage = read_stage(code_repo)
+    assert "auth.py" in stage, "deleted tracked file must appear in stage"
+    assert stage["auth.py"]["mode"] == "D", "deleted file must have mode D"
+
+
+def test_add_dot_does_not_stage_museignore_files(
+    code_repo: pathlib.Path,
+) -> None:
+    """``muse code add .`` must not stage files matched by ``.museignore``.
+
+    Regression test: before the fix, ``_walk_tree`` never consulted
+    ``.museignore``, so any file on disk — including ones the user explicitly
+    excluded — could be silently staged and committed.
+    """
+    (code_repo / ".museignore").write_text('[global]\npatterns = ["*.log"]\n')
+    (code_repo / "debug.log").write_text("ignored content\n")
+    (code_repo / "app.py").write_text("# new code\n")
+
+    r = runner.invoke(cli, ["code", "add", "."], env=_env(code_repo))
+    assert r.exit_code == 0, r.output
+
+    from muse.plugins.code.stage import read_stage
+    stage = read_stage(code_repo)
+    assert "debug.log" not in stage, ".museignore'd file must NOT be staged"
+    assert "app.py" in stage, "non-ignored new file must be staged"
+
+
+def test_add_dot_does_not_stage_unchanged_files(
+    code_repo: pathlib.Path,
+) -> None:
+    """``muse code add .`` must only stage files whose content differs from HEAD.
+
+    Regression test for the bug where ``muse code add .`` staged every file in
+    the working tree regardless of whether it had changed, because the
+    "skip-if-already-staged" guard was only consulted (and only correct) after a
+    second ``add`` run.  On a fresh stage the check was vacuously false for all
+    files, so even unchanged files were staged.
+    """
+    # Make an initial commit so HEAD has a manifest.
+    (code_repo / "alpha.py").write_text("x = 1\n")
+    (code_repo / "beta.py").write_text("y = 2\n")
+    runner.invoke(cli, ["commit", "-m", "initial"], env=_env(code_repo))
+
+    # Modify only one file; leave the other untouched.
+    (code_repo / "alpha.py").write_text("x = 99\n")
+
+    # Stage everything.
+    r = runner.invoke(cli, ["code", "add", "."], env=_env(code_repo))
+    assert r.exit_code == 0, r.output
+
+    # Only the changed file must be staged — NOT the unchanged beta.py.
+    from muse.plugins.code.stage import read_stage
+    stage = read_stage(code_repo)
+    assert "alpha.py" in stage, "modified file must be staged"
+    assert "beta.py" not in stage, "unchanged file must NOT appear in stage"
