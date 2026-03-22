@@ -49,8 +49,8 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         help="Show the history of HEAD and branch-ref movements.",
         description=__doc__,
     )
-    parser.add_argument("--branch", default=None, help="Branch to show reflog for (default: HEAD).")
-    parser.add_argument("--limit", type=int, default=20, help="Maximum number of entries to show.")
+    parser.add_argument("--branch", "-b", default=None, help="Branch to show reflog for (default: HEAD).")
+    parser.add_argument("--limit", "-n", type=int, default=20, help="Maximum number of entries to show.")
     parser.add_argument("--all", action="store_true", dest="all_refs",
                         help="List all refs that have a reflog.")
     parser.add_argument("--format", "-f", default="text", dest="fmt",

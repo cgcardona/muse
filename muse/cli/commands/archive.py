@@ -132,11 +132,11 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         help="Branch, tag, or commit SHA to archive (default: HEAD).",
     )
     parser.add_argument(
-        "--format", default="tar.gz", dest="fmt",
+        "--format", "-f", default="tar.gz", dest="fmt",
         help="Archive format: tar.gz or zip (default: tar.gz).",
     )
     parser.add_argument(
-        "--output", default=None,
+        "--output", "-o", default=None,
         help="Output file path (default: <sha12>.<format>).",
     )
     parser.add_argument(

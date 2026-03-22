@@ -104,7 +104,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         help="Include all branches.",
     )
     parser.add_argument(
-        "--numbered",
+        "--numbered", "-n",
         action="store_true",
         help="Sort by commit count (most active first).",
     )
@@ -122,7 +122,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         help="Cap the number of commits loaded (0 = no limit).",
     )
     parser.add_argument(
-        "--format",
+        "--format", "-f",
         dest="fmt",
         default="text",
         choices=["text", "json"],

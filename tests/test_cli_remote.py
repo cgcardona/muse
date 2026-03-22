@@ -7,10 +7,10 @@ import os
 import pathlib
 
 import pytest
-from typer.testing import CliRunner
+from tests.cli_test_helper import CliRunner
 
 from muse._version import __version__
-from muse.cli.app import cli
+cli = None  # argparse migration — CliRunner ignores this arg
 from muse.cli.config import get_remote, list_remotes
 
 

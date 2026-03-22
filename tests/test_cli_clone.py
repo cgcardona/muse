@@ -9,9 +9,9 @@ import pathlib
 import unittest.mock
 
 import pytest
-from typer.testing import CliRunner
+from tests.cli_test_helper import CliRunner
 
-from muse.cli.app import cli
+cli = None  # argparse migration — CliRunner ignores this arg
 from muse.cli.config import get_remote, get_upstream
 from muse.core.pack import ObjectPayload, PackBundle, RemoteInfo
 from muse.core.store import read_commit, read_snapshot

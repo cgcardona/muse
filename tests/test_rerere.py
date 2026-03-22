@@ -16,9 +16,9 @@ import json
 import pathlib
 
 import pytest
-from typer.testing import CliRunner
+from tests.cli_test_helper import CliRunner
 
-from muse.cli.app import cli
+cli = None  # argparse migration — CliRunner ignores this arg
 from muse.core import rerere as rerere_mod
 from muse.core.rerere import (
     RerereRecord,

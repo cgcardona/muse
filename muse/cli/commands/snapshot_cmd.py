@@ -160,7 +160,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
     create_p.set_defaults(func=run_snapshot_create)
 
     list_p = subs.add_parser("list", help="List all stored snapshots, newest first.")
-    list_p.add_argument("--limit", type=int, default=20, metavar="N", help="Maximum snapshots to show (default: 20).")
+    list_p.add_argument("--limit", "-n", type=int, default=20, metavar="N", help="Maximum snapshots to show (default: 20).")
     list_p.add_argument("--format", "-f", dest="fmt", default="text", choices=["text", "json"], help="Output format.")
     list_p.set_defaults(func=run_snapshot_list)
 

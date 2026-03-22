@@ -390,8 +390,8 @@ class TestShowStructuredOutput:
     def test_show_displays_structured_summary(
         self, tmp_path: pathlib.Path
     ) -> None:
-        from typer.testing import CliRunner
-        from muse.cli.app import cli
+        from tests.cli_test_helper import CliRunner
+        cli = None  # argparse migration — CliRunner ignores this arg
 
         runner = CliRunner()
         result = runner.invoke(cli, ["init", "--domain", "midi"], obj={})
