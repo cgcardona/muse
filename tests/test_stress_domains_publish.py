@@ -30,10 +30,10 @@ import unittest.mock
 from typing import Generator
 
 import pytest
-from typer.testing import CliRunner
+from tests.cli_test_helper import CliRunner
 
 from muse._version import __version__
-from muse.cli.app import cli
+cli = None  # argparse migration — CliRunner ignores this arg
 from muse.cli.commands.domains import _post_json, _PublishPayload, _Capabilities, _DimensionDef
 
 runner = CliRunner()

@@ -10,9 +10,9 @@ import pathlib
 from unittest.mock import MagicMock, patch
 
 import pytest
-from typer.testing import CliRunner
+from tests.cli_test_helper import CliRunner
 
-from muse.cli.app import cli
+cli = None  # argparse migration — CliRunner ignores this arg
 from muse.domain import (
     DeleteOp,
     DriftReport,

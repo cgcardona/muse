@@ -15,10 +15,10 @@ import urllib.request
 import urllib.response
 
 import pytest
-from typer.testing import CliRunner
+from tests.cli_test_helper import CliRunner
 
 from muse._version import __version__
-from muse.cli.app import cli
+cli = None  # argparse migration — CliRunner ignores this arg
 from muse.cli.commands.hub import _hub_hostname, _normalise_url, _ping_hub
 from muse.cli.config import get_hub_url, set_hub_url
 from muse.core.identity import IdentityEntry, save_identity

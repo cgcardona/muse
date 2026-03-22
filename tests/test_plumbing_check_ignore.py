@@ -10,9 +10,9 @@ from __future__ import annotations
 import json
 import pathlib
 
-from typer.testing import CliRunner
+from tests.cli_test_helper import CliRunner
 
-from muse.cli.app import cli
+cli = None  # argparse migration — CliRunner ignores this arg
 from muse.core.errors import ExitCode
 
 runner = CliRunner()

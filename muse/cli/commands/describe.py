@@ -55,7 +55,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         help="Commit ref (SHA, branch, tag) to describe (default: HEAD).",
     )
     parser.add_argument(
-        "--long", action="store_true", dest="long_format",
+        "--long", "-l", action="store_true", dest="long_format",
         help="Always show distance + SHA even when on an exact tag.",
     )
     parser.add_argument(

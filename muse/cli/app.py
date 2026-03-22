@@ -263,6 +263,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--version", "-V",
         action="store_true",
+        dest="show_version",
         help="Show the muse version and exit.",
     )
 
@@ -460,7 +461,7 @@ def main(argv: list[str] | None = None) -> None:
     # ------------------------------------------------------------------
     args = parser.parse_args(argv)
 
-    if args.version:
+    if args.show_version:
         from muse._version import __version__
         print(f"muse {__version__}")
         raise SystemExit(0)
