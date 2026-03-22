@@ -139,7 +139,13 @@ def log(
     since_dt = _parse_date(since) if since else None
     until_dt = _parse_date(until) if until else None
 
-    commits = get_commits_for_branch(root, repo_id, branch)
+    # When no filters are active the walk can stop as soon as it has collected
+    # `limit` commits — no need to read the entire chain.  With any filter we
+    # must read ahead because commits may be skipped, so we pass max_count=0
+    # (unbounded) and let the filter loop enforce the limit.
+    has_filters = any([since_dt, until_dt, author, section, track, emotion])
+    walk_limit = 0 if has_filters else limit
+    commits = get_commits_for_branch(root, repo_id, branch, max_count=walk_limit)
 
     # Apply filters
     filtered: list[CommitRecord] = []

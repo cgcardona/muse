@@ -712,12 +712,26 @@ def get_commits_for_branch(
     repo_root: pathlib.Path,
     repo_id: str,
     branch: str,
+    max_count: int = 0,
 ) -> list[CommitRecord]:
-    """Return all commits on *branch*, newest first, by walking the parent chain."""
+    """Return commits on *branch*, newest first, by walking the parent chain.
+
+    Args:
+        repo_root: Repository root.
+        repo_id:   Repository UUID (reserved for future index use).
+        branch:    Branch name to walk from HEAD.
+        max_count: Stop after this many commits. ``0`` (default) means walk
+                   the entire chain.  Pass the caller's ``--max-count`` /
+                   ``-n`` value here so the walk stops early instead of
+                   loading every commit file from disk before the caller
+                   slices the result.
+    """
     commits: list[CommitRecord] = []
     commit_id = get_head_commit_id(repo_root, branch)
     seen: set[str] = set()
     while commit_id and commit_id not in seen:
+        if max_count > 0 and len(commits) >= max_count:
+            break
         seen.add(commit_id)
         commit = read_commit(repo_root, commit_id)
         if commit is None:

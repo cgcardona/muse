@@ -217,6 +217,42 @@ class TestLog:
         assert "Second" in lines[0]
         assert "First" in lines[1]
 
+    def test_max_count_limits_output(self, repo: pathlib.Path) -> None:
+        """muse log -n 2 returns only the two most recent commits from a longer chain."""
+        for i in range(1, 6):
+            _write(repo, f"track{i}.mid")
+            runner.invoke(cli, ["commit", "-m", f"Commit {i}"])
+
+        result = runner.invoke(cli, ["log", "--oneline", "-n", "2"])
+        assert result.exit_code == 0
+        lines = [l for l in result.output.strip().splitlines() if l.strip()]
+        assert len(lines) == 2
+        assert "Commit 5" in lines[0]
+        assert "Commit 4" in lines[1]
+
+    def test_max_count_one_returns_single_commit(self, repo: pathlib.Path) -> None:
+        """muse log -n 1 returns exactly the HEAD commit."""
+        for i in range(1, 4):
+            _write(repo, f"t{i}.mid")
+            runner.invoke(cli, ["commit", "-m", f"Take {i}"])
+
+        result = runner.invoke(cli, ["log", "--oneline", "-n", "1"])
+        assert result.exit_code == 0
+        lines = [l for l in result.output.strip().splitlines() if l.strip()]
+        assert len(lines) == 1
+        assert "Take 3" in lines[0]
+
+    def test_max_count_larger_than_history_returns_all(self, repo: pathlib.Path) -> None:
+        """muse log -n 100 on a 3-commit repo returns all 3 without error."""
+        for i in range(1, 4):
+            _write(repo, f"f{i}.mid")
+            runner.invoke(cli, ["commit", "-m", f"Track {i}"])
+
+        result = runner.invoke(cli, ["log", "--oneline", "-n", "100"])
+        assert result.exit_code == 0
+        lines = [l for l in result.output.strip().splitlines() if l.strip()]
+        assert len(lines) == 3
+
 
 class TestBranch:
     def test_list_shows_main(self, repo: pathlib.Path) -> None:
