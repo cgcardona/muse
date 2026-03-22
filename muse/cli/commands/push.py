@@ -30,7 +30,6 @@ from muse.cli.config import (
     get_auth_token,
     get_remote,
     get_remote_head,
-    get_upstream,
     set_remote_head,
     set_upstream,
 )
@@ -85,7 +84,7 @@ def run(args: argparse.Namespace) -> None:
 
     token = get_auth_token(root, remote_url=url)
     current_branch = _current_branch(root)
-    push_branch = branch or get_upstream(current_branch, root) or current_branch
+    push_branch = branch or current_branch
 
     local_head = get_head_commit_id(root, push_branch)
     if local_head is None:
@@ -135,5 +134,3 @@ def run(args: argparse.Namespace) -> None:
         f"✅ Pushed {commits_sent} commit(s), {objects_sent} object(s) "
         f"to {remote}/{push_branch} ({updated_head[:8]})"
     )
-    if result["message"]:
-        print(f"   {result['message']}")

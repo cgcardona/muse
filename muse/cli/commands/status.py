@@ -1,4 +1,4 @@
-"""muse status — show working-tree drift against HEAD.
+"""muse status \033[1m—\033[0m show working-tree drift against HEAD.
 
 Output modes
 ------------
@@ -6,19 +6,22 @@ Output modes
 Default (color when stdout is a TTY)::
 
     On branch main
+    Your branch is up to date with 'origin/main'.
 
     Changes since last commit:
       (use "muse commit -m <msg>" to record changes)
 
-            modified: tracks/drums.mid
-            new file: tracks/lead.mp3
-            deleted:  tracks/scratch.mid
+        \033[1m\033[33m    modified:\033[0m tracks/drums.mid
+        \033[1m\033[32m    new file:\033[0m tracks/lead.mp3
+        \033[1m\033[31m     deleted:\033[0m tracks/scratch.mid
+        \033[1m\033[36m     renamed:\033[0m tracks/old.mid → tracks/new.mid
 
 --short (color letter prefix when stdout is a TTY)::
 
-    M tracks/drums.mid
-    A tracks/lead.mp3
-    D tracks/scratch.mid
+    \033[1m\033[33mM\033[0m tracks/drums.mid
+    \033[1m\033[32mA\033[0m tracks/lead.mp3
+    \033[1m\033[31mD\033[0m tracks/scratch.mid
+    \033[1m\033[36mR\033[0m tracks/old.mid → tracks/new.mid
 
 --porcelain (machine-readable, stable for scripting — no color ever)::
 
@@ -26,12 +29,14 @@ Default (color when stdout is a TTY)::
      M tracks/drums.mid
      A tracks/lead.mp3
      D tracks/scratch.mid
+     R tracks/old.mid → tracks/new.mid
 
 Color convention
 ----------------
-- yellow  modified  — file exists in both old and new snapshot, content changed
-- green   new file  — file is new, not present in last commit
-- red     deleted   — file was removed since last commit
+  \033[1m\033[33myellow\033[0m  modified  — file exists in both old and new snapshot, content changed
+  \033[1m\033[32mgreen\033[0m   new file  — file is new, not present in last commit
+  \033[1m\033[31mred\033[0m     deleted   — file was removed since last commit
+  \033[1m\033[36mcyan\033[0m    renamed   — file was moved or renamed since last commit
 """
 
 from __future__ import annotations
@@ -42,23 +47,75 @@ import logging
 import pathlib
 import sys
 
+from muse.cli.config import get_remote_head, get_upstream
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import get_head_snapshot_manifest, read_current_branch
+from muse.core.store import (
+    get_head_commit_id,
+    get_head_snapshot_manifest,
+    read_current_branch,
+    walk_commits_between,
+)
 from muse.domain import SnapshotManifest, StagePlugin
-from muse.plugins.registry import resolve_plugin, resolve_plugin_by_domain
+from muse.plugins.registry import resolve_plugin
 
 logger = logging.getLogger(__name__)
 
 _YELLOW = "\033[33m"
 _GREEN  = "\033[32m"
 _RED    = "\033[31m"
+_CYAN   = "\033[36m"
 _BOLD   = "\033[1m"
 _RESET  = "\033[0m"
 
 
 def _color(text: str, ansi: str, is_tty: bool) -> str:
     return f"{_BOLD}{ansi}{text}{_RESET}" if is_tty else text
+
+
+def _tracking_line(
+    root: pathlib.Path,
+    branch: str,
+    upstream: str,
+) -> str:
+    """Return the upstream tracking status line, e.g. 'Your branch is up to date with origin/branch'.
+
+    Compares local HEAD commit against the last-known remote HEAD commit (written
+    after every push / pull / fetch).  Returns a plain string; the caller decides
+    whether to print it.  Returns an empty string when there is no recorded remote
+    HEAD yet (first push not yet done).
+
+    The tracking ref is shown as ``remote/branch`` (e.g. ``origin/feat/my-feature``)
+    so it is unambiguous when multiple remotes are configured.
+    """
+    remote_head = get_remote_head(upstream, branch, root)
+    tracking_ref = f"{upstream}/{branch}"
+
+    if not remote_head:
+        return f"Tracking: {tracking_ref} (not yet pushed)"
+
+    local_head = get_head_commit_id(root, branch)
+    if not local_head:
+        return f"Tracking: {tracking_ref}"
+
+    if local_head == remote_head:
+        return f"Your branch is up to date with '{tracking_ref}'."
+
+    ahead = len(walk_commits_between(root, local_head, remote_head))
+    behind = len(walk_commits_between(root, remote_head, local_head))
+
+    if ahead and behind:
+        return (
+            f"Your branch and '{tracking_ref}' have diverged, "
+            f"and have {ahead} and {behind} different commits each."
+        )
+    if ahead:
+        suffix = "commit" if ahead == 1 else "commits"
+        return f"Your branch is ahead of '{tracking_ref}' by {ahead} {suffix}."
+    if behind:
+        suffix = "commit" if behind == 1 else "commits"
+        return f"Your branch is behind '{tracking_ref}' by {behind} {suffix}."
+    return f"Your branch is up to date with '{tracking_ref}'."
 
 
 def _read_repo_meta(root: pathlib.Path) -> tuple[str, str]:
@@ -119,45 +176,70 @@ def run(args: argparse.Namespace) -> None:
 
     repo_id, domain = _read_repo_meta(root)
 
+    upstream = get_upstream(branch, root)
+
     if fmt != "json":
         if porcelain:
             print(f"## {branch}")
         elif not short:
             print(f"On branch {branch}")
+            if upstream:
+                print(_tracking_line(root, branch, upstream))
 
     if branch_only:
         if fmt == "json":
-            print(json.dumps({"branch": branch}))
+            print(json.dumps({"branch": branch, "upstream": upstream}))
         return
 
     is_tty = sys.stdout.isatty() and not porcelain and fmt != "json"
 
-    head_manifest = get_head_snapshot_manifest(root, repo_id, branch) or {}
     plugin = resolve_plugin(root)
 
     # If the active plugin supports staging and a stage is active, show the
     # three-bucket Git-style view instead of the simple drift report.
+    # Load head_manifest only after this check — stage_status() loads it
+    # internally, so loading it here too would be a redundant disk read.
     if isinstance(plugin, StagePlugin) and plugin.stage_index_path(root).exists():
         _render_staged_status(root, plugin, branch, fmt, short, porcelain, is_tty)
         return
 
+    head_manifest = get_head_snapshot_manifest(root, repo_id, branch) or {}
     committed_snap = SnapshotManifest(files=head_manifest, domain=domain)
     report = plugin.drift(committed_snap, root)
     delta = report.delta
 
-    added: set[str] = {op["address"] for op in delta["ops"] if op["op"] == "insert"}
-    modified: set[str] = {op["address"] for op in delta["ops"] if op["op"] in ("replace", "patch")}
-    deleted: set[str] = {op["address"] for op in delta["ops"] if op["op"] == "delete"}
+    added: set[str] = set()
+    modified: set[str] = set()
+    deleted: set[str] = set()
+    renamed: dict[str, str] = {}  # old_path -> new_path
 
-    clean = not (added or modified or deleted)
+    for op in delta["ops"]:
+        op_type = op["op"]
+        addr = op["address"]
+        if op_type == "insert":
+            added.add(addr)
+        elif op_type == "delete":
+            deleted.add(addr)
+        elif op_type == "replace":
+            modified.add(addr)
+        elif op_type == "patch":
+            from_addr = op.get("from_address")
+            if from_addr:
+                renamed[str(from_addr)] = addr
+            else:
+                modified.add(addr)
+
+    clean = not (added or modified or deleted or renamed)
 
     if fmt == "json":
         print(json.dumps({
             "branch": branch,
+            "upstream": upstream,
             "clean": clean,
             "added": sorted(added),
             "modified": sorted(modified),
             "deleted": sorted(deleted),
+            "renamed": renamed,
         }))
         return
 
@@ -173,6 +255,8 @@ def run(args: argparse.Namespace) -> None:
             print(f" A {p}")
         for p in sorted(deleted):
             print(f" D {p}")
+        for old, new in sorted(renamed.items()):
+            print(f" R {old} → {new}")
         return
 
     if short:
@@ -182,6 +266,8 @@ def run(args: argparse.Namespace) -> None:
             print(f" {_color('A', _GREEN, is_tty)} {p}")
         for p in sorted(deleted):
             print(f" {_color('D', _RED, is_tty)} {p}")
+        for old, new in sorted(renamed.items()):
+            print(f" {_color('R', _CYAN, is_tty)} {old} → {new}")
         return
 
     print("\nChanges since last commit:")
@@ -192,6 +278,8 @@ def run(args: argparse.Namespace) -> None:
         print(f"\t{_color('    new file:', _GREEN, is_tty)} {p}")
     for p in sorted(deleted):
         print(f"\t{_color('     deleted:', _RED, is_tty)} {p}")
+    for old, new in sorted(renamed.items()):
+        print(f"\t{_color('     renamed:', _CYAN, is_tty)} {old} → {new}")
 
 
 def _render_staged_status(

@@ -311,3 +311,27 @@ def run(args: argparse.Namespace) -> None:
         }))
     else:
         print(f"[{sanitize_display(branch)} {commit_id[:8]}] {sanitize_display(message or '')}")
+        # Stat summary: compare new manifest against parent to show what changed.
+        parent_manifest: dict[str, str] = {}
+        if parent_id is not None:
+            _pr = read_commit(root, parent_id)
+            if _pr is not None:
+                _ps = read_snapshot(root, _pr.snapshot_id)
+                if _ps is not None:
+                    parent_manifest = dict(_ps.manifest)
+        _added   = len(set(manifest) - set(parent_manifest))
+        _removed = len(set(parent_manifest) - set(manifest))
+        _changed = sum(
+            1 for p in set(manifest) & set(parent_manifest)
+            if manifest[p] != parent_manifest[p]
+        )
+        _total_files = _added + _removed + _changed
+        if _total_files:
+            parts: list[str] = []
+            if _changed:
+                parts.append(f"{_changed} modified")
+            if _added:
+                parts.append(f"{_added} added")
+            if _removed:
+                parts.append(f"{_removed} removed")
+            print(f" {_total_files} file{'s' if _total_files != 1 else ''} changed ({', '.join(parts)})")
