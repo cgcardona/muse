@@ -394,7 +394,7 @@ class TestShowStructuredOutput:
         cli = None  # argparse migration — CliRunner ignores this arg
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["init", "--domain", "midi"], obj={})
+        result = runner.invoke(cli, ["init", "--domain", "midi"])
         # Just check the command is importable and types are correct —
         # full CLI integration is covered in test_cli_workflow.py.
         assert result is not None

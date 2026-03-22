@@ -2,7 +2,8 @@
 
 Replaces ``typer.testing.CliRunner`` so tests can call ``runner.invoke(cli,
 args)`` without modification after the typer → argparse migration.  The first
-argument (``cli``) is ignored; ``muse.cli.app.main`` is always the target.
+argument (``cli``) is always ``None`` (a stub) after migration; it is accepted
+but ignored, and ``muse.cli.app.main`` is always the target.
 """
 
 from __future__ import annotations
@@ -13,7 +14,6 @@ import os
 import re
 import sys
 import traceback
-from typing import Any
 
 from muse.cli.app import main
 
@@ -25,55 +25,42 @@ def _strip_ansi(text: str) -> str:
     return _ANSI_ESCAPE.sub("", text)
 
 
-class _StdinWithBuffer:
-    """Text-mode stdin wrapper with a ``.buffer`` attribute for binary reads.
+class _StdinWithBuffer(io.StringIO):
+    """Text-mode stdin backed by StringIO, with a ``.buffer`` BytesIO sibling.
 
     Some plumbing commands (e.g. ``unpack-objects``) read raw bytes from
-    ``sys.stdin.buffer``.  StringIO has no ``.buffer``, so we wrap it.
+    ``sys.stdin.buffer``.  Plain ``StringIO`` has no ``.buffer``; subclassing
+    it lets us assign to ``sys.stdin`` without a type annotation workaround
+    while still exposing the binary-read surface.
     """
 
     def __init__(self, text: str) -> None:
-        self._text = io.StringIO(text)
+        super().__init__(text)
         self.buffer = io.BytesIO(text.encode())
-
-    def read(self, n: int = -1) -> str:
-        return self._text.read(n)
-
-    def readline(self) -> str:
-        return self._text.readline()
 
     def isatty(self) -> bool:
         return False
 
 
-class _StdoutCapture:
-    """Text-mode stdout wrapper with a ``.buffer`` attribute for binary writes.
+class _StdoutCapture(io.StringIO):
+    """Text-mode stdout backed by StringIO, with a ``.buffer`` BytesIO sibling.
 
     Some plumbing commands (e.g. ``cat-object``) write raw bytes to
-    ``sys.stdout.buffer``.  StringIO has no ``.buffer``, so we wrap it with
-    a companion BytesIO and decode its bytes into the combined output.
+    ``sys.stdout.buffer``.  Subclassing ``StringIO`` makes this assignable to
+    ``sys.stdout`` (and passable to ``contextlib.redirect_stdout``) without
+    any type annotation workaround.  Binary output is decoded and appended to
+    the text output in ``getvalue()``.
     """
 
     def __init__(self) -> None:
-        self._text = io.StringIO()
+        super().__init__()
         self.buffer = io.BytesIO()
-
-    # --- text-mode interface ------------------------------------------------
-    def write(self, s: str) -> int:
-        return self._text.write(s)
-
-    def writelines(self, lines: list[str]) -> None:
-        self._text.writelines(lines)
-
-    def flush(self) -> None:
-        self._text.flush()
 
     def isatty(self) -> bool:
         return False
 
-    # --- value retrieval ----------------------------------------------------
     def getvalue(self) -> str:
-        text_out = self._text.getvalue()
+        text_out = super().getvalue()
         bytes_out = self.buffer.getvalue()
         if bytes_out:
             try:
@@ -129,12 +116,11 @@ class CliRunner:
 
     def invoke(
         self,
-        _cli: Any,
+        _cli: None,
         args: list[str],
         catch_exceptions: bool = True,
         input: str | None = None,
         env: dict[str, str] | None = None,
-        **_kwargs: Any,
     ) -> InvokeResult:
         """Invoke ``main(args)`` and return captured output + exit code."""
         # Apply caller-supplied env overrides; restore originals when done.
@@ -149,14 +135,14 @@ class CliRunner:
         exit_code = 0
 
         # Patch sys.stdin for commands that read from it (e.g. unpack-objects).
-        # Use _StdinWithBuffer so sys.stdin.buffer is also available.
+        # _StdinWithBuffer subclasses StringIO so the assignment is well-typed.
         orig_stdin = sys.stdin
         if input is not None:
-            sys.stdin = _StdinWithBuffer(input)  # type: ignore[assignment]
+            sys.stdin = _StdinWithBuffer(input)
 
         try:
             with (
-                contextlib.redirect_stdout(stdout_cap),  # type: ignore[arg-type]
+                contextlib.redirect_stdout(stdout_cap),
                 contextlib.redirect_stderr(stderr_buf),
             ):
                 main(list(args))
