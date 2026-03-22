@@ -1,6 +1,6 @@
 [project]
 name = "muse"
-version = "0.1.4"
+version = "0.1.5"
 description = "Muse — domain-agnostic version control for multidimensional state"
 readme = "README.md"
 requires-python = ">=3.14"
