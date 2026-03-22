@@ -289,8 +289,11 @@ class HttpTransport:
     ) -> urllib.request.Request:
         # Never send a bearer token over cleartext HTTP — the token would be
         # visible to any network observer on the path.
-        # Use urlparse for a proper scheme check rather than a fragile prefix test.
-        if token and urllib.parse.urlparse(url).scheme != "https":
+        # Localhost (127.0.0.1, ::1, "localhost") is exempt because the traffic
+        # never leaves the machine and TLS would require a self-signed cert.
+        _parsed = urllib.parse.urlparse(url)
+        _is_loopback = _parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+        if token and _parsed.scheme != "https" and not _is_loopback:
             raise TransportError(
                 f"Refusing to send credentials to a non-HTTPS URL: {url!r}. "
                 "Ensure the remote URL uses https://.",
