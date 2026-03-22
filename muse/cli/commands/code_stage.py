@@ -703,6 +703,17 @@ def run_add(args: argparse.Namespace) -> None:
             print(f"❌ Cannot read {sanitize_display(rel)}: {exc}", file=sys.stderr)
             raise SystemExit(ExitCode.INTERNAL_ERROR)
 
+        # Skip if the file's content is identical to the last committed version.
+        # Without this check, `muse code add .` would stage every file in the
+        # working tree regardless of whether anything actually changed — because
+        # the "skip if already staged" guard below only fires after the first
+        # `muse code add` run.
+        committed_id = head_manifest.get(rel)
+        if committed_id == object_id:
+            if verbose:
+                print(f"  (unchanged) {sanitize_display(rel)}")
+            continue
+
         # Skip if the staged version is already current.
         existing = updated_stage.get(rel)
         if existing and existing["object_id"] == object_id:
