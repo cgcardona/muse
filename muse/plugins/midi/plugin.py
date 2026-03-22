@@ -203,17 +203,25 @@ class MidiPlugin:
 
         ops: list[DomainOp] = []
 
-        # Added files → InsertOp
+        # Added files — try symbol extraction; fall back to plain InsertOp.
         for path in sorted(target_paths - base_paths):
-            ops.append(
-                InsertOp(
-                    op="insert",
-                    address=path,
-                    position=None,
-                    content_id=target_files[path],
-                    content_summary=f"new file: {path}",
-                )
+            patch = _new_file_patch(
+                path=path,
+                content_id=target_files[path],
+                repo_root=repo_root,
             )
+            if patch is not None:
+                ops.append(patch)
+            else:
+                ops.append(
+                    InsertOp(
+                        op="insert",
+                        address=path,
+                        position=None,
+                        content_id=target_files[path],
+                        content_summary=f"new file: {path}",
+                    )
+                )
 
         # Removed files → DeleteOp
         for path in sorted(base_paths - target_paths):
@@ -1028,6 +1036,88 @@ def _note_content_id(note: NoteKey) -> str:
         f"{note['start_tick']}:{note['duration_ticks']}:{note['channel']}"
     )
     return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _new_file_patch(
+    *,
+    path: str,
+    content_id: str,
+    repo_root: pathlib.Path | None,
+) -> PatchOp | None:
+    """Return a ``PatchOp`` with symbol child ops for a newly-added file, or
+    ``None`` when the file type is unsupported or content is unreadable.
+
+    Reads content from the object store first; falls back to the on-disk path
+    under ``repo_root`` so uncommitted working-tree files are handled correctly.
+
+    Supported symbol extraction:
+    - ``.md`` / ``.markdown`` — ATX headings (``#`` prefix)
+    - ``.py`` — top-level ``def`` and ``class`` definitions
+    """
+    if repo_root is None:
+        return None
+
+    lower = path.lower()
+    is_md = lower.endswith(".md") or lower.endswith(".markdown")
+    is_py = lower.endswith(".py")
+    if not is_md and not is_py:
+        return None
+
+    # Prefer object store; fall through to disk for uncommitted files.
+    from muse.core.object_store import read_object
+
+    content: bytes | None = read_object(repo_root, content_id)
+    if content is None:
+        disk = repo_root / path
+        if disk.is_file():
+            content = disk.read_bytes()
+    if content is None:
+        return None
+
+    text = content.decode("utf-8", errors="replace")
+    child_ops: list[DomainOp] = []
+
+    if is_md:
+        for lineno, line in enumerate(text.splitlines(), 1):
+            if line.startswith("#"):
+                heading = line.lstrip("#").strip()
+                if heading:
+                    child_ops.append(
+                        InsertOp(
+                            op="insert",
+                            address=heading,
+                            position=None,
+                            content_id="",
+                            content_summary=f"{heading}  L{lineno}–{lineno}",
+                        )
+                    )
+    elif is_py:
+        for lineno, line in enumerate(text.splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("def ") or stripped.startswith("class "):
+                tokens = stripped.split("(")[0].split()
+                if len(tokens) >= 2:
+                    kind, name = tokens[0], tokens[1]
+                    child_ops.append(
+                        InsertOp(
+                            op="insert",
+                            address=name,
+                            position=None,
+                            content_id="",
+                            content_summary=f"{kind} {name}  L{lineno}–{lineno}",
+                        )
+                    )
+
+    if not child_ops:
+        return None
+
+    return PatchOp(
+        op="patch",
+        address=path,
+        child_ops=child_ops,
+        child_domain=_DOMAIN_TAG,
+        child_summary=f"new file: {path} ({len(child_ops)} symbol(s))",
+    )
 
 
 def _diff_modified_file(
