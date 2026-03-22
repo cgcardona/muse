@@ -26,13 +26,13 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
+import sys
 from collections import defaultdict
 from typing import TypedDict
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -41,7 +41,6 @@ from muse.plugins.midi._query import NoteInfo, load_track, load_track_from_workd
 from muse.plugins.midi.midi_diff import _pitch_name
 
 logger = logging.getLogger(__name__)
-app = typer.Typer()
 
 
 class ChannelInfo(TypedDict):
@@ -92,16 +91,16 @@ def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-@app.callback(invoke_without_command=True)
-def instrumentation(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
-        help="Analyse a historical snapshot instead of the working tree.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the instrumentation subcommand."""
+    parser = subparsers.add_parser("instrumentation", help="Show per-channel note distribution, pitch range, and register.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Analyse a historical snapshot instead of the working tree.")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show per-channel note distribution, pitch range, and register.
 
     ``muse instrumentation`` groups notes by MIDI channel and reports:
@@ -113,6 +112,10 @@ def instrumentation(
     For agents coordinating multi-channel scores, this is the fast sanity
     check before every commit: ``muse instrumentation tracks/score.mid``.
     """
+    track: str = args.track
+    ref: str | None = args.ref
+    as_json: bool = args.as_json
+
     root = require_repo()
     commit_label = "working tree"
 
@@ -121,20 +124,20 @@ def instrumentation(
         branch = _read_branch(root)
         commit = resolve_commit_ref(root, repo_id, branch, ref)
         if commit is None:
-            typer.echo(f"❌ Commit '{ref}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Commit '{ref}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         result = load_track(root, commit.commit_id, track)
         commit_label = commit.commit_id[:8]
     else:
         result = load_track_from_workdir(root, track)
 
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     notes, _tpb = result
     if not notes:
-        typer.echo(f"  (no notes found in '{track}')")
+        print(f"  (no notes found in '{track}')")
         return
 
     by_channel: dict[int, list[NoteInfo]] = defaultdict(list)
@@ -144,19 +147,19 @@ def instrumentation(
     channels = [_channel_info(ch, ch_notes) for ch, ch_notes in sorted(by_channel.items())]
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {"track": track, "commit": commit_label, "channels": list(channels)},
             indent=2,
         ))
         return
 
-    typer.echo(f"\nInstrumentation map: {track} — {commit_label}")
-    typer.echo(f"Channels: {len(channels)}  ·  Total notes: {len(notes)}\n")
-    typer.echo(f"  {'Ch':>3}  {'Notes':>6}  {'Range':<14}  {'Register':<10}  {'Mean vel':>8}")
-    typer.echo("  " + "─" * 50)
+    print(f"\nInstrumentation map: {track} — {commit_label}")
+    print(f"Channels: {len(channels)}  ·  Total notes: {len(notes)}\n")
+    print(f"  {'Ch':>3}  {'Notes':>6}  {'Range':<14}  {'Register':<10}  {'Mean vel':>8}")
+    print("  " + "─" * 50)
     for ch in channels:
         rng = f"{ch['pitch_min_name']}–{ch['pitch_max_name']}"
-        typer.echo(
+        print(
             f"  {ch['channel']:>3}  {ch['note_count']:>6}  {rng:<14}  "
             f"{ch['register']:<10}  {ch['mean_velocity']:>8.1f}"
         )

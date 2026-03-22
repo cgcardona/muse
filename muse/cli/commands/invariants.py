@@ -77,12 +77,12 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
 import re
-
-import typer
+import sys
 
 from muse._version import __version__
 from muse.core.errors import ExitCode
@@ -93,8 +93,6 @@ from muse.plugins.code._query import is_semantic, symbols_for_snapshot
 from muse.plugins.code.ast_parser import parse_symbols
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _INVARIANTS_FILE = pathlib.PurePosixPath(".muse") / "invariants.toml"
 
@@ -277,15 +275,25 @@ def _check_rule(
     return _RuleResult(name, rule_type, False, [f"unknown rule type: {rule_type!r}"])
 
 
-@app.callback(invoke_without_command=True)
-def invariants(
-    ctx: typer.Context,
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the invariants subcommand."""
+    parser = subparsers.add_parser(
+        "invariants",
+        help="Check architectural invariants from .muse/invariants.toml.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--commit", "-c",
+        dest="ref",
+        default=None,
+        metavar="REF",
         help="Check a historical snapshot instead of HEAD.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+    )
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Check architectural invariants from .muse/invariants.toml.
 
     Loads declarative rules and verifies them against the committed snapshot:
@@ -299,13 +307,16 @@ def invariants(
     architectural constraints.  All rules run against the committed snapshot;
     no working-tree parsing or code execution required.
     """
+    ref: str | None = args.ref
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     invariants_path = root / ".muse" / "invariants.toml"
     if not invariants_path.exists():
-        typer.echo(
+        print(
             "⚠️  .muse/invariants.toml not found.\n"
             "Create it with [[rules]] blocks to define architectural constraints.\n"
             "See: muse invariants --help for the rule format."
@@ -314,13 +325,13 @@ def invariants(
 
     rules = _parse_toml_rules(invariants_path.read_text())
     if not rules:
-        typer.echo("  (no rules defined in .muse/invariants.toml)")
+        print("  (no rules defined in .muse/invariants.toml)")
         return
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     manifest = get_commit_snapshot_manifest(root, commit.commit_id) or {}
     import_map = _build_import_map(root, manifest)
@@ -331,7 +342,7 @@ def invariants(
         results.append(result)
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "schema_version": __version__,
                 "commit": commit.commit_id[:8],
@@ -344,19 +355,19 @@ def invariants(
         ))
         return
 
-    typer.echo(f"\nInvariant check — commit {commit.commit_id[:8]}")
-    typer.echo("─" * 62)
+    print(f"\nInvariant check — commit {commit.commit_id[:8]}")
+    print("─" * 62)
 
     for result in results:
         icon = "✅" if result.passed else "🔴"
         status = "passed" if result.passed else "VIOLATED"
-        typer.echo(f"\n{icon}  {result.name:<40}  {status}")
+        print(f"\n{icon}  {result.name:<40}  {status}")
         if not result.passed:
             for v in result.violations[:5]:
-                typer.echo(f"    {v}")
+                print(f"    {v}")
             if len(result.violations) > 5:
-                typer.echo(f"    … and {len(result.violations) - 5} more")
+                print(f"    … and {len(result.violations) - 5} more")
 
     passed = sum(1 for r in results if r.passed)
     violated = sum(1 for r in results if not r.passed)
-    typer.echo(f"\n  {passed} rule(s) passed · {violated} rule(s) violated")
+    print(f"\n  {passed} rule(s) passed · {violated} rule(s) violated")

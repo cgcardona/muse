@@ -73,11 +73,11 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse._version import __version__
 from muse.core.errors import ExitCode
@@ -86,8 +86,6 @@ from muse.core.store import CommitRecord, read_commit, read_current_branch, reso
 from muse.domain import DomainOp
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _VALID_KINDS = frozenset({"rename", "move", "signature", "implementation"})
 
@@ -232,51 +230,59 @@ def _print_human(
     from_label: str,
     to_label: str,
 ) -> None:
-    typer.echo("\nSemantic refactoring report")
-    typer.echo(f"From: {from_label}")
-    typer.echo(f"To:   {to_label}")
-    typer.echo("─" * 62)
+    print("\nSemantic refactoring report")
+    print(f"From: {from_label}")
+    print(f"To:   {to_label}")
+    print("─" * 62)
 
     if not events:
-        typer.echo("\n  (no semantic refactoring detected in this range)")
+        print("\n  (no semantic refactoring detected in this range)")
         return
 
     # Print newest-first (commits were collected newest-first).
     for ev in events:
         label = _LABEL.get(ev.kind, ev.kind.upper().ljust(14))
         short_id = ev.commit.commit_id[:8]
-        typer.echo(f"\n{label}  {ev.address}")
-        typer.echo(f"               {ev.detail}")
-        typer.echo(f'               commit {short_id}  "{ev.commit.message}"')
+        print(f"\n{label}  {ev.address}")
+        print(f"               {ev.detail}")
+        print(f'               commit {short_id}  "{ev.commit.message}"')
 
-    typer.echo("\n" + "─" * 62)
+    print("\n" + "─" * 62)
     kind_counts: dict[str, int] = {}
     for ev in events:
         kind_counts[ev.kind] = kind_counts.get(ev.kind, 0) + 1
     summary_parts = [f"{v} {k}" for k, v in sorted(kind_counts.items())]
-    typer.echo(f"{len(events)} refactoring operation(s) detected")
-    typer.echo(f"({' · '.join(summary_parts)})")
+    print(f"{len(events)} refactoring operation(s) detected")
+    print(f"({' · '.join(summary_parts)})")
 
 
-@app.callback(invoke_without_command=True)
-def detect_refactor(
-    ctx: typer.Context,
-    from_ref: str | None = typer.Option(
-        None, "--from", metavar="REF",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the detect-refactor subcommand."""
+    parser = subparsers.add_parser(
+        "detect-refactor",
+        help="Detect semantic refactoring operations across a commit range.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--from", default=None, metavar="REF", dest="from_ref",
         help="Start of range (exclusive).  Default: initial commit.",
-    ),
-    to_ref: str | None = typer.Option(
-        None, "--to", metavar="REF",
+    )
+    parser.add_argument(
+        "--to", default=None, metavar="REF", dest="to_ref",
         help="End of range (inclusive).  Default: HEAD.",
-    ),
-    kind_filter: str | None = typer.Option(
-        None, "--kind", "-k", metavar="KIND",
+    )
+    parser.add_argument(
+        "--kind", "-k", default=None, metavar="KIND", dest="kind_filter",
         help="Filter to one category: rename, move, signature, implementation.",
-    ),
-    as_json: bool = typer.Option(
-        False, "--json", help="Emit the full refactoring report as JSON.",
-    ),
-) -> None:
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit the full refactoring report as JSON.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Detect semantic refactoring operations across a commit range.
 
     ``muse detect-refactor`` is impossible in Git.  Git reports renames only
@@ -295,30 +301,35 @@ def detect_refactor(
     Use ``--from`` / ``--to`` to scope the range.  Without flags, scans the
     full history from the first commit to HEAD.
     """
+    from_ref: str | None = args.from_ref
+    to_ref: str | None = args.to_ref
+    kind_filter: str | None = args.kind_filter
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     if kind_filter and kind_filter not in _VALID_KINDS:
-        typer.echo(
+        print(
             f"❌ Unknown kind '{kind_filter}'.  "
             f"Valid: {', '.join(sorted(_VALID_KINDS))}",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     to_commit = resolve_commit_ref(root, repo_id, branch, to_ref)
     if to_commit is None:
         label = to_ref or "HEAD"
-        typer.echo(f"❌ Commit '{label}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{label}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     from_commit_id: str | None = None
     if from_ref is not None:
         from_commit = resolve_commit_ref(root, repo_id, branch, from_ref)
         if from_commit is None:
-            typer.echo(f"❌ Commit '{from_ref}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Commit '{from_ref}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         from_commit_id = from_commit.commit_id
 
     commits = _walk_commits(root, to_commit.commit_id, from_commit_id)
@@ -342,7 +353,7 @@ def detect_refactor(
     to_label = f'{to_commit.commit_id[:8]}  "{to_commit.message}"'
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "schema_version": __version__,
                 "from": from_label,

@@ -23,12 +23,12 @@ Exit codes::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-from typing import Annotated
+import sys
 
-import typer
 
 from muse.core.describe import describe_commit
 from muse.core.errors import ExitCode
@@ -38,32 +38,38 @@ from muse.core.validation import sanitize_display
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer(help="Label a commit by its nearest tag and hop distance.")
-
 
 def _read_repo_id(root: pathlib.Path) -> str:
     return str(json.loads((root / ".muse" / "repo.json").read_text(encoding="utf-8"))["repo_id"])
 
 
-@app.callback(invoke_without_command=True)
-def describe(
-    ref: Annotated[
-        str | None,
-        typer.Option("--ref", "-r", help="Branch name, commit SHA, or HEAD (default: HEAD)."),
-    ] = None,
-    long_format: Annotated[
-        bool,
-        typer.Option("--long", "-l", help="Always show <tag>-<distance>-g<sha> format."),
-    ] = False,
-    require_tag: Annotated[
-        bool,
-        typer.Option("--require-tag", "-t", help="Exit 1 if no tag is found in the ancestry."),
-    ] = False,
-    fmt: Annotated[
-        str,
-        typer.Option("--format", "-f", help="Output format: json or text."),
-    ] = "text",
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the describe subcommand."""
+    parser = subparsers.add_parser(
+        "describe",
+        help="Label a commit by its nearest tag and hop distance.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--ref", default=None,
+        help="Commit ref (SHA, branch, tag) to describe (default: HEAD).",
+    )
+    parser.add_argument(
+        "--long", "-l", action="store_true", dest="long_format",
+        help="Always show distance + SHA even when on an exact tag.",
+    )
+    parser.add_argument(
+        "--require-tag", action="store_true", dest="require_tag",
+        help="Exit 1 if no tags exist in the ancestry.",
+    )
+    parser.add_argument(
+        "--format", "-f", default="text", dest="fmt",
+        help="Output format: text or json.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Label a commit by its nearest tag and hop distance.
 
     Walks backward from the commit's ancestry until it finds the nearest tag.
@@ -78,9 +84,14 @@ def describe(
         muse describe --require-tag         # → exit 1 if no tags exist
         muse describe --format json         # machine-readable
     """
+    ref: str | None = args.ref
+    long_format: bool = args.long_format
+    require_tag: bool = args.require_tag
+    fmt: str = args.fmt
+
     if fmt not in {"json", "text"}:
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose json or text.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose json or text.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     repo_id = _read_repo_id(root)
@@ -89,25 +100,25 @@ def describe(
     if ref is None:
         commit_id = get_head_commit_id(root, branch)
         if commit_id is None:
-            typer.echo("❌ No commits on current branch.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print("❌ No commits on current branch.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
     else:
         commit_rec = resolve_commit_ref(root, repo_id, branch, ref)
         if commit_rec is None:
-            typer.echo(f"❌ Ref '{sanitize_display(ref)}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Ref '{sanitize_display(ref)}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         commit_id = commit_rec.commit_id
 
     result = describe_commit(root, repo_id, commit_id, long_format=long_format)
 
     if require_tag and result["tag"] is None:
-        typer.echo(
-            f"❌ No tags found in the ancestry of {commit_id[:12]}.", err=True
+        print(
+            f"❌ No tags found in the ancestry of {commit_id[:12]}.", file=sys.stderr
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if fmt == "json":
-        typer.echo(json.dumps({
+        print(json.dumps({
             "commit_id": result["commit_id"],
             "tag": result["tag"],
             "distance": result["distance"],
@@ -115,4 +126,4 @@ def describe(
             "name": result["name"],
         }))
     else:
-        typer.echo(result["name"])
+        print(result["name"])

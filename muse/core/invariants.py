@@ -223,7 +223,7 @@ def format_report(report: BaseReport, *, color: bool = True) -> str:
         color:  If ``True``, prefix error/warning/info lines with emoji.
 
     Returns:
-        Formatted string ready for ``typer.echo()``.
+        Formatted string ready for printing to stdout.
     """
     lines: list[str] = []
     prefix = {

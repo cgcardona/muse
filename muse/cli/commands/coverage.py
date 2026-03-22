@@ -57,11 +57,11 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -71,8 +71,6 @@ from muse.plugins.code._query import symbols_for_snapshot
 from muse.plugins.code.ast_parser import SymbolRecord
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _METHOD_KINDS: frozenset[str] = frozenset({"method", "async_method"})
 
@@ -109,23 +107,33 @@ def _class_methods(
     return sorted(methods, key=lambda t: t[1])
 
 
-@app.callback(invoke_without_command=True)
-def coverage(
-    ctx: typer.Context,
-    address: str = typer.Argument(
-        ..., metavar="CLASS_ADDRESS",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the coverage subcommand."""
+    parser = subparsers.add_parser(
+        "coverage",
+        help="Show which methods of a class are called anywhere in the snapshot.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "address", metavar="CLASS_ADDRESS",
         help='Class symbol address, e.g. "src/models.py::User".',
-    ),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
+    )
+    parser.add_argument(
+        "--commit", "-c", default=None, metavar="REF", dest="ref",
         help="Analyse a historical snapshot instead of HEAD.",
-    ),
-    show_callers: bool = typer.Option(
-        True, "--show-callers/--no-show-callers",
-        help="Include caller addresses next to each covered method.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+    )
+    parser.add_argument(
+        "--no-show-callers", action="store_false", dest="show_callers",
+        help="Suppress caller addresses next to each covered method.",
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit results as JSON.",
+    )
+    parser.set_defaults(func=run, show_callers=True)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show which methods of a class are called anywhere in the snapshot.
 
     Builds the reverse call graph, then checks each method's bare name
@@ -137,22 +145,27 @@ def coverage(
 
     Python only (call-graph analysis uses stdlib ``ast``).
     """
+    address: str = args.address
+    ref: str | None = args.ref
+    show_callers: bool = args.show_callers
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     if "::" not in address:
-        typer.echo(
-            f"❌ ADDRESS must be a symbol address like 'src/models.py::User'.", err=True
+        print(
+            f"❌ ADDRESS must be a symbol address like 'src/models.py::User'.", file=sys.stderr
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     file_path, class_name = address.split("::", 1)
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     manifest = get_commit_snapshot_manifest(root, commit.commit_id) or {}
     symbol_map = symbols_for_snapshot(root, manifest, kind_filter=None)
@@ -164,17 +177,17 @@ def coverage(
         for addr, rec in tree.items():
             all_syms[addr] = rec["kind"]
     if class_addr not in all_syms:
-        typer.echo(
+        print(
             f"❌ Class '{class_addr}' not found in snapshot {commit.commit_id[:8]}.",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Collect all methods.
     methods = _class_methods(file_path, class_name, symbol_map)
     if not methods:
-        typer.echo(f"⚠️  No methods found for '{class_addr}'.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"⚠️  No methods found for '{class_addr}'.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Build reverse call graph.
     reverse = build_reverse_graph(root, manifest)
@@ -194,7 +207,7 @@ def coverage(
     pct = round(n_covered / total * 100) if total else 0
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "address": class_addr,
                 "commit": commit.commit_id[:8],
@@ -223,8 +236,8 @@ def coverage(
         ))
         return
 
-    typer.echo(f"\nInterface coverage: {class_addr}")
-    typer.echo("─" * 62)
+    print(f"\nInterface coverage: {class_addr}")
+    print("─" * 62)
 
     max_name = max(
         (len(f"{class_name}.{name}") for _, name in methods),
@@ -239,24 +252,24 @@ def coverage(
             if len(callers) > 3:
                 caller_str += f" (+{len(callers) - 3} more)"
             line += f"  ← {caller_str}"
-        typer.echo(line)
+        print(line)
 
     for addr, bare_name in uncovered:
         display = f"{class_name}.{bare_name}"
-        typer.echo(f"  ❌  {display:<{max_name}}  (no callers detected)")
+        print(f"  ❌  {display:<{max_name}}  (no callers detected)")
 
-    typer.echo("\n" + "─" * 62)
-    typer.echo(f"Coverage: {n_covered}/{total} methods called ({pct}%)")
+    print("\n" + "─" * 62)
+    print(f"Coverage: {n_covered}/{total} methods called ({pct}%)")
 
     if pct == 100:
-        typer.echo("✅ Full coverage — all methods are called at least once.")
+        print("✅ Full coverage — all methods are called at least once.")
     elif pct >= 75:
-        typer.echo(f"🟢 Good coverage — {total - n_covered} uncovered method(s).")
+        print(f"🟢 Good coverage — {total - n_covered} uncovered method(s).")
     elif pct >= 50:
-        typer.echo(f"🟡 Partial coverage — {total - n_covered} uncovered method(s) may be dead API surface.")
+        print(f"🟡 Partial coverage — {total - n_covered} uncovered method(s) may be dead API surface.")
     else:
-        typer.echo(f"🔴 Low coverage — {total - n_covered} of {total} methods have no detected callers.")
+        print(f"🔴 Low coverage — {total - n_covered} of {total} methods have no detected callers.")
 
-    typer.echo(
+    print(
         "\nNote: dynamic dispatch, subclass overrides, and external callers are not detected."
     )

@@ -21,12 +21,12 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
 import datetime
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -42,7 +42,7 @@ from muse.core.validation import validate_object_id
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
+_FORMAT_CHOICES = ("json", "text")
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -56,34 +56,69 @@ def _read_repo_id(root: pathlib.Path) -> str:
     try:
         data = json.loads(repo_json.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        typer.echo(f"❌ Cannot read repo.json: {exc}", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Cannot read repo.json: {exc}", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     repo_id = data.get("repo_id", "")
     if not isinstance(repo_id, str) or not repo_id:
-        typer.echo("❌ repo.json is missing a valid 'repo_id' field.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ repo.json is missing a valid 'repo_id' field.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     return repo_id
 
 
-_FORMAT_CHOICES = ("json", "text")
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the commit-tree subcommand."""
+    parser = subparsers.add_parser(
+        "commit-tree",
+        help="Create a commit from an explicit snapshot ID.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--snapshot", "-s",
+        required=True,
+        dest="snapshot_id",
+        metavar="SNAPSHOT_ID",
+        help="SHA-256 snapshot ID.",
+    )
+    parser.add_argument(
+        "--parent", "-p",
+        action="append",
+        default=[],
+        dest="parent",
+        metavar="COMMIT_ID",
+        help="Parent commit ID (repeat for merge commits).",
+    )
+    parser.add_argument(
+        "--message", "-m",
+        default="",
+        dest="message",
+        metavar="MESSAGE",
+        help="Commit message.",
+    )
+    parser.add_argument(
+        "--author", "-a",
+        default="",
+        dest="author",
+        metavar="AUTHOR",
+        help="Author name.",
+    )
+    parser.add_argument(
+        "--branch", "-b",
+        default=None,
+        dest="branch",
+        metavar="BRANCH",
+        help="Branch name to record (default: current branch).",
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
+        help="Output format: json (default) or text (bare commit_id).",
+    )
+    parser.set_defaults(func=run)
 
 
-@app.callback(invoke_without_command=True)
-def commit_tree(
-    ctx: typer.Context,
-    snapshot_id: str = typer.Option(..., "--snapshot", "-s", help="SHA-256 snapshot ID."),
-    parent: list[str] = typer.Option(
-        [], "--parent", "-p", help="Parent commit ID (repeat for merge commits)."
-    ),
-    message: str = typer.Option("", "--message", "-m", help="Commit message."),
-    author: str = typer.Option("", "--author", "-a", help="Author name."),
-    branch: str | None = typer.Option(
-        None, "--branch", "-b", help="Branch name to record (default: current branch)."
-    ),
-    fmt: str = typer.Option(
-        "json", "--format", "-f", help="Output format: json (default) or text (bare commit_id)."
-    ),
-) -> None:
+def run(args: argparse.Namespace) -> None:
     """Create a commit from an explicit snapshot ID.
 
     The snapshot must already exist in ``.muse/snapshots/``.  Each ``--parent``
@@ -99,35 +134,43 @@ def commit_tree(
 
         <sha256>
     """
+    fmt: str = args.fmt
+    snapshot_id: str = args.snapshot_id
+    parent: list[str] = args.parent
+    message: str = args.message
+    author: str = args.author
+    branch: str | None = args.branch
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             json.dumps({"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"})
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
+
     root = require_repo()
 
     try:
         validate_object_id(snapshot_id)
     except ValueError as exc:
-        typer.echo(json.dumps({"error": f"Invalid snapshot ID: {exc}"}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": f"Invalid snapshot ID: {exc}"}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     for pid in parent:
         try:
             validate_object_id(pid)
         except ValueError as exc:
-            typer.echo(json.dumps({"error": f"Invalid parent commit ID: {exc}"}))
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(json.dumps({"error": f"Invalid parent commit ID: {exc}"}))
+            raise SystemExit(ExitCode.USER_ERROR)
 
     snap = read_snapshot(root, snapshot_id)
     if snap is None:
-        typer.echo(json.dumps({"error": f"Snapshot not found: {snapshot_id}"}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": f"Snapshot not found: {snapshot_id}"}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     for pid in parent:
         if read_commit(root, pid) is None:
-            typer.echo(json.dumps({"error": f"Parent commit not found: {pid}"}))
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(json.dumps({"error": f"Parent commit not found: {pid}"}))
+            raise SystemExit(ExitCode.USER_ERROR)
 
     repo_id = _read_repo_id(root)
     branch_name = branch or read_current_branch(root)
@@ -154,7 +197,7 @@ def commit_tree(
     write_commit(root, record)
 
     if fmt == "text":
-        typer.echo(commit_id)
+        print(commit_id)
         return
 
-    typer.echo(json.dumps({"commit_id": commit_id}))
+    print(json.dumps({"commit_id": commit_id}))

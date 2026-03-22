@@ -32,11 +32,11 @@ user's chosen resolution for replay on future identical conflicts.
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.merge_engine import read_merge_state
@@ -57,8 +57,6 @@ from muse.core.validation import sanitize_display
 from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _FORMAT_CHOICES = ("text", "json")
 
@@ -91,14 +89,58 @@ def _load_conflict_manifests(
 
 def _fmt_record(rec: RerereRecord, *, color: bool) -> str:
     status = "✅ resolved" if rec.has_resolution else "⏳ preimage only"
-    if color:
-        status = (
-            typer.style(status, fg=typer.colors.GREEN, bold=True)
-            if rec.has_resolution
-            else typer.style(status, fg=typer.colors.YELLOW)
-        )
     ts = rec.recorded_at.strftime("%Y-%m-%d %H:%M")
     return f"{rec.fingerprint[:12]}  {status}  {ts}  {sanitize_display(rec.path)}"
+
+
+# ---------------------------------------------------------------------------
+# Registration
+# ---------------------------------------------------------------------------
+
+
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the rerere subcommand."""
+    parser = subparsers.add_parser(
+        "rerere",
+        help="Reuse recorded resolutions for merge conflicts.",
+        description=__doc__,
+    )
+    parser.add_argument("--dry-run", "-n", action="store_true",
+                        help="Show what would be auto-resolved without writing files.")
+    parser.add_argument("--format", "-f", default="text", dest="fmt",
+                        help="Output format: text or json.")
+    subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
+
+    record_p = subs.add_parser("record", help="Record preimages for current conflicts without applying cached resolutions.")
+    record_p.add_argument("--format", "-f", default="text", dest="fmt",
+                          help="Output format: text or json.")
+    record_p.set_defaults(func=run_record)
+
+    status_p = subs.add_parser("status", help="Show cached rerere resolutions and their match against current conflicts.")
+    status_p.add_argument("--format", "-f", default="text", dest="fmt",
+                          help="Output format: text or json.")
+    status_p.set_defaults(func=run_status)
+
+    forget_p = subs.add_parser("forget", help="Remove the cached rerere resolution for one or more conflict paths.")
+    forget_p.add_argument("paths", nargs="+",
+                          help="Workspace-relative paths whose rerere resolution should be removed.")
+    forget_p.add_argument("--format", "-f", default="text", dest="fmt",
+                          help="Output format: text or json.")
+    forget_p.set_defaults(func=run_forget)
+
+    clear_p = subs.add_parser("clear", help="Remove all cached rerere resolutions.")
+    clear_p.add_argument("--yes", "-y", action="store_true",
+                         help="Skip confirmation prompt.")
+    clear_p.add_argument("--format", "-f", default="text", dest="fmt",
+                         help="Output format: text or json.")
+    clear_p.set_defaults(func=run_clear)
+
+    gc_p = subs.add_parser("gc", help="Remove preimage-only rerere entries older than 60 days.")
+    gc_p.add_argument("--format", "-f", default="text", dest="fmt",
+                      help="Output format: text or json.")
+    gc_p.set_defaults(func=run_gc)
+
+    parser.set_defaults(func=run)
 
 
 # ---------------------------------------------------------------------------
@@ -106,16 +148,7 @@ def _fmt_record(rec: RerereRecord, *, color: bool) -> str:
 # ---------------------------------------------------------------------------
 
 
-@app.callback(invoke_without_command=True)
-def rerere(
-    ctx: typer.Context,
-    dry_run: bool = typer.Option(
-        False, "--dry-run", "-n", help="Show what would be auto-resolved without writing files."
-    ),
-    fmt: str = typer.Option(
-        "text", "--format", "-f", help="Output format: text or json."
-    ),
-) -> None:
+def run(args: argparse.Namespace) -> None:
     """Apply cached conflict resolutions to the current working tree.
 
     Reads ``.muse/MERGE_STATE.json`` to discover which paths are in conflict,
@@ -126,26 +159,26 @@ def rerere(
     Run after ``muse merge`` exits with conflicts, or let ``muse merge`` invoke
     this automatically via the ``--rerere-autoupdate`` flag.
     """
-    if ctx.invoked_subcommand is not None:
-        return
+    dry_run: bool = args.dry_run
+    fmt: str = args.fmt
 
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             f"❌ Unknown format {fmt!r}. Valid choices: {', '.join(_FORMAT_CHOICES)}",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     state = read_merge_state(root)
     if state is None or not state.conflict_paths:
-        typer.echo("No merge in progress — nothing for rerere to do.")
+        print("No merge in progress — nothing for rerere to do.")
         return
 
     manifests = _load_conflict_manifests(root)
     if manifests is None:
-        typer.echo("❌ MERGE_STATE.json is incomplete — cannot load conflict manifests.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ MERGE_STATE.json is incomplete — cannot load conflict manifests.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     ours_manifest, theirs_manifest = manifests
 
     domain = read_domain(root)
@@ -178,7 +211,7 @@ def rerere(
             remaining.append(path)
 
     if fmt == "json":
-        typer.echo(
+        print(
             json.dumps(
                 {
                     "dry_run": dry_run,
@@ -192,12 +225,12 @@ def rerere(
 
     prefix = "[dry-run] would resolve" if dry_run else "✅ rerere auto-resolved"
     for p in auto_resolved:
-        typer.echo(f"  {prefix}: {sanitize_display(p)}")
+        print(f"  {prefix}: {sanitize_display(p)}")
     for p in remaining:
-        typer.echo(f"  ⏳ needs manual resolution: {sanitize_display(p)}")
+        print(f"  ⏳ needs manual resolution: {sanitize_display(p)}")
 
     if not auto_resolved and not remaining:
-        typer.echo("No conflicting paths found.")
+        print("No conflicting paths found.")
 
 
 # ---------------------------------------------------------------------------
@@ -205,12 +238,7 @@ def rerere(
 # ---------------------------------------------------------------------------
 
 
-@app.command("record")
-def rerere_record(
-    fmt: str = typer.Option(
-        "text", "--format", "-f", help="Output format: text or json."
-    ),
-) -> None:
+def run_record(args: argparse.Namespace) -> None:
     """Record preimages for current conflicts without applying cached resolutions.
 
     Writes a preimage entry to ``.muse/rr-cache/`` for every conflicting path
@@ -219,23 +247,25 @@ def rerere_record(
 
     Idempotent: re-recording an already-known conflict is a no-op.
     """
+    fmt: str = args.fmt
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             f"❌ Unknown format {fmt!r}. Valid choices: {', '.join(_FORMAT_CHOICES)}",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     state = read_merge_state(root)
     if state is None or not state.conflict_paths:
-        typer.echo("No merge in progress — nothing to record.")
+        print("No merge in progress — nothing to record.")
         return
 
     manifests = _load_conflict_manifests(root)
     if manifests is None:
-        typer.echo("❌ MERGE_STATE.json is incomplete — cannot load conflict manifests.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ MERGE_STATE.json is incomplete — cannot load conflict manifests.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     ours_manifest, theirs_manifest = manifests
 
     domain = read_domain(root)
@@ -254,13 +284,13 @@ def rerere_record(
         recorded.append(path)
 
     if fmt == "json":
-        typer.echo(json.dumps({"recorded": recorded, "skipped": skipped}, indent=2))
+        print(json.dumps({"recorded": recorded, "skipped": skipped}, indent=2))
         return
 
     for p in recorded:
-        typer.echo(f"  📝 preimage recorded: {sanitize_display(p)}")
+        print(f"  📝 preimage recorded: {sanitize_display(p)}")
     for p in skipped:
-        typer.echo(f"  ⚠️  skipped (one side deleted): {sanitize_display(p)}")
+        print(f"  ⚠️  skipped (one side deleted): {sanitize_display(p)}")
 
 
 # ---------------------------------------------------------------------------
@@ -268,24 +298,21 @@ def rerere_record(
 # ---------------------------------------------------------------------------
 
 
-@app.command("status")
-def rerere_status(
-    fmt: str = typer.Option(
-        "text", "--format", "-f", help="Output format: text or json."
-    ),
-) -> None:
+def run_status(args: argparse.Namespace) -> None:
     """Show cached rerere resolutions and their match against current conflicts.
 
     Lists every entry in ``.muse/rr-cache/``, indicating whether a resolution
     has been recorded.  When a merge is in progress, also marks which cached
     resolutions match the current conflict set.
     """
+    fmt: str = args.fmt
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             f"❌ Unknown format {fmt!r}. Valid choices: {', '.join(_FORMAT_CHOICES)}",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     records = list_records(root)
@@ -305,11 +332,10 @@ def rerere_status(
                     fp = compute_fingerprint(path, ours_id, theirs_id, plugin, root)
                     current_fps.add(fp)
 
-    import sys
     color = sys.stdout.isatty()
 
     if fmt == "json":
-        typer.echo(
+        print(
             json.dumps(
                 {
                     "total": len(records),
@@ -332,14 +358,14 @@ def rerere_status(
         return
 
     if not records:
-        typer.echo("No rerere records found.")
+        print("No rerere records found.")
         return
 
-    typer.echo(f"{'fingerprint':14}  {'status':16}  {'recorded':16}  path")
-    typer.echo("-" * 72)
+    print(f"{'fingerprint':14}  {'status':16}  {'recorded':16}  path")
+    print("-" * 72)
     for rec in records:
         marker = " ◀ current" if rec.fingerprint in current_fps else ""
-        typer.echo(_fmt_record(rec, color=color) + marker)
+        print(_fmt_record(rec, color=color) + marker)
 
 
 # ---------------------------------------------------------------------------
@@ -347,38 +373,33 @@ def rerere_status(
 # ---------------------------------------------------------------------------
 
 
-@app.command("forget")
-def rerere_forget(
-    paths: list[str] = typer.Argument(
-        ..., help="Workspace-relative paths whose rerere resolution should be removed."
-    ),
-    fmt: str = typer.Option(
-        "text", "--format", "-f", help="Output format: text or json."
-    ),
-) -> None:
+def run_forget(args: argparse.Namespace) -> None:
     """Remove the cached rerere resolution for one or more conflict paths.
 
     Computes the fingerprint for each PATH against the current MERGE_STATE and
     removes its rr-cache entry.  Run this when a recorded resolution is wrong
     and you want to force manual resolution next time.
     """
+    paths: list[str] = args.paths
+    fmt: str = args.fmt
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             f"❌ Unknown format {fmt!r}. Valid choices: {', '.join(_FORMAT_CHOICES)}",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     state = read_merge_state(root)
     if state is None or not state.conflict_paths:
-        typer.echo("❌ No merge in progress — cannot determine conflict fingerprints.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ No merge in progress — cannot determine conflict fingerprints.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     manifests = _load_conflict_manifests(root)
     if manifests is None:
-        typer.echo("❌ MERGE_STATE.json is incomplete.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ MERGE_STATE.json is incomplete.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     ours_manifest, theirs_manifest = manifests
     plugin = resolve_plugin(root)
 
@@ -398,13 +419,13 @@ def rerere_forget(
             not_found.append(path)
 
     if fmt == "json":
-        typer.echo(json.dumps({"forgotten": forgotten, "not_found": not_found}, indent=2))
+        print(json.dumps({"forgotten": forgotten, "not_found": not_found}, indent=2))
         return
 
     for p in forgotten:
-        typer.echo(f"  🗑  forgot: {sanitize_display(p)}")
+        print(f"  🗑  forgot: {sanitize_display(p)}")
     for p in not_found:
-        typer.echo(f"  ⚠️  no record found: {sanitize_display(p)}")
+        print(f"  ⚠️  no record found: {sanitize_display(p)}")
 
 
 # ---------------------------------------------------------------------------
@@ -412,26 +433,21 @@ def rerere_forget(
 # ---------------------------------------------------------------------------
 
 
-@app.command("clear")
-def rerere_clear(
-    yes: bool = typer.Option(
-        False, "--yes", "-y", help="Skip confirmation prompt."
-    ),
-    fmt: str = typer.Option(
-        "text", "--format", "-f", help="Output format: text or json."
-    ),
-) -> None:
+def run_clear(args: argparse.Namespace) -> None:
     """Remove all cached rerere resolutions.
 
     Deletes the entire ``.muse/rr-cache/`` directory contents.  This is
     irreversible — all recorded resolutions will be lost.
     """
+    yes: bool = args.yes
+    fmt: str = args.fmt
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             f"❌ Unknown format {fmt!r}. Valid choices: {', '.join(_FORMAT_CHOICES)}",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
 
@@ -439,22 +455,22 @@ def rerere_clear(
         cache = rr_cache_dir(root)
         count = sum(1 for e in cache.iterdir() if e.is_dir()) if cache.exists() else 0
         if count == 0:
-            typer.echo("rr-cache is already empty.")
+            print("rr-cache is already empty.")
             return
-        confirmed = typer.confirm(
-            f"This will permanently delete {count} rerere record(s). Continue?"
-        )
+        confirmed = input(
+            f"This will permanently delete {count} rerere record(s). Continue? [y/N]: "
+        ).strip().lower() in ("y", "yes")
         if not confirmed:
-            typer.echo("Aborted.")
+            print("Aborted.")
             return
 
     removed = clear_all(root)
 
     if fmt == "json":
-        typer.echo(json.dumps({"removed": removed}))
+        print(json.dumps({"removed": removed}))
         return
 
-    typer.echo(f"✅ Cleared {removed} rerere record(s).")
+    print(f"✅ Cleared {removed} rerere record(s).")
 
 
 # ---------------------------------------------------------------------------
@@ -462,33 +478,30 @@ def rerere_clear(
 # ---------------------------------------------------------------------------
 
 
-@app.command("gc")
-def rerere_gc(
-    fmt: str = typer.Option(
-        "text", "--format", "-f", help="Output format: text or json."
-    ),
-) -> None:
+def run_gc(args: argparse.Namespace) -> None:
     """Remove preimage-only rerere entries older than 60 days.
 
     Keeps all entries that have a resolution saved (regardless of age).
     Removes entries where the user never committed a resolution — these are
     conflicts that were abandoned or resolved in another way.
     """
+    fmt: str = args.fmt
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             f"❌ Unknown format {fmt!r}. Valid choices: {', '.join(_FORMAT_CHOICES)}",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     removed = gc_stale(root)
 
     if fmt == "json":
-        typer.echo(json.dumps({"removed": removed}))
+        print(json.dumps({"removed": removed}))
         return
 
     if removed:
-        typer.echo(f"✅ gc: removed {removed} stale preimage-only entry(s).")
+        print(f"✅ gc: removed {removed} stale preimage-only entry(s).")
     else:
-        typer.echo("gc: nothing to remove.")
+        print("gc: nothing to remove.")

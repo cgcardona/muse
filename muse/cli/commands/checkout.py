@@ -9,11 +9,11 @@ Usage::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.object_store import restore_object
@@ -33,8 +33,6 @@ from muse.domain import SnapshotManifest
 from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _read_current_branch(root: pathlib.Path) -> str:
@@ -62,8 +60,8 @@ def _checkout_snapshot(
 
     target_snap_rec = read_snapshot(root, target_snapshot_id)
     if target_snap_rec is None:
-        typer.echo(f"❌ Snapshot {target_snapshot_id[:8]} not found in object store.")
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(f"❌ Snapshot {target_snapshot_id[:8]} not found in object store.")
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     target_snap = SnapshotManifest(files=target_snap_rec.manifest, domain=domain)
 
@@ -100,30 +98,42 @@ def _checkout_snapshot(
             logger.warning("⚠️ Skipping unsafe manifest path %r: %s", rel_path, exc)
             continue
         if not restore_object(root, object_id, safe_dest):
-            typer.echo(f"⚠️  Object {object_id[:8]} for '{sanitize_display(rel_path)}' not in local store — skipped.")
+            print(f"⚠️  Object {object_id[:8]} for '{sanitize_display(rel_path)}' not in local store — skipped.")
 
     # Domain-level post-checkout hook: rescan the workdir to confirm state.
     plugin.apply(delta, root)
 
 
-@app.callback(invoke_without_command=True)
-def checkout(
-    ctx: typer.Context,
-    target: str = typer.Argument(..., help="Branch name or commit ID to check out."),
-    create: bool = typer.Option(False, "-b", "--create", help="Create a new branch."),
-    force: bool = typer.Option(False, "--force", "-f", help="Discard uncommitted changes."),
-    fmt: str = typer.Option("text", "--format", help="Output format: text or json."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the checkout subcommand."""
+    parser = subparsers.add_parser(
+        "checkout",
+        help="Switch branches or restore working tree from a commit.",
+        description=__doc__,
+    )
+    parser.add_argument("target", help="Branch name or commit ID to check out.")
+    parser.add_argument("-b", "--create", action="store_true", help="Create a new branch.")
+    parser.add_argument("--force", "-f", action="store_true", help="Discard uncommitted changes.")
+    parser.add_argument("--format", default="text", dest="fmt", help="Output format: text or json.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Switch branches or restore working tree from a commit.
 
     Agents should pass ``--format json`` to get a machine-readable result::
 
         {"action": "created|switched|detached|already_on", "branch": "<name>", "commit_id": "<sha256>"}
     """
+    target: str = args.target
+    create: bool = args.create
+    force: bool = args.force
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
         from muse.core.validation import sanitize_display as _sd
-        typer.echo(f"❌ Unknown --format '{_sd(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{_sd(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     current_branch = _read_current_branch(root)
@@ -135,12 +145,12 @@ def checkout(
         try:
             validate_branch_name(target)
         except ValueError as exc:
-            typer.echo(f"❌ Invalid branch name: {exc}")
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Invalid branch name: {exc}")
+            raise SystemExit(ExitCode.USER_ERROR)
         ref_file = muse_dir / "refs" / "heads" / target
         if ref_file.exists():
-            typer.echo(f"❌ Branch '{sanitize_display(target)}' already exists. Use 'muse checkout {sanitize_display(target)}' to switch to it.")
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Branch '{sanitize_display(target)}' already exists. Use 'muse checkout {sanitize_display(target)}' to switch to it.")
+            raise SystemExit(ExitCode.USER_ERROR)
         current_commit = get_head_commit_id(root, current_branch) or ""
         ref_file.parent.mkdir(parents=True, exist_ok=True)
         ref_file.write_text(current_commit)
@@ -150,26 +160,26 @@ def checkout(
             author="user", operation=f"branch: created from {sanitize_display(current_branch)}",
         )
         if fmt == "json":
-            typer.echo(json.dumps({"action": "created", "branch": target, "commit_id": current_commit}))
+            print(json.dumps({"action": "created", "branch": target, "commit_id": current_commit}))
         else:
-            typer.echo(f"Switched to a new branch '{sanitize_display(target)}'")
+            print(f"Switched to a new branch '{sanitize_display(target)}'")
         return
 
     # Check if target is a known branch — validate name before using as path component.
     try:
         validate_branch_name(target)
     except ValueError as exc:
-        typer.echo(f"❌ Invalid branch name: {exc}", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Invalid branch name: {exc}", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     ref_file = muse_dir / "refs" / "heads" / target
     if ref_file.exists():
         if target == current_branch:
             if fmt == "json":
-                typer.echo(json.dumps({"action": "already_on", "branch": target,
-                                       "commit_id": get_head_commit_id(root, target) or ""}))
+                print(json.dumps({"action": "already_on", "branch": target,
+                                  "commit_id": get_head_commit_id(root, target) or ""}))
             else:
-                typer.echo(f"Already on '{sanitize_display(target)}'")
+                print(f"Already on '{sanitize_display(target)}'")
             return
 
         target_commit_id = get_head_commit_id(root, target) or ""
@@ -185,16 +195,16 @@ def checkout(
             operation=f"checkout: moving from {sanitize_display(current_branch)} to {sanitize_display(target)}",
         )
         if fmt == "json":
-            typer.echo(json.dumps({"action": "switched", "branch": target, "commit_id": target_commit_id}))
+            print(json.dumps({"action": "switched", "branch": target, "commit_id": target_commit_id}))
         else:
-            typer.echo(f"Switched to branch '{sanitize_display(target)}'")
+            print(f"Switched to branch '{sanitize_display(target)}'")
         return
 
     # Try as a commit ID (detached HEAD)
     commit = resolve_commit_ref(root, repo_id, current_branch, target)
     if commit is None:
-        typer.echo(f"❌ '{target}' is not a branch or commit ID.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ '{target}' is not a branch or commit ID.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     current_commit_id = get_head_commit_id(root, current_branch) or ""
     _checkout_snapshot(root, commit.snapshot_id, current_snapshot_id)
@@ -205,6 +215,6 @@ def checkout(
         operation=f"checkout: detaching HEAD at {commit.commit_id[:12]}",
     )
     if fmt == "json":
-        typer.echo(json.dumps({"action": "detached", "branch": None, "commit_id": commit.commit_id}))
+        print(json.dumps({"action": "detached", "branch": None, "commit_id": commit.commit_id}))
     else:
-        typer.echo(f"HEAD is now at {commit.commit_id[:8]} {sanitize_display(commit.message)}")
+        print(f"HEAD is now at {commit.commit_id[:8]} {sanitize_display(commit.message)}")

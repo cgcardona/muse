@@ -24,10 +24,10 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.validation import contain_path
@@ -36,7 +36,6 @@ from muse.plugins.midi._query import NoteInfo, load_track_from_workdir, notes_to
 from muse.plugins.midi.midi_diff import _pitch_name
 
 logger = logging.getLogger(__name__)
-app = typer.Typer()
 
 _MIDI_MIN = 0
 _MIDI_MAX = 127
@@ -66,17 +65,17 @@ def _parse_pivot(pivot_str: str) -> int | None:
     return _NOTE_NAMES[note_letter] + (1 if sharp else 0) + (octave + 1) * 12
 
 
-@app.callback(invoke_without_command=True)
-def invert(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    pivot: str | None = typer.Option(
-        None, "--pivot", "-p", metavar="PITCH",
-        help="Pivot pitch as note name (C4, A#3) or MIDI number (0–127). Defaults to the first note.",
-    ),
-    clamp: bool = typer.Option(False, "--clamp", help="Clamp out-of-range pitches to 0–127."),
-    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Preview without writing."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the invert subcommand."""
+    parser = subparsers.add_parser("invert", help="Apply melodic inversion: reflect all intervals around a pivot pitch.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--pivot", "-p", metavar="PITCH", default=None, help="Pivot pitch as note name (C4, A#3) or MIDI number (0–127). Defaults to the first note.")
+    parser.add_argument("--clamp", action="store_true", help="Clamp out-of-range pitches to 0–127.")
+    parser.add_argument("--dry-run", "-n", action="store_true", help="Preview without writing.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Apply melodic inversion: reflect all intervals around a pivot pitch.
 
     ``muse invert`` transforms the melody so that upward intervals become
@@ -87,38 +86,43 @@ def invert(
     the original to create invertible counterpoint.  In agent workflows,
     use this to auto-generate contrast material from an existing melody.
     """
+    track: str = args.track
+    pivot: str | None = args.pivot
+    clamp: bool = args.clamp
+    dry_run: bool = args.dry_run
+
     root = require_repo()
     result = load_track_from_workdir(root, track)
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     notes, tpb = result
     if not notes:
-        typer.echo(f"  (track '{track}' contains no notes — nothing to invert)")
+        print(f"  (track '{track}' contains no notes — nothing to invert)")
         return
 
     # Determine pivot pitch
     if pivot is not None:
         pivot_midi = _parse_pivot(pivot)
         if pivot_midi is None:
-            typer.echo(f"❌ Cannot parse pivot '{pivot}'. Use C4, A#3, or a MIDI number.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Cannot parse pivot '{pivot}'. Use C4, A#3, or a MIDI number.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         if not 0 <= pivot_midi <= 127:
-            typer.echo(f"❌ Pivot MIDI value {pivot_midi} is out of range [0, 127].", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Pivot MIDI value {pivot_midi} is out of range [0, 127].", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
     else:
         pivot_midi = sorted(notes, key=lambda n: n.start_tick)[0].pitch
 
     inverted_pitches = [2 * pivot_midi - n.pitch for n in notes]
     out_of_range = [p for p in inverted_pitches if p < _MIDI_MIN or p > _MIDI_MAX]
     if out_of_range and not clamp:
-        typer.echo(
+        print(
             f"❌ Inversion around MIDI {pivot_midi} produces out-of-range pitches "
             f"({min(out_of_range)}–{max(out_of_range)}).  Use --clamp.",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     inverted: list[NoteInfo] = [
         NoteInfo(
@@ -145,12 +149,12 @@ def invert(
     ]
 
     if dry_run:
-        typer.echo(f"\n[dry-run] Would invert {track}  (pivot: {_pitch_name(pivot_midi)} / MIDI {pivot_midi})")
-        typer.echo(f"  Notes:      {len(notes)}")
-        typer.echo(f"  Transforms: {', '.join(sample_pairs)}, …")
-        typer.echo(f"  New range:  {_pitch_name(new_lo)}–{_pitch_name(new_hi)}  "
+        print(f"\n[dry-run] Would invert {track}  (pivot: {_pitch_name(pivot_midi)} / MIDI {pivot_midi})")
+        print(f"  Notes:      {len(notes)}")
+        print(f"  Transforms: {', '.join(sample_pairs)}, …")
+        print(f"  New range:  {_pitch_name(new_lo)}–{_pitch_name(new_hi)}  "
                    f"(was {_pitch_name(old_lo)}–{_pitch_name(old_hi)})")
-        typer.echo("  No changes written (--dry-run).")
+        print("  No changes written (--dry-run).")
         return
 
     midi_bytes = notes_to_midi_bytes(inverted, tpb)
@@ -158,13 +162,13 @@ def invert(
     try:
         work_path = contain_path(workdir, track)
     except ValueError as exc:
-        typer.echo(f"❌ Invalid track path: {exc}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Invalid track path: {exc}")
+        raise SystemExit(ExitCode.USER_ERROR)
     work_path.parent.mkdir(parents=True, exist_ok=True)
     work_path.write_bytes(midi_bytes)
 
-    typer.echo(f"\n✅ Inverted {track}  (pivot: {_pitch_name(pivot_midi)} / MIDI {pivot_midi})")
-    typer.echo(f"   {len(inverted)} notes transformed  ({', '.join(sample_pairs)}, …)")
-    typer.echo(f"   New range: {_pitch_name(new_lo)}–{_pitch_name(new_hi)}"
+    print(f"\n✅ Inverted {track}  (pivot: {_pitch_name(pivot_midi)} / MIDI {pivot_midi})")
+    print(f"   {len(inverted)} notes transformed  ({', '.join(sample_pairs)}, …)")
+    print(f"   New range: {_pitch_name(new_lo)}–{_pitch_name(new_hi)}"
                f"  (was {_pitch_name(old_lo)}–{_pitch_name(old_hi)})")
-    typer.echo("   Run `muse status` to review, then `muse commit`")
+    print("   Run `muse status` to review, then `muse commit`")

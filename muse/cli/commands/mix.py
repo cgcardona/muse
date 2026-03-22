@@ -25,11 +25,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -42,31 +42,20 @@ from muse.plugins.midi.midi_diff import _pitch_name
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
+
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the mix subcommand."""
+    parser = subparsers.add_parser("mix", help="Combine notes from two MIDI tracks into a single output track.", description=__doc__)
+    parser.add_argument("track_a", metavar="TRACK-A", help="First source .mid file.")
+    parser.add_argument("track_b", metavar="TRACK-B", help="Second source .mid file.")
+    parser.add_argument("--output", "-o", metavar="OUTPUT", required=True, help="Destination .mid file path (workspace-relative).")
+    parser.add_argument("--channel-a", metavar="N", type=int, default=None, help="Remap all notes from TRACK-A to this MIDI channel.")
+    parser.add_argument("--channel-b", metavar="N", type=int, default=None, help="Remap all notes from TRACK-B to this MIDI channel.")
+    parser.add_argument("--dry-run", "-n", action="store_true", help="Preview the operation without writing to disk.")
+    parser.set_defaults(func=run)
 
 
-@app.callback(invoke_without_command=True)
-def mix(
-    ctx: typer.Context,
-    track_a: str = typer.Argument(..., metavar="TRACK-A", help="First source .mid file."),
-    track_b: str = typer.Argument(..., metavar="TRACK-B", help="Second source .mid file."),
-    output: str = typer.Option(
-        ..., "--output", "-o", metavar="OUTPUT",
-        help="Destination .mid file path (workspace-relative).",
-    ),
-    channel_a: int | None = typer.Option(
-        None, "--channel-a", metavar="N",
-        help="Remap all notes from TRACK-A to this MIDI channel.",
-    ),
-    channel_b: int | None = typer.Option(
-        None, "--channel-b", metavar="N",
-        help="Remap all notes from TRACK-B to this MIDI channel.",
-    ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", "-n",
-        help="Preview the operation without writing to disk.",
-    ),
-) -> None:
+def run(args: argparse.Namespace) -> None:
     """Combine notes from two MIDI tracks into a single output track.
 
     ``muse mix`` reads two MIDI files, merges their note sequences sorted
@@ -81,17 +70,24 @@ def mix(
     parts — all without a merge conflict.  The structured delta captured
     on commit will record every note inserted into the output track.
     """
+    track_a: str = args.track_a
+    track_b: str = args.track_b
+    output: str = args.output
+    channel_a: int | None = args.channel_a
+    channel_b: int | None = args.channel_b
+    dry_run: bool = args.dry_run
+
     root = require_repo()
 
     result_a = load_track_from_workdir(root, track_a)
     if result_a is None:
-        typer.echo(f"❌ Track '{track_a}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track_a}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     result_b = load_track_from_workdir(root, track_b)
     if result_b is None:
-        typer.echo(f"❌ Track '{track_b}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track_b}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     notes_a, tpb_a = result_a
     notes_b, tpb_b = result_b
@@ -124,11 +120,11 @@ def mix(
         return f"{_pitch_name(lo)}–{_pitch_name(hi)}"
 
     if dry_run:
-        typer.echo(f"\n[dry-run] Would mix {track_a} + {track_b} → {output}")
-        typer.echo(f"  {track_a}:  {len(notes_a)} notes  ({_range_str(notes_a)})")
-        typer.echo(f"  {track_b}:  {len(notes_b)} notes  ({_range_str(notes_b)})")
-        typer.echo(f"  {output}:   {len(mixed)} notes  ({_range_str(mixed)})")
-        typer.echo("  No changes written (--dry-run).")
+        print(f"\n[dry-run] Would mix {track_a} + {track_b} → {output}")
+        print(f"  {track_a}:  {len(notes_a)} notes  ({_range_str(notes_a)})")
+        print(f"  {track_b}:  {len(notes_b)} notes  ({_range_str(notes_b)})")
+        print(f"  {output}:   {len(mixed)} notes  ({_range_str(mixed)})")
+        print("  No changes written (--dry-run).")
         return
 
     midi_bytes = notes_to_midi_bytes(mixed, tpb)
@@ -137,8 +133,8 @@ def mix(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_bytes(midi_bytes)
 
-    typer.echo(f"\n✅ Mixed {track_a} + {track_b} → {output}")
-    typer.echo(f"   {track_a}:  {len(notes_a)} notes  ({_range_str(notes_a)})")
-    typer.echo(f"   {track_b}:  {len(notes_b)} notes  ({_range_str(notes_b)})")
-    typer.echo(f"   {output}:   {len(mixed)} notes  ({_range_str(mixed)})")
-    typer.echo("   Run `muse status` to review, then `muse commit`")
+    print(f"\n✅ Mixed {track_a} + {track_b} → {output}")
+    print(f"   {track_a}:  {len(notes_a)} notes  ({_range_str(notes_a)})")
+    print(f"   {track_b}:  {len(notes_b)} notes  ({_range_str(notes_b)})")
+    print(f"   {output}:   {len(mixed)} notes  ({_range_str(mixed)})")
+    print("   Run `muse status` to review, then `muse commit`")

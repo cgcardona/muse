@@ -37,13 +37,12 @@ Examples
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import os
 import subprocess
 import sys
-
-import typer
 
 from muse.cli.config import (
     config_as_dict,
@@ -56,23 +55,46 @@ from muse.core.repo import find_repo_root
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer(no_args_is_help=True)
-
 
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
 
 
-@app.command()
-def show(
-    json_output: bool = typer.Option(
-        False,
-        "--json",
-        help="Emit JSON instead of TOML.",
-    ),
-    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json (alias for --json)."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the config subcommand."""
+    parser = subparsers.add_parser(
+        "config",
+        help="Local repository configuration.",
+        description=__doc__,
+    )
+    subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
+    subs.required = True
+
+    show_p = subs.add_parser("show", help="Display the current repository configuration.")
+    show_p.add_argument("--json", action="store_true", dest="json_output",
+                        help="Emit JSON instead of TOML.")
+    show_p.add_argument("--format", "-f", default="text", dest="fmt",
+                        help="Output format: text or json (alias for --json).")
+    show_p.set_defaults(func=run_show)
+
+    get_p = subs.add_parser("get", help="Print the value of a single config key.")
+    get_p.add_argument("key", metavar="KEY",
+                       help="Dotted key to read (e.g. user.name, hub.url, domain.ticks_per_beat).")
+    get_p.set_defaults(func=run_get)
+
+    set_p = subs.add_parser("set", help="Set a config value by dotted key.")
+    set_p.add_argument("key", metavar="KEY",
+                       help="Dotted key to set (e.g. user.name, domain.ticks_per_beat).")
+    set_p.add_argument("value", metavar="VALUE",
+                       help="New value (always stored as a string).")
+    set_p.set_defaults(func=run_set)
+
+    edit_p = subs.add_parser("edit", help="Open .muse/config.toml in $EDITOR or $VISUAL.")
+    edit_p.set_defaults(func=run_edit)
+
+
+def run_show(args: argparse.Namespace) -> None:
     """Display the current repository configuration.
 
     Output is TOML by default.  Use ``--json`` or ``--format json`` for
@@ -87,92 +109,78 @@ def show(
           "domain":  {"ticks_per_beat": "480"}
         }
     """
+    json_output: bool = args.json_output
+    fmt: str = args.fmt
+
     if fmt == "json":
         json_output = True
     elif fmt != "text":
         from muse.core.validation import sanitize_display
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = find_repo_root()
 
     data = config_as_dict(root)
 
     if json_output:
-        typer.echo(json.dumps(data, indent=2))
+        print(json.dumps(data, indent=2))
         return
 
     # Render as TOML-like display
     if not data:
-        typer.echo("# No configuration set.")
+        print("# No configuration set.")
         return
 
     user = data.get("user")
     if user:
-        typer.echo("[user]")
+        print("[user]")
         for key, val in sorted(user.items()):
-            typer.echo(f'{key} = "{val}"')
-        typer.echo("")
+            print(f'{key} = "{val}"')
+        print("")
 
     hub = data.get("hub")
     if hub:
-        typer.echo("[hub]")
+        print("[hub]")
         for key, val in sorted(hub.items()):
-            typer.echo(f'{key} = "{val}"')
-        typer.echo("")
+            print(f'{key} = "{val}"')
+        print("")
 
     remotes = data.get("remotes")
     if remotes:
         for remote_name, remote_url in sorted(remotes.items()):
-            typer.echo(f"[remotes.{remote_name}]")
-            typer.echo(f'url = "{remote_url}"')
-            typer.echo("")
+            print(f"[remotes.{remote_name}]")
+            print(f'url = "{remote_url}"')
+            print("")
 
     domain = data.get("domain")
     if domain:
-        typer.echo("[domain]")
+        print("[domain]")
         for key, val in sorted(domain.items()):
-            typer.echo(f'{key} = "{val}"')
-        typer.echo("")
+            print(f'{key} = "{val}"')
+        print("")
 
 
-@app.command()
-def get(
-    key: str = typer.Argument(
-        ...,
-        metavar="KEY",
-        help="Dotted key to read (e.g. user.name, hub.url, domain.ticks_per_beat).",
-    ),
-) -> None:
+def run_get(args: argparse.Namespace) -> None:
     """Print the value of a single config key.
 
     Exits non-zero when the key is not set, so agents can branch::
 
         VALUE=$(muse config get user.type) || echo "not set"
     """
+    key: str = args.key
+
     root = find_repo_root()
     value = get_config_value(key, root)
 
     if value is None:
-        typer.echo(f"# {key} is not set", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"# {key} is not set", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
-    typer.echo(value)
+    print(value)
 
 
-@app.command()
-def set(  # noqa: A001
-    key: str = typer.Argument(
-        ...,
-        metavar="KEY",
-        help="Dotted key to set (e.g. user.name, domain.ticks_per_beat).",
-    ),
-    value: str = typer.Argument(
-        ...,
-        metavar="VALUE",
-        help="New value (always stored as a string).",
-    ),
-) -> None:
+def run_set(args: argparse.Namespace) -> None:
     """Set a config value by dotted key.
 
     Examples::
@@ -185,38 +193,40 @@ def set(  # noqa: A001
     For credentials, use ``muse auth login``.
     For remotes, use ``muse remote add``.
     """
+    key: str = args.key
+    value: str = args.value
+
     root = find_repo_root()
     try:
         set_config_value(key, value, root)
     except ValueError as exc:
-        typer.echo(f"❌ {exc}")
-        raise typer.Exit(code=ExitCode.USER_ERROR) from exc
+        print(f"❌ {exc}")
+        raise SystemExit(ExitCode.USER_ERROR) from exc
 
-    typer.echo(f"✅ {key} = {value!r}")
+    print(f"✅ {key} = {value!r}")
 
 
-@app.command()
-def edit() -> None:
+def run_edit(args: argparse.Namespace) -> None:
     """Open ``.muse/config.toml`` in ``$EDITOR`` or ``$VISUAL``.
 
     Falls back to ``vi`` when neither environment variable is set.
     """
     root = find_repo_root()
     if root is None:
-        typer.echo("❌ Not inside a Muse repository.")
-        raise typer.Exit(code=ExitCode.REPO_NOT_FOUND)
+        print("❌ Not inside a Muse repository.")
+        raise SystemExit(ExitCode.REPO_NOT_FOUND)
 
     config_path = config_path_for_editor(root)
     if not config_path.is_file():
-        typer.echo(f"❌ Config file not found: {config_path}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Config file not found: {config_path}")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "vi"
     try:
         subprocess.run([editor, str(config_path)], check=True)
     except FileNotFoundError:
-        typer.echo(f"❌ Editor not found: {editor!r}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Editor not found: {editor!r}")
+        raise SystemExit(ExitCode.USER_ERROR)
     except subprocess.CalledProcessError as exc:
-        typer.echo(f"❌ Editor exited with code {exc.returncode}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Editor exited with code {exc.returncode}")
+        raise SystemExit(ExitCode.USER_ERROR)

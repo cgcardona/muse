@@ -22,11 +22,10 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
-import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -35,33 +34,48 @@ from muse.core.validation import validate_branch_name, validate_object_id
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
-
 _FORMAT_CHOICES = ("json", "text")
 
 
-@app.callback(invoke_without_command=True)
-def update_ref(
-    ctx: typer.Context,
-    branch: str = typer.Argument(..., help="Branch name to update."),
-    commit_id: str | None = typer.Argument(
-        None,
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the update-ref subcommand."""
+    parser = subparsers.add_parser(
+        "update-ref",
+        help="Move a branch HEAD to a specific commit ID.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "branch",
+        help="Branch name to update.",
+    )
+    parser.add_argument(
+        "commit_id",
+        nargs="?",
+        default=None,
         help="Commit ID to point the branch at. Omit with --delete to remove the branch.",
-    ),
-    delete: bool = typer.Option(
-        False, "--delete", "-d", help="Delete the branch ref entirely."
-    ),
-    verify: bool = typer.Option(
-        True,
-        "--verify/--no-verify",
-        help="Verify the commit exists in the store before updating (default: on).",
-    ),
-    fmt: str = typer.Option(
-        "json", "--format", "-f",
+    )
+    parser.add_argument(
+        "--delete", "-d",
+        action="store_true",
+        help="Delete the branch ref entirely.",
+    )
+    parser.add_argument(
+        "--no-verify",
+        dest="verify",
+        action="store_false",
+        help="Skip verifying the commit exists before updating.",
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
         help="Output format: json (default) or text (silent on success).",
-    ),
-) -> None:
+    )
+    parser.set_defaults(func=run, verify=True)
+
+
+def run(args: argparse.Namespace) -> None:
     """Move a branch HEAD to a specific commit ID.
 
     Directly writes (or deletes) a branch ref file.  When ``--verify`` is set
@@ -77,58 +91,63 @@ def update_ref(
 
         (silent on success — exits 0)
     """
+    fmt: str = args.fmt
+    branch: str = args.branch
+    commit_id: str | None = args.commit_id
+    delete: bool = args.delete
+    verify: bool = args.verify
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             json.dumps({"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"})
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
+
     root = require_repo()
 
     try:
         validate_branch_name(branch)
     except ValueError as exc:
-        typer.echo(json.dumps({"error": f"Invalid branch name: {exc}"}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": f"Invalid branch name: {exc}"}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     ref_path = root / ".muse" / "refs" / "heads" / branch
 
     if delete:
         if not ref_path.exists():
-            typer.echo(json.dumps({"error": f"Branch ref does not exist: {branch}"}))
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(json.dumps({"error": f"Branch ref does not exist: {branch}"}))
+            raise SystemExit(ExitCode.USER_ERROR)
         ref_path.unlink()
         if fmt == "json":
-            typer.echo(json.dumps({"branch": branch, "deleted": True}))
+            print(json.dumps({"branch": branch, "deleted": True}))
         return
 
     if commit_id is None:
-        typer.echo(
-            json.dumps({"error": "commit_id is required unless --delete is used."})
-        )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": "commit_id is required unless --delete is used."}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Always validate the format — writing a malformed ID to a ref file would
     # silently corrupt the repository regardless of the --verify flag.
     try:
         validate_object_id(commit_id)
     except ValueError as exc:
-        typer.echo(json.dumps({"error": f"Invalid commit ID: {exc}"}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": f"Invalid commit ID: {exc}"}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if verify and read_commit(root, commit_id) is None:
-        typer.echo(json.dumps({"error": f"Commit not found in store: {commit_id}"}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": f"Commit not found in store: {commit_id}"}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     previous = get_head_commit_id(root, branch)
     try:
         ref_path.parent.mkdir(parents=True, exist_ok=True)
         ref_path.write_text(commit_id, encoding="utf-8")
     except OSError as exc:
-        typer.echo(json.dumps({"error": str(exc)}))
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(json.dumps({"error": str(exc)}))
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     if fmt == "json":
-        typer.echo(
+        print(
             json.dumps(
                 {
                     "branch": branch,

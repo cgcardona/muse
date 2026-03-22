@@ -57,11 +57,11 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse._version import __version__
 from muse.core.errors import ExitCode
@@ -72,8 +72,6 @@ from muse.plugins.code._query import language_of, symbols_for_snapshot
 from muse.plugins.code.ast_parser import parse_symbols
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -174,14 +172,38 @@ def _greedy_partition(
     return [frozenset(s) for s in shards]
 
 
-@app.callback(invoke_without_command=True)
-def shard(
-    ctx: typer.Context,
-    agents: int = typer.Option(4, "--agents", "-n", metavar="N", help="Number of work zones."),
-    ref: str | None = typer.Option(None, "--commit", "-c", metavar="REF", help="Use this commit."),
-    language: str | None = typer.Option(None, "--language", "-l", metavar="LANG"),
-    as_json: bool = typer.Option(False, "--json"),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the shard subcommand."""
+    parser = subparsers.add_parser(
+        "shard",
+        help="Partition the codebase into N low-coupling work zones for parallel agents.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--agents", "-n",
+        type=int,
+        default=4,
+        metavar="N",
+        help="Number of work zones (default: 4).",
+    )
+    parser.add_argument(
+        "--commit", "-c",
+        dest="ref",
+        default=None,
+        metavar="REF",
+        help="Use this commit instead of HEAD.",
+    )
+    parser.add_argument(
+        "--language", "-l",
+        default=None,
+        metavar="LANG",
+        help="Restrict to files of this language.",
+    )
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit the shard plan as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Partition the codebase into N low-coupling work zones for parallel agents.
 
     Uses the import graph connectivity to group files that are tightly coupled
@@ -191,18 +213,23 @@ def shard(
     Shards are balanced by symbol count.  The coupling score is the number of
     cross-shard import edges.
     """
+    agents: int = args.agents
+    ref: str | None = args.ref
+    language: str | None = args.language
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     if agents < 1:
-        typer.echo("❌ --agents must be >= 1.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ --agents must be >= 1.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     manifest = get_commit_snapshot_manifest(root, commit.commit_id) or {}
     sym_map = symbols_for_snapshot(root, manifest, language_filter=language)
@@ -210,7 +237,7 @@ def shard(
 
     files = sorted(sym_counts.keys())
     if not files:
-        typer.echo("  (no semantic files found in snapshot)")
+        print("  (no semantic files found in snapshot)")
         return
 
     edges = _build_import_edges(root, manifest, language)
@@ -229,7 +256,7 @@ def shard(
     )
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "schema_version": __version__,
                 "commit": commit.commit_id[:8],
@@ -253,20 +280,20 @@ def shard(
         ))
         return
 
-    typer.echo(f"\nShard plan — {n} agent(s), commit {commit.commit_id[:8]}")
+    print(f"\nShard plan — {n} agent(s), commit {commit.commit_id[:8]}")
     if language:
-        typer.echo(f"  (language: {language})")
-    typer.echo("─" * 62)
+        print(f"  (language: {language})")
+    print("─" * 62)
 
     for i, s in enumerate(shard_sets):
         if not s:
             continue
         sym_total = sum(sym_counts.get(f, 0) for f in s)
         coupling = sum(1 for a, b in edges if (a in s) != (b in s))
-        typer.echo(f"\n  Shard {i + 1}  ({sym_total} symbols, {len(s)} files, coupling {coupling}):")
+        print(f"\n  Shard {i + 1}  ({sym_total} symbols, {len(s)} files, coupling {coupling}):")
         for fp in sorted(s):
-            typer.echo(f"    {fp}")
+            print(f"    {fp}")
 
-    typer.echo(f"\n  Cross-shard edges: {cross_edges}")
+    print(f"\n  Cross-shard edges: {cross_edges}")
     if cross_edges == 0:
-        typer.echo("  ✅ Perfect isolation — no cross-shard dependencies")
+        print("  ✅ Perfect isolation — no cross-shard dependencies")

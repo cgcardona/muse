@@ -24,12 +24,12 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
+import sys
 from typing import TypedDict
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -37,8 +37,6 @@ from muse.core.store import get_commit_snapshot_manifest, read_current_branch, r
 from muse.plugins.code._query import language_of, symbols_for_snapshot
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 class _LangEntry(TypedDict):
@@ -56,15 +54,25 @@ def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-@app.callback(invoke_without_command=True)
-def languages(
-    ctx: typer.Context,
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the languages subcommand."""
+    parser = subparsers.add_parser(
+        "languages",
+        help="Show the language composition of the repository.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--commit", "-c",
+        dest="ref",
+        default=None,
+        metavar="REF",
         help="Commit to inspect (default: HEAD).",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+    )
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show the language composition of the repository.
 
     Counts files and semantic symbols (functions, classes, methods) by
@@ -73,14 +81,17 @@ def languages(
 
     Use ``--commit`` to inspect any historical snapshot.
     """
+    ref: str | None = args.ref
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Flat dict[str, str] of file_path → sha256.
     manifest: dict[str, str] = get_commit_snapshot_manifest(root, commit.commit_id) or {}
@@ -114,11 +125,11 @@ def languages(
             )
             for lang in all_langs
         ]
-        typer.echo(json.dumps({"commit": commit.commit_id[:8], "languages": out}, indent=2))
+        print(json.dumps({"commit": commit.commit_id[:8], "languages": out}, indent=2))
         return
 
-    typer.echo(f"\nLanguage breakdown — commit {commit.commit_id[:8]}")
-    typer.echo("")
+    print(f"\nLanguage breakdown — commit {commit.commit_id[:8]}")
+    print("")
 
     max_lang = max((len(lang) for lang in all_langs), default=8)
     total_files = 0
@@ -142,12 +153,12 @@ def languages(
         kind_str = f"  ({',  '.join(kind_parts)})" if kind_parts else ""
 
         file_label = "file " if files == 1 else "files"
-        typer.echo(
+        print(
             f"  {lang:<{max_lang}}   {files:>4} {file_label}   {syms:>5} symbols{kind_str}"
         )
 
-    typer.echo("  " + "─" * 60)
-    typer.echo(
+    print("  " + "─" * 60)
+    print(
         f"  {'Total':<{max_lang}}   {total_files:>4} files    {total_syms:>5} symbols"
         f"  ({len(all_langs)} languages)"
     )

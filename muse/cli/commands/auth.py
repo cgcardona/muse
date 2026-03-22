@@ -42,12 +42,12 @@ Subcommands
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import os
 import pathlib
-
-import typer
+import sys
 
 from muse.cli.config import get_hub_url
 from muse.core.errors import ExitCode
@@ -61,8 +61,6 @@ from muse.core.identity import (
 )
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer(no_args_is_help=True)
 
 _DEFAULT_HUMAN_TYPE = "human"
 _DEFAULT_AGENT_TYPE = "agent"
@@ -82,9 +80,9 @@ def _resolve_hub(hub_opt: str | None, repo_root: pathlib.Path | None = None) -> 
 
 def _prompt_token(hub_url: str) -> str:
     """Interactively prompt for a bearer token."""
-    typer.echo(f"\nAuthenticating with {hub_url}")
-    typer.echo("Paste your personal access token below.")
-    typer.echo("(Obtain one at your hub's settings page → Access Tokens)\n")
+    print(f"\nAuthenticating with {hub_url}")
+    print("Paste your personal access token below.")
+    print("(Obtain one at your hub's settings page → Access Tokens)\n")
     import getpass
     token = getpass.getpass("Token: ")
     return token.strip()
@@ -108,7 +106,7 @@ def _display_entry(hostname: str, entry: IdentityEntry, *, json_output: bool) ->
         caps = entry.get("capabilities") or []
         if caps:
             out["capabilities"] = caps
-        typer.echo(json.dumps(out, indent=2))
+        print(json.dumps(out, indent=2))
     else:
         itype = entry.get("type") or "unknown"
         name = entry.get("name") or "—"
@@ -117,16 +115,16 @@ def _display_entry(hostname: str, entry: IdentityEntry, *, json_output: bool) ->
         token_status = "set (Bearer ***)" if token else "not set"
         caps = entry.get("capabilities") or []
 
-        typer.echo("")
-        typer.echo(f"  Identity")
-        typer.echo(f"    Hub:    {hostname}")
-        typer.echo(f"    Type:   {itype}")
-        typer.echo(f"    Name:   {name}")
-        typer.echo(f"    ID:     {identity_id}")
-        typer.echo(f"    Token:  {token_status}")
+        print("")
+        print(f"  Identity")
+        print(f"    Hub:    {hostname}")
+        print(f"    Type:   {itype}")
+        print(f"    Name:   {name}")
+        print(f"    ID:     {identity_id}")
+        print(f"    Token:  {token_status}")
         if caps:
-            typer.echo(f"    Caps:   {' '.join(caps)}")
-        typer.echo("")
+            print(f"    Caps:   {' '.join(caps)}")
+        print("")
 
 
 # ---------------------------------------------------------------------------
@@ -134,39 +132,47 @@ def _display_entry(hostname: str, entry: IdentityEntry, *, json_output: bool) ->
 # ---------------------------------------------------------------------------
 
 
-@app.command()
-def login(
-    token: str | None = typer.Option(
-        None,
-        "--token",
-        metavar="TOKEN",
-        envvar="MUSE_TOKEN",
-        help="Bearer token. Reads MUSE_TOKEN env var if not passed explicitly.",
-    ),
-    hub: str | None = typer.Option(
-        None,
-        "--hub",
-        metavar="URL",
-        help="Hub URL (e.g. https://musehub.ai). Falls back to [hub] url in config.toml.",
-    ),
-    name: str | None = typer.Option(
-        None,
-        "--name",
-        metavar="NAME",
-        help="Display name for this identity (human name or agent handle).",
-    ),
-    identity_id: str | None = typer.Option(
-        None,
-        "--id",
-        metavar="ID",
-        help="Hub-assigned identity ID (optional — stored for reference).",
-    ),
-    agent: bool = typer.Option(
-        False,
-        "--agent",
-        help="Mark this identity as an agent (default: human).",
-    ),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the auth subcommand."""
+    parser = subparsers.add_parser(
+        "auth",
+        help="Identity management.",
+        description=__doc__,
+    )
+    subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
+    subs.required = True
+
+    login_p = subs.add_parser("login", help="Authenticate with a MuseHub instance and store credentials locally.")
+    login_p.add_argument("--token", default=None, metavar="TOKEN",
+                         help="Bearer token. Reads MUSE_TOKEN env var if not passed explicitly.")
+    login_p.add_argument("--hub", default=None, metavar="URL",
+                         help="Hub URL (e.g. https://musehub.ai). Falls back to [hub] url in config.toml.")
+    login_p.add_argument("--name", default=None, metavar="NAME",
+                         help="Display name for this identity (human name or agent handle).")
+    login_p.add_argument("--id", default=None, metavar="ID", dest="identity_id",
+                         help="Hub-assigned identity ID (optional — stored for reference).")
+    login_p.add_argument("--agent", action="store_true",
+                         help="Mark this identity as an agent (default: human).")
+    login_p.set_defaults(func=run_login)
+
+    whoami_p = subs.add_parser("whoami", help="Show the current identity for a hub.")
+    whoami_p.add_argument("--hub", default=None, metavar="URL",
+                          help="Hub URL to inspect. Defaults to the repo's configured hub.")
+    whoami_p.add_argument("--all", action="store_true", dest="all_hubs",
+                          help="Show identities for all configured hubs.")
+    whoami_p.add_argument("--json", action="store_true", dest="json_output",
+                          help="Emit JSON instead of human-readable output.")
+    whoami_p.set_defaults(func=run_whoami)
+
+    logout_p = subs.add_parser("logout", help="Remove stored credentials for a hub.")
+    logout_p.add_argument("--hub", default=None, metavar="URL",
+                          help="Hub URL to log out from. Defaults to the repo's configured hub.")
+    logout_p.add_argument("--all", action="store_true", dest="all_hubs",
+                          help="Remove credentials for ALL configured hubs.")
+    logout_p.set_defaults(func=run_logout)
+
+
+def run_login(args: argparse.Namespace) -> None:
     """Authenticate with a MuseHub instance and store credentials locally.
 
     Credentials are written to ``~/.muse/identity.toml`` (mode 0o600).
@@ -180,34 +186,40 @@ def login(
 
         muse auth login --hub https://musehub.ai --token $MUSE_TOKEN --agent
     """
+    token: str | None = args.token or os.environ.get("MUSE_TOKEN")
+    hub: str | None = args.hub
+    name: str | None = args.name
+    identity_id: str | None = args.identity_id
+    agent: bool = args.agent
+
     hub_url = _resolve_hub(hub)
     if hub_url is None:
-        typer.echo(
+        print(
             "❌ No hub URL provided.\n"
             "   Pass --hub <url>, or first run: muse hub connect <url>",
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Detect whether the token came from the --token CLI flag (not from the
     # MUSE_TOKEN env var or the interactive prompt).  Tokens passed on the
     # command line appear in shell history (~/.zsh_history), process listings
     # (ps aux), and /proc/PID/cmdline on Linux.
-    token_from_cli_flag = token is not None and os.environ.get("MUSE_TOKEN") is None
+    token_from_cli_flag = args.token is not None and os.environ.get("MUSE_TOKEN") is None
 
     # Resolve token: explicit --token / MUSE_TOKEN → interactive prompt.
     raw_token = token
     if not raw_token:
         raw_token = _prompt_token(hub_url)
     if not raw_token:
-        typer.echo("❌ No token provided.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ No token provided.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if token_from_cli_flag:
-        typer.echo(
+        print(
             "⚠️  Token passed via --token flag.\n"
             "   It may appear in your shell history and process listings.\n"
             "   For automation, prefer: MUSE_TOKEN=<token> muse auth login ...",
-            err=True,
+            file=sys.stderr,
         )
 
     identity_type = _DEFAULT_AGENT_TYPE if agent else _DEFAULT_HUMAN_TYPE
@@ -224,35 +236,17 @@ def login(
     try:
         save_identity(hub_url, entry)
     except OSError as exc:
-        typer.echo(f"❌ Could not write credentials: {exc}")
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR) from exc
+        print(f"❌ Could not write credentials: {exc}")
+        raise SystemExit(ExitCode.INTERNAL_ERROR) from exc
 
     display_name = name or "<unnamed>"
-    typer.echo(
+    print(
         f"✅ Authenticated as {identity_type} '{display_name}' on {hub_url}\n"
         f"   Credentials stored in {get_identity_path()}"
     )
 
 
-@app.command()
-def whoami(
-    hub: str | None = typer.Option(
-        None,
-        "--hub",
-        metavar="URL",
-        help="Hub URL to inspect. Defaults to the repo's configured hub.",
-    ),
-    all_hubs: bool = typer.Option(
-        False,
-        "--all",
-        help="Show identities for all configured hubs.",
-    ),
-    json_output: bool = typer.Option(
-        False,
-        "--json",
-        help="Emit JSON instead of human-readable output.",
-    ),
-) -> None:
+def run_whoami(args: argparse.Namespace) -> None:
     """Show the current identity for a hub.
 
     Reads from ``~/.muse/identity.toml``.  When no identity is stored,
@@ -260,77 +254,71 @@ def whoami(
 
         muse auth whoami --hub musehub.ai --json || muse auth login --agent ...
     """
+    hub: str | None = args.hub
+    all_hubs: bool = args.all_hubs
+    json_output: bool = args.json_output
+
     if all_hubs:
         identities = list_all_identities()
         if not identities:
-            typer.echo("No identities stored. Run `muse auth login` to authenticate.")
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print("No identities stored. Run `muse auth login` to authenticate.")
+            raise SystemExit(ExitCode.USER_ERROR)
         for hostname, stored_entry in sorted(identities.items()):
             _display_entry(hostname, stored_entry, json_output=json_output)
         return
 
     hub_url = _resolve_hub(hub)
     if hub_url is None:
-        typer.echo(
+        print(
             "❌ No hub URL provided.\n"
             "   Pass --hub <url>, or first run: muse hub connect <url>",
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     single_entry = load_identity(hub_url)
     if single_entry is None:
-        typer.echo(
+        print(
             f"No identity stored for {hub_url}.\n"
             f"Run: muse auth login --hub {hub_url}",
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Normalise hostname for display
     hub_display = hub_url.rstrip("/").split("://")[-1].split("/")[0]
     _display_entry(hub_display, single_entry, json_output=json_output)
 
 
-@app.command()
-def logout(
-    hub: str | None = typer.Option(
-        None,
-        "--hub",
-        metavar="URL",
-        help="Hub URL to log out from. Defaults to the repo's configured hub.",
-    ),
-    all_hubs: bool = typer.Option(
-        False,
-        "--all",
-        help="Remove credentials for ALL configured hubs.",
-    ),
-) -> None:
+def run_logout(args: argparse.Namespace) -> None:
     """Remove stored credentials for a hub.
 
     The token is deleted from ``~/.muse/identity.toml``.  The hub URL in
     ``.muse/config.toml`` is preserved — use ``muse hub disconnect`` to
     remove the hub association from the repository as well.
     """
+    hub: str | None = args.hub
+    all_hubs: bool = args.all_hubs
+
     if all_hubs:
         all_identities = list_all_identities()
         if not all_identities:
-            typer.echo("No identities stored.")
+            print("No identities stored.")
             return
         for hostname in list(all_identities):
             clear_identity(hostname)
-        typer.echo(f"✅ Logged out from {len(all_identities)} hub(s).")
+        print(f"✅ Logged out from {len(all_identities)} hub(s).")
         return
 
     hub_url = _resolve_hub(hub)
     if hub_url is None:
-        typer.echo(
+        print(
             "❌ No hub URL provided.\n"
             "   Pass --hub <url>, or first run: muse hub connect <url>",
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     removed = clear_identity(hub_url)
     hub_display = hub_url.rstrip("/").split("://")[-1].split("/")[0]
     if removed:
-        typer.echo(f"✅ Logged out from {hub_display}.")
+        print(f"✅ Logged out from {hub_display}.")
     else:
-        typer.echo(f"No identity stored for {hub_display} — nothing to do.")
+        print(f"No identity stored for {hub_display} — nothing to do.")

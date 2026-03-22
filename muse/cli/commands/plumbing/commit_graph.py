@@ -49,21 +49,19 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
+import sys
 from collections import deque
 from typing import TypedDict
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import get_head_commit_id, read_commit, read_current_branch
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _DEFAULT_MAX = 10_000
 _FORMAT_CHOICES = ("json", "text")
@@ -107,68 +105,80 @@ def _ancestors_of(root: pathlib.Path, start: str) -> set[str]:
     return visited
 
 
-@app.callback(invoke_without_command=True)
-def commit_graph(
-    ctx: typer.Context,
-    tip: str | None = typer.Option(
-        None,
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the commit-graph subcommand."""
+    parser = subparsers.add_parser(
+        "commit-graph",
+        help="Emit commit DAG as JSON.",
+        description=__doc__,
+    )
+    parser.add_argument(
         "--tip",
+        default=None,
+        metavar="COMMIT_ID",
         help="Commit ID to start from (default: HEAD).",
-    ),
-    stop_at: str | None = typer.Option(
-        None,
+    )
+    parser.add_argument(
         "--stop-at",
-        help="Stop BFS at this commit ID (exclusive). Useful for range queries.",
-    ),
-    max_commits: int = typer.Option(
-        _DEFAULT_MAX,
-        "--max",
-        "-n",
+        default=None,
+        dest="stop_at",
+        metavar="COMMIT_ID",
+        help="Stop BFS at this commit ID (exclusive).",
+    )
+    parser.add_argument(
+        "--max", "-n",
+        type=int,
+        default=_DEFAULT_MAX,
+        dest="max_commits",
+        metavar="N",
         help=f"Maximum commits to traverse (default: {_DEFAULT_MAX}).",
-    ),
-    count_only: bool = typer.Option(
-        False,
-        "--count",
-        "-c",
+    )
+    parser.add_argument(
+        "--count", "-c",
+        action="store_true",
+        dest="count_only",
         help="Emit only the integer commit count, not the full node list.",
-    ),
-    first_parent: bool = typer.Option(
-        False,
-        "--first-parent",
-        "-1",
+    )
+    parser.add_argument(
+        "--first-parent", "-1",
+        action="store_true",
+        dest="first_parent",
         help="Follow only first-parent links, producing a linear history.",
-    ),
-    ancestry_path: bool = typer.Option(
-        False,
-        "--ancestry-path",
-        "-a",
-        help="With --stop-at: restrict output to commits on the direct ancestry "
-        "path between the tip and the stop-at commit.",
-    ),
-    fmt: str = typer.Option(
-        "json", "--format", "-f", help="Output format: json or text (one ID per line)."
-    ),
-) -> None:
+    )
+    parser.add_argument(
+        "--ancestry-path", "-a",
+        action="store_true",
+        dest="ancestry_path",
+        help="With --stop-at: restrict output to commits on the direct ancestry path.",
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
+        help="Output format: json or text (one ID per line). (default: json)",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Emit the commit DAG reachable from a tip commit.
 
     Performs a BFS walk from the tip, following ``parent_commit_id`` and
     (unless ``--first-parent``) ``parent2_commit_id`` pointers.  The
     ``--stop-at`` commit and its ancestors are excluded — useful for
     computing the commits in a branch since it diverged from another.
-
-    With ``--ancestry-path``, the output is further restricted to commits
-    that are ancestors of *both* the tip and the ``--stop-at`` commit,
-    i.e. only commits on the direct path between them.
-
-    Example — count commits in a feature branch since it diverged from dev::
-
-        muse plumbing commit-graph \\
-            --tip $(muse plumbing rev-parse feat/my-branch -f text) \\
-            --stop-at $(muse plumbing merge-base feat/my-branch dev -f text) \\
-            --count
     """
+    fmt: str = args.fmt
+    tip: str | None = args.tip
+    stop_at: str | None = args.stop_at
+    max_commits: int = args.max_commits
+    count_only: bool = args.count_only
+    first_parent: bool = args.first_parent
+    ancestry_path: bool = args.ancestry_path
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             json.dumps(
                 {
                     "error": f"Unknown format {fmt!r}. "
@@ -176,13 +186,11 @@ def commit_graph(
                 }
             )
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if ancestry_path and stop_at is None:
-        typer.echo(
-            json.dumps({"error": "--ancestry-path requires --stop-at to be set."})
-        )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": "--ancestry-path requires --stop-at to be set."}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
 
@@ -190,12 +198,12 @@ def commit_graph(
         branch = read_current_branch(root)
         tip = get_head_commit_id(root, branch)
         if tip is None:
-            typer.echo(json.dumps({"error": "No commits on current branch."}))
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(json.dumps({"error": "No commits on current branch."}))
+            raise SystemExit(ExitCode.USER_ERROR)
 
     if read_commit(root, tip) is None:
-        typer.echo(json.dumps({"error": f"Tip commit not found: {tip}"}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": f"Tip commit not found: {tip}"}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # For --ancestry-path, pre-compute ancestors of stop_at so we can filter.
     stop_ancestors: set[str] = set()
@@ -242,15 +250,15 @@ def commit_graph(
             queue.append(record.parent2_commit_id)
 
     if count_only:
-        typer.echo(json.dumps({"tip": tip, "count": len(nodes)}))
+        print(json.dumps({"tip": tip, "count": len(nodes)}))
         return
 
     if fmt == "text":
         for node in nodes:
-            typer.echo(node["commit_id"])
+            print(node["commit_id"])
         return
 
-    typer.echo(
+    print(
         json.dumps(
             {
                 "tip": tip,

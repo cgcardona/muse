@@ -53,18 +53,15 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
-
-import typer
 
 from muse._version import __version__
 from muse.core.coordination import active_reservations, load_all_intents
 from muse.core.repo import require_repo
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 class _BranchSummary:
@@ -85,11 +82,18 @@ class _BranchSummary:
         }
 
 
-@app.callback(invoke_without_command=True)
-def reconcile(
-    ctx: typer.Context,
-    as_json: bool = typer.Option(False, "--json", help="Emit report as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the reconcile subcommand."""
+    parser = subparsers.add_parser(
+        "reconcile",
+        help="Recommend merge ordering and integration strategy.",
+        description=__doc__,
+    )
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit report as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Recommend merge ordering and integration strategy.
 
     Reads coordination state (reservations + intents) and produces a
@@ -98,6 +102,8 @@ def reconcile(
 
     Does not write anything — purely advisory output.
     """
+    as_json: bool = args.as_json
+
     root = require_repo()
     reservations = active_reservations(root)
     intents = load_all_intents(root)
@@ -154,7 +160,7 @@ def reconcile(
             strategies[bs.branch] = "manual conflict resolution required"
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "schema_version": __version__,
                 "active_reservations": len(reservations),
@@ -172,39 +178,39 @@ def reconcile(
         ))
         return
 
-    typer.echo("\nReconciliation report")
-    typer.echo("─" * 62)
-    typer.echo(
+    print("\nReconciliation report")
+    print("─" * 62)
+    print(
         f"  Active reservations: {len(reservations)}  "
         f"Active intents: {len(intents)}  "
         f"Conflict hotspots: {len(hotspots)}"
     )
 
     if not reservations and not intents:
-        typer.echo(
+        print(
             "\n  (no active coordination data — run 'muse reserve' or 'muse intent' first)"
         )
         return
 
     if ordered:
-        typer.echo(f"\n  Recommended merge order:")
+        print(f"\n  Recommended merge order:")
         for rank, bs in enumerate(ordered, 1):
             c = bs.conflict_count
-            typer.echo(
+            print(
                 f"    {rank}. {bs.branch:<30}  ({len(bs.reserved_addresses)} addresses, "
                 f"{c} conflict(s))"
             )
 
     if hotspots:
-        typer.echo(f"\n  Conflict hotspot(s):")
+        print(f"\n  Conflict hotspot(s):")
         for addr, branches in sorted(hotspots.items()):
             unique = list(dict.fromkeys(branches))
-            typer.echo(f"    {addr}")
-            typer.echo(f"      reserved by: {', '.join(unique)}")
+            print(f"    {addr}")
+            print(f"      reserved by: {', '.join(unique)}")
             first = unique[0]
             rest = ", ".join(unique[1:])
-            typer.echo(f"      → resolve {first!r} first; {rest} must rebase")
+            print(f"      → resolve {first!r} first; {rest} must rebase")
 
-    typer.echo(f"\n  Integration strategies:")
+    print(f"\n  Integration strategies:")
     for bs in ordered:
-        typer.echo(f"    {bs.branch:<30}  → {strategies[bs.branch]}")
+        print(f"    {bs.branch:<30}  → {strategies[bs.branch]}")

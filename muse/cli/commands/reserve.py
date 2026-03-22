@@ -52,10 +52,9 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
-
-import typer
 
 from muse.core.coordination import active_reservations, create_reservation
 from muse.core.repo import require_repo
@@ -63,30 +62,46 @@ from muse.core.store import read_current_branch
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
 
-
-@app.callback(invoke_without_command=True)
-def reserve(
-    ctx: typer.Context,
-    addresses: list[str] = typer.Argument(
-        ..., metavar="ADDRESS...",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the reserve subcommand."""
+    parser = subparsers.add_parser(
+        "reserve",
+        help="Place advisory reservations on symbol addresses.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "addresses",
+        nargs="+",
+        metavar="ADDRESS",
         help='Symbol addresses to reserve, e.g. "src/billing.py::compute_total".',
-    ),
-    run_id: str = typer.Option(
-        "unknown", "--run-id", metavar="ID",
+    )
+    parser.add_argument(
+        "--run-id",
+        dest="run_id",
+        default="unknown",
+        metavar="ID",
         help="Agent/pipeline identifier.",
-    ),
-    ttl: int = typer.Option(
-        3600, "--ttl", metavar="SECONDS",
+    )
+    parser.add_argument(
+        "--ttl",
+        type=int,
+        default=3600,
+        metavar="SECONDS",
         help="Reservation duration in seconds (default: 3600).",
-    ),
-    operation: str | None = typer.Option(
-        None, "--op", metavar="OPERATION",
+    )
+    parser.add_argument(
+        "--op",
+        dest="operation",
+        default=None,
+        metavar="OPERATION",
         help="Declared operation: rename, move, modify, extract, delete.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit reservation details as JSON."),
-) -> None:
+    )
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit reservation details as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Place advisory reservations on symbol addresses.
 
     Reservations are write-once, expiry-based advisory signals.  They do not
@@ -96,6 +111,12 @@ def reserve(
     Multiple addresses can be reserved in one call.  Active reservations by
     other agents on the same addresses are reported as warnings.
     """
+    addresses: list[str] = args.addresses
+    run_id: str = args.run_id
+    ttl: int = args.ttl
+    operation: str | None = args.operation
+    as_json: bool = args.as_json
+
     root = require_repo()
 
     branch = read_current_branch(root)
@@ -115,7 +136,7 @@ def reserve(
     res = create_reservation(root, run_id, branch, addresses, ttl, operation)
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 **res.to_dict(),
                 "conflicts": conflicts,
@@ -126,17 +147,17 @@ def reserve(
 
     if conflicts:
         for c in conflicts:
-            typer.echo(c)
+            print(c)
 
-    typer.echo(
+    print(
         f"\n✅ Reserved {len(addresses)} address(es) for run-id {run_id!r}\n"
         f"   Reservation ID: {res.reservation_id}\n"
         f"   Expires:        {res.expires_at.isoformat()[:19]}"
     )
     if operation:
-        typer.echo(f"   Operation:      {operation}")
+        print(f"   Operation:      {operation}")
     if conflicts:
-        typer.echo(
+        print(
             f"\n   ⚠️  {len(conflicts)} conflict(s) detected. "
             "Run 'muse forecast' for details."
         )

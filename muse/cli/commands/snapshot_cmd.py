@@ -25,15 +25,16 @@ Exit codes::
 
 from __future__ import annotations
 
+import argparse
+import sys
+
 import io
 import json
 import logging
 import pathlib
 import tarfile
 import zipfile
-from typing import Annotated
 
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.object_store import object_path, write_object_from_path
@@ -45,10 +46,6 @@ from muse.plugins.registry import resolve_plugin
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer(
-    help="Explicit snapshot management — capture, list, show, and export.",
-    no_args_is_help=True,
-)
 
 _HEX_CHARS = frozenset("0123456789abcdef")
 
@@ -147,17 +144,40 @@ def _build_zip(
     return count
 
 
-@app.command("create")
-def snapshot_create(
-    note: Annotated[
-        str,
-        typer.Option("--note", "-m", help="Human-readable note attached to this snapshot."),
-    ] = "",
-    fmt: Annotated[
-        str,
-        typer.Option("--format", "-f", help="Output format: json or text."),
-    ] = "text",
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the snapshot subcommand."""
+    parser = subparsers.add_parser(
+        "snapshot",
+        help="Explicit snapshot management.",
+        description=__doc__,
+    )
+    subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
+    subs.required = True
+
+    create_p = subs.add_parser("create", help="Capture the current working tree as a snapshot without committing.")
+    create_p.add_argument("-m", "--note", default="", metavar="NOTE", help="Optional note for the snapshot.")
+    create_p.add_argument("--format", "-f", dest="fmt", default="text", choices=["text", "json"], help="Output format.")
+    create_p.set_defaults(func=run_snapshot_create)
+
+    list_p = subs.add_parser("list", help="List all stored snapshots, newest first.")
+    list_p.add_argument("--limit", "-n", type=int, default=20, metavar="N", help="Maximum snapshots to show (default: 20).")
+    list_p.add_argument("--format", "-f", dest="fmt", default="text", choices=["text", "json"], help="Output format.")
+    list_p.set_defaults(func=run_snapshot_list)
+
+    show_p = subs.add_parser("show", help="Print the full manifest of a snapshot.")
+    show_p.add_argument("snapshot_id", metavar="ID", help="Snapshot ID (full or prefix).")
+    show_p.add_argument("--format", "-f", dest="fmt", default="json", choices=["text", "json"], help="Output format.")
+    show_p.set_defaults(func=run_snapshot_show)
+
+    export_p = subs.add_parser("export", help="Export a snapshot as a portable archive.")
+    export_p.add_argument("snapshot_id", metavar="ID", help="Snapshot ID (full or prefix).")
+    export_p.add_argument("--format", "-f", dest="fmt", default="tar.gz", choices=["tar.gz", "zip"], help="Archive format.")
+    export_p.add_argument("--output", "-o", default=None, metavar="FILE", help="Output file path.")
+    export_p.add_argument("--prefix", default="", metavar="PREFIX", help="Path prefix inside the archive.")
+    export_p.set_defaults(func=run_snapshot_export)
+
+
+def run_snapshot_create(args: argparse.Namespace) -> None:
     """Capture the current working tree as a snapshot without committing.
 
     Hashes every tracked file, stores their content in the object store, and
@@ -175,9 +195,12 @@ def snapshot_create(
         muse snapshot create -m "WIP: verse melody"
         muse snapshot create --format json
     """
+    note: str = args.note
+    fmt: str = args.fmt
+
     if fmt not in {"text", "json"}:
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     plugin = resolve_plugin(root)
@@ -199,29 +222,19 @@ def snapshot_create(
     write_snapshot(root, record)
 
     if fmt == "json":
-        typer.echo(json.dumps({
+        print(json.dumps({
             "snapshot_id": snapshot_id,
             "file_count": len(manifest),
             "note": note,
             "created_at": record.created_at.isoformat(),
         }))
     else:
-        typer.echo(f"Snapshot {snapshot_id[:12]}  ({len(manifest)} file(s))")
+        print(f"Snapshot {snapshot_id[:12]}  ({len(manifest)} file(s))")
         if note:
-            typer.echo(f"Note: {sanitize_display(note)}")
+            print(f"Note: {sanitize_display(note)}")
 
 
-@app.command("list")
-def snapshot_list(
-    limit: Annotated[
-        int,
-        typer.Option("--limit", "-n", help="Maximum snapshots to show (0 = all).", min=0),
-    ] = 20,
-    fmt: Annotated[
-        str,
-        typer.Option("--format", "-f", help="Output format: text or json."),
-    ] = "text",
-) -> None:
+def run_snapshot_list(args: argparse.Namespace) -> None:
     """List all stored snapshots, newest first.
 
     Examples::
@@ -230,9 +243,12 @@ def snapshot_list(
         muse snapshot list --limit 5
         muse snapshot list --format json
     """
+    limit: int = args.limit
+    fmt: str = args.fmt
+
     if fmt not in {"text", "json"}:
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     snapshots = _list_all_snapshots(root)
@@ -242,13 +258,13 @@ def snapshot_list(
 
     if not snapshots:
         if fmt == "json":
-            typer.echo("[]")
+            print("[]")
         else:
-            typer.echo("No snapshots found.")
+            print("No snapshots found.")
         return
 
     if fmt == "json":
-        typer.echo(json.dumps([
+        print(json.dumps([
             {
                 "snapshot_id": s.snapshot_id,
                 "file_count": len(s.manifest),
@@ -259,17 +275,10 @@ def snapshot_list(
     else:
         for s in snapshots:
             when = s.created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-            typer.echo(f"{s.snapshot_id[:12]}  {when}  {len(s.manifest)} file(s)")
+            print(f"{s.snapshot_id[:12]}  {when}  {len(s.manifest)} file(s)")
 
 
-@app.command("show")
-def snapshot_show(
-    snapshot_id: Annotated[str, typer.Argument(help="Snapshot ID (full or unique prefix).")],
-    fmt: Annotated[
-        str,
-        typer.Option("--format", "-f", help="Output format: json or text."),
-    ] = "json",
-) -> None:
+def run_snapshot_show(args: argparse.Namespace) -> None:
     """Print the full manifest of a snapshot.
 
     Examples::
@@ -277,9 +286,12 @@ def snapshot_show(
         muse snapshot show abc123
         muse snapshot show abc123 --format text
     """
+    snapshot_id: str = args.snapshot_id
+    fmt: str = args.fmt
+
     if fmt not in {"text", "json"}:
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
 
@@ -298,40 +310,25 @@ def snapshot_show(
                 continue
 
     if snap is None:
-        typer.echo(f"❌ Snapshot '{sanitize_display(snapshot_id)}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Snapshot '{sanitize_display(snapshot_id)}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if fmt == "json":
-        typer.echo(json.dumps({
+        print(json.dumps({
             "snapshot_id": snap.snapshot_id,
             "created_at": snap.created_at.isoformat(),
             "file_count": len(snap.manifest),
             "manifest": dict(sorted(snap.manifest.items())),
         }, indent=2))
     else:
-        typer.echo(f"snapshot_id: {snap.snapshot_id}")
-        typer.echo(f"created_at:  {snap.created_at.isoformat()}")
-        typer.echo(f"files ({len(snap.manifest)}):")
+        print(f"snapshot_id: {snap.snapshot_id}")
+        print(f"created_at:  {snap.created_at.isoformat()}")
+        print(f"files ({len(snap.manifest)}):")
         for rel_path, obj_id in sorted(snap.manifest.items()):
-            typer.echo(f"  {obj_id[:12]}  {sanitize_display(rel_path)}")
+            print(f"  {obj_id[:12]}  {sanitize_display(rel_path)}")
 
 
-@app.command("export")
-def snapshot_export(
-    snapshot_id: Annotated[str, typer.Argument(help="Snapshot ID (full or unique prefix).")],
-    fmt: Annotated[
-        str,
-        typer.Option("--format", "-f", help="Archive format: tar.gz or zip."),
-    ] = "tar.gz",
-    output: Annotated[
-        str | None,
-        typer.Option("--output", "-o", help="Output file path (default: <snap12>.<format>)."),
-    ] = None,
-    prefix: Annotated[
-        str,
-        typer.Option("--prefix", help="Directory prefix inside the archive."),
-    ] = "",
-) -> None:
+def run_snapshot_export(args: argparse.Namespace) -> None:
     """Export a snapshot as a portable tar.gz or zip archive.
 
     The archive contains only tracked files — no ``.muse/`` metadata.
@@ -342,9 +339,14 @@ def snapshot_export(
         muse snapshot export abc123 --format zip --output release.zip
         muse snapshot export abc123 --prefix myproject/
     """
+    snapshot_id: str = args.snapshot_id
+    fmt: str = args.fmt
+    output: str | None = args.output
+    prefix: str = args.prefix
+
     if fmt not in {"tar.gz", "zip"}:
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose tar.gz or zip.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose tar.gz or zip.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
 
@@ -362,8 +364,8 @@ def snapshot_export(
                 continue
 
     if snap is None:
-        typer.echo(f"❌ Snapshot '{sanitize_display(snapshot_id)}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Snapshot '{sanitize_display(snapshot_id)}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     short = snap.snapshot_id[:12]
     out_name = output or f"{short}.{fmt}"
@@ -375,7 +377,7 @@ def snapshot_export(
         count = _build_zip(root, snap.manifest, out_path, prefix)
 
     size_kb = out_path.stat().st_size / 1024 if out_path.exists() else 0
-    typer.echo(
+    print(
         f"✅ Archive: {out_path}  ({count} file(s), {size_kb:.1f} KiB)\n"
         f"   Snapshot: {short}"
     )

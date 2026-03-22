@@ -23,10 +23,10 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.validation import contain_path
@@ -34,7 +34,6 @@ from muse.core.repo import require_repo
 from muse.plugins.midi._query import NoteInfo, load_track_from_workdir, notes_to_midi_bytes
 
 logger = logging.getLogger(__name__)
-app = typer.Typer()
 
 _GRID_FRACTIONS: dict[str, float] = {
     "whole":        4.0,
@@ -59,20 +58,17 @@ def _snap(tick: int, grid: int, strength: float) -> int:
     return round(tick + (nearest - tick) * strength)
 
 
-@app.callback(invoke_without_command=True)
-def quantize(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    grid: str = typer.Option(
-        "16th", "--grid", "-g", metavar="GRID",
-        help="Quantisation grid: whole, half, quarter, 8th, 16th, 32nd, triplet-8th, triplet-16th.",
-    ),
-    strength: float = typer.Option(
-        1.0, "--strength", "-s", metavar="S",
-        help="Quantisation strength 0.0 (no change) – 1.0 (full snap). Default 1.0.",
-    ),
-    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Preview without writing."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the quantize subcommand."""
+    parser = subparsers.add_parser("quantize", help="Snap note onsets to a rhythmic grid.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--grid", "-g", metavar="GRID", default="16th", help="Quantisation grid: whole, half, quarter, 8th, 16th, 32nd, triplet-8th, triplet-16th.")
+    parser.add_argument("--strength", "-s", metavar="S", type=float, default=1.0, help="Quantisation strength 0.0 (no change) – 1.0 (full snap). Default 1.0.")
+    parser.add_argument("--dry-run", "-n", action="store_true", help="Preview without writing.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Snap note onsets to a rhythmic grid.
 
     ``muse quantize`` moves each note's start tick to the nearest multiple of
@@ -82,27 +78,32 @@ def quantize(
     After quantising, run ``muse status`` to inspect the structured delta
     (which notes moved) and ``muse commit`` to record the operation.
     """
+    track: str = args.track
+    grid: str = args.grid
+    strength: float = args.strength
+    dry_run: bool = args.dry_run
+
     if grid not in _GRID_FRACTIONS:
-        typer.echo(
+        print(
             f"❌ Unknown grid '{grid}'.  "
             f"Valid: {', '.join(_GRID_FRACTIONS)}",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if not 0.0 <= strength <= 1.0:
-        typer.echo("❌ --strength must be between 0.0 and 1.0.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ --strength must be between 0.0 and 1.0.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     result = load_track_from_workdir(root, track)
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     notes, tpb = result
     if not notes:
-        typer.echo(f"  (track '{track}' contains no notes — nothing to quantise)")
+        print(f"  (track '{track}' contains no notes — nothing to quantise)")
         return
 
     grid_t = _grid_ticks(tpb, grid)
@@ -126,10 +127,10 @@ def quantize(
     moved = sum(1 for s in shifts if s > 0)
 
     if dry_run:
-        typer.echo(f"\n[dry-run] Would quantise {track}  →  {grid}-note grid  (strength={strength:.2f})")
-        typer.echo(f"  Notes adjusted:  {moved} / {len(notes)}")
-        typer.echo(f"  Avg tick shift:  {avg_shift:.1f}  ·  Max: {max_shift}")
-        typer.echo("  No changes written (--dry-run).")
+        print(f"\n[dry-run] Would quantise {track}  →  {grid}-note grid  (strength={strength:.2f})")
+        print(f"  Notes adjusted:  {moved} / {len(notes)}")
+        print(f"  Avg tick shift:  {avg_shift:.1f}  ·  Max: {max_shift}")
+        print("  No changes written (--dry-run).")
         return
 
     midi_bytes = notes_to_midi_bytes(quantised, tpb)
@@ -137,11 +138,11 @@ def quantize(
     try:
         work_path = contain_path(workdir, track)
     except ValueError as exc:
-        typer.echo(f"❌ Invalid track path: {exc}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Invalid track path: {exc}")
+        raise SystemExit(ExitCode.USER_ERROR)
     work_path.parent.mkdir(parents=True, exist_ok=True)
     work_path.write_bytes(midi_bytes)
 
-    typer.echo(f"\n✅ Quantised {track}  →  {grid}-note grid")
-    typer.echo(f"   {moved} notes adjusted  ·  avg shift: {avg_shift:.1f} ticks  ·  max shift: {max_shift}")
-    typer.echo("   Run `muse status` to review, then `muse commit`")
+    print(f"\n✅ Quantised {track}  →  {grid}-note grid")
+    print(f"   {moved} notes adjusted  ·  avg shift: {avg_shift:.1f} ticks  ·  max shift: {max_shift}")
+    print("   Run `muse status` to review, then `muse commit`")

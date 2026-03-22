@@ -21,18 +21,16 @@ need no translation.
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
-from typing import Annotated
-
-import typer
+import sys
 
 from muse.core.reflog import ReflogEntry, list_reflog_refs, read_reflog
 from muse.core.repo import require_repo
 from muse.core.validation import sanitize_display, validate_branch_name
 
 logger = logging.getLogger(__name__)
-app = typer.Typer(help="Show the history of HEAD and branch-ref movements.")
 
 
 def _fmt_entry(idx: int, entry: ReflogEntry, short: int = 12) -> str:
@@ -44,25 +42,23 @@ def _fmt_entry(idx: int, entry: ReflogEntry, short: int = 12) -> str:
     return f"@{{{idx}:<3}} {new_short}  ({old_short})  {when}  {safe_op}"
 
 
-@app.callback(invoke_without_command=True)
-def reflog(
-    branch: Annotated[
-        str | None,
-        typer.Option("--branch", "-b", help="Show reflog for a specific branch (default: HEAD)."),
-    ] = None,
-    limit: Annotated[
-        int,
-        typer.Option("--limit", "-n", help="Maximum entries to display.", min=1),
-    ] = 20,
-    all_refs: Annotated[
-        bool,
-        typer.Option("--all", help="List every ref that has a reflog."),
-    ] = False,
-    fmt: Annotated[
-        str,
-        typer.Option("--format", "-f", help="Output format: text or json."),
-    ] = "text",
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the reflog subcommand."""
+    parser = subparsers.add_parser(
+        "reflog",
+        help="Show the history of HEAD and branch-ref movements.",
+        description=__doc__,
+    )
+    parser.add_argument("--branch", "-b", default=None, help="Branch to show reflog for (default: HEAD).")
+    parser.add_argument("--limit", "-n", type=int, default=20, help="Maximum number of entries to show.")
+    parser.add_argument("--all", action="store_true", dest="all_refs",
+                        help="List all refs that have a reflog.")
+    parser.add_argument("--format", "-f", default="text", dest="fmt",
+                        help="Output format: text or json.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show the history of HEAD and branch-ref movements.
 
     Every time HEAD or a branch ref moves — commit, checkout, merge, reset,
@@ -79,36 +75,41 @@ def reflog(
         muse reflog --all                 # all tracked refs
         muse reflog --format json         # machine-readable
     """
+    branch: str | None = args.branch
+    limit: int = args.limit
+    all_refs: bool = args.all_refs
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=1)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(1)
 
     repo_root = require_repo()
 
     if all_refs:
         refs = list_reflog_refs(repo_root)
         if fmt == "json":
-            typer.echo(json.dumps([f"refs/heads/{r}" for r in refs]))
+            print(json.dumps([f"refs/heads/{r}" for r in refs]))
         else:
             if not refs:
-                typer.echo("No reflog entries found.")
+                print("No reflog entries found.")
                 return
-            typer.echo("Refs with reflog entries:")
+            print("Refs with reflog entries:")
             for ref in refs:
-                typer.echo(f"  refs/heads/{ref}")
+                print(f"  refs/heads/{ref}")
         return
 
     if branch is not None:
         try:
             validate_branch_name(branch)
         except ValueError as exc:
-            typer.echo(f"❌ Invalid branch name: {exc}", err=True)
-            raise typer.Exit(code=1)
+            print(f"❌ Invalid branch name: {exc}", file=sys.stderr)
+            raise SystemExit(1)
 
     entries = read_reflog(repo_root, branch=branch, limit=limit)
 
     if fmt == "json":
-        typer.echo(json.dumps([{
+        print(json.dumps([{
             "index": idx,
             "new_id": e.new_id,
             "old_id": e.old_id,
@@ -120,9 +121,9 @@ def reflog(
 
     label = f"refs/heads/{sanitize_display(branch)}" if branch else "HEAD"
     if not entries:
-        typer.echo(f"No reflog entries for {label}.")
+        print(f"No reflog entries for {label}.")
         return
 
-    typer.echo(f"Reflog for {label}  (newest first)\n")
+    print(f"Reflog for {label}  (newest first)\n")
     for idx, entry in enumerate(entries):
-        typer.echo(_fmt_entry(idx, entry))
+        print(_fmt_entry(idx, entry))

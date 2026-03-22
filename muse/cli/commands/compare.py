@@ -34,12 +34,12 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
+import sys
 from typing import TypedDict
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -49,8 +49,6 @@ from muse.plugins.code._query import language_of, symbols_for_snapshot
 from muse.plugins.code.symbol_diff import build_diff_ops
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 class _OpSummary(TypedDict):
@@ -122,17 +120,27 @@ def _flatten_ops(ops: list[DomainOp]) -> list[_OpSummary]:
     return result
 
 
-@app.callback(invoke_without_command=True)
-def compare(
-    ctx: typer.Context,
-    ref_a: str = typer.Argument(..., metavar="REF-A", help="Base commit (older)."),
-    ref_b: str = typer.Argument(..., metavar="REF-B", help="Target commit (newer)."),
-    kind_filter: str | None = typer.Option(
-        None, "--kind", "-k", metavar="KIND",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the compare subcommand."""
+    parser = subparsers.add_parser(
+        "compare",
+        help="Deep semantic comparison between any two historical snapshots.",
+        description=__doc__,
+    )
+    parser.add_argument("ref_a", metavar="REF-A", help="Base commit (older).")
+    parser.add_argument("ref_b", metavar="REF-B", help="Target commit (newer).")
+    parser.add_argument(
+        "--kind", "-k", default=None, metavar="KIND", dest="kind_filter",
         help="Restrict to symbols of this kind (function, class, method, …).",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit results as JSON.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Deep semantic comparison between any two historical snapshots.
 
     ``muse compare`` is the two-point historical version of ``muse diff``.
@@ -143,19 +151,24 @@ def compare(
     Use it to understand the semantic scope of a release, a sprint, or a
     branch divergence — at the function level, not the line level.
     """
+    ref_a: str = args.ref_a
+    ref_b: str = args.ref_b
+    kind_filter: str | None = args.kind_filter
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     commit_a = resolve_commit_ref(root, repo_id, branch, ref_a)
     if commit_a is None:
-        typer.echo(f"❌ Commit '{ref_a}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref_a}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     commit_b = resolve_commit_ref(root, repo_id, branch, ref_b)
     if commit_b is None:
-        typer.echo(f"❌ Commit '{ref_b}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref_b}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # get_commit_snapshot_manifest returns a flat dict[str, str] of path → sha256.
     manifest_a: dict[str, str] = get_commit_snapshot_manifest(root, commit_a.commit_id) or {}
@@ -167,7 +180,7 @@ def compare(
     ops = build_diff_ops(manifest_a, manifest_b, trees_a, trees_b)
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "from": {"commit_id": commit_a.commit_id, "message": commit_a.message},
                 "to": {"commit_id": commit_b.commit_id, "message": commit_b.message},
@@ -177,12 +190,12 @@ def compare(
         ))
         return
 
-    typer.echo("\nSemantic comparison")
-    typer.echo(f'  From: {commit_a.commit_id[:8]}  "{commit_a.message}"')
-    typer.echo(f'  To:   {commit_b.commit_id[:8]}  "{commit_b.message}"')
+    print("\nSemantic comparison")
+    print(f'  From: {commit_a.commit_id[:8]}  "{commit_a.message}"')
+    print(f'  To:   {commit_b.commit_id[:8]}  "{commit_b.message}"')
 
     if not ops:
-        typer.echo("\n  (no semantic changes between these two commits)")
+        print("\n  (no semantic changes between these two commits)")
         return
 
     total_symbols = 0
@@ -198,22 +211,22 @@ def compare(
             is_new = fp not in manifest_a
             is_gone = fp not in manifest_b
             suffix = "  (new file)" if is_new else ("  (removed)" if is_gone else "")
-            typer.echo(f"\n{fp}{suffix}")
+            print(f"\n{fp}{suffix}")
             for child in child_ops:
-                typer.echo(_format_child_op(child))
+                print(_format_child_op(child))
                 total_symbols += 1
         else:
             fp = op["address"]
             files_changed.add(fp)
             if op["op"] == "insert":
-                typer.echo(f"\n{fp}  (new file)")
-                typer.echo(f"  added     {fp}  (file)")
+                print(f"\n{fp}  (new file)")
+                print(f"  added     {fp}  (file)")
             elif op["op"] == "delete":
-                typer.echo(f"\n{fp}  (removed)")
-                typer.echo(f"  removed   {fp}  (file)")
+                print(f"\n{fp}  (removed)")
+                print(f"  removed   {fp}  (file)")
             else:
-                typer.echo(f"\n{fp}")
-                typer.echo(f"  modified  {fp}  (file)")
+                print(f"\n{fp}")
+                print(f"  modified  {fp}  (file)")
             total_symbols += 1
 
-    typer.echo(f"\n{total_symbols} symbol change(s) across {len(files_changed)} file(s)")
+    print(f"\n{total_symbols} symbol change(s) across {len(files_changed)} file(s)")

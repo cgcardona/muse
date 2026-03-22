@@ -22,13 +22,14 @@ Exit codes::
 
 from __future__ import annotations
 
+import argparse
+import sys
+
 import datetime
 import json
 import logging
 import pathlib
-from typing import Annotated
 
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.merge_engine import find_merge_base, write_merge_state
@@ -63,8 +64,6 @@ from muse.core.workdir import apply_manifest
 from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer(help="Replay commits from the current branch onto a new base.")
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -120,12 +119,12 @@ def _run_replay_loop(
         orig_commit_id = state["remaining"][0]
         commit = read_commit(root, orig_commit_id)
         if commit is None:
-            typer.echo(f"⚠️ Commit {orig_commit_id[:12]} not found — skipping.")
+            print(f"⚠️ Commit {orig_commit_id[:12]} not found — skipping.")
             state["remaining"].pop(0)
             save_rebase_state(root, state)
             continue
 
-        typer.echo(f"  Replaying {orig_commit_id[:12]}: {sanitize_display(commit.message)}")
+        print(f"  Replaying {orig_commit_id[:12]}: {sanitize_display(commit.message)}")
 
         result = replay_one(
             root, commit, current_parent, plugin, domain, repo_id, branch
@@ -144,10 +143,10 @@ def _run_replay_loop(
                 theirs_commit=orig_commit_id,
                 conflict_paths=result,
             )
-            typer.echo(f"\n❌ Rebase stopped at {orig_commit_id[:12]} due to conflict(s):")
+            print(f"\n❌ Rebase stopped at {orig_commit_id[:12]} due to conflict(s):")
             for p in sorted(result):
-                typer.echo(f"  CONFLICT: {p}")
-            typer.echo(
+                print(f"  CONFLICT: {p}")
+            print(
                 "\nResolve conflicts then run:\n"
                 "  muse rebase --continue    to resume\n"
                 "  muse rebase --abort       to restore original HEAD"
@@ -171,38 +170,60 @@ def _run_replay_loop(
     return True
 
 
-@app.callback(invoke_without_command=True)
-def rebase(
-    ctx: typer.Context,
-    upstream: Annotated[
-        str | None,
-        typer.Argument(help="Branch or commit to rebase onto."),
-    ] = None,
-    onto: Annotated[
-        str | None,
-        typer.Option("--onto", "-o", help="New base commit (replay commits between <upstream> and HEAD onto this)."),
-    ] = None,
-    squash: Annotated[
-        bool,
-        typer.Option("--squash", "-s", help="Collapse all replayed commits into one."),
-    ] = False,
-    squash_message: Annotated[
-        str | None,
-        typer.Option("--message", "-m", help="Commit message for --squash (default: last commit's message)."),
-    ] = None,
-    abort: Annotated[
-        bool,
-        typer.Option("--abort", "-a", help="Abort an in-progress rebase and restore the original HEAD."),
-    ] = False,
-    continue_: Annotated[
-        bool,
-        typer.Option("--continue", "-c", help="Resume after resolving a conflict."),
-    ] = False,
-    fmt: Annotated[
-        str,
-        typer.Option("--format", "-f", help="Output format: text or json."),
-    ] = "text",
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the rebase subcommand."""
+    parser = subparsers.add_parser(
+        "rebase",
+        help='Replay commits from the current branch onto a new base.',
+        description=__doc__,
+    )
+    parser.add_argument(
+        "upstream",
+        nargs="?",
+        default=None,
+        metavar="UPSTREAM",
+        help="Branch or commit to rebase onto.",
+    )
+    parser.add_argument(
+        "--onto",
+        default=None,
+        metavar="NEWBASE",
+        help="Replay commits onto this base instead of upstream.",
+    )
+    parser.add_argument(
+        "--squash",
+        action="store_true",
+        help="Collapse all replayed commits into one.",
+    )
+    parser.add_argument(
+        "--message", "-m",
+        dest="squash_message",
+        default=None,
+        metavar="MSG",
+        help="Commit message for the squashed commit.",
+    )
+    parser.add_argument(
+        "--abort",
+        action="store_true",
+        help="Abort an in-progress rebase and restore original HEAD.",
+    )
+    parser.add_argument(
+        "--continue",
+        dest="continue_",
+        action="store_true",
+        help="Resume a paused rebase after resolving conflicts.",
+    )
+    parser.add_argument(
+        "--format",
+        dest="fmt",
+        default="text",
+        choices=["text", "json"],
+        help="Output format: text (default) or json.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Replay commits from the current branch onto a new base.
 
     The most common invocation replays all commits unique to the current
@@ -253,10 +274,19 @@ def rebase(
     Normal rebase payload adds ``"replayed": <n>`` (number of commits applied).
     """
     import json as _json
+
+    upstream: str | None = args.upstream
+    onto: str | None = args.onto
+    squash: bool = args.squash
+    squash_message: str | None = args.squash_message
+    abort: bool = args.abort
+    continue_: bool = args.continue_
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
         from muse.core.validation import sanitize_display as _sd
-        typer.echo(f"❌ Unknown --format '{_sd(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{_sd(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     repo_id = _read_repo_id(root)
@@ -269,8 +299,8 @@ def rebase(
     # --abort
     if abort:
         if active_state is None:
-            typer.echo("❌ No rebase in progress.")
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print("❌ No rebase in progress.")
+            raise SystemExit(ExitCode.USER_ERROR)
 
         original_head = active_state["original_head"]
         original_branch = active_state["original_branch"]
@@ -291,14 +321,14 @@ def rebase(
             operation="rebase: abort",
         )
         clear_rebase_state(root)
-        typer.echo(f"✅ Rebase aborted. HEAD restored to {original_head[:12]}.")
+        print(f"✅ Rebase aborted. HEAD restored to {original_head[:12]}.")
         return
 
     # --continue
     if continue_:
         if active_state is None:
-            typer.echo("❌ No rebase in progress. Nothing to continue.")
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print("❌ No rebase in progress. Nothing to continue.")
+            raise SystemExit(ExitCode.USER_ERROR)
 
         # The user has resolved the conflict manually. Snapshot the current
         # working tree and create the commit for the paused step.
@@ -349,7 +379,7 @@ def rebase(
         if not active_state["remaining"]:
             _write_branch_ref(root, branch, new_commit_id)
             clear_rebase_state(root)
-            typer.echo(f"✅ Rebase complete. HEAD is now {new_commit_id[:12]}.")
+            print(f"✅ Rebase complete. HEAD is now {new_commit_id[:12]}.")
             return
 
         # More commits to replay.
@@ -358,37 +388,37 @@ def rebase(
             final_id = active_state["completed"][-1]
             _write_branch_ref(root, branch, final_id)
             clear_rebase_state(root)
-            typer.echo(f"✅ Rebase complete. HEAD is now {final_id[:12]}.")
+            print(f"✅ Rebase complete. HEAD is now {final_id[:12]}.")
         return
 
     # New rebase — check not already in progress.
     if active_state is not None:
-        typer.echo(
+        print(
             "❌ Rebase in progress. Use --continue or --abort."
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if upstream is None:
-        typer.echo("❌ Provide an upstream branch or commit to rebase onto.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ Provide an upstream branch or commit to rebase onto.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Resolve HEAD and upstream.
     head_commit_id = get_head_commit_id(root, branch)
     if head_commit_id is None:
-        typer.echo("❌ Current branch has no commits.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ Current branch has no commits.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     upstream_id = _resolve_ref_to_id(root, repo_id, branch, upstream)
     if upstream_id is None:
-        typer.echo(f"❌ Upstream '{sanitize_display(upstream)}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Upstream '{sanitize_display(upstream)}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Determine the new base.
     if onto is not None:
         onto_id = _resolve_ref_to_id(root, repo_id, branch, onto)
         if onto_id is None:
-            typer.echo(f"❌ --onto '{sanitize_display(onto)}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ --onto '{sanitize_display(onto)}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
     else:
         onto_id = upstream_id
 
@@ -397,15 +427,15 @@ def rebase(
     stop_at = merge_base_id or ""
 
     if head_commit_id == upstream_id or head_commit_id == onto_id:
-        typer.echo("Already up to date.")
+        print("Already up to date.")
         return
 
     commits_to_replay = collect_commits_to_replay(root, stop_at, head_commit_id)
     if not commits_to_replay:
-        typer.echo("Already up to date.")
+        print("Already up to date.")
         return
 
-    typer.echo(
+    print(
         f"Rebasing {len(commits_to_replay)} commit(s) "
         f"onto {onto_id[:12]} (from {branch})"
     )
@@ -442,16 +472,16 @@ def rebase(
                 repo_root=root,
             )
             if not result.is_clean:
-                typer.echo(f"❌ Conflict during squash at {commit.commit_id[:12]}:")
+                print(f"❌ Conflict during squash at {commit.commit_id[:12]}:")
                 for p in sorted(result.conflicts):
-                    typer.echo(f"  CONFLICT: {p}")
-                typer.echo("Resolve conflicts and try again. Squash does not support --continue.")
+                    print(f"  CONFLICT: {p}")
+                print("Resolve conflicts and try again. Squash does not support --continue.")
                 conflict_occurred = True
                 break
             squash_manifest = result.merged["files"]
 
         if conflict_occurred:
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            raise SystemExit(ExitCode.USER_ERROR)
 
         apply_manifest(root, squash_manifest)
         snapshot_id = compute_snapshot_id(squash_manifest)
@@ -482,7 +512,7 @@ def rebase(
             operation=f"rebase --squash onto {onto_id[:12]}",
         )
         if fmt == "json":
-            typer.echo(_json.dumps({
+            print(_json.dumps({
                 "status": "completed",
                 "branch": branch,
                 "new_head": new_commit_id,
@@ -491,7 +521,7 @@ def rebase(
                 "conflicts": [],
             }))
         else:
-            typer.echo(f"✅ Squash-rebase complete. HEAD is now {new_commit_id[:12]}.")
+            print(f"✅ Squash-rebase complete. HEAD is now {new_commit_id[:12]}.")
         return
 
     # Normal replay loop.
@@ -519,7 +549,7 @@ def rebase(
             operation=f"rebase: finished onto {onto_id[:12]}",
         )
         if fmt == "json":
-            typer.echo(_json.dumps({
+            print(_json.dumps({
                 "status": "completed",
                 "branch": branch,
                 "new_head": final_id,
@@ -529,4 +559,4 @@ def rebase(
                 "conflicts": [],
             }))
         else:
-            typer.echo(f"✅ Rebase complete. HEAD is now {final_id[:12]}.")
+            print(f"✅ Rebase complete. HEAD is now {final_id[:12]}.")

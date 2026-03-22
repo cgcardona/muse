@@ -11,9 +11,9 @@ import hashlib
 import json
 import pathlib
 
-from typer.testing import CliRunner
+from tests.cli_test_helper import CliRunner
 
-from muse.cli.app import cli
+cli = None  # argparse migration — CliRunner ignores this arg
 from muse.core.errors import ExitCode
 from muse.core.store import CommitRecord, SnapshotRecord, write_commit, write_snapshot
 

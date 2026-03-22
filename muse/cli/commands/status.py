@@ -36,12 +36,11 @@ Color convention
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
 import sys
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -51,22 +50,25 @@ from muse.plugins.registry import resolve_plugin_by_domain
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
+_YELLOW = "\033[33m"
+_GREEN  = "\033[32m"
+_RED    = "\033[31m"
+_BOLD   = "\033[1m"
+_RESET  = "\033[0m"
 
-# Change-type colors. Applied only when stdout is a TTY so piped output stays
-# clean without needing --porcelain.
-_YELLOW = typer.colors.YELLOW
-_GREEN  = typer.colors.GREEN
-_RED    = typer.colors.RED
+
+def _color(text: str, ansi: str, is_tty: bool) -> str:
+    return f"{_BOLD}{ansi}{text}{_RESET}" if is_tty else text
 
 
 def _read_repo_meta(root: pathlib.Path) -> tuple[str, str]:
     """Read ``.muse/repo.json`` once and return ``(repo_id, domain)``.
 
-    Returns sensible defaults on any read or parse failure rather than
-    propagating an unhandled exception to the user.  The caller never needs
-    to guard against a missing or corrupt ``repo.json`` — status degrades
-    gracefully to an empty diff in the worst case.
+        Returns sensible defaults on any read or parse failure rather than
+        propagating an unhandled exception to the user.  The caller never needs
+        to guard against a missing or corrupt ``repo.json`` — status degrades
+        gracefully to an empty diff in the worst case.
+
     """
     repo_json = root / ".muse" / "repo.json"
     try:
@@ -80,57 +82,54 @@ def _read_repo_meta(root: pathlib.Path) -> tuple[str, str]:
         return "", "midi"
 
 
-@app.callback(invoke_without_command=True)
-def status(
-    ctx: typer.Context,
-    short: bool = typer.Option(False, "--short", "-s", help="Condensed output."),
-    porcelain: bool = typer.Option(False, "--porcelain", help="Machine-readable output (no color)."),
-    branch_only: bool = typer.Option(False, "--branch", "-b", help="Show branch info only."),
-    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
-) -> None:
-    """Show working-tree drift against HEAD.
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the status subcommand."""
+    parser = subparsers.add_parser(
+        "status",
+        help="Show working-tree drift against HEAD.",
+        description=__doc__,
+    )
+    parser.add_argument("--short", "-s", action="store_true", help="Condensed output.")
+    parser.add_argument("--porcelain", action="store_true", help="Machine-readable output (no color).")
+    parser.add_argument("--branch", "-b", action="store_true", dest="branch_only", help="Show branch info only.")
+    parser.add_argument("--format", "-f", dest="fmt", default="text", metavar="FORMAT", help="Output format: text or json.")
+    parser.set_defaults(func=run)
 
-    Agents should pass ``--format json`` to receive structured output with
-    ``branch``, ``clean`` (bool), and ``added``, ``modified``, ``deleted``
-    file lists.
-    """
+
+def run(args: argparse.Namespace) -> None:
+    """Show working-tree drift against HEAD."""
+    from muse.core.validation import sanitize_display as _sd
+
+    fmt: str = args.fmt
+    short: bool = args.short
+    porcelain: bool = args.porcelain
+    branch_only: bool = args.branch_only
+
     if fmt not in ("text", "json"):
-        from muse.core.validation import sanitize_display as _sd
-        typer.echo(f"❌ Unknown --format '{_sd(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{_sd(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     try:
         branch = read_current_branch(root)
     except ValueError as exc:
-        typer.echo(f"fatal: {exc}", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"fatal: {exc}", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
-    # Read repo.json exactly once — repo_id and domain both come from here.
-    # resolve_plugin_by_domain() uses the pre-read domain string, eliminating
-    # the two additional repo.json reads that resolve_plugin() and read_domain()
-    # would otherwise each trigger independently.
     repo_id, domain = _read_repo_meta(root)
 
-    # JSON mode prints everything at once at the end — skip all partial prints.
     if fmt != "json":
         if porcelain:
-            typer.echo(f"## {branch}")
+            print(f"## {branch}")
         elif not short:
-            typer.echo(f"On branch {branch}")
+            print(f"On branch {branch}")
 
-    # --branch: print only the branch header then exit, regardless of mode.
     if branch_only:
         if fmt == "json":
-            typer.echo(json.dumps({"branch": branch}))
+            print(json.dumps({"branch": branch}))
         return
 
-    # Compute isatty once; it is a syscall and must not be repeated per line.
-    # Porcelain output is never colored, even on a TTY.
     is_tty = sys.stdout.isatty() and not porcelain and fmt != "json"
-
-    def _color(text: str, color: str) -> str:
-        return typer.style(text, fg=color, bold=True) if is_tty else text
 
     head_manifest = get_head_snapshot_manifest(root, repo_id, branch) or {}
     plugin = resolve_plugin_by_domain(domain)
@@ -144,9 +143,8 @@ def status(
 
     clean = not (added or modified or deleted)
 
-    # --format json: always wins, no color, fully structured.
     if fmt == "json":
-        typer.echo(json.dumps({
+        print(json.dumps({
             "branch": branch,
             "clean": clean,
             "added": sorted(added),
@@ -157,35 +155,32 @@ def status(
 
     if clean:
         if not short and not porcelain:
-            typer.echo("\nNothing to commit, working tree clean")
+            print("\nNothing to commit, working tree clean")
         return
 
-    # --porcelain: stable machine-readable output, no color, ever.
     if porcelain:
         for p in sorted(modified):
-            typer.echo(f" M {p}")
+            print(f" M {p}")
         for p in sorted(added):
-            typer.echo(f" A {p}")
+            print(f" A {p}")
         for p in sorted(deleted):
-            typer.echo(f" D {p}")
+            print(f" D {p}")
         return
 
-    # --short: compact one-line-per-file, colored letter prefix.
     if short:
         for p in sorted(modified):
-            typer.echo(f" {_color('M', _YELLOW)} {p}")
+            print(f" {_color('M', _YELLOW, is_tty)} {p}")
         for p in sorted(added):
-            typer.echo(f" {_color('A', _GREEN)} {p}")
+            print(f" {_color('A', _GREEN, is_tty)} {p}")
         for p in sorted(deleted):
-            typer.echo(f" {_color('D', _RED)} {p}")
+            print(f" {_color('D', _RED, is_tty)} {p}")
         return
 
-    # Default: human-readable, colored label.
-    typer.echo("\nChanges since last commit:")
-    typer.echo('  (use "muse commit -m <msg>" to record changes)\n')
+    print("\nChanges since last commit:")
+    print('  (use "muse commit -m <msg>" to record changes)\n')
     for p in sorted(modified):
-        typer.echo(f"\t{_color('    modified:', _YELLOW)} {p}")
+        print(f"\t{_color('    modified:', _YELLOW, is_tty)} {p}")
     for p in sorted(added):
-        typer.echo(f"\t{_color('    new file:', _GREEN)} {p}")
+        print(f"\t{_color('    new file:', _GREEN, is_tty)} {p}")
     for p in sorted(deleted):
-        typer.echo(f"\t{_color('     deleted:', _RED)} {p}")
+        print(f"\t{_color('     deleted:', _RED, is_tty)} {p}")

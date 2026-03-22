@@ -46,11 +46,11 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse._version import __version__
 from muse.core.repo import require_repo
@@ -59,8 +59,6 @@ from muse.plugins.code._query import is_semantic, language_of, symbols_for_snaps
 from muse.plugins.code.ast_parser import parse_symbols
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -182,15 +180,25 @@ def _check_file(
     return issues
 
 
-@app.callback(invoke_without_command=True)
-def breakage(
-    ctx: typer.Context,
-    language: str | None = typer.Option(
-        None, "--language", "-l", metavar="LANG",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the breakage subcommand."""
+    parser = subparsers.add_parser(
+        "breakage",
+        help="Detect symbol-level breakage in the working tree vs HEAD snapshot.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--language", "-l", default=None, metavar="LANG", dest="language",
         help="Restrict to files of this language.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit results as JSON.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Detect symbol-level breakage in the working tree vs HEAD snapshot.
 
     Checks for:
@@ -200,14 +208,17 @@ def breakage(
     Purely structural analysis — no code execution, no type checking.
     Operates on the committed symbol graph + current working-tree parse.
     """
+    language: str | None = args.language
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     commit = resolve_commit_ref(root, repo_id, branch, None)
     if commit is None:
-        typer.echo("❌ No HEAD commit found.", err=True)
-        raise typer.Exit(code=1)
+        print("❌ No HEAD commit found.", file=sys.stderr)
+        raise SystemExit(1)
 
     manifest = get_commit_snapshot_manifest(root, commit.commit_id) or {}
     head_sym_map = symbols_for_snapshot(root, manifest)
@@ -226,7 +237,7 @@ def breakage(
         all_issues.extend(issues)
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "schema_version": __version__,
                 "commit": commit.commit_id[:8],
@@ -240,23 +251,23 @@ def breakage(
         ))
         return
 
-    typer.echo(
+    print(
         f"\nBreakage check — working tree vs HEAD ({commit.commit_id[:8]})"
     )
     if language:
-        typer.echo(f"  (language: {language})")
-    typer.echo("─" * 62)
+        print(f"  (language: {language})")
+    print("─" * 62)
 
     if not all_issues:
-        typer.echo("\n  ✅ No structural breakage detected.")
+        print("\n  ✅ No structural breakage detected.")
         return
 
     for issue in all_issues:
         icon = "🔴" if issue.severity == "error" else "⚠️ "
-        typer.echo(f"\n{icon}  {issue.issue_type}")
-        typer.echo(f"    {issue.file_path}")
-        typer.echo(f"    {issue.description}")
+        print(f"\n{icon}  {issue.issue_type}")
+        print(f"    {issue.file_path}")
+        print(f"    {issue.description}")
 
     errors = sum(1 for i in all_issues if i.severity == "error")
     warnings = sum(1 for i in all_issues if i.severity == "warning")
-    typer.echo(f"\n  {errors} error(s), {warnings} warning(s)")
+    print(f"\n  {errors} error(s), {warnings} warning(s)")

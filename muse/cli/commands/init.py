@@ -22,14 +22,14 @@ and do not receive ``.museattributes`` or ``.museignore``.
 
 from __future__ import annotations
 
+import argparse
 import datetime
 import json
 import logging
 import pathlib
 import shutil
+import sys
 import uuid
-
-import typer
 
 from muse._version import __version__ as _SCHEMA_VERSION
 from muse.core.errors import ExitCode
@@ -37,8 +37,6 @@ from muse.core.store import write_head_branch
 from muse.core.validation import validate_branch_name, validate_domain_name
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _DEFAULT_CONFIG = """\
 [user]
@@ -56,10 +54,6 @@ type = "human"    # "human" | "agent"
 
 [domain]
 # Domain-specific configuration. Keys depend on the active domain plugin.
-# Code examples:
-#   language = "python"
-#   formatter = "black"
-#   linter = "ruff"
 """
 
 _BARE_CONFIG = """\
@@ -73,42 +67,19 @@ type = "human"    # "human" | "agent"
 
 [hub]
 # url = "https://musehub.ai"
-# Run `muse hub connect <url>` to attach this repo to MuseHub.
-# Run `muse auth login` to authenticate.
-# Credentials are stored in ~/.muse/identity.toml — never here.
 
 [remotes]
 
 [domain]
-# Domain-specific configuration. Keys depend on the active domain plugin.
-# Code examples:
-#   language = "python"
-#   formatter = "black"
-#   linter = "ruff"
 """
-
 
 _MUSEIGNORE_HEADER = """\
 # .museignore — snapshot exclusion rules for this repository.
-# Documentation: docs/reference/museignore.md
-#
-# Format: TOML with [global] and [domain.<name>] sections.
-#   [global]          — patterns applied to every domain
-#   [domain.<name>]   — patterns applied only when the active domain is <name>
-#
-# Pattern syntax (gitignore-compatible):
-#   *.ext             ignore files with this extension at any depth
-#   /path             anchor to the root of state/
-#   dir/              directory pattern (silently skipped — Muse tracks files)
-#   !pattern          un-ignore a previously matched path
-#
-# Last matching rule wins.
 
 """
 
 _MUSEIGNORE_GLOBAL = """\
 [global]
-# Patterns applied to every domain. Last match wins; prefix with ! to un-ignore.
 patterns = [
     ".DS_Store",
     "Thumbs.db",
@@ -121,7 +92,6 @@ patterns = [
 _MUSEIGNORE_DOMAIN_BLOCKS: dict[str, str] = {
     "midi": """\
 [domain.midi]
-# Patterns applied only when the active domain plugin is "midi".
 patterns = [
     "*.bak",
     "*.autosave",
@@ -132,7 +102,6 @@ patterns = [
 """,
     "code": """\
 [domain.code]
-# Patterns applied only when the active domain plugin is "code".
 patterns = [
     "__pycache__/",
     "*.pyc",
@@ -146,51 +115,20 @@ patterns = [
     "*.egg-info/",
 ]
 """,
-    "genomics": """\
-[domain.genomics]
-# Patterns applied only when the active domain plugin is "genomics".
-patterns = [
-    "*.sam",
-    "*.bam.bai",
-    "pipeline-cache/",
-    "*.log",
-]
-""",
-    "simulation": """\
-[domain.simulation]
-# Patterns applied only when the active domain plugin is "simulation".
-patterns = [
-    "frames/raw/",
-    "*.frame.bin",
-    "checkpoint-tmp/",
-]
-""",
-    "spatial": """\
-[domain.spatial]
-# Patterns applied only when the active domain plugin is "spatial".
-patterns = [
-    "previews/",
-    "*.preview.vdb",
-    "**/.shadercache/",
-]
-""",
 }
 
 
 def _museignore_template(domain: str) -> str:
     """Return a TOML ``.museignore`` template pre-filled for *domain*.
 
-    The ``[global]`` section covers cross-domain OS artifacts.  The
-    ``[domain.<name>]`` section lists patterns specific to the chosen domain.
-    Patterns from other domains are never loaded at snapshot time.
+        The ``[global]`` section covers cross-domain OS artifacts.  The
+        ``[domain.<name>]`` section lists patterns specific to the chosen domain.
+        Patterns from other domains are never loaded at snapshot time.
+
     """
     domain_block = _MUSEIGNORE_DOMAIN_BLOCKS.get(domain, f"""\
 [domain.{domain}]
-# Patterns applied only when the active domain plugin is "{domain}".
-# patterns = [
-#     "*.generated",
-#     "/cache/",
-# ]
+# patterns = []
 """)
     return _MUSEIGNORE_HEADER + _MUSEIGNORE_GLOBAL + "\n" + domain_block
 
@@ -199,147 +137,51 @@ def _museattributes_template(domain: str) -> str:
     """Return a TOML `.museattributes` template pre-filled with *domain*."""
     return f"""\
 # .museattributes — merge strategy overrides for this repository.
-# Documentation: docs/reference/muse-attributes.md
-#
-# Format: TOML with an optional [meta] header and an ordered [[rules]] array.
-# Rules are evaluated top-to-bottom after sorting by priority (descending).
-# The first matching rule wins.  Unmatched paths fall back to "auto".
-#
-# ─── Strategies ───────────────────────────────────────────────────────────────
-#
-#   ours     Take the current-branch (left) version; remove from conflicts.
-#   theirs   Take the incoming-branch (right) version; remove from conflicts.
-#   union    Include all additions from both sides.  Deletions are honoured
-#            only when both sides agree.  Best for independent element sets
-#            (MIDI notes, symbol additions, import sets, genomic mutations).
-#            Falls back to "ours" for binary blobs.
-#   base     Revert to the common ancestor; discard changes from both branches.
-#            Use this for generated files, lock files, or pinned assets.
-#   auto     Default — let the three-way merge engine decide.
-#   manual   Force the path into the conflict list for human review, even when
-#            the engine would auto-resolve it.
-#
-# ─── Rule fields ──────────────────────────────────────────────────────────────
-#
-#   path      (required)  fnmatch glob against workspace-relative POSIX paths.
-#   dimension (required)  Domain axis name (e.g. "notes", "symbols") or "*".
-#   strategy  (required)  One of the six strategies above.
-#   comment   (optional)  Free-form note explaining the rule — ignored at runtime.
-#   priority  (optional)  Integer; higher-priority rules are tried first.
-#                         Default 0; ties preserve declaration order.
 
 [meta]
-domain = "{domain}"    # must match the "domain" field in .muse/repo.json
+domain = "{domain}"
 
-# ─── MIDI domain examples ─────────────────────────────────────────────────────
-# [[rules]]
-# path      = "drums/*"
-# dimension = "*"
-# strategy  = "ours"
-# comment   = "Drum tracks are always authored on this branch."
-# priority  = 20
-#
-# [[rules]]
-# path      = "keys/*.mid"
-# dimension = "pitch_bend"
-# strategy  = "theirs"
-# comment   = "Remote always has the better pitch-bend automation."
-# priority  = 15
-#
-# [[rules]]
-# path      = "stems/*"
-# dimension = "notes"
-# strategy  = "union"
-# comment   = "Unify note additions from both arrangers; let the engine merge."
-#
-# [[rules]]
-# path      = "mixdown.mid"
-# dimension = "*"
-# strategy  = "base"
-# comment   = "Mixdown is generated — always revert to ancestor during merge."
-#
-# [[rules]]
-# path      = "master.mid"
-# dimension = "*"
-# strategy  = "manual"
-# comment   = "Master track must always be reviewed by a human before merge."
-
-# ─── Code domain examples ─────────────────────────────────────────────────────
-# [[rules]]
-# path      = "src/generated/**"
-# dimension = "*"
-# strategy  = "base"
-# comment   = "Generated code — revert to base; re-run codegen after merge."
-# priority  = 30
-#
-# [[rules]]
-# path      = "src/**/*.py"
-# dimension = "imports"
-# strategy  = "union"
-# comment   = "Import sets are independent; accumulate additions from both sides."
-#
-# [[rules]]
-# path      = "tests/**"
-# dimension = "symbols"
-# strategy  = "union"
-# comment   = "Test additions from both branches are always safe to combine."
-#
-# [[rules]]
-# path      = "src/core/**"
-# dimension = "*"
-# strategy  = "manual"
-# comment   = "Core module changes need human review on every merge."
-# priority  = 25
-#
-# [[rules]]
-# path      = "package-lock.json"
-# dimension = "*"
-# strategy  = "ours"
-# comment   = "Lock file is managed by this branch's CI; ignore incoming."
-
-# ─── Generic / domain-agnostic examples ───────────────────────────────────────
-# [[rules]]
-# path      = "docs/**"
-# dimension = "*"
-# strategy  = "union"
-# comment   = "Documentation additions from both branches are always welcome."
-#
-# [[rules]]
-# path      = "config/secrets.*"
-# dimension = "*"
-# strategy  = "manual"
-# comment   = "Secrets files require manual review — never auto-merge."
-# priority  = 100
-#
 # [[rules]]
 # path      = "*"
 # dimension = "*"
 # strategy  = "auto"
-# comment   = "Fallback: let the engine decide for everything else."
 """
 
 
-@app.callback(invoke_without_command=True)
-def init(
-    ctx: typer.Context,
-    bare: bool = typer.Option(False, "--bare", help="Initialise as a bare repository (no working tree)."),
-    template: str | None = typer.Option(None, "--template", metavar="PATH", help="Copy PATH contents into the working tree."),
-    default_branch: str = typer.Option("main", "--default-branch", metavar="BRANCH", help="Name of the initial branch."),
-    force: bool = typer.Option(False, "--force", "-f", help="Re-initialise even if already a Muse repository."),
-    domain: str = typer.Option("code", "--domain", "-d", help="Domain plugin to use (e.g. code, midi). Must be registered in the plugin registry."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the init subcommand."""
+    parser = subparsers.add_parser(
+        "init",
+        help="Initialise a new Muse repository.",
+        description=__doc__,
+    )
+    parser.add_argument("--bare", action="store_true", help="Initialise as a bare repository.")
+    parser.add_argument("--template", default=None, metavar="PATH", help="Copy PATH contents into the working tree.")
+    parser.add_argument("--default-branch", default="main", metavar="BRANCH", dest="default_branch", help="Name of the initial branch.")
+    parser.add_argument("--force", "-f", action="store_true", help="Re-initialise even if already a Muse repository.")
+    parser.add_argument("--domain", "-d", default="code", help="Domain plugin to use (e.g. code, midi).")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Initialise a new Muse repository in the current directory."""
+    bare: bool = args.bare
+    template: str | None = args.template
+    default_branch: str = args.default_branch
+    force: bool = args.force
+    domain: str = args.domain
+
     try:
         validate_branch_name(default_branch)
     except ValueError as exc:
-        typer.echo(f"❌ Invalid --default-branch: {exc}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Invalid --default-branch: {exc}")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     try:
         validate_domain_name(domain)
     except ValueError as exc:
-        typer.echo(f"❌ Invalid --domain: {exc}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Invalid --domain: {exc}")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     cwd = pathlib.Path.cwd()
     muse_dir = cwd / ".muse"
@@ -348,13 +190,13 @@ def init(
     if template is not None:
         template_path = pathlib.Path(template).resolve()
         if not template_path.is_dir():
-            typer.echo(f"❌ Template path is not a directory: {template_path}")
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Template path is not a directory: {template_path}")
+            raise SystemExit(ExitCode.USER_ERROR)
 
     already_exists = muse_dir.is_dir()
     if already_exists and not force:
-        typer.echo(f"Already a Muse repository at {cwd}.\nUse --force to reinitialise.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"Already a Muse repository at {cwd}.\nUse --force to reinitialise.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     existing_repo_id: str | None = None
     if force and already_exists:
@@ -415,12 +257,12 @@ def init(
                     shutil.copy2(item, dest)
 
     except PermissionError:
-        typer.echo(f"❌ Permission denied: cannot write to {cwd}.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Permission denied: cannot write to {cwd}.")
+        raise SystemExit(ExitCode.USER_ERROR)
     except OSError as exc:
-        typer.echo(f"❌ Failed to initialise repository: {exc}")
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(f"❌ Failed to initialise repository: {exc}")
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     action = "Reinitialised" if (force and already_exists) else "Initialised"
     kind = "bare " if bare else ""
-    typer.echo(f"✅ {action} {kind}Muse repository in {muse_dir}")
+    print(f"✅ {action} {kind}Muse repository in {muse_dir}")

@@ -24,18 +24,16 @@ Usage::
 
 from __future__ import annotations
 
+import argparse
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.crdts.or_set import ORSet
 from muse.core.repo import require_repo
 from muse.core.store import get_head_commit_id, overwrite_commit, read_commit, read_current_branch
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _resolve_commit_id(root: pathlib.Path, commit_arg: str | None) -> str | None:
@@ -46,13 +44,29 @@ def _resolve_commit_id(root: pathlib.Path, commit_arg: str | None) -> str | None
     return commit_arg
 
 
-@app.callback(invoke_without_command=True)
-def annotate(
-    ctx: typer.Context,
-    commit_arg: str | None = typer.Argument(None, help="Commit ID to annotate (default: HEAD)."),
-    reviewed_by: str | None = typer.Option(None, "--reviewed-by", help="Add a reviewer (comma-separated for multiple: --reviewed-by 'alice,bob')."),
-    test_run: bool = typer.Option(False, "--test-run", help="Increment the GCounter test-run count for this commit."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the annotate subcommand."""
+    parser = subparsers.add_parser(
+        "annotate",
+        help="Attach CRDT-backed annotations to an existing commit.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "commit_arg", nargs="?", default=None,
+        help="Commit ID to annotate (default: HEAD).",
+    )
+    parser.add_argument(
+        "--reviewed-by", default=None, dest="reviewed_by",
+        help="Add a reviewer (comma-separated for multiple: --reviewed-by 'alice,bob').",
+    )
+    parser.add_argument(
+        "--test-run", action="store_true", dest="test_run",
+        help="Increment the GCounter test-run count for this commit.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Attach CRDT-backed annotations to an existing commit.
 
     ``--reviewed-by``  uses ORSet semantics — a reviewer once added is never
@@ -61,17 +75,21 @@ def annotate(
     ``--test-run``     uses GCounter semantics — the count is monotonically
                        increasing and concurrent increments are additive.
     """
+    commit_arg: str | None = args.commit_arg
+    reviewed_by: str | None = args.reviewed_by
+    test_run: bool = args.test_run
+
     root = require_repo()
 
     commit_id = _resolve_commit_id(root, commit_arg)
     if commit_id is None:
-        typer.echo("❌ No commit found.")
-        raise typer.Exit(code=1)
+        print("❌ No commit found.")
+        raise SystemExit(1)
 
     record = read_commit(root, commit_id)
     if record is None:
-        typer.echo(f"❌ Commit {commit_id!r} not found.")
-        raise typer.Exit(code=1)
+        print(f"❌ Commit {commit_id!r} not found.")
+        raise SystemExit(1)
 
     # Parse comma-separated reviewers into a list.
     reviewers: list[str] = (
@@ -80,12 +98,12 @@ def annotate(
     )
 
     if not reviewers and not test_run:
-        typer.echo(f"ℹ️  commit {commit_id[:8]}")
+        print(f"ℹ️  commit {commit_id[:8]}")
         if record.reviewed_by:
-            typer.echo(f"  reviewed-by: {', '.join(sorted(record.reviewed_by))}")
+            print(f"  reviewed-by: {', '.join(sorted(record.reviewed_by))}")
         else:
-            typer.echo("  reviewed-by: (none)")
-        typer.echo(f"  test-runs:   {record.test_runs}")
+            print("  reviewed-by: (none)")
+        print(f"  test-runs:   {record.test_runs}")
         return
 
     changed = False
@@ -102,7 +120,7 @@ def annotate(
             record.reviewed_by = new_list
             changed = True
             for r in reviewers:
-                typer.echo(f"✅ Added reviewer: {r}")
+                print(f"✅ Added reviewer: {r}")
 
     if test_run:
         # GCounter semantics: the value is monotonically non-decreasing.
@@ -111,8 +129,8 @@ def annotate(
         # common case as a simple increment).
         record.test_runs += 1
         changed = True
-        typer.echo(f"✅ Test run recorded (total: {record.test_runs})")
+        print(f"✅ Test run recorded (total: {record.test_runs})")
 
     if changed:
         overwrite_commit(root, record)
-        typer.echo(f"[{commit_id[:8]}] annotation updated")
+        print(f"[{commit_id[:8]}] annotation updated")

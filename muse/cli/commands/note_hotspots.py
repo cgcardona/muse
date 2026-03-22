@@ -27,11 +27,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -39,8 +39,6 @@ from muse.core.store import read_current_branch, resolve_commit_ref
 from muse.plugins.midi._query import NoteInfo, walk_commits_for_track
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -67,24 +65,18 @@ def _bar_of_beat_summary(note_summary: str, tpb: int) -> int | None:
     return None
 
 
-@app.callback(invoke_without_command=True)
-def note_hotspots(
-    ctx: typer.Context,
-    top: int = typer.Option(20, "--top", "-n", metavar="N", help="Number of bars to show (default: 20)."),
-    track_filter: str | None = typer.Option(
-        None, "--track", "-t", metavar="TRACK",
-        help="Restrict to a specific track file.",
-    ),
-    from_ref: str | None = typer.Option(
-        None, "--from", metavar="REF",
-        help="Exclusive start of the commit range (default: initial commit).",
-    ),
-    to_ref: str | None = typer.Option(
-        None, "--to", metavar="REF",
-        help="Inclusive end of the commit range (default: HEAD).",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the note-hotspots subcommand."""
+    parser = subparsers.add_parser("note-hotspots", help="Show the musical sections (bars) that change most often.", description=__doc__)
+    parser.add_argument("--top", "-n", metavar="N", type=int, default=20, help="Number of bars to show (default: 20).")
+    parser.add_argument("--track", "-t", metavar="TRACK", default=None, dest="track_filter", help="Restrict to a specific track file.")
+    parser.add_argument("--from", metavar="REF", default=None, dest="from_ref", help="Exclusive start of the commit range (default: initial commit).")
+    parser.add_argument("--to", metavar="REF", default=None, dest="to_ref", help="Inclusive end of the commit range (default: HEAD).")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show the musical sections (bars) that change most often.
 
     ``muse note-hotspots`` walks the commit history and counts note-level
@@ -98,21 +90,27 @@ def note_hotspots(
     Use ``--track`` to focus on a specific MIDI file.  Use ``--from`` /
     ``--to`` to scope to a sprint or release window.
     """
+    top: int = args.top
+    track_filter: str | None = args.track_filter
+    from_ref: str | None = args.from_ref
+    to_ref: str | None = args.to_ref
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     to_commit = resolve_commit_ref(root, repo_id, branch, to_ref)
     if to_commit is None:
-        typer.echo(f"❌ Commit '{to_ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{to_ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     from_commit_id: str | None = None
     if from_ref is not None:
         from_c = resolve_commit_ref(root, repo_id, branch, from_ref)
         if from_c is None:
-            typer.echo(f"❌ Commit '{from_ref}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Commit '{from_ref}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         from_commit_id = from_c.commit_id
 
     # Discover all MIDI tracks touched in history.
@@ -160,7 +158,7 @@ def note_hotspots(
     ranked = sorted(bar_counts.items(), key=lambda kv: kv[1], reverse=True)[:top]
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "commits_analysed": commits_count,
                 "hotspots": [
@@ -172,20 +170,20 @@ def note_hotspots(
         return
 
     track_label = f"  track={track_filter}" if track_filter else ""
-    typer.echo(f"\nNote churn — top {len(ranked)} most-changed bars{track_label}")
-    typer.echo(f"Commits analysed: {commits_count}")
-    typer.echo("")
+    print(f"\nNote churn — top {len(ranked)} most-changed bars{track_label}")
+    print(f"Commits analysed: {commits_count}")
+    print("")
 
     if not ranked:
-        typer.echo("  (no note-level bar changes found)")
+        print("  (no note-level bar changes found)")
         return
 
     width = len(str(len(ranked)))
     for rank, ((track_addr, bar_num), count) in enumerate(ranked, 1):
         label = "change" if count == 1 else "changes"
-        typer.echo(
+        print(
             f"  {rank:>{width}}   {track_addr:<40}  bar {bar_num:>4}    {count:>3} {label}"
         )
 
-    typer.echo("")
-    typer.echo("High churn = compositional instability. Consider locking this section.")
+    print("")
+    print("High churn = compositional instability. Consider locking this section.")

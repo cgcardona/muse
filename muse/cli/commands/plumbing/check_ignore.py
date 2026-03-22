@@ -46,12 +46,13 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
+import fnmatch as _fnmatch
 import json
 import logging
 import pathlib
+import sys
 from typing import TypedDict
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.ignore import load_ignore_config, resolve_patterns
@@ -59,8 +60,6 @@ from muse.core.repo import require_repo
 from muse.plugins.registry import read_domain
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _FORMAT_CHOICES = ("json", "text")
 
@@ -78,8 +77,6 @@ def _check_path(rel_posix: str, patterns: list[str]) -> _PathResult:
     while also capturing which pattern last matched so we can surface it in
     verbose output.
     """
-    import fnmatch as _fnmatch
-
     p = pathlib.PurePosixPath(rel_posix)
     ignored = False
     matching: str | None = None
@@ -105,8 +102,6 @@ def _check_path(rel_posix: str, patterns: list[str]) -> _PathResult:
 
 def _posix_match(p: pathlib.PurePosixPath, pattern: str) -> bool:
     """Test whether *p* matches *pattern* using gitignore-style semantics."""
-    import fnmatch as _fnmatch
-
     if pattern.startswith("/"):
         return _fnmatch.fnmatch(str(p), pattern[1:])
 
@@ -124,26 +119,39 @@ def _posix_match(p: pathlib.PurePosixPath, pattern: str) -> bool:
     return False
 
 
-@app.callback(invoke_without_command=True)
-def check_ignore(
-    ctx: typer.Context,
-    paths: list[str] = typer.Argument(..., help="Workspace-relative paths to test."),
-    quiet: bool = typer.Option(
-        False,
-        "--quiet",
-        "-q",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the check-ignore subcommand."""
+    parser = subparsers.add_parser(
+        "check-ignore",
+        help="Test paths against .museignore rules.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "paths",
+        nargs="+",
+        help="Workspace-relative paths to test.",
+    )
+    parser.add_argument(
+        "--quiet", "-q",
+        action="store_true",
         help="No output. Exit 0 if all paths are ignored, exit 1 otherwise.",
-    ),
-    verbose: bool = typer.Option(
-        False,
-        "--verbose",
-        "-V",
+    )
+    parser.add_argument(
+        "--verbose", "-V",
+        action="store_true",
         help="Include the matching pattern in text output.",
-    ),
-    fmt: str = typer.Option(
-        "json", "--format", "-f", help="Output format: json or text."
-    ),
-) -> None:
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
+        help="Output format: json or text. (default: json)",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Test whether paths are excluded by ``.museignore`` rules.
 
     Evaluates each supplied path against the global and domain-specific
@@ -152,25 +160,23 @@ def check_ignore(
 
     Paths should be workspace-relative POSIX paths, e.g. ``tracks/drums.mid``
     or ``build/render.bin``.
-
-    Use ``--quiet`` in shell conditionals::
-
-        muse plumbing check-ignore -q build/render.bin && echo "build ignored"
-
-    Last-match-wins semantics mirror gitignore: a later negation rule
-    (``!important.mid``) can un-ignore a path matched by an earlier rule.
     """
+    fmt: str = args.fmt
+    paths: list[str] = args.paths
+    quiet: bool = args.quiet
+    verbose: bool = args.verbose
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             json.dumps(
                 {"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"}
             )
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if not paths:
-        typer.echo(json.dumps({"error": "At least one path argument is required."}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": "At least one path argument is required."}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     domain = read_domain(root)
@@ -178,26 +184,26 @@ def check_ignore(
     try:
         config = load_ignore_config(root)
     except ValueError as exc:
-        typer.echo(json.dumps({"error": str(exc)}))
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(json.dumps({"error": str(exc)}))
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     patterns = resolve_patterns(config, domain)
     results: list[_PathResult] = [_check_path(p, patterns) for p in paths]
 
     if quiet:
         all_ignored = all(r["ignored"] for r in results)
-        raise typer.Exit(code=0 if all_ignored else ExitCode.USER_ERROR)
+        raise SystemExit(0 if all_ignored else ExitCode.USER_ERROR)
 
     if fmt == "text":
         for r in results:
             status = "ignored" if r["ignored"] else "ok     "
             if verbose and r["matching_pattern"]:
-                typer.echo(f"{status}  {r['path']}    [{r['matching_pattern']}]")
+                print(f"{status}  {r['path']}    [{r['matching_pattern']}]")
             else:
-                typer.echo(f"{status}  {r['path']}")
+                print(f"{status}  {r['path']}")
         return
 
-    typer.echo(
+    print(
         json.dumps(
             {
                 "domain": domain,

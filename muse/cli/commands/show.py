@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -15,8 +15,6 @@ from muse.core.validation import sanitize_display
 from muse.domain import DomainOp
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _read_branch(root: pathlib.Path) -> str:
@@ -53,13 +51,21 @@ def _format_op(op: DomainOp) -> list[str]:
     return lines
 
 
-@app.callback(invoke_without_command=True)
-def show(
-    ctx: typer.Context,
-    ref: str | None = typer.Argument(None, help="Commit ID or branch (default: HEAD)."),
-    stat: bool = typer.Option(True, "--stat/--no-stat", help="Show file change summary."),
-    json_out: bool = typer.Option(False, "--json", help="Output as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the show subcommand."""
+    parser = subparsers.add_parser(
+        "show",
+        help="Inspect a commit: metadata, diff, and files.",
+        description=__doc__,
+    )
+    parser.add_argument("ref", nargs="?", default=None, help="Commit ID or branch (default: HEAD).")
+    parser.add_argument("--stat", action="store_true", default=True, help="Show file change summary.")
+    parser.add_argument("--no-stat", dest="stat", action="store_false", help="Omit file change summary.")
+    parser.add_argument("--json", action="store_true", dest="json_out", help="Output as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Inspect a commit: metadata, diff, and files.
 
     Agents should pass ``--json`` to receive full commit metadata plus a file
@@ -80,17 +86,20 @@ def show(
 
     Pass ``--no-stat`` to omit the ``files_added/removed/modified`` fields.
     """
+    ref: str | None = args.ref
+    stat: bool = args.stat
+    json_out: bool = args.json_out
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{sanitize_display(str(ref))}' not found.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{sanitize_display(str(ref))}' not found.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if json_out:
-        import json as json_mod
         commit_data = commit.to_dict()
         if stat:
             # Read current snapshot directly via snapshot_id (avoids re-reading
@@ -108,23 +117,23 @@ def show(
                     p for p in set(cur) & set(par) if cur[p] != par[p]
                 ),
             }
-            typer.echo(json_mod.dumps({**commit_data, **stats}, indent=2, default=str))
+            print(json.dumps({**commit_data, **stats}, indent=2, default=str))
         else:
-            typer.echo(json_mod.dumps(commit_data, indent=2, default=str))
+            print(json.dumps(commit_data, indent=2, default=str))
         return
 
-    typer.echo(f"commit {commit.commit_id}")
+    print(f"commit {commit.commit_id}")
     if commit.parent_commit_id:
-        typer.echo(f"Parent: {commit.parent_commit_id[:8]}")
+        print(f"Parent: {commit.parent_commit_id[:8]}")
     if commit.parent2_commit_id:
-        typer.echo(f"Parent: {commit.parent2_commit_id[:8]} (merge)")
+        print(f"Parent: {commit.parent2_commit_id[:8]} (merge)")
     if commit.author:
-        typer.echo(f"Author: {sanitize_display(commit.author)}")
-    typer.echo(f"Date:   {commit.committed_at}")
+        print(f"Author: {sanitize_display(commit.author)}")
+    print(f"Date:   {commit.committed_at}")
     if commit.metadata:
         for k, v in sorted(commit.metadata.items()):
-            typer.echo(f"        {sanitize_display(k)}: {sanitize_display(str(v))}")
-    typer.echo(f"\n    {sanitize_display(commit.message)}\n")
+            print(f"        {sanitize_display(k)}: {sanitize_display(str(v))}")
+    print(f"\n    {sanitize_display(commit.message)}\n")
 
     if not stat:
         return
@@ -134,14 +143,14 @@ def show(
     if commit.structured_delta is not None:
         delta = commit.structured_delta
         if not delta["ops"]:
-            typer.echo(" (no changes)")
+            print(" (no changes)")
             return
         lines: list[str] = []
         for op in delta["ops"]:
             lines.extend(_format_op(op))
         for line in lines:
-            typer.echo(line)
-        typer.echo(f"\n {delta['summary']}")
+            print(line)
+        print(f"\n {delta['summary']}")
         return
 
     # Fallback for initial commits or pre-Phase-1 commits: compute file-level
@@ -156,12 +165,12 @@ def show(
     modified = sorted(p for p in set(current) & set(parent) if current[p] != parent[p])
 
     for p in added:
-        typer.echo(f" A  {p}")
+        print(f" A  {p}")
     for p in removed:
-        typer.echo(f" D  {p}")
+        print(f" D  {p}")
     for p in modified:
-        typer.echo(f" M  {p}")
+        print(f" M  {p}")
 
     total = len(added) + len(removed) + len(modified)
     if total:
-        typer.echo(f"\n {total} file(s) changed")
+        print(f"\n {total} file(s) changed")

@@ -53,11 +53,11 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -66,8 +66,6 @@ from muse.plugins.code._callgraph import build_reverse_graph, transitive_callers
 from muse.plugins.code._query import language_of
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -78,23 +76,33 @@ def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-@app.callback(invoke_without_command=True)
-def impact(
-    ctx: typer.Context,
-    address: str = typer.Argument(
-        ..., metavar="ADDRESS",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the impact subcommand."""
+    parser = subparsers.add_parser(
+        "impact",
+        help="Show the transitive blast-radius of changing a symbol.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "address", metavar="ADDRESS",
         help='Symbol address, e.g. "src/billing.py::compute_invoice_total".',
-    ),
-    depth: int = typer.Option(
-        0, "--depth", "-d", metavar="N",
+    )
+    parser.add_argument(
+        "--depth", "-d", type=int, default=0, metavar="N",
         help="Maximum BFS depth (0 = unlimited).",
-    ),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
+    )
+    parser.add_argument(
+        "--commit", "-c", default=None, metavar="REF", dest="ref",
         help="Analyse a historical snapshot instead of HEAD.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit results as JSON.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show the transitive blast-radius of changing a symbol.
 
     Builds the reverse call graph for the committed snapshot, then BFS-walks
@@ -106,21 +114,26 @@ def impact(
 
     Python only (call-graph analysis uses stdlib ``ast``).
     """
+    address: str = args.address
+    depth: int = args.depth
+    ref: str | None = args.ref
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
     lang = language_of(address.split("::")[0]) if "::" in address else ""
     if lang and lang != "Python":
-        typer.echo(
+        print(
             f"⚠️  Impact analysis is currently Python-only.  '{address}' is {lang}.",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     manifest = get_commit_snapshot_manifest(root, commit.commit_id) or {}
     reverse = build_reverse_graph(root, manifest)
@@ -129,7 +142,7 @@ def impact(
     blast = transitive_callers(target_name, reverse, max_depth=depth)
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {
                 "address": address,
                 "target_name": target_name,
@@ -144,14 +157,14 @@ def impact(
         ))
         return
 
-    typer.echo(f"\nImpact analysis: {address}")
-    typer.echo("─" * 62)
+    print(f"\nImpact analysis: {address}")
+    print("─" * 62)
 
     if not blast:
-        typer.echo(
+        print(
             f"\n  (no callers detected — '{target_name}' may be an entry point or dead code)"
         )
-        typer.echo(
+        print(
             "\n  Note: analysis covers Python only; external callers are not detected."
         )
         return
@@ -162,22 +175,22 @@ def impact(
     for d in sorted(blast.keys()):
         callers = blast[d]
         label = "direct callers" if d == 1 else "callers of callers" if d == 2 else f"depth-{d} callers"
-        typer.echo(f"\nDepth {d} — {label} ({len(callers)}):")
+        print(f"\nDepth {d} — {label} ({len(callers)}):")
         for addr in sorted(callers):
-            typer.echo(f"  {addr}")
+            print(f"  {addr}")
             if "::" in addr:
                 all_files.add(addr.split("::")[0])
 
-    typer.echo("\n" + "─" * 62)
+    print("\n" + "─" * 62)
     file_label = "file" if len(all_files) == 1 else "files"
-    typer.echo(f"Total blast radius: {total} symbol(s) across {len(all_files)} {file_label}")
+    print(f"Total blast radius: {total} symbol(s) across {len(all_files)} {file_label}")
     if total >= 10:
-        typer.echo("🔴 High impact — add tests before changing this symbol.")
+        print("🔴 High impact — add tests before changing this symbol.")
     elif total >= 3:
-        typer.echo("🟡 Medium impact — review callers before changing this symbol.")
+        print("🟡 Medium impact — review callers before changing this symbol.")
     else:
-        typer.echo("🟢 Low impact — change is well-contained.")
-    typer.echo(
+        print("🟢 Low impact — change is well-contained.")
+    print(
         "\nNote: analysis covers Python call-sites only."
         " Dynamic dispatch (getattr, decorators) is not detected."
     )

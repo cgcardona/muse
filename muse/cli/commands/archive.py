@@ -21,14 +21,14 @@ Use ``muse push`` / ``muse clone`` for distribution with full history.
 
 from __future__ import annotations
 
-import io
+import argparse
+import json
 import logging
 import pathlib
+import sys
 import tarfile
 import zipfile
-from typing import Annotated, Literal
 
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.object_store import object_path
@@ -37,7 +37,6 @@ from muse.core.store import get_head_commit_id, read_commit, read_current_branch
 from muse.core.validation import contain_path, sanitize_display
 
 logger = logging.getLogger(__name__)
-app = typer.Typer(help="Export a snapshot as a portable tar.gz or zip archive.")
 
 _FORMAT_CHOICES = {"tar.gz", "zip"}
 
@@ -59,7 +58,6 @@ def _safe_arcname(prefix: str, rel_path: str) -> str | None:
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
-    import json
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
@@ -122,25 +120,33 @@ def _build_zip(
     return count
 
 
-@app.callback(invoke_without_command=True)
-def archive(
-    ref: Annotated[
-        str | None,
-        typer.Option("--ref", "-r", help="Branch name or commit SHA (default: HEAD)."),
-    ] = None,
-    fmt: Annotated[
-        str,
-        typer.Option("--format", "-f", help="Archive format: tar.gz or zip."),
-    ] = "tar.gz",
-    output: Annotated[
-        str | None,
-        typer.Option("--output", "-o", help="Output file path (default: <commit12>.<format>)."),
-    ] = None,
-    prefix: Annotated[
-        str,
-        typer.Option("--prefix", help="Add a directory prefix to all paths inside the archive."),
-    ] = "",
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the archive subcommand."""
+    parser = subparsers.add_parser(
+        "archive",
+        help="Export any historical snapshot as a portable archive.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--ref", default=None,
+        help="Branch, tag, or commit SHA to archive (default: HEAD).",
+    )
+    parser.add_argument(
+        "--format", "-f", default="tar.gz", dest="fmt",
+        help="Archive format: tar.gz or zip (default: tar.gz).",
+    )
+    parser.add_argument(
+        "--output", "-o", default=None,
+        help="Output file path (default: <sha12>.<format>).",
+    )
+    parser.add_argument(
+        "--prefix", default="",
+        help="Directory prefix inside the archive (e.g. myproject/).",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Export any historical snapshot as a portable archive.
 
     The archive contains only tracked files — no ``.muse/`` metadata.  It is
@@ -153,16 +159,21 @@ def archive(
         muse archive --format zip --output dist/release.zip
         muse archive --prefix myproject/        # all files under myproject/
     """
+    ref: str | None = args.ref
+    fmt: str = args.fmt
+    output: str | None = args.output
+    prefix: str = args.prefix
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(f"❌ Unknown format '{sanitize_display(fmt)}'. Choose from: {', '.join(sorted(_FORMAT_CHOICES))}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown format '{sanitize_display(fmt)}'. Choose from: {', '.join(sorted(_FORMAT_CHOICES))}")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Validate prefix against traversal — _safe_arcname will also catch it per-entry,
     # but an early check gives the user a clear error message.
     clean_prefix = prefix.rstrip("/").strip()
     if clean_prefix and ".." in clean_prefix.split("/"):
-        typer.echo(f"❌ --prefix must not contain '..' segments: {sanitize_display(prefix)}", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ --prefix must not contain '..' segments: {sanitize_display(prefix)}", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     repo_id = _read_repo_id(root)
@@ -171,20 +182,20 @@ def archive(
     if ref is None:
         commit_id = get_head_commit_id(root, branch)
         if not commit_id:
-            typer.echo("❌ No commits yet on this branch.")
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print("❌ No commits yet on this branch.")
+            raise SystemExit(ExitCode.USER_ERROR)
         commit = read_commit(root, commit_id)
     else:
         commit = resolve_commit_ref(root, repo_id, branch, ref)
 
     if commit is None:
-        typer.echo(f"❌ Ref '{sanitize_display(ref or 'HEAD')}' not found.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Ref '{sanitize_display(ref or 'HEAD')}' not found.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     snapshot = read_snapshot(root, commit.snapshot_id)
     if snapshot is None:
-        typer.echo(f"❌ Snapshot {commit.snapshot_id[:8]} not found.")
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(f"❌ Snapshot {commit.snapshot_id[:8]} not found.")
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     short = commit.commit_id[:12]
     out_name = output or f"{short}.{fmt}"
@@ -196,7 +207,7 @@ def archive(
         count = _build_zip(root, snapshot.manifest, out_path, prefix)
 
     size_kb = out_path.stat().st_size / 1024 if out_path.exists() else 0
-    typer.echo(
+    print(
         f"✅ Archive: {out_path}  ({count} file(s), {size_kb:.1f} KiB)\n"
         f"   Commit:  {short}  {sanitize_display(commit.message)}"
     )

@@ -18,14 +18,14 @@ The target directory must not already contain a ``.muse/`` repository.
 
 from __future__ import annotations
 
+import argparse
 import datetime
 import json
 import logging
 import pathlib
 import shutil
+import sys
 import uuid
-
-import typer
 
 from muse._version import __version__ as _SCHEMA_VERSION
 from muse.cli.config import set_remote, set_remote_head, set_upstream
@@ -36,8 +36,6 @@ from muse.core.transport import TransportError, make_transport
 from muse.core.workdir import apply_manifest
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _DEFAULT_CONFIG = """\
 [user]
@@ -99,54 +97,62 @@ def _restore_working_tree(root: pathlib.Path, commit_id: str) -> None:
     apply_manifest(root, snap.manifest)
 
 
-@app.callback(invoke_without_command=True)
-def clone(
-    ctx: typer.Context,
-    url: str = typer.Argument(..., help="URL of the remote Muse repository to clone."),
-    directory: str | None = typer.Argument(
-        None,
-        help="Local directory to clone into. Defaults to the last segment of the URL.",
-    ),
-    branch: str | None = typer.Option(
-        None, "--branch", "-b", help="Branch to check out after cloning (default: remote default branch)."
-    ),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the clone subcommand."""
+    parser = subparsers.add_parser(
+        "clone",
+        help="Create a local copy of a remote Muse repository.",
+        description=__doc__,
+    )
+    parser.add_argument("url", help="URL of the remote Muse repository to clone.")
+    parser.add_argument("directory", nargs="?", default=None,
+                        help="Local directory to clone into. Defaults to the last segment of the URL.")
+    parser.add_argument("--branch", "-b", default=None,
+                        help="Branch to check out after cloning (default: remote default branch).")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Create a local copy of a remote Muse repository.
 
     Downloads the full commit history, snapshots, and objects and checks out
     the default branch.  The cloned repo has ``origin`` set to *url*.
     """
+    url: str = args.url
+    directory: str | None = args.directory
+    branch: str | None = args.branch
+
     # clone does not need to be inside a Muse repo — it creates a new one.
     target_name = directory or _infer_dir_name(url)
     target = pathlib.Path.cwd() / target_name
 
     if (target / ".muse").exists():
-        typer.echo(f"❌ '{target}' is already a Muse repository.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ '{target}' is already a Muse repository.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     transport = make_transport(url)
 
     # Fetch remote repository info (branch heads, domain, default branch).
-    typer.echo(f"Cloning from {url} …")
+    print(f"Cloning from {url} …")
     try:
         info = transport.fetch_remote_info(url, token=None)
     except TransportError as exc:
-        typer.echo(f"❌ Cannot reach remote: {exc}")
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(f"❌ Cannot reach remote: {exc}")
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     remote_repo_id = info["repo_id"] or str(uuid.uuid4())
     domain = info["domain"] or "midi"
     default_branch = branch or info["default_branch"] or "main"
 
     if not info["branch_heads"]:
-        typer.echo("❌ Remote repository has no branches (empty repository).")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ Remote repository has no branches (empty repository).")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     default_commit_id = info["branch_heads"].get(default_branch)
     if default_commit_id is None:
         # Fall back to the first available branch.
         first_branch, default_commit_id = next(iter(info["branch_heads"].items()))
-        typer.echo(
+        print(
             f"  ⚠️ Branch '{default_branch}' not found; checking out '{first_branch}'."
         )
         default_branch = first_branch
@@ -156,17 +162,17 @@ def clone(
     try:
         _init_muse_dir(target, remote_repo_id, domain, default_branch)
     except OSError as exc:
-        typer.echo(f"❌ Failed to create repository at '{target}': {exc}")
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        print(f"❌ Failed to create repository at '{target}': {exc}")
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     # Fetch full pack (no have — we want everything).
     want = list(info["branch_heads"].values())
     try:
         bundle = transport.fetch_pack(url, token=None, want=want, have=[])
     except TransportError as exc:
-        typer.echo(f"❌ Fetch failed: {exc}")
+        print(f"❌ Fetch failed: {exc}")
         shutil.rmtree(target, ignore_errors=True)
-        raise typer.Exit(code=ExitCode.INTERNAL_ERROR)
+        raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     apply_result = apply_pack(target, bundle)
 
@@ -185,7 +191,7 @@ def clone(
     _restore_working_tree(target, default_commit_id)
 
     commits_received = len(bundle.get("commits") or [])
-    typer.echo(
+    print(
         f"✅ Cloned into '{target_name}' — "
         f"{commits_received} commit(s), {apply_result['objects_written']} object(s), "
         f"domain={domain}, branch={default_branch} ({default_commit_id[:8]})"

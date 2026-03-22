@@ -4,9 +4,9 @@ import datetime
 import pathlib
 
 import pytest
-from typer.testing import CliRunner
+from tests.cli_test_helper import CliRunner
 
-from muse.cli.app import cli
+cli = None  # argparse migration — CliRunner ignores this arg
 from muse.core.store import CommitRecord, write_commit
 
 runner = CliRunner()

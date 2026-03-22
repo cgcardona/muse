@@ -44,18 +44,16 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
+import sys
 from typing import TypedDict
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.validation import validate_branch_name
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _FORMAT_CHOICES = ("json", "text")
 
@@ -71,48 +69,55 @@ class _CheckRefFormatResult(TypedDict):
     all_valid: bool
 
 
-@app.callback(invoke_without_command=True)
-def check_ref_format(
-    ctx: typer.Context,
-    names: list[str] = typer.Argument(
-        ..., help="One or more branch or ref names to validate."
-    ),
-    quiet: bool = typer.Option(
-        False,
-        "--quiet",
-        "-q",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the check-ref-format subcommand."""
+    parser = subparsers.add_parser(
+        "check-ref-format",
+        help="Validate branch/ref names against Muse naming rules.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "names",
+        nargs="+",
+        help="One or more branch or ref names to validate.",
+    )
+    parser.add_argument(
+        "--quiet", "-q",
+        action="store_true",
         help="No output. Exit 0 if all valid, exit 1 if any invalid.",
-    ),
-    fmt: str = typer.Option(
-        "json", "--format", "-f", help="Output format: json or text."
-    ),
-) -> None:
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
+        help="Output format: json or text. (default: json)",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Validate branch or ref names against Muse naming rules.
 
     Applies the same rules used by ``muse branch`` and ``muse plumbing
     update-ref``.  Use this in scripts to pre-validate names before attempting
     to create a branch, avoiding partial-failure states.
-
-    Use ``--quiet`` in shell conditionals::
-
-        muse plumbing check-ref-format -q feat/my-branch && echo "name is valid"
-
-    The exit code reflects whether *all* supplied names passed:
-
-    - Exit 0: every name is valid.
-    - Exit 1: at least one name is invalid, or no names were supplied.
     """
+    fmt: str = args.fmt
+    names: list[str] = args.names
+    quiet: bool = args.quiet
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             json.dumps(
                 {"error": f"Unknown format {fmt!r}. Valid: {', '.join(_FORMAT_CHOICES)}"}
             )
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if not names:
-        typer.echo(json.dumps({"error": "At least one name argument is required."}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"error": "At least one name argument is required."}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     results: list[_CheckResult] = []
     for name in names:
@@ -125,19 +130,19 @@ def check_ref_format(
     all_valid = all(r["valid"] for r in results)
 
     if quiet:
-        raise typer.Exit(code=0 if all_valid else ExitCode.USER_ERROR)
+        raise SystemExit(0 if all_valid else ExitCode.USER_ERROR)
 
     if fmt == "text":
         for r in results:
             if r["valid"]:
-                typer.echo(f"ok    {r['name']}")
+                print(f"ok    {r['name']}")
             else:
-                typer.echo(f"FAIL  {r['name']}  →  {r['error']}")
+                print(f"FAIL  {r['name']}  →  {r['error']}")
         if not all_valid:
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            raise SystemExit(ExitCode.USER_ERROR)
         return
 
     result: _CheckRefFormatResult = {"results": results, "all_valid": all_valid}
-    typer.echo(json.dumps(result))
+    print(json.dumps(result))
     if not all_valid:
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)

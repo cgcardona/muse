@@ -31,12 +31,12 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import math
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -49,8 +49,6 @@ from muse.plugins.midi._query import (
 )
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 _DYNAMIC_LEVELS: list[tuple[str, int, int]] = [
     ("ppp", 1,   15),
@@ -86,20 +84,17 @@ def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-@app.callback(invoke_without_command=True)
-def velocity_profile(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
-        help="Analyse a historical snapshot instead of the working tree.",
-    ),
-    by_bar: bool = typer.Option(
-        False, "--by-bar", "-b",
-        help="Show per-bar average velocity instead of the overall histogram.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the velocity-profile subcommand."""
+    parser = subparsers.add_parser("velocity-profile", help="Analyse the dynamic range and velocity distribution of a MIDI track.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Analyse a historical snapshot instead of the working tree.")
+    parser.add_argument("--by-bar", "-b", action="store_true", help="Show per-bar average velocity instead of the overall histogram.")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Analyse the dynamic range and velocity distribution of a MIDI track.
 
     ``muse velocity-profile`` shows peak, average, and RMS velocity, plus
@@ -116,6 +111,11 @@ def velocity_profile(
     structured semantic data, enabling musical dynamics analysis at any
     point in history.
     """
+    track: str = args.track
+    ref: str | None = args.ref
+    by_bar: bool = args.by_bar
+    as_json: bool = args.as_json
+
     root = require_repo()
 
     result: tuple[list[NoteInfo], int] | None
@@ -126,21 +126,21 @@ def velocity_profile(
         branch = _read_branch(root)
         commit = resolve_commit_ref(root, repo_id, branch, ref)
         if commit is None:
-            typer.echo(f"❌ Commit '{ref}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Commit '{ref}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         result = load_track(root, commit.commit_id, track)
         commit_label = commit.commit_id[:8]
     else:
         result = load_track_from_workdir(root, track)
 
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     note_list, _tpb = result
 
     if not note_list:
-        typer.echo(f"  (no notes found in '{track}')")
+        print(f"  (no notes found in '{track}')")
         return
 
     velocities = [n.velocity for n in note_list]
@@ -165,11 +165,11 @@ def velocity_profile(
                 }
                 for bar_num, bar_notes in sorted(bars.items())
             ]
-            typer.echo(json.dumps(
+            print(json.dumps(
                 {"track": track, "commit": commit_label, "by_bar": bar_data}, indent=2
             ))
         else:
-            typer.echo(json.dumps(
+            print(json.dumps(
                 {
                     "track": track,
                     "commit": commit_label,
@@ -182,12 +182,12 @@ def velocity_profile(
             ))
         return
 
-    typer.echo(f"\nVelocity profile: {track} — {commit_label}")
-    typer.echo(
+    print(f"\nVelocity profile: {track} — {commit_label}")
+    print(
         f"Notes: {len(note_list)}  ·  Range: {v_min}–{v_max}"
         f"  ·  Mean: {v_mean:.1f}  ·  RMS: {v_rms:.1f}"
     )
-    typer.echo("")
+    print("")
 
     if by_bar:
         bars = notes_by_bar(note_list)
@@ -195,7 +195,7 @@ def velocity_profile(
             bar_vels = [n.velocity for n in bar_notes]
             bar_mean = sum(bar_vels) / len(bar_vels)
             bar_len = min(int(bar_mean / 127 * _BAR_WIDTH), _BAR_WIDTH)
-            typer.echo(
+            print(
                 f"  bar {bar_num:>4}  {'█' * bar_len:<{_BAR_WIDTH}}  "
                 f"avg={bar_mean:>5.1f}  ({len(bar_notes)} notes)"
             )
@@ -206,11 +206,11 @@ def velocity_profile(
         count = level_counts[name]
         bar_len = min(int(count / total * _BAR_WIDTH), _BAR_WIDTH)
         pct = count / total * 100
-        typer.echo(
+        print(
             f"  {name:<4}({lo:>3}–{hi:>3})  │{'█' * bar_len:<{_BAR_WIDTH}}│"
             f"  {count:>4}  ({pct:>5.1f}%)"
         )
 
     # Dominant dynamic level.
     dominant = max(level_counts, key=lambda k: level_counts[k])
-    typer.echo(f"\nDynamic character: {dominant}")
+    print(f"\nDynamic character: {dominant}")

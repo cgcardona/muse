@@ -103,62 +103,76 @@ Tier 3 — Coordination commands (``muse coord …``)::
 
 from __future__ import annotations
 
-import typer
+import argparse
+import sys
 
 from muse.cli.commands import (
+    agent_map,
     annotate,
     api_surface,
     archive,
+    arpeggiate,
     attributes,
     auth,
     bisect,
     blame,
     branch,
+    breakage,
     bundle,
+    cadence,
     cat,
-    cherry_pick,
+    check,
     checkout,
     checkout_symbol,
-    check,
+    cherry_pick,
     clean,
     clone,
     clones,
-    codemap,
     code_check,
     code_query,
+    codemap,
     commit,
     compare,
     config_cmd,
+    content_grep,
+    contour,
     core_blame,
     coupling,
     coverage,
     dead,
+    density,
     deps,
     describe,
     detect_refactor,
     diff,
     domains,
     fetch,
+    find_phrase,
     find_symbol,
     forecast,
-    content_grep,
     gc,
     grep,
     harmony,
     hotspots,
     hub,
+    humanize,
     impact,
     index_rebuild,
     init,
+    instrumentation,
     intent,
     invariants,
+    invert,
     languages,
     lineage,
     log,
     merge,
-    mix,
     midi_check,
+    midi_compare,
     midi_query,
+    midi_shard,
+    mix,
+    motif_detect,
     note_blame,
     note_hotspots,
     note_log,
@@ -168,6 +182,7 @@ from muse.cli.commands import (
     plan_merge,
     pull,
     push,
+    quantize,
     query,
     query_history,
     rebase,
@@ -177,7 +192,10 @@ from muse.cli.commands import (
     rerere,
     reserve,
     reset,
+    retrograde,
     revert,
+    rhythm,
+    scale_detect,
     semantic_cherry_pick,
     shard,
     shortlog,
@@ -189,34 +207,16 @@ from muse.cli.commands import (
     symbol_log,
     symbols,
     tag,
-    breakage,
+    tempo,
+    tension,
     transpose,
-    verify,
+    velocity_normalize,
     velocity_profile,
+    verify,
+    voice_leading,
     whoami,
     worktree,
     workspace,
-    # New MIDI semantic porcelain — analysis
-    agent_map,
-    arpeggiate,
-    cadence,
-    contour,
-    density,
-    find_phrase,
-    humanize,
-    instrumentation,
-    invert,
-    midi_compare,
-    midi_shard,
-    motif_detect,
-    quantize,
-    retrograde,
-    rhythm,
-    scale_detect,
-    tempo,
-    tension,
-    velocity_normalize,
-    voice_leading,
 )
 
 from muse.cli.commands.plumbing import (
@@ -246,232 +246,237 @@ from muse.cli.commands.plumbing import (
     verify_pack,
 )
 
-# ---------------------------------------------------------------------------
-# Root CLI
-# ---------------------------------------------------------------------------
 
-# Allow both -h and --help everywhere in the CLI tree.
-_HELP_SETTINGS: dict[str, list[str]] = {"help_option_names": ["-h", "--help"]}
+def _no_command(parser: argparse.ArgumentParser) -> None:
+    """Print help when no subcommand is provided."""
+    parser.print_help()
+    raise SystemExit(0)
 
-cli = typer.Typer(
-    name="muse",
-    help="Muse — domain-agnostic version control for multidimensional state.",
-    no_args_is_help=True,
-    context_settings=_HELP_SETTINGS,
-)
 
-# ---------------------------------------------------------------------------
-# Tier 1 — Plumbing sub-namespace
-# ---------------------------------------------------------------------------
+def main(argv: list[str] | None = None) -> None:
+    """Parse arguments and dispatch to the appropriate command handler."""
+    parser = argparse.ArgumentParser(
+        prog="muse",
+        description="Muse — domain-agnostic version control for multidimensional state.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--version", "-V",
+        action="store_true",
+        dest="show_version",
+        help="Show the muse version and exit.",
+    )
 
-plumbing_cli = typer.Typer(
-    name="plumbing",
-    help="[Tier 1] Machine-readable plumbing commands. JSON output, pipeable, stable API.",
-    no_args_is_help=True,
-    context_settings=_HELP_SETTINGS,
-)
+    subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
 
-plumbing_cli.add_typer(hash_object.app,     name="hash-object",    help="SHA-256 a file; optionally store it in the object store.")
-plumbing_cli.add_typer(cat_object.app,      name="cat-object",     help="Emit raw bytes of a stored object to stdout.")
-plumbing_cli.add_typer(rev_parse.app,       name="rev-parse",      help="Resolve branch/HEAD/SHA prefix → full commit_id.")
-plumbing_cli.add_typer(ls_files.app,        name="ls-files",       help="List all tracked files and their object IDs in a snapshot.")
-plumbing_cli.add_typer(read_commit.app,     name="read-commit",    help="Emit full commit metadata as JSON.")
-plumbing_cli.add_typer(read_snapshot.app,   name="read-snapshot",  help="Emit full snapshot metadata and manifest as JSON.")
-plumbing_cli.add_typer(commit_tree.app,     name="commit-tree",    help="Create a commit from an explicit snapshot ID.")
-plumbing_cli.add_typer(update_ref.app,      name="update-ref",     help="Move a branch HEAD to a specific commit ID.")
-plumbing_cli.add_typer(commit_graph.app,    name="commit-graph",   help="Emit the commit DAG as a JSON node list.")
-plumbing_cli.add_typer(pack_objects.app,    name="pack-objects",   help="Build a PackBundle JSON from wanted commits and write to stdout.")
-plumbing_cli.add_typer(unpack_objects.app,  name="unpack-objects", help="Read a PackBundle JSON from stdin and write to the local store.")
-plumbing_cli.add_typer(ls_remote.app,       name="ls-remote",      help="List branch heads on a remote without modifying local state.")
-plumbing_cli.add_typer(merge_base.app,      name="merge-base",     help="Find the lowest common ancestor of two commits.")
-plumbing_cli.add_typer(snapshot_diff.app,   name="snapshot-diff",  help="Diff two snapshot manifests: added, modified, deleted paths.")
-plumbing_cli.add_typer(domain_info.app,     name="domain-info",    help="Inspect active domain plugin capabilities and schema.")
-plumbing_cli.add_typer(show_ref.app,        name="show-ref",       help="List all branch refs and the commit IDs they point to.")
-plumbing_cli.add_typer(check_ignore.app,    name="check-ignore",   help="Test paths against .museignore rules.")
-plumbing_cli.add_typer(check_attr.app,      name="check-attr",     help="Query merge-strategy attributes for workspace paths.")
-plumbing_cli.add_typer(verify_object.app,   name="verify-object",    help="Re-hash stored objects to detect data corruption.")
-plumbing_cli.add_typer(symbolic_ref.app,    name="symbolic-ref",     help="Read or write HEAD's symbolic branch reference.")
-plumbing_cli.add_typer(for_each_ref.app,    name="for-each-ref",     help="Iterate all refs with rich commit metadata.")
-plumbing_cli.add_typer(name_rev.app,        name="name-rev",         help="Map commit IDs to descriptive branch-relative names.")
-plumbing_cli.add_typer(check_ref_format.app, name="check-ref-format", help="Validate branch/ref names against Muse naming rules.")
-plumbing_cli.add_typer(verify_pack.app,     name="verify-pack",      help="Verify the integrity of a PackBundle JSON.")
+    # ------------------------------------------------------------------
+    # Tier 1 — Plumbing sub-namespace (muse plumbing <cmd>)
+    # ------------------------------------------------------------------
+    plumbing_parser = subparsers.add_parser(
+        "plumbing",
+        help="[Tier 1] Machine-readable plumbing commands. JSON output, pipeable, stable API.",
+        description="Machine-readable plumbing commands — analogous to git plumbing.",
+    )
+    plumbing_subs = plumbing_parser.add_subparsers(dest="plumbing_command", metavar="PLUMBING_COMMAND")
+    plumbing_subs.required = True
 
-cli.add_typer(plumbing_cli, name="plumbing")
+    hash_object.register(plumbing_subs)
+    cat_object.register(plumbing_subs)
+    rev_parse.register(plumbing_subs)
+    ls_files.register(plumbing_subs)
+    read_commit.register(plumbing_subs)
+    read_snapshot.register(plumbing_subs)
+    commit_tree.register(plumbing_subs)
+    update_ref.register(plumbing_subs)
+    commit_graph.register(plumbing_subs)
+    pack_objects.register(plumbing_subs)
+    unpack_objects.register(plumbing_subs)
+    ls_remote.register(plumbing_subs)
+    merge_base.register(plumbing_subs)
+    snapshot_diff.register(plumbing_subs)
+    domain_info.register(plumbing_subs)
+    show_ref.register(plumbing_subs)
+    check_ignore.register(plumbing_subs)
+    check_attr.register(plumbing_subs)
+    verify_object.register(plumbing_subs)
+    symbolic_ref.register(plumbing_subs)
+    for_each_ref.register(plumbing_subs)
+    name_rev.register(plumbing_subs)
+    check_ref_format.register(plumbing_subs)
+    verify_pack.register(plumbing_subs)
 
-# ---------------------------------------------------------------------------
-# Tier 2 — Core Porcelain (top-level VCS commands)
-# ---------------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Tier 2 — Core Porcelain (top-level muse <cmd>)
+    # ------------------------------------------------------------------
+    init.register(subparsers)
+    status.register(subparsers)
+    log.register(subparsers)
+    commit.register(subparsers)
+    diff.register(subparsers)
+    show.register(subparsers)
+    branch.register(subparsers)
+    checkout.register(subparsers)
+    merge.register(subparsers)
+    reset.register(subparsers)
+    revert.register(subparsers)
+    cherry_pick.register(subparsers)
+    stash.register(subparsers)
+    tag.register(subparsers)
+    push.register(subparsers)
+    pull.register(subparsers)
+    fetch.register(subparsers)
+    clone.register(subparsers)
+    remote.register(subparsers)
+    auth.register(subparsers)
+    hub.register(subparsers)
+    config_cmd.register(subparsers)
+    domains.register(subparsers)
+    attributes.register(subparsers)
+    annotate.register(subparsers)
+    core_blame.register(subparsers)
+    reflog.register(subparsers)
+    rerere.register(subparsers)
+    gc.register(subparsers)
+    archive.register(subparsers)
+    bisect.register(subparsers)
+    worktree.register(subparsers)
+    workspace.register(subparsers)
+    rebase.register(subparsers)
+    clean.register(subparsers)
+    describe.register(subparsers)
+    shortlog.register(subparsers)
+    verify.register(subparsers)
+    snapshot_cmd.register(subparsers)
+    bundle.register(subparsers)
+    content_grep.register(subparsers)
+    whoami.register(subparsers)
+    check.register(subparsers)
+    cat.register(subparsers)
 
-cli.add_typer(attributes.app,   name="attributes",  help="Display .museattributes merge-strategy rules.")
-cli.add_typer(init.app,         name="init",        help="Initialise a new Muse repository.")
+    # ------------------------------------------------------------------
+    # Tier 3 — MIDI domain (muse midi <cmd>)
+    # ------------------------------------------------------------------
+    midi_parser = subparsers.add_parser(
+        "midi",
+        help="[Tier 3] MIDI domain semantic commands.",
+        description="MIDI domain semantic commands — analysis, transformation, and multi-agent.",
+    )
+    midi_subs = midi_parser.add_subparsers(dest="midi_command", metavar="MIDI_COMMAND")
+    midi_subs.required = True
 
-# Identity & hub fabric
-cli.add_typer(auth.app,         name="auth",        help="Identity management — login as human or agent, inspect credentials.")
-cli.add_typer(hub.app,          name="hub",         help="MuseHub fabric — connect, inspect, and disconnect this repo from the hub.")
-cli.add_typer(config_cmd.app,   name="config",      help="Local repository configuration — show, get, set typed config values.")
+    notes.register(midi_subs)
+    note_log.register(midi_subs)
+    note_blame.register(midi_subs)
+    harmony.register(midi_subs)
+    piano_roll.register(midi_subs)
+    note_hotspots.register(midi_subs)
+    velocity_profile.register(midi_subs)
+    transpose.register(midi_subs)
+    mix.register(midi_subs)
+    midi_query.register(midi_subs)
+    midi_check.register(midi_subs)
+    rhythm.register(midi_subs)
+    scale_detect.register(midi_subs)
+    contour.register(midi_subs)
+    density.register(midi_subs)
+    tension.register(midi_subs)
+    cadence.register(midi_subs)
+    motif_detect.register(midi_subs)
+    voice_leading.register(midi_subs)
+    instrumentation.register(midi_subs)
+    tempo.register(midi_subs)
+    midi_compare.register(midi_subs)
+    quantize.register(midi_subs)
+    humanize.register(midi_subs)
+    invert.register(midi_subs)
+    retrograde.register(midi_subs)
+    arpeggiate.register(midi_subs)
+    velocity_normalize.register(midi_subs)
+    midi_shard.register(midi_subs)
+    agent_map.register(midi_subs)
+    find_phrase.register(midi_subs)
 
-# Remote sync
-cli.add_typer(remote.app,       name="remote",      help="Manage remote repository connections (add, remove, rename, list).")
-cli.add_typer(clone.app,        name="clone",       help="Create a local copy of a remote Muse repository.")
-cli.add_typer(fetch.app,        name="fetch",       help="Download commits, snapshots, and objects from a remote.")
-cli.add_typer(pull.app,         name="pull",        help="Fetch from a remote and merge into the current branch.")
-cli.add_typer(push.app,         name="push",        help="Upload local commits, snapshots, and objects to a remote.")
+    # ------------------------------------------------------------------
+    # Tier 3 — Code domain (muse code <cmd>)
+    # ------------------------------------------------------------------
+    code_parser = subparsers.add_parser(
+        "code",
+        help="[Tier 3] Code domain semantic commands — symbol graph, call graph, and provenance.",
+        description="Code domain semantic commands.",
+    )
+    code_subs = code_parser.add_subparsers(dest="code_command", metavar="CODE_COMMAND")
+    code_subs.required = True
 
-# Core VCS
-cli.add_typer(commit.app,       name="commit",      help="Record the current working tree as a new version.")
-cli.add_typer(status.app,       name="status",      help="Show working-tree drift against HEAD.")
-cli.add_typer(log.app,          name="log",         help="Display commit history.")
-cli.add_typer(diff.app,         name="diff",        help="Compare working tree against HEAD, or two commits.")
-cli.add_typer(cat.app,          name="cat",         help="Print the source of a single symbol: 'muse cat file.py::ClassName.method'.")
-cli.add_typer(show.app,         name="show",        help="Inspect a commit: metadata, diff, files.")
-cli.add_typer(branch.app,       name="branch",      help="List, create, or delete branches.")
-cli.add_typer(checkout.app,     name="checkout",    help="Switch branches or restore working tree from a commit.")
-cli.add_typer(merge.app,        name="merge",       help="Three-way merge a branch into the current branch.")
-cli.add_typer(reset.app,        name="reset",       help="Move HEAD to a prior commit.")
-cli.add_typer(revert.app,       name="revert",      help="Create a new commit that undoes a prior commit.")
-cli.add_typer(cherry_pick.app,  name="cherry-pick", help="Apply a specific commit's changes on top of HEAD.")
-cli.add_typer(stash.app,        name="stash",       help="Shelve and restore uncommitted changes.")
-cli.add_typer(tag.app,          name="tag",         help="Attach and query semantic tags on commits.")
-cli.add_typer(domains.app,      name="domains",     help="Domain plugin dashboard — list capabilities and scaffold new domains.")
+    cat.register(code_subs)
+    symbols.register(code_subs)
+    symbol_log.register(code_subs)
+    detect_refactor.register(code_subs)
+    grep.register(code_subs)
+    blame.register(code_subs)
+    hotspots.register(code_subs)
+    stable.register(code_subs)
+    coupling.register(code_subs)
+    compare.register(code_subs)
+    languages.register(code_subs)
+    patch.register(code_subs)
+    query.register(code_subs)
+    query_history.register(code_subs)
+    deps.register(code_subs)
+    find_symbol.register(code_subs)
+    impact.register(code_subs)
+    dead.register(code_subs)
+    coverage.register(code_subs)
+    lineage.register(code_subs)
+    api_surface.register(code_subs)
+    codemap.register(code_subs)
+    clones.register(code_subs)
+    checkout_symbol.register(code_subs)
+    semantic_cherry_pick.register(code_subs)
+    index_rebuild.register(code_subs)
+    breakage.register(code_subs)
+    invariants.register(code_subs)
+    code_check.register(code_subs)
+    code_query.register(code_subs)
 
-# Cross-domain
-cli.add_typer(check.app,        name="check",       help="[*] Domain-agnostic invariant check — dispatches to the active domain plugin.")
-cli.add_typer(annotate.app,     name="annotate",    help="[*] CRDT-backed commit annotations — reviewed-by (ORSet) and test-run counter (GCounter).")
+    # ------------------------------------------------------------------
+    # Tier 3 — Coordination (muse coord <cmd>)
+    # ------------------------------------------------------------------
+    coord_parser = subparsers.add_parser(
+        "coord",
+        help="[Tier 3] Multi-agent coordination commands — reservations, intent, conflict forecasting.",
+        description="Multi-agent coordination commands.",
+    )
+    coord_subs = coord_parser.add_subparsers(dest="coord_command", metavar="COORD_COMMAND")
+    coord_subs.required = True
 
-# VCS completeness — safety net, search, export, multi-repo
-cli.add_typer(core_blame.app,   name="blame",       help="Line-level attribution for any text file — which commit last changed each line.")
-cli.add_typer(reflog.app,       name="reflog",      help="Show the history of HEAD and branch-ref movements — the undo safety net.")
-cli.add_typer(rerere.app,       name="rerere",      help="Reuse recorded conflict resolutions — auto-apply cached fixes on future merges.")
-cli.add_typer(gc.app,           name="gc",          help="Garbage-collect unreachable objects from the object store.")
-cli.add_typer(archive.app,      name="archive",     help="Export any historical snapshot as a portable tar.gz or zip archive.")
-cli.add_typer(bisect.app,       name="bisect",      help="Binary search through commit history to isolate the first bad commit.")
-cli.add_typer(worktree.app,     name="worktree",    help="Manage multiple simultaneous branch checkouts (one state/ per branch).")
-cli.add_typer(workspace.app,    name="workspace",   help="Compose and manage multi-repository workspaces.")
+    reserve.register(coord_subs)
+    intent.register(coord_subs)
+    forecast.register(coord_subs)
+    plan_merge.register(coord_subs)
+    shard.register(coord_subs)
+    reconcile.register(coord_subs)
 
-# New porcelain gap-fill commands
-cli.add_typer(rebase.app,       name="rebase",      help="Replay commits from the current branch onto a new base.")
-cli.add_typer(clean.app,        name="clean",       help="Remove untracked files from the working tree.")
-cli.add_typer(describe.app,     name="describe",    help="Label a commit by its nearest tag and hop distance.")
-cli.add_typer(shortlog.app,     name="shortlog",    help="Commit summary grouped by author or agent.")
-cli.add_typer(verify.app,       name="verify",      help="Whole-repository integrity check — re-hash objects and verify DAG.")
-cli.add_typer(snapshot_cmd.app, name="snapshot",    help="Explicit snapshot management — capture, list, show, and export.")
-cli.add_typer(bundle.app,           name="bundle",          help="Pack and unpack commits into a single portable bundle file.")
-cli.add_typer(content_grep.app,     name="content-grep",    help="Full-text search across tracked file content (raw bytes, regex).")
-cli.add_typer(whoami.app,           name="whoami",          help="Show the current identity (shortcut for muse auth whoami).")
+    # ------------------------------------------------------------------
+    # Parse and dispatch
+    # ------------------------------------------------------------------
+    args = parser.parse_args(argv)
 
-# ---------------------------------------------------------------------------
-# Tier 3 — MIDI domain semantic commands (muse midi …)
-# ---------------------------------------------------------------------------
+    if args.show_version:
+        from muse._version import __version__
+        print(f"muse {__version__}")
+        raise SystemExit(0)
 
-midi_cli = typer.Typer(
-    name="midi",
-    help="[Tier 3] MIDI domain semantic commands — music-aware version control operations.",
-    no_args_is_help=True,
-    context_settings=_HELP_SETTINGS,
-)
+    if args.command is None:
+        _no_command(parser)
+        return
 
-midi_cli.add_typer(notes.app,            name="notes",            help="List every note in a MIDI track as musical notation.")
-midi_cli.add_typer(note_log.app,         name="note-log",         help="Note-level commit history — which notes were added or removed in each commit.")
-midi_cli.add_typer(note_blame.app,       name="note-blame",       help="Per-bar attribution — which commit introduced the notes in this bar?")
-midi_cli.add_typer(harmony.app,          name="harmony",          help="Chord analysis and key detection from MIDI note content.")
-midi_cli.add_typer(piano_roll.app,       name="piano-roll",       help="ASCII piano roll visualization of a MIDI track.")
-midi_cli.add_typer(note_hotspots.app,    name="hotspots",         help="Bar-level churn leaderboard — which bars change most across commits.")
-midi_cli.add_typer(velocity_profile.app, name="velocity-profile", help="Dynamic range and velocity histogram for a MIDI track.")
-midi_cli.add_typer(transpose.app,        name="transpose",        help="Transpose all notes in a MIDI track by N semitones.")
-midi_cli.add_typer(mix.app,              name="mix",              help="Combine notes from two MIDI tracks into a single output track.")
-midi_cli.add_typer(midi_query.app,       name="query",            help="MIDI DSL predicate query over commit history — bars, chords, agents, pitches.")
-midi_cli.add_typer(midi_check.app,       name="check",            help="Enforce MIDI invariant rules (polyphony, pitch range, key consistency, parallel fifths).")
-# --- Analysis porcelain ---
-midi_cli.add_typer(rhythm.app,           name="rhythm",           help="Quantify syncopation, swing ratio, and quantisation accuracy of a MIDI track.")
-midi_cli.add_typer(scale_detect.app,     name="scale",            help="Detect scale or mode (major, dorian, blues, whole-tone…) from pitch-class analysis.")
-midi_cli.add_typer(contour.app,          name="contour",          help="Classify melodic contour shape (arch, ascending, wave…) and report interval sequence.")
-midi_cli.add_typer(density.app,          name="density",          help="Note density (notes per beat) per bar — reveals textural arc of a composition.")
-midi_cli.add_typer(tension.app,          name="tension",          help="Harmonic tension curve per bar — consonance/dissonance arc from interval dissonance weights.")
-midi_cli.add_typer(cadence.app,          name="cadence",          help="Detect phrase-ending cadences (authentic, deceptive, half, plagal) at bar boundaries.")
-midi_cli.add_typer(motif_detect.app,     name="motif",            help="Find recurring melodic interval patterns (motifs) in a MIDI track.")
-midi_cli.add_typer(voice_leading.app,    name="voice-leading",    help="Detect parallel fifths, octaves, and large leaps — classical voice-leading lint.")
-midi_cli.add_typer(instrumentation.app,  name="instrumentation",  help="Per-channel note distribution, pitch range, register, and velocity map.")
-midi_cli.add_typer(tempo.app,            name="tempo",            help="Estimate BPM from inter-onset intervals; report ticks-per-beat metadata.")
-midi_cli.add_typer(midi_compare.app,     name="compare",          help="Semantic comparison between two MIDI snapshots across key, rhythm, density, and swing.")
-# --- Transformation porcelain ---
-midi_cli.add_typer(quantize.app,         name="quantize",         help="Snap note onsets to a rhythmic grid (16th, 8th, triplet, …) with adjustable strength.")
-midi_cli.add_typer(humanize.app,         name="humanize",         help="Add subtle timing and velocity variation to give quantised MIDI a human feel.")
-midi_cli.add_typer(invert.app,           name="invert",           help="Melodic inversion — reflect all intervals around a pivot pitch.")
-midi_cli.add_typer(retrograde.app,       name="retrograde",       help="Retrograde transformation — reverse the pitch order of all notes.")
-midi_cli.add_typer(arpeggiate.app,       name="arpeggiate",       help="Convert simultaneous chord voicings into a sequential arpeggio pattern.")
-midi_cli.add_typer(velocity_normalize.app, name="normalize",      help="Rescale note velocities to a target dynamic range [min, max].")
-# --- Multi-agent & search porcelain ---
-midi_cli.add_typer(midi_shard.app,       name="shard",            help="Partition a MIDI composition into bar-range shards for parallel agent work.")
-midi_cli.add_typer(agent_map.app,        name="agent-map",        help="Show which agent last edited each bar of a MIDI track (bar-level blame).")
-midi_cli.add_typer(find_phrase.app,      name="find-phrase",      help="Search for a melodic phrase across MIDI commit history by similarity scoring.")
+    if not hasattr(args, "func"):
+        # A namespace command (plumbing/midi/code/coord) was given without a subcommand.
+        # argparse already printed an error above via subs.required = True.
+        raise SystemExit(2)
 
-cli.add_typer(midi_cli, name="midi")
-
-# ---------------------------------------------------------------------------
-# Tier 3 — Code domain semantic commands (muse code …)
-# ---------------------------------------------------------------------------
-
-code_cli = typer.Typer(
-    name="code",
-    help="[Tier 3] Code domain semantic commands — symbol graph, call graph, and provenance.",
-    no_args_is_help=True,
-    context_settings=_HELP_SETTINGS,
-)
-
-code_cli.add_typer(cat.app,                  name="cat",                  help="Print the source of a single symbol: 'muse code cat file.py::ClassName.method'.")
-code_cli.add_typer(symbols.app,              name="symbols",              help="List every semantic symbol (function, class, method…) in a snapshot.")
-code_cli.add_typer(symbol_log.app,           name="symbol-log",           help="Track a single symbol through the full commit history.")
-code_cli.add_typer(detect_refactor.app,      name="detect-refactor",      help="Detect semantic refactoring operations (renames, moves, extractions) across commits.")
-code_cli.add_typer(grep.app,                 name="grep",                 help="Search the symbol graph by name, kind, or language — not file text.")
-code_cli.add_typer(blame.app,                name="blame",                help="Show which commit last touched a specific symbol (function, class, method).")
-code_cli.add_typer(hotspots.app,             name="hotspots",             help="Symbol churn leaderboard — which functions change most often.")
-code_cli.add_typer(stable.app,               name="stable",               help="Symbol stability leaderboard — the bedrock of your codebase.")
-code_cli.add_typer(coupling.app,             name="coupling",             help="File co-change analysis — discover hidden semantic dependencies.")
-code_cli.add_typer(compare.app,              name="compare",              help="Deep semantic comparison between any two historical snapshots.")
-code_cli.add_typer(languages.app,            name="languages",            help="Language and symbol-type breakdown of a snapshot.")
-code_cli.add_typer(patch.app,                name="patch",                help="Surgical semantic patch — modify exactly one named symbol (all-language syntax validation).")
-code_cli.add_typer(query.app,                name="query",                help="Symbol graph predicate DSL — OR/NOT/grouping, --all-commits temporal search.")
-code_cli.add_typer(query_history.app,        name="query-history",        help="Temporal symbol search — first seen, last seen, change count across a commit range.")
-code_cli.add_typer(deps.app,                 name="deps",                 help="Import graph + Python call-graph; --reverse for callers/importers.")
-code_cli.add_typer(find_symbol.app,          name="find-symbol",          help="Cross-commit, cross-branch symbol search by hash, name, or kind.")
-code_cli.add_typer(impact.app,               name="impact",               help="Transitive blast-radius — every caller affected if this symbol changes.")
-code_cli.add_typer(dead.app,                 name="dead",                 help="Dead code candidates — symbols with no callers and no importers.")
-code_cli.add_typer(coverage.app,             name="coverage",             help="Class interface call-coverage — which methods are actually called?")
-code_cli.add_typer(lineage.app,              name="lineage",              help="Full provenance chain of a symbol — created, renamed, moved, copied, deleted.")
-code_cli.add_typer(api_surface.app,          name="api-surface",          help="Public API surface at a commit; --diff to show added/removed/changed symbols.")
-code_cli.add_typer(codemap.app,              name="codemap",              help="Semantic topology — module sizes, import cycles, centrality, boundary files.")
-code_cli.add_typer(clones.app,               name="clones",               help="Find exact and near-duplicate symbols (body_hash / signature_id clusters).")
-code_cli.add_typer(checkout_symbol.app,      name="checkout-symbol",      help="Restore a historical version of one symbol into the working tree.")
-code_cli.add_typer(semantic_cherry_pick.app, name="semantic-cherry-pick", help="Cherry-pick named symbols from a historical commit into the working tree.")
-code_cli.add_typer(index_rebuild.app,        name="index",                help="Manage local indexes: status, rebuild symbol_history / hash_occurrence.")
-code_cli.add_typer(breakage.app,             name="breakage",             help="Detect symbol-level structural breakage in the working tree vs HEAD.")
-code_cli.add_typer(invariants.app,           name="invariants",           help="Enforce architectural rules from .muse/invariants.toml.")
-code_cli.add_typer(code_check.app,           name="check",                help="Semantic invariant enforcement — complexity, import cycles, dead exports, test coverage.")
-code_cli.add_typer(code_query.app,           name="code-query",           help="Predicate query over code commit history — symbol, file, language, agent_id, sem_ver_bump.")
-
-cli.add_typer(code_cli, name="code")
-
-# ---------------------------------------------------------------------------
-# Tier 3 — Multi-agent coordination commands (muse coord …)
-# ---------------------------------------------------------------------------
-
-coord_cli = typer.Typer(
-    name="coord",
-    help="[Tier 3] Multi-agent coordination commands — reservations, intent, conflict forecasting.",
-    no_args_is_help=True,
-    context_settings=_HELP_SETTINGS,
-)
-
-coord_cli.add_typer(reserve.app,    name="reserve",    help="Advisory symbol reservation — announce intent before editing.")
-coord_cli.add_typer(intent.app,     name="intent",     help="Declare a specific operation before executing it.")
-coord_cli.add_typer(forecast.app,   name="forecast",   help="Predict merge conflicts from active reservations and intents.")
-coord_cli.add_typer(plan_merge.app, name="plan-merge",          help="Dry-run semantic merge plan — classify conflicts without writing.")
-coord_cli.add_typer(plan_merge.app, name="predict-conflicts",    help="Alias for plan-merge — predict which symbols will conflict before merging.")
-coord_cli.add_typer(shard.app,      name="shard",      help="Partition the codebase into N low-coupling work zones for parallel agents.")
-coord_cli.add_typer(reconcile.app,  name="reconcile",  help="Recommend merge ordering and integration strategy from coordination state.")
-
-cli.add_typer(coord_cli, name="coord")
+    args.func(args)
 
 
 if __name__ == "__main__":
-    cli()
+    main()

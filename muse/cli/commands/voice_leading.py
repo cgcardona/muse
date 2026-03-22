@@ -24,11 +24,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -37,7 +37,6 @@ from muse.plugins.midi._analysis import check_voice_leading
 from muse.plugins.midi._query import load_track, load_track_from_workdir
 
 logger = logging.getLogger(__name__)
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -50,20 +49,17 @@ def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-@app.callback(invoke_without_command=True)
-def voice_leading(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
-        help="Analyse a historical snapshot instead of the working tree.",
-    ),
-    strict: bool = typer.Option(
-        False, "--strict",
-        help="Exit with error code if any issues are found (for CI use).",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the voice-leading subcommand."""
+    parser = subparsers.add_parser("voice-leading", help="Detect parallel fifths, octaves, and large leaps in a MIDI track.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Analyse a historical snapshot instead of the working tree.")
+    parser.add_argument("--strict", action="store_true", help="Exit with error code if any issues are found (for CI use).")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Detect parallel fifths, octaves, and large leaps in a MIDI track.
 
     ``muse voice-leading`` applies classical counterpoint rules to the
@@ -74,6 +70,11 @@ def voice_leading(
     are present — preventing agents from committing harmonically problematic
     voice leading without review.
     """
+    track: str = args.track
+    ref: str | None = args.ref
+    strict: bool = args.strict
+    as_json: bool = args.as_json
+
     root = require_repo()
     commit_label = "working tree"
 
@@ -82,45 +83,45 @@ def voice_leading(
         branch = _read_branch(root)
         commit = resolve_commit_ref(root, repo_id, branch, ref)
         if commit is None:
-            typer.echo(f"❌ Commit '{ref}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Commit '{ref}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         result = load_track(root, commit.commit_id, track)
         commit_label = commit.commit_id[:8]
     else:
         result = load_track_from_workdir(root, track)
 
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     notes, _tpb = result
     if not notes:
-        typer.echo(f"  (no notes found in '{track}')")
+        print(f"  (no notes found in '{track}')")
         return
 
     issues = check_voice_leading(notes)
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {"track": track, "commit": commit_label, "issues": list(issues)},
             indent=2,
         ))
         if strict and issues:
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            raise SystemExit(ExitCode.USER_ERROR)
         return
 
-    typer.echo(f"\nVoice-leading check: {track} — {commit_label}")
+    print(f"\nVoice-leading check: {track} — {commit_label}")
     if not issues:
-        typer.echo("✅ No voice-leading issues found.")
+        print("✅ No voice-leading issues found.")
         return
 
-    typer.echo(f"⚠️  {len(issues)} issue{'s' if len(issues) != 1 else ''} found\n")
-    typer.echo(f"  {'Bar':>4}  {'Type':<22}  Description")
-    typer.echo("  " + "─" * 58)
+    print(f"⚠️  {len(issues)} issue{'s' if len(issues) != 1 else ''} found\n")
+    print(f"  {'Bar':>4}  {'Type':<22}  Description")
+    print("  " + "─" * 58)
     for issue in issues:
-        typer.echo(
+        print(
             f"  {issue['bar']:>4}  {issue['issue_type']:<22}  {issue['description']}"
         )
 
     if strict:
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)

@@ -20,10 +20,10 @@ Plumbing contract
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -36,34 +36,46 @@ from muse.core.store import (
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
 _FORMAT_CHOICES = ("json", "text")
 
 
-@app.callback(invoke_without_command=True)
-def rev_parse(
-    ctx: typer.Context,
-    ref: str = typer.Argument(
-        ...,
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the rev-parse subcommand."""
+    parser = subparsers.add_parser(
+        "rev-parse",
+        help="Resolve branch/HEAD/SHA prefix → full commit_id.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "ref",
         help="Ref to resolve: branch name, 'HEAD', or commit ID prefix.",
-    ),
-    fmt: str = typer.Option(
-        "json", "--format", "-f", help="Output format: json or text."
-    ),
-) -> None:
+    )
+    parser.add_argument(
+        "--format", "-f",
+        dest="fmt",
+        default="json",
+        metavar="FORMAT",
+        help="Output format: json or text. (default: json)",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Resolve a branch name, HEAD, or SHA prefix to a full commit ID.
 
     Analogous to ``git rev-parse``.  Useful for canonicalising refs in
     scripts and agent pipelines before passing them to other plumbing
     commands.
     """
+    fmt: str = args.fmt
+    ref: str = args.ref
+
     if fmt not in _FORMAT_CHOICES:
-        typer.echo(
+        print(
             f"❌ Unknown format {fmt!r}. Valid choices: {', '.join(_FORMAT_CHOICES)}",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
 
@@ -73,10 +85,8 @@ def rev_parse(
         branch = read_current_branch(root)
         commit_id = get_head_commit_id(root, branch)
         if commit_id is None:
-            typer.echo(
-                json.dumps({"ref": ref, "commit_id": None, "error": "HEAD has no commits"})
-            )
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(json.dumps({"ref": ref, "commit_id": None, "error": "HEAD has no commits"}))
+            raise SystemExit(ExitCode.USER_ERROR)
     else:
         # Try as branch name first.
         candidate = get_head_commit_id(root, ref)
@@ -93,7 +103,7 @@ def rev_parse(
                 if len(matches) == 1:
                     commit_id = matches[0].commit_id
                 elif len(matches) > 1:
-                    typer.echo(
+                    print(
                         json.dumps(
                             {
                                 "ref": ref,
@@ -103,14 +113,14 @@ def rev_parse(
                             }
                         )
                     )
-                    raise typer.Exit(code=ExitCode.USER_ERROR)
+                    raise SystemExit(ExitCode.USER_ERROR)
 
     if commit_id is None:
-        typer.echo(json.dumps({"ref": ref, "commit_id": None, "error": "not found"}))
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(json.dumps({"ref": ref, "commit_id": None, "error": "not found"}))
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if fmt == "text":
-        typer.echo(commit_id)
+        print(commit_id)
         return
 
-    typer.echo(json.dumps({"ref": ref, "commit_id": commit_id}))
+    print(json.dumps({"ref": ref, "commit_id": commit_id}))

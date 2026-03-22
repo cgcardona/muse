@@ -25,12 +25,12 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
+import sys
 from typing import TypedDict
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -45,7 +45,6 @@ from muse.plugins.midi._query import (
 )
 
 logger = logging.getLogger(__name__)
-app = typer.Typer()
 
 
 class PhraseMatch(TypedDict):
@@ -67,28 +66,19 @@ def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-@app.callback(invoke_without_command=True)
-def find_phrase(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to the .mid file to search in."),
-    query: str = typer.Option(
-        ..., "--query", "-q", metavar="QUERY_MIDI",
-        help="Path to a short .mid file containing the phrase to search for.",
-    ),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
-        help="Start the history walk from this commit (default: HEAD).",
-    ),
-    depth: int = typer.Option(
-        50, "--depth", "-d", metavar="N",
-        help="Maximum commits to scan (default 50).",
-    ),
-    min_score: float = typer.Option(
-        0.5, "--min-score", "-s", metavar="S",
-        help="Minimum similarity score to report (default 0.5).",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the find-phrase subcommand."""
+    parser = subparsers.add_parser("find-phrase", help="Search for a melodic phrase across MIDI commit history.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to the .mid file to search in.")
+    parser.add_argument("--query", "-q", metavar="QUERY_MIDI", required=True, help="Path to a short .mid file containing the phrase to search for.")
+    parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Start the history walk from this commit (default: HEAD).")
+    parser.add_argument("--depth", "-d", metavar="N", type=int, default=50, help="Maximum commits to scan (default 50).")
+    parser.add_argument("--min-score", "-s", metavar="S", type=float, default=0.5, dest="min_score", help="Minimum similarity score to report (default 0.5).")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Search for a melodic phrase across MIDI commit history.
 
     ``muse find-phrase`` computes pitch-class histogram and interval-fingerprint
@@ -99,23 +89,30 @@ def find_phrase(
     For agents: pipe the output (``--json``) into a decision loop to select the
     commit with the highest match score as the merge base for a cherry-pick.
     """
+    track: str = args.track
+    query: str = args.query
+    ref: str | None = args.ref
+    depth: int = args.depth
+    min_score: float = args.min_score
+    as_json: bool = args.as_json
+
     if depth < 1 or depth > 10_000:
-        typer.echo(f"❌ --depth must be between 1 and 10,000 (got {depth}).", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ --depth must be between 1 and 10,000 (got {depth}).", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     if not 0.0 <= min_score <= 1.0:
-        typer.echo(f"❌ --min-score must be between 0.0 and 1.0 (got {min_score}).", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ --min-score must be between 0.0 and 1.0 (got {min_score}).", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
 
     # Load query phrase
     query_result = load_track_from_workdir(root, query)
     if query_result is None:
-        typer.echo(f"❌ Query file '{query}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Query file '{query}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     query_notes, _qtpb = query_result
 
     if not query_notes:
-        typer.echo(f"  (query file '{query}' contains no notes — cannot search)")
+        print(f"  (query file '{query}' contains no notes — cannot search)")
         return
 
     repo_id = _read_repo_id(root)
@@ -123,14 +120,14 @@ def find_phrase(
     start_ref = ref or "HEAD"
     start_commit = resolve_commit_ref(root, repo_id, branch, start_ref)
     if start_commit is None:
-        typer.echo(f"❌ Commit '{start_ref}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{start_ref}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     history = walk_commits_for_track(root, start_commit.commit_id, track, max_commits=depth)
 
     if not as_json:
-        typer.echo(f"\nPhrase search: {track}  (query: {query})")
-        typer.echo(f"Scanning {len(history)} commits…\n")
+        print(f"\nPhrase search: {track}  (query: {query})")
+        print(f"Scanning {len(history)} commits…\n")
 
     matches: list[PhraseMatch] = []
     for commit, manifest in history:
@@ -154,19 +151,19 @@ def find_phrase(
     matches.sort(key=lambda m: -m["score"])
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {"track": track, "query": query, "matches": list(matches)},
             indent=2,
         ))
         return
 
     if not matches:
-        typer.echo(f"  (no commits with score ≥ {min_score} found)")
+        print(f"  (no commits with score ≥ {min_score} found)")
         return
 
-    typer.echo(f"  {'Score':>7}  {'Commit':<10}  {'Author':<28}  Message")
-    typer.echo("  " + "─" * 74)
+    print(f"  {'Score':>7}  {'Commit':<10}  {'Author':<28}  Message")
+    print("  " + "─" * 74)
     for m in matches:
-        typer.echo(
+        print(
             f"  {m['score']:>7.3f}  {m['commit_id']:<10}  {m['author']:<28}  {m['message']}"
         )

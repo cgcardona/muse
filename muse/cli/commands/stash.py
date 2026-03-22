@@ -13,15 +13,15 @@ Usage::
 
 from __future__ import annotations
 
+import argparse
 import datetime
 import json
 import logging
 import os
 import pathlib
+import sys
 import tempfile
 from typing import TypedDict
-
-import typer
 
 from muse.core.errors import ExitCode
 from muse.core.object_store import write_object_from_path
@@ -36,10 +36,7 @@ _STASH_MAX_BYTES = 64 * 1024 * 1024  # 64 MiB guard against huge stash files
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
 _STASH_FILE = ".muse/stash.json"
-
 
 
 class StashEntry(TypedDict):
@@ -110,21 +107,42 @@ def _save_stash(root: pathlib.Path, stash: list[StashEntry]) -> None:
         raise
 
 
-@app.callback(invoke_without_command=True)
-def stash(
-    ctx: typer.Context,
-    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the stash subcommand."""
+    parser = subparsers.add_parser(
+        "stash",
+        help="Temporarily shelve uncommitted changes.",
+        description=__doc__,
+    )
+    parser.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
+    subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
+
+    pop_p = subs.add_parser("pop", help="Restore the most recent stash.")
+    pop_p.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
+    pop_p.set_defaults(func=run_pop)
+
+    list_p = subs.add_parser("list", help="List all stash entries.")
+    list_p.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
+    list_p.set_defaults(func=run_list)
+
+    drop_p = subs.add_parser("drop", help="Discard the most recent stash entry.")
+    drop_p.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
+    drop_p.set_defaults(func=run_drop)
+
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Save current state/ changes and restore HEAD.
 
     Agents should pass ``--format json`` to receive ``{snapshot_id, branch,
     stashed_at, stash_size}`` rather than human-readable text.
     """
-    if ctx.invoked_subcommand is not None:
-        return
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
@@ -132,9 +150,9 @@ def stash(
     manifest = plugin.snapshot(root)["files"]
     if not manifest:
         if fmt == "json":
-            typer.echo(json.dumps({"status": "nothing_to_stash"}))
+            print(json.dumps({"status": "nothing_to_stash"}))
         else:
-            typer.echo("Nothing to stash.")
+            print("Nothing to stash.")
         return
 
     snapshot_id = compute_snapshot_id(manifest)
@@ -156,67 +174,65 @@ def stash(
     apply_manifest(root, head_manifest)
 
     if fmt == "json":
-        typer.echo(json.dumps({
+        print(json.dumps({
             "snapshot_id": snapshot_id,
             "branch": branch,
             "stashed_at": stashed_at,
             "stash_size": len(entries),
         }))
     else:
-        typer.echo(f"Saved working directory (stash@{{0}})")
+        print(f"Saved working directory (stash@{{0}})")
 
 
-@app.command("pop")
-def stash_pop(
-    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
-) -> None:
+def run_pop(args: argparse.Namespace) -> None:
     """Restore the most recent stash.
 
     Agents should pass ``--format json`` to receive ``{snapshot_id, branch,
     stashed_at}`` rather than human-readable text.
     """
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     entries = _load_stash(root)
     if not entries:
         if fmt == "json":
-            typer.echo(json.dumps({"error": "no_stash_entries"}))
+            print(json.dumps({"error": "no_stash_entries"}))
         else:
-            typer.echo("No stash entries.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+            print("No stash entries.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     entry = entries.pop(0)
     _save_stash(root, entries)
 
     apply_manifest(root, entry["manifest"])
     if fmt == "json":
-        typer.echo(json.dumps({
+        print(json.dumps({
             "snapshot_id": entry["snapshot_id"],
             "branch": entry["branch"],
             "stashed_at": entry["stashed_at"],
         }))
     else:
-        typer.echo(f"Restored stash@{{0}} (branch: {sanitize_display(entry['branch'])})")
+        print(f"Restored stash@{{0}} (branch: {sanitize_display(entry['branch'])})")
 
 
-@app.command("list")
-def stash_list(
-    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
-) -> None:
+def run_list(args: argparse.Namespace) -> None:
     """List all stash entries.
 
     Agents should pass ``--format json`` to receive a JSON array of
     ``{index, snapshot_id, branch, stashed_at}`` objects.
     """
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     entries = _load_stash(root)
     if fmt == "json":
-        typer.echo(json.dumps([{
+        print(json.dumps([{
             "index": i,
             "snapshot_id": e["snapshot_id"],
             "branch": e["branch"],
@@ -224,35 +240,34 @@ def stash_list(
         } for i, e in enumerate(entries)]))
         return
     if not entries:
-        typer.echo("No stash entries.")
+        print("No stash entries.")
         return
     for i, entry in enumerate(entries):
-        typer.echo(f"stash@{{{i}}}: WIP on {sanitize_display(entry['branch'])} — {sanitize_display(entry['stashed_at'])}")
+        print(f"stash@{{{i}}}: WIP on {sanitize_display(entry['branch'])} — {sanitize_display(entry['stashed_at'])}")
 
 
-@app.command("drop")
-def stash_drop(
-    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
-) -> None:
+def run_drop(args: argparse.Namespace) -> None:
     """Discard the most recent stash entry.
 
     Agents should pass ``--format json`` to receive ``{status, stash_size}``
     rather than human-readable text.
     """
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     entries = _load_stash(root)
     if not entries:
         if fmt == "json":
-            typer.echo(json.dumps({"error": "no_stash_entries"}))
+            print(json.dumps({"error": "no_stash_entries"}))
         else:
-            typer.echo("No stash entries.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+            print("No stash entries.")
+        raise SystemExit(ExitCode.USER_ERROR)
     entries.pop(0)
     _save_stash(root, entries)
     if fmt == "json":
-        typer.echo(json.dumps({"status": "dropped", "stash_size": len(entries)}))
+        print(json.dumps({"status": "dropped", "stash_size": len(entries)}))
     else:
-        typer.echo("Dropped stash@{0}")
+        print("Dropped stash@{0}")

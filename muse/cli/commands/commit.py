@@ -24,13 +24,13 @@ Exit codes::
 
 from __future__ import annotations
 
+import argparse
 import datetime
 import json
 import logging
 import os
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.merge_engine import clear_merge_state, read_merge_state
@@ -56,8 +56,6 @@ from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
 
 def _read_repo_id(root: pathlib.Path) -> str:
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
@@ -81,21 +79,28 @@ def _read_parent_id(ref_path: pathlib.Path) -> str | None:
     return raw or None
 
 
-@app.callback(invoke_without_command=True)
-def commit(
-    ctx: typer.Context,
-    message: str | None = typer.Option(None, "-m", "--message", help="Commit message."),
-    allow_empty: bool = typer.Option(False, "--allow-empty", help="Allow committing with no changes."),
-    section: str | None = typer.Option(None, "--section", help="Tag this commit with a musical section (verse, chorus, bridge…)."),
-    track: str | None = typer.Option(None, "--track", help="Tag this commit with an instrument track (drums, bass, keys…)."),
-    emotion: str | None = typer.Option(None, "--emotion", help="Attach an emotion label (joyful, melancholic, tense…)."),
-    author: str | None = typer.Option(None, "--author", help="Override the commit author."),
-    agent_id: str | None = typer.Option(None, "--agent-id", help="Agent identity string (overrides MUSE_AGENT_ID env var)."),
-    model_id: str | None = typer.Option(None, "--model-id", help="Model identifier for AI agents (overrides MUSE_MODEL_ID env var)."),
-    toolchain_id: str | None = typer.Option(None, "--toolchain-id", help="Toolchain string (overrides MUSE_TOOLCHAIN_ID env var)."),
-    sign: bool = typer.Option(False, "--sign", help="HMAC-sign the commit using the agent's stored key (requires --agent-id or MUSE_AGENT_ID)."),
-    fmt: str = typer.Option("text", "--format", "-f", help="Output format: text or json."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the commit subcommand."""
+    parser = subparsers.add_parser(
+        "commit",
+        help="Record the current state as a new version.",
+        description=__doc__,
+    )
+    parser.add_argument("-m", "--message", default=None, help="Commit message.")
+    parser.add_argument("--allow-empty", action="store_true", help="Allow committing with no changes.")
+    parser.add_argument("--section", default=None, help="Tag this commit with a musical section (verse, chorus, bridge…).")
+    parser.add_argument("--track", default=None, help="Tag this commit with an instrument track (drums, bass, keys…).")
+    parser.add_argument("--emotion", default=None, help="Attach an emotion label (joyful, melancholic, tense…).")
+    parser.add_argument("--author", default=None, help="Override the commit author.")
+    parser.add_argument("--agent-id", default=None, dest="agent_id", help="Agent identity string (overrides MUSE_AGENT_ID env var).")
+    parser.add_argument("--model-id", default=None, dest="model_id", help="Model identifier for AI agents (overrides MUSE_MODEL_ID env var).")
+    parser.add_argument("--toolchain-id", default=None, dest="toolchain_id", help="Toolchain string (overrides MUSE_TOOLCHAIN_ID env var).")
+    parser.add_argument("--sign", action="store_true", help="HMAC-sign the commit using the agent's stored key (requires --agent-id or MUSE_AGENT_ID).")
+    parser.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Record the current state as a new version.
 
     Agents should pass ``--format json`` to receive a machine-readable result::
@@ -111,23 +116,35 @@ def commit(
           "sem_ver_bump":     "none"
         }
     """
+    message: str | None = args.message
+    allow_empty: bool = args.allow_empty
+    section: str | None = args.section
+    track: str | None = args.track
+    emotion: str | None = args.emotion
+    author: str | None = args.author
+    agent_id: str | None = args.agent_id
+    model_id: str | None = args.model_id
+    toolchain_id: str | None = args.toolchain_id
+    sign: bool = args.sign
+    fmt: str = args.fmt
+
     if fmt not in ("text", "json"):
-        typer.echo(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     if message is None and not allow_empty:
-        typer.echo("❌ Provide a commit message with -m MESSAGE.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ Provide a commit message with -m MESSAGE.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
 
     # Read merge state before any writes — needed for rerere recording below.
     merge_state = read_merge_state(root)
     if merge_state is not None and merge_state.conflict_paths:
-        typer.echo("❌ You have unresolved merge conflicts. Resolve them before committing.")
+        print("❌ You have unresolved merge conflicts. Resolve them before committing.")
         for p in sorted(merge_state.conflict_paths):
-            typer.echo(f"  both modified: {sanitize_display(p)}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"  both modified: {sanitize_display(p)}")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     repo_id = _read_repo_id(root)
     branch, ref_path = _read_branch(root)
@@ -137,16 +154,16 @@ def commit(
     snap = plugin.snapshot(root)
     manifest = snap["files"]
     if not manifest and not allow_empty:
-        typer.echo("⚠️  Nothing tracked — working tree is empty.")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("⚠️  Nothing tracked — working tree is empty.")
+        raise SystemExit(ExitCode.USER_ERROR)
 
     snapshot_id = compute_snapshot_id(manifest)
 
     if not allow_empty:
         head_snapshot = get_head_snapshot_id(root, repo_id, branch)
         if head_snapshot == snapshot_id:
-            typer.echo("Nothing to commit, working tree clean")
-            raise typer.Exit(code=ExitCode.SUCCESS)
+            print("Nothing to commit, working tree clean")
+            raise SystemExit(ExitCode.SUCCESS)
 
     committed_at = datetime.datetime.now(datetime.timezone.utc)
     parent_ids = [parent_id] if parent_id else []
@@ -276,7 +293,7 @@ def commit(
         clear_merge_state(root)
 
     if fmt == "json":
-        typer.echo(json.dumps({
+        print(json.dumps({
             "commit_id": commit_id,
             "branch": branch,
             "snapshot_id": snapshot_id,
@@ -287,4 +304,4 @@ def commit(
             "sem_ver_bump": sem_ver_bump,
         }))
     else:
-        typer.echo(f"[{sanitize_display(branch)} {commit_id[:8]}] {sanitize_display(message or '')}")
+        print(f"[{sanitize_display(branch)} {commit_id[:8]}] {sanitize_display(message or '')}")

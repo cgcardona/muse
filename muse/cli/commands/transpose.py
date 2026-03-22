@@ -25,11 +25,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -42,29 +42,21 @@ from muse.plugins.midi.midi_diff import _pitch_name
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
 _MIDI_MIN = 0
 _MIDI_MAX = 127
 
 
-@app.callback(invoke_without_command=True)
-def transpose(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    semitones: int = typer.Option(
-        ..., "--semitones", "-s", metavar="N",
-        help="Number of semitones to shift (positive = up, negative = down).",
-    ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", "-n",
-        help="Preview what would change without writing to disk.",
-    ),
-    clamp: bool = typer.Option(
-        False, "--clamp",
-        help="Clamp pitches to 0–127 instead of failing on out-of-range notes.",
-    ),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the transpose subcommand."""
+    parser = subparsers.add_parser("transpose", help="Transpose all notes in a MIDI track by N semitones.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--semitones", "-s", metavar="N", type=int, required=True, help="Number of semitones to shift (positive = up, negative = down).")
+    parser.add_argument("--dry-run", "-n", action="store_true", help="Preview what would change without writing to disk.")
+    parser.add_argument("--clamp", action="store_true", help="Clamp pitches to 0–127 instead of failing on out-of-range notes.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Transpose all notes in a MIDI track by N semitones.
 
     ``muse transpose`` reads the MIDI file from the working tree, shifts
@@ -83,17 +75,22 @@ def transpose(
     Use ``--clamp`` to clip pitches to the valid MIDI range (0–127)
     instead of raising an error.
     """
+    track: str = args.track
+    semitones: int = args.semitones
+    dry_run: bool = args.dry_run
+    clamp: bool = args.clamp
+
     root = require_repo()
 
     result = load_track_from_workdir(root, track)
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     original_notes, tpb = result
 
     if not original_notes:
-        typer.echo(f"  (track '{track}' contains no notes — nothing to transpose)")
+        print(f"  (track '{track}' contains no notes — nothing to transpose)")
         return
 
     # Validate pitch range.
@@ -102,13 +99,13 @@ def transpose(
     if out_of_range and not clamp:
         lo = min(out_of_range)
         hi = max(out_of_range)
-        typer.echo(
+        print(
             f"❌ Transposing by {semitones:+d} semitones would produce "
             f"out-of-range MIDI pitches ({lo}–{hi}).  "
             f"Use --clamp to clip to 0–127.",
-            err=True,
+            file=sys.stderr,
         )
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     # Build transposed notes.
     transposed: list[NoteInfo] = []
@@ -135,12 +132,12 @@ def transpose(
     ]
 
     if dry_run:
-        typer.echo(f"\n[dry-run] Would transpose {track}  {sign}{semitones} semitones")
-        typer.echo(f"  Notes:       {len(original_notes)}")
-        typer.echo(f"  Shifts:      {', '.join(sample_pairs)}, …")
-        typer.echo(f"  Pitch range: {_pitch_name(new_lo)}–{_pitch_name(new_hi)}  "
+        print(f"\n[dry-run] Would transpose {track}  {sign}{semitones} semitones")
+        print(f"  Notes:       {len(original_notes)}")
+        print(f"  Shifts:      {', '.join(sample_pairs)}, …")
+        print(f"  Pitch range: {_pitch_name(new_lo)}–{_pitch_name(new_hi)}  "
                    f"(was {_pitch_name(old_lo)}–{_pitch_name(old_hi)})")
-        typer.echo("  No changes written (--dry-run).")
+        print("  No changes written (--dry-run).")
         return
 
     midi_bytes = notes_to_midi_bytes(transposed, tpb)
@@ -151,8 +148,8 @@ def transpose(
         work_path = root / track
     work_path.write_bytes(midi_bytes)
 
-    typer.echo(f"\n✅ Transposed {track}  {sign}{semitones} semitones")
-    typer.echo(f"   {len(transposed)} notes shifted  ({', '.join(sample_pairs)}, …)")
-    typer.echo(f"   Pitch range: {_pitch_name(new_lo)}–{_pitch_name(new_hi)}"
+    print(f"\n✅ Transposed {track}  {sign}{semitones} semitones")
+    print(f"   {len(transposed)} notes shifted  ({', '.join(sample_pairs)}, …)")
+    print(f"   Pitch range: {_pitch_name(new_lo)}–{_pitch_name(new_hi)}"
                f"  (was {_pitch_name(old_lo)}–{_pitch_name(old_hi)})")
-    typer.echo("   Run `muse status` to review, then `muse commit`")
+    print("   Run `muse status` to review, then `muse commit`")

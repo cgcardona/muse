@@ -25,11 +25,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -38,7 +38,6 @@ from muse.plugins.midi._analysis import detect_cadences
 from muse.plugins.midi._query import load_track, load_track_from_workdir
 
 logger = logging.getLogger(__name__)
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -51,16 +50,16 @@ def _read_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-@app.callback(invoke_without_command=True)
-def cadence(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
-        help="Analyse a historical snapshot instead of the working tree.",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the cadence subcommand."""
+    parser = subparsers.add_parser("cadence", help="Detect phrase-ending cadences in a MIDI track.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--commit", "-c", metavar="REF", default=None, dest="ref", help="Analyse a historical snapshot instead of the working tree.")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Emit results as JSON.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Detect phrase-ending cadences in a MIDI track.
 
     ``muse cadence`` identifies authentic, deceptive, half, and plagal
@@ -73,6 +72,10 @@ def cadence(
 
     Git cannot do this — it has no concept of musical phrase structure.
     """
+    track: str = args.track
+    ref: str | None = args.ref
+    as_json: bool = args.as_json
+
     root = require_repo()
     commit_label = "working tree"
 
@@ -81,38 +84,38 @@ def cadence(
         branch = _read_branch(root)
         commit = resolve_commit_ref(root, repo_id, branch, ref)
         if commit is None:
-            typer.echo(f"❌ Commit '{ref}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Commit '{ref}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         result = load_track(root, commit.commit_id, track)
         commit_label = commit.commit_id[:8]
     else:
         result = load_track_from_workdir(root, track)
 
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     notes, _tpb = result
     if not notes:
-        typer.echo(f"  (no notes found in '{track}')")
+        print(f"  (no notes found in '{track}')")
         return
 
     cadences = detect_cadences(notes)
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {"track": track, "commit": commit_label, "cadences": list(cadences)},
             indent=2,
         ))
         return
 
-    typer.echo(f"\nCadence analysis: {track} — {commit_label}")
+    print(f"\nCadence analysis: {track} — {commit_label}")
     if not cadences:
-        typer.echo("  (no cadences detected — track may be too short or lack chords)")
+        print("  (no cadences detected — track may be too short or lack chords)")
         return
 
-    typer.echo(f"Found {len(cadences)} cadence{'s' if len(cadences) != 1 else ''}\n")
-    typer.echo(f"  {'Bar':>4}  {'Type':<14}  {'From':<12}  {'To':<12}")
-    typer.echo("  " + "─" * 46)
+    print(f"Found {len(cadences)} cadence{'s' if len(cadences) != 1 else ''}\n")
+    print(f"  {'Bar':>4}  {'Type':<14}  {'From':<12}  {'To':<12}")
+    print("  " + "─" * 46)
     for c in cadences:
-        typer.echo(f"  {c['bar']:>4}  {c['cadence_type']:<14}  {c['from_chord']:<12}  {c['to_chord']:<12}")
+        print(f"  {c['bar']:>4}  {c['cadence_type']:<14}  {c['from_chord']:<12}  {c['to_chord']:<12}")

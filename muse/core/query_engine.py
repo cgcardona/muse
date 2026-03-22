@@ -180,7 +180,7 @@ def format_matches(matches: list[QueryMatch], *, max_results: int = 50) -> str:
         max_results: Maximum rows to show.
 
     Returns:
-        Multi-line string ready for ``typer.echo()``.
+        Multi-line string ready for printing to stdout.
     """
     if not matches:
         return "No matches found."

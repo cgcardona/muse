@@ -27,11 +27,11 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
@@ -39,8 +39,6 @@ from muse.core.store import read_current_branch, resolve_commit_ref
 from muse.plugins.code._query import flat_symbol_ops, language_of, walk_commits_range
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -75,28 +73,41 @@ def _collect_churn(
     return counts, len(commits)
 
 
-@app.callback(invoke_without_command=True)
-def hotspots(
-    ctx: typer.Context,
-    top: int = typer.Option(20, "--top", "-n", metavar="N", help="Number of symbols to show (default: 20)."),
-    kind_filter: str | None = typer.Option(
-        None, "--kind", "-k", metavar="KIND",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the hotspots subcommand."""
+    parser = subparsers.add_parser(
+        "hotspots",
+        help="Show the symbols that change most often — the churn leaderboard.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--top", "-n", type=int, default=20, metavar="N", dest="top",
+        help="Number of symbols to show (default: 20).",
+    )
+    parser.add_argument(
+        "--kind", "-k", default=None, metavar="KIND", dest="kind_filter",
         help="Restrict to symbols of this kind (function, class, method, …).",
-    ),
-    language_filter: str | None = typer.Option(
-        None, "--language", "-l", metavar="LANG",
+    )
+    parser.add_argument(
+        "--language", "-l", default=None, metavar="LANG", dest="language_filter",
         help="Restrict to symbols from files of this language.",
-    ),
-    from_ref: str | None = typer.Option(
-        None, "--from", metavar="REF",
+    )
+    parser.add_argument(
+        "--from", default=None, metavar="REF", dest="from_ref",
         help="Exclusive start of the commit range (default: initial commit).",
-    ),
-    to_ref: str | None = typer.Option(
-        None, "--to", metavar="REF",
+    )
+    parser.add_argument(
+        "--to", default=None, metavar="REF", dest="to_ref",
         help="Inclusive end of the commit range (default: HEAD).",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit results as JSON.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show the symbols that change most often — the churn leaderboard.
 
     Walks the commit history and counts how many commits touched each symbol.
@@ -107,21 +118,28 @@ def hotspots(
     Use ``--from`` / ``--to`` to scope the analysis to a sprint, a release,
     or any custom range.  Use ``--kind function`` to focus on functions only.
     """
+    top: int = args.top
+    kind_filter: str | None = args.kind_filter
+    language_filter: str | None = args.language_filter
+    from_ref: str | None = args.from_ref
+    to_ref: str | None = args.to_ref
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 
     to_commit = resolve_commit_ref(root, repo_id, branch, to_ref)
     if to_commit is None:
-        typer.echo(f"❌ Commit '{to_ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{to_ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     from_commit_id: str | None = None
     if from_ref is not None:
         from_commit = resolve_commit_ref(root, repo_id, branch, from_ref)
         if from_commit is None:
-            typer.echo(f"❌ Commit '{from_ref}' not found.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ Commit '{from_ref}' not found.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
         from_commit_id = from_commit.commit_id
 
     counts, total_commits = _collect_churn(
@@ -129,13 +147,13 @@ def hotspots(
     )
 
     if not counts:
-        typer.echo("  (no symbol-level changes found in this range)")
+        print("  (no symbol-level changes found in this range)")
         return
 
     ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:top]
 
     if as_json:
-        typer.echo(json.dumps(
+        print(json.dumps(
             {"commits_analysed": total_commits, "hotspots": [{"address": a, "changes": c} for a, c in ranked]},
             indent=2,
         ))
@@ -146,14 +164,14 @@ def hotspots(
         filters += f"  kind={kind_filter}"
     if language_filter:
         filters += f"  language={language_filter}"
-    typer.echo(f"\nSymbol churn — top {len(ranked)} most-changed symbols{filters}")
-    typer.echo(f"Commits analysed: {total_commits}")
-    typer.echo("")
+    print(f"\nSymbol churn — top {len(ranked)} most-changed symbols{filters}")
+    print(f"Commits analysed: {total_commits}")
+    print("")
 
     width = len(str(len(ranked)))
     for rank, (addr, count) in enumerate(ranked, 1):
         label = "change" if count == 1 else "changes"
-        typer.echo(f"  {rank:>{width}}   {addr:<60}  {count:>4} {label}")
+        print(f"  {rank:>{width}}   {addr:<60}  {count:>4} {label}")
 
-    typer.echo("")
-    typer.echo("High churn = instability signal. Consider refactoring or adding tests.")
+    print("")
+    print("High churn = instability signal. Consider refactoring or adding tests.")

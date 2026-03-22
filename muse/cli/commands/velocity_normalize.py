@@ -22,10 +22,10 @@ Output::
 
 from __future__ import annotations
 
+import argparse
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.validation import contain_path
@@ -33,7 +33,6 @@ from muse.core.repo import require_repo
 from muse.plugins.midi._query import NoteInfo, load_track_from_workdir, notes_to_midi_bytes
 
 logger = logging.getLogger(__name__)
-app = typer.Typer()
 
 _MIDI_MIN = 1
 _MIDI_MAX = 127
@@ -46,20 +45,17 @@ def _rescale(velocity: int, src_lo: int, src_hi: int, dst_lo: int, dst_hi: int) 
     return round(dst_lo + ratio * (dst_hi - dst_lo))
 
 
-@app.callback(invoke_without_command=True)
-def normalize(
-    ctx: typer.Context,
-    track: str = typer.Argument(..., metavar="TRACK", help="Workspace-relative path to a .mid file."),
-    min_vel: int = typer.Option(
-        40, "--min", metavar="VEL",
-        help="Target minimum velocity (default 40).",
-    ),
-    max_vel: int = typer.Option(
-        110, "--max", metavar="VEL",
-        help="Target maximum velocity (default 110).",
-    ),
-    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Preview without writing."),
-) -> None:
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the normalize subcommand."""
+    parser = subparsers.add_parser("normalize", help="Rescale note velocities to a target dynamic range.", description=__doc__)
+    parser.add_argument("track", metavar="TRACK", help="Workspace-relative path to a .mid file.")
+    parser.add_argument("--min", metavar="VEL", type=int, default=40, dest="min_vel", help="Target minimum velocity (default 40).")
+    parser.add_argument("--max", metavar="VEL", type=int, default=110, dest="max_vel", help="Target maximum velocity (default 110).")
+    parser.add_argument("--dry-run", "-n", action="store_true", help="Preview without writing.")
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Rescale note velocities to a target dynamic range.
 
     ``muse normalize`` linearly maps the existing velocity range to
@@ -70,25 +66,30 @@ def normalize(
     Use ``--min 64 --max 96`` for a narrow, compressed dynamic range;
     use ``--min 20 --max 127`` for the full MIDI spectrum.
     """
+    track: str = args.track
+    min_vel: int = args.min_vel
+    max_vel: int = args.max_vel
+    dry_run: bool = args.dry_run
+
     if not _MIDI_MIN <= min_vel <= _MIDI_MAX:
-        typer.echo(f"❌ --min must be between {_MIDI_MIN} and {_MIDI_MAX}.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ --min must be between {_MIDI_MIN} and {_MIDI_MAX}.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     if not _MIDI_MIN <= max_vel <= _MIDI_MAX:
-        typer.echo(f"❌ --max must be between {_MIDI_MIN} and {_MIDI_MAX}.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ --max must be between {_MIDI_MIN} and {_MIDI_MAX}.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
     if min_vel >= max_vel:
-        typer.echo("❌ --min must be less than --max.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print("❌ --min must be less than --max.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     result = load_track_from_workdir(root, track)
     if result is None:
-        typer.echo(f"❌ Track '{track}' not found or not a valid MIDI file.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Track '{track}' not found or not a valid MIDI file.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     notes, tpb = result
     if not notes:
-        typer.echo(f"  (track '{track}' contains no notes — nothing to normalise)")
+        print(f"  (track '{track}' contains no notes — nothing to normalise)")
         return
 
     vels = [n.velocity for n in notes]
@@ -109,11 +110,11 @@ def normalize(
     new_mean = sum(n.velocity for n in normalised) / len(normalised)
 
     if dry_run:
-        typer.echo(f"\n[dry-run] Would normalise {track}")
-        typer.echo(f"  Notes:         {len(notes)}")
-        typer.echo(f"  Range:         {src_lo}–{src_hi} → {min_vel}–{max_vel}")
-        typer.echo(f"  Mean velocity: {old_mean:.1f} → {new_mean:.1f}")
-        typer.echo("  No changes written (--dry-run).")
+        print(f"\n[dry-run] Would normalise {track}")
+        print(f"  Notes:         {len(notes)}")
+        print(f"  Range:         {src_lo}–{src_hi} → {min_vel}–{max_vel}")
+        print(f"  Mean velocity: {old_mean:.1f} → {new_mean:.1f}")
+        print("  No changes written (--dry-run).")
         return
 
     midi_bytes = notes_to_midi_bytes(normalised, tpb)
@@ -121,12 +122,12 @@ def normalize(
     try:
         work_path = contain_path(workdir, track)
     except ValueError as exc:
-        typer.echo(f"❌ Invalid track path: {exc}")
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Invalid track path: {exc}")
+        raise SystemExit(ExitCode.USER_ERROR)
     work_path.parent.mkdir(parents=True, exist_ok=True)
     work_path.write_bytes(midi_bytes)
 
-    typer.echo(f"\n✅ Normalised {track}")
-    typer.echo(f"   {len(normalised)} notes rescaled  ·  range: {src_lo}–{src_hi} → {min_vel}–{max_vel}")
-    typer.echo(f"   Mean velocity: {old_mean:.1f} → {new_mean:.1f}")
-    typer.echo("   Run `muse status` to review, then `muse commit`")
+    print(f"\n✅ Normalised {track}")
+    print(f"   {len(normalised)} notes rescaled  ·  range: {src_lo}–{src_hi} → {min_vel}–{max_vel}")
+    print(f"   Mean velocity: {old_mean:.1f} → {new_mean:.1f}")
+    print("   Run `muse status` to review, then `muse commit`")

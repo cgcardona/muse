@@ -36,11 +36,11 @@ Flags:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 from muse.core.object_store import read_object
@@ -51,8 +51,6 @@ from muse.plugins.code._query import language_of, symbols_for_snapshot
 from muse.plugins.code.ast_parser import SymbolTree, parse_symbols
 
 logger = logging.getLogger(__name__)
-
-app = typer.Typer()
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -153,26 +151,36 @@ def _python_callers(
 # ---------------------------------------------------------------------------
 
 
-@app.callback(invoke_without_command=True)
-def deps(
-    ctx: typer.Context,
-    target: str = typer.Argument(
-        ..., metavar="TARGET",
+def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """Register the deps subcommand."""
+    parser = subparsers.add_parser(
+        "deps",
+        help="Show the import graph or call graph for a file or symbol.",
+        description=__doc__,
+    )
+    parser.add_argument(
+        "target", metavar="TARGET",
         help=(
             'File path (e.g. "src/billing.py") for import graph, or '
             'symbol address (e.g. "src/billing.py::compute_invoice_total") for call graph.'
         ),
-    ),
-    reverse: bool = typer.Option(
-        False, "--reverse", "-r",
+    )
+    parser.add_argument(
+        "--reverse", "-r", action="store_true",
         help="Show importers (file mode) or callers (symbol mode) instead.",
-    ),
-    ref: str | None = typer.Option(
-        None, "--commit", "-c", metavar="REF",
+    )
+    parser.add_argument(
+        "--commit", "-c", default=None, metavar="REF", dest="ref",
         help="Inspect a historical commit instead of HEAD (import graph mode only).",
-    ),
-    as_json: bool = typer.Option(False, "--json", help="Emit results as JSON."),
-) -> None:
+    )
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json",
+        help="Emit results as JSON.",
+    )
+    parser.set_defaults(func=run)
+
+
+def run(args: argparse.Namespace) -> None:
     """Show the import graph or call graph for a file or symbol.
 
     **File mode** — pass a file path::
@@ -188,6 +196,11 @@ def deps(
     Call-graph analysis uses the live working tree for symbol mode.
     Import-graph analysis uses the committed snapshot (``--commit`` to pin).
     """
+    target: str = args.target
+    reverse: bool = args.reverse
+    ref: str | None = args.ref
+    as_json: bool = args.as_json
+
     root = require_repo()
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
@@ -201,12 +214,12 @@ def deps(
         file_rel, sym_qualified = target.split("::", 1)
         lang = language_of(file_rel)
         if lang != "Python":
-            typer.echo(
+            print(
                 f"⚠️  Call-graph analysis is currently Python-only.  "
                 f"'{file_rel}' is {lang}.",
-                err=True,
+                file=sys.stderr,
             )
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            raise SystemExit(ExitCode.USER_ERROR)
 
         # Read from working tree.
         candidates = [root / file_rel]
@@ -216,47 +229,47 @@ def deps(
                 src_path = c
                 break
         if src_path is None:
-            typer.echo(f"❌ File '{file_rel}' not found in working tree.", err=True)
-            raise typer.Exit(code=ExitCode.USER_ERROR)
+            print(f"❌ File '{file_rel}' not found in working tree.", file=sys.stderr)
+            raise SystemExit(ExitCode.USER_ERROR)
 
         source = src_path.read_bytes()
 
         if not reverse:
             callees = callees_for_symbol(source, target)
             if as_json:
-                typer.echo(json.dumps({"address": target, "calls": callees}, indent=2))
+                print(json.dumps({"address": target, "calls": callees}, indent=2))
                 return
-            typer.echo(f"\nCallees of {target}")
-            typer.echo("─" * 62)
+            print(f"\nCallees of {target}")
+            print("─" * 62)
             if not callees:
-                typer.echo("  (no function calls detected)")
+                print("  (no function calls detected)")
             else:
                 for name in callees:
-                    typer.echo(f"  {name}")
-            typer.echo(f"\n{len(callees)} callee(s)")
+                    print(f"  {name}")
+            print(f"\n{len(callees)} callee(s)")
         else:
             target_name = sym_qualified.split(".")[-1]
             commit = resolve_commit_ref(root, repo_id, branch, None)
             if commit is None:
-                typer.echo("❌ No commits found.", err=True)
-                raise typer.Exit(code=ExitCode.USER_ERROR)
+                print("❌ No commits found.", file=sys.stderr)
+                raise SystemExit(ExitCode.USER_ERROR)
             manifest = get_commit_snapshot_manifest(root, commit.commit_id) or {}
             callers = _python_callers(root, manifest, target_name)
             if as_json:
-                typer.echo(json.dumps(
+                print(json.dumps(
                     {"address": target, "target_name": target_name, "called_by": callers},
                     indent=2,
                 ))
                 return
-            typer.echo(f"\nCallers of {target}")
-            typer.echo(f"  (matching bare name: {target_name!r})")
-            typer.echo("─" * 62)
+            print(f"\nCallers of {target}")
+            print(f"  (matching bare name: {target_name!r})")
+            print("─" * 62)
             if not callers:
-                typer.echo("  (no callers found in committed snapshot)")
+                print("  (no callers found in committed snapshot)")
             else:
                 for addr in callers:
-                    typer.echo(f"  {addr}")
-            typer.echo(f"\n{len(callers)} caller(s) found")
+                    print(f"  {addr}")
+            print(f"\n{len(callers)} caller(s) found")
         return
 
     # ----------------------------------------------------------------
@@ -264,34 +277,34 @@ def deps(
     # ----------------------------------------------------------------
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
-        typer.echo(f"❌ Commit '{ref or 'HEAD'}' not found.", err=True)
-        raise typer.Exit(code=ExitCode.USER_ERROR)
+        print(f"❌ Commit '{ref or 'HEAD'}' not found.", file=sys.stderr)
+        raise SystemExit(ExitCode.USER_ERROR)
 
     manifest = get_commit_snapshot_manifest(root, commit.commit_id) or {}
 
     if not reverse:
         imports = _file_imports(root, manifest, target)
         if as_json:
-            typer.echo(json.dumps({"file": target, "imports": imports}, indent=2))
+            print(json.dumps({"file": target, "imports": imports}, indent=2))
             return
-        typer.echo(f"\nImports declared in {target}")
-        typer.echo("─" * 62)
+        print(f"\nImports declared in {target}")
+        print("─" * 62)
         if not imports:
-            typer.echo("  (no imports found)")
+            print("  (no imports found)")
         else:
             for name in imports:
-                typer.echo(f"  {name}")
-        typer.echo(f"\n{len(imports)} import(s)")
+                print(f"  {name}")
+        print(f"\n{len(imports)} import(s)")
     else:
         importers = _reverse_imports(root, manifest, target)
         if as_json:
-            typer.echo(json.dumps({"file": target, "imported_by": importers}, indent=2))
+            print(json.dumps({"file": target, "imported_by": importers}, indent=2))
             return
-        typer.echo(f"\nFiles that import {target}")
-        typer.echo("─" * 62)
+        print(f"\nFiles that import {target}")
+        print("─" * 62)
         if not importers:
-            typer.echo("  (no files import this module in the committed snapshot)")
+            print("  (no files import this module in the committed snapshot)")
         else:
             for fp in importers:
-                typer.echo(f"  {fp}")
-        typer.echo(f"\n{len(importers)} importer(s) found")
+                print(f"  {fp}")
+        print(f"\n{len(importers)} importer(s) found")

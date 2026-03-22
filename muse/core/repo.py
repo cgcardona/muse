@@ -11,8 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import pathlib
-
-import typer
+import sys
 
 from muse.core.errors import ExitCode
 
@@ -53,14 +52,13 @@ def require_repo(start: pathlib.Path | None = None) -> pathlib.Path:
     """Return the repo root or exit 2 with a clear error message.
 
     Wraps ``find_repo_root()`` for command callbacks that must be inside a
-    Muse repository. The error text intentionally echoes to stdout so that
-    ``typer.testing.CliRunner`` captures it in ``result.output`` without
-    needing ``mix_stderr=True``.
+    Muse repository. The error text is written to stderr so the shell always
+    surfaces it; our ``CliRunner`` merges stderr into ``result.output``.
     """
     root = find_repo_root(start)
     if root is None:
-        typer.echo(_NOT_A_REPO_MSG)
-        raise typer.Exit(code=ExitCode.REPO_NOT_FOUND)
+        print(_NOT_A_REPO_MSG, file=sys.stderr)
+        raise SystemExit(ExitCode.REPO_NOT_FOUND)
     return root
 
 

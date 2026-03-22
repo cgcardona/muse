@@ -12,9 +12,9 @@ import json
 import pathlib
 
 import pytest
-from typer.testing import CliRunner
+from tests.cli_test_helper import CliRunner
 
-from muse.cli.app import cli
+cli = None  # argparse migration — CliRunner ignores this arg
 from muse.core.errors import ExitCode
 from muse.core.object_store import has_object, object_path
 
