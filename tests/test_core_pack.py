@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import datetime
 import json
 import pathlib
@@ -100,7 +99,7 @@ class TestBuildPack:
         assert len(bundle.get("objects") or []) == 1
         assert (bundle.get("objects") or [{}])[0]["object_id"] == oid
 
-    def test_object_is_base64_encoded(self, repo: pathlib.Path) -> None:
+    def test_object_content_is_raw_bytes(self, repo: pathlib.Path) -> None:
         content = b"\x00\x01\x02\x03"
         oid = _make_object(repo, content)
         _make_snapshot(repo, "s" * 64, {"bin.dat": oid})
@@ -110,8 +109,7 @@ class TestBuildPack:
 
         objs = bundle.get("objects") or []
         assert len(objs) == 1
-        decoded = base64.b64decode(objs[0]["content_b64"])
-        assert decoded == content
+        assert objs[0]["content"] == content
 
     def test_multi_commit_chain(self, repo: pathlib.Path) -> None:
         oid1 = _make_object(repo, b"v1")
@@ -235,10 +233,11 @@ class TestApplyPack:
         assert result["objects_written"] == 0  # All already present.
 
     def test_malformed_object_skipped(self, repo: pathlib.Path) -> None:
+        # content must be bytes; passing wrong type is caught gracefully
         bundle: PackBundle = {
             "commits": [],
             "snapshots": [],
-            "objects": [ObjectPayload(object_id="abc123", content_b64="NOT_VALID_BASE64!!!")],
+            "objects": [ObjectPayload(object_id="abc123", content=b"")],
         }
         result = apply_pack(repo, bundle)
         assert result["objects_written"] == 0

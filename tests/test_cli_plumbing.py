@@ -14,6 +14,7 @@ import datetime
 import json
 import pathlib
 
+import msgpack
 import pytest
 from tests.cli_test_helper import CliRunner
 
@@ -621,7 +622,7 @@ class TestPackObjects:
             catch_exceptions=False,
         )
         assert result.exit_code == 0, result.output
-        data = json.loads(result.stdout)
+        data = msgpack.unpackb(result.stdout_bytes, raw=False)
         assert "commits" in data
         assert len(data["commits"]) >= 1
 
@@ -638,7 +639,7 @@ class TestPackObjects:
             catch_exceptions=False,
         )
         assert result.exit_code == 0, result.output
-        data = json.loads(result.stdout)
+        data = msgpack.unpackb(result.stdout_bytes, raw=False)
         commit_ids = [c["commit_id"] for c in data["commits"]]
         assert commit_id in commit_ids
 
@@ -667,12 +668,12 @@ class TestUnpackObjects:
         _make_commit(source, commit_id, "1" * 64)
 
         bundle = build_pack(source, [commit_id])
-        bundle_json = json.dumps(bundle)
+        bundle_bytes = msgpack.packb(bundle, use_bin_type=True)
 
         result = runner.invoke(
             cli,
             ["plumbing", "unpack-objects"],
-            input=bundle_json,
+            input=bundle_bytes,
             env=_repo_env(dest),
             catch_exceptions=False,
         )
@@ -682,12 +683,12 @@ class TestUnpackObjects:
         assert data["commits_written"] == 1
         assert data["objects_written"] == 1
 
-    def test_invalid_json_errors(self, tmp_path: pathlib.Path) -> None:
+    def test_invalid_msgpack_errors(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         result = runner.invoke(
             cli,
             ["plumbing", "unpack-objects"],
-            input="NOT_VALID_JSON",
+            input=b"\xff\xff NOT VALID MSGPACK",
             env=_repo_env(repo),
         )
         assert result.exit_code == ExitCode.USER_ERROR
@@ -700,18 +701,18 @@ class TestUnpackObjects:
         _make_commit(repo, commit_id, "1" * 64)
 
         bundle = build_pack(repo, [commit_id])
-        bundle_json = json.dumps(bundle)
+        bundle_bytes = msgpack.packb(bundle, use_bin_type=True)
 
         result1 = runner.invoke(
             cli, ["plumbing", "unpack-objects"],
-            input=bundle_json,
+            input=bundle_bytes,
             env=_repo_env(repo),
         )
         assert result1.exit_code == 0, result1.output
 
         result2 = runner.invoke(
             cli, ["plumbing", "unpack-objects"],
-            input=bundle_json,
+            input=bundle_bytes,
             env=_repo_env(repo),
         )
         assert result2.exit_code == 0, result2.output

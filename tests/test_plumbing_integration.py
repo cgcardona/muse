@@ -229,10 +229,10 @@ class TestPackUnpackPipeline:
 
         pack_result = runner.invoke(cli, ["plumbing", "pack-objects", cid], env=_env(src))
         assert pack_result.exit_code == 0
-        bundle_json = pack_result.stdout
+        bundle_bytes = pack_result.stdout_bytes
 
         unpack_result = runner.invoke(
-            cli, ["plumbing", "unpack-objects"], input=bundle_json, env=_env(dst)
+            cli, ["plumbing", "unpack-objects"], input=bundle_bytes, env=_env(dst)
         )
         assert unpack_result.exit_code == 0
 
@@ -247,10 +247,10 @@ class TestPackUnpackPipeline:
         sid = _snap(src, {"v.mid": oid})
         cid = _commit(src, "verify-after", sid)
 
-        bundle_json = runner.invoke(
+        bundle_bytes = runner.invoke(
             cli, ["plumbing", "pack-objects", cid], env=_env(src)
-        ).stdout
-        runner.invoke(cli, ["plumbing", "unpack-objects"], input=bundle_json, env=_env(dst))
+        ).stdout_bytes
+        runner.invoke(cli, ["plumbing", "unpack-objects"], input=bundle_bytes, env=_env(dst))
 
         vfy = _invoke(["plumbing", "verify-object", oid], dst)
         assert vfy["all_ok"] is True

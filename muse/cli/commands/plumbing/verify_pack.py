@@ -1,10 +1,11 @@
 """muse plumbing verify-pack — verify the integrity of a PackBundle.
 
-Reads a PackBundle JSON from stdin (or a file) and performs three levels of
-integrity checking:
+Reads a PackBundle msgpack binary from stdin (or a file) and performs three
+levels of integrity checking:
 
-1. **Object integrity** — every ``objects`` entry is base64-decoded and its
-   SHA-256 is recomputed.  The digest must match the declared ``object_id``.
+1. **Object integrity** — every ``objects`` entry has its SHA-256 recomputed
+   from the raw ``content`` bytes.  The digest must match the declared
+   ``object_id``.
 
 2. **Snapshot consistency** — every snapshot in the bundle references only
    object IDs that are either in the bundle itself or already present in the
@@ -19,7 +20,7 @@ Pipe from ``pack-objects`` to validate before sending to a remote::
 
 Or verify a saved bundle file::
 
-    muse plumbing verify-pack --file bundle.json
+    muse plumbing verify-pack --file bundle.muse
 
 Output (JSON, default)::
 
@@ -48,20 +49,21 @@ Plumbing contract
 -----------------
 
 - Exit 0: bundle is fully intact.
-- Exit 1: one or more integrity failures; malformed JSON input; missing args.
+- Exit 1: one or more integrity failures; malformed msgpack input; missing args.
 - Exit 3: I/O error reading stdin or the bundle file.
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
 import hashlib
 import json
 import logging
 import pathlib
 import sys
 from typing import TypedDict
+
+import msgpack
 
 from muse.core.errors import ExitCode
 from muse.core.object_store import has_object
@@ -149,26 +151,25 @@ def run(args: argparse.Namespace) -> None:
     # Read input.
     if bundle_file:
         try:
-            with open(bundle_file, encoding="utf-8") as fh:
-                raw = fh.read()
+            raw_bytes = pathlib.Path(bundle_file).read_bytes()
         except OSError as exc:
             print(json.dumps({"error": f"Cannot read file: {exc}"}))
             raise SystemExit(ExitCode.INTERNAL_ERROR)
     else:
         try:
-            raw = sys.stdin.read()
+            raw_bytes = sys.stdin.buffer.read()
         except OSError as exc:
             print(json.dumps({"error": f"Cannot read stdin: {exc}"}))
             raise SystemExit(ExitCode.INTERNAL_ERROR)
 
     try:
-        bundle = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        print(json.dumps({"error": f"Invalid JSON: {exc}"}))
+        bundle = msgpack.unpackb(raw_bytes, raw=False)
+    except Exception as exc:
+        print(json.dumps({"error": f"Invalid msgpack: {exc}"}))
         raise SystemExit(ExitCode.USER_ERROR)
 
     if not isinstance(bundle, dict):
-        print(json.dumps({"error": "PackBundle must be a JSON object."}))
+        print(json.dumps({"error": "PackBundle must be a msgpack map."}))
         raise SystemExit(ExitCode.USER_ERROR)
 
     # We need the repo root for local-store checks (optional).
@@ -192,26 +193,18 @@ def run(args: argparse.Namespace) -> None:
             )
             continue
         oid = entry.get("object_id", "")
-        b64 = entry.get("content_b64", "")
-        if not isinstance(oid, str) or not isinstance(b64, str):
+        content = entry.get("content")
+        if not isinstance(oid, str) or not isinstance(content, (bytes, bytearray)):
             failures.append(
                 _Failure(
                     kind="object",
                     id=str(oid),
-                    error="missing or invalid object_id / content_b64 fields",
+                    error="missing or invalid object_id / content fields",
                 )
             )
             continue
 
-        try:
-            raw_bytes = base64.b64decode(b64)
-        except Exception as exc:
-            failures.append(
-                _Failure(kind="object", id=oid, error=f"base64 decode failed: {exc}")
-            )
-            continue
-
-        actual = hashlib.sha256(raw_bytes).hexdigest()
+        actual = hashlib.sha256(bytes(content)).hexdigest()
         if actual != oid:
             failures.append(
                 _Failure(

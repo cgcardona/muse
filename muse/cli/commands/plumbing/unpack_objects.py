@@ -1,12 +1,12 @@
 """muse plumbing unpack-objects — read a PackBundle from stdin and write to store.
 
-Reads a PackBundle JSON document from stdin and idempotently writes its
+Reads a PackBundle msgpack binary from stdin and idempotently writes its
 commits, snapshots, and objects into the local ``.muse/`` store.  Analogous
 to ``git unpack-objects``.
 
 Usage::
 
-    cat pack.json | muse plumbing unpack-objects
+    cat pack.muse | muse plumbing unpack-objects
     muse plumbing pack-objects HEAD | muse plumbing unpack-objects
 
 Output::
@@ -22,7 +22,7 @@ Plumbing contract
 -----------------
 
 - Exit 0: objects unpacked (idempotent — already-present objects are skipped).
-- Exit 1: invalid JSON from stdin.
+- Exit 1: invalid msgpack from stdin.
 - Exit 3: write failure.
 """
 
@@ -32,6 +32,8 @@ import argparse
 import json
 import logging
 import sys
+
+import msgpack
 
 from muse.core.errors import ExitCode
 from muse.core.pack import PackBundle, apply_pack
@@ -79,18 +81,29 @@ def run(args: argparse.Namespace) -> None:
 
     raw_bytes = sys.stdin.buffer.read()
     try:
-        raw_dict = json.loads(raw_bytes)
-    except json.JSONDecodeError as exc:
-        print(json.dumps({"error": f"Invalid JSON from stdin: {exc}"}))
+        raw_dict = msgpack.unpackb(raw_bytes, raw=False)
+    except Exception as exc:
+        print(json.dumps({"error": f"Invalid msgpack from stdin: {exc}"}))
         raise SystemExit(ExitCode.USER_ERROR)
 
-    # json.loads returns a dynamically-typed dict; PackBundle is a TypedDict
-    # with the same shape.  We extract each key explicitly so the bundle is
-    # well-formed even if the source JSON has extra or missing keys.
+    if not isinstance(raw_dict, dict):
+        print(json.dumps({"error": "Expected a msgpack map at the top level."}))
+        raise SystemExit(ExitCode.USER_ERROR)
+
+    from muse.core.pack import ObjectPayload
+
+    raw_objects: list[ObjectPayload] = []
+    for item in raw_dict.get("objects") or []:
+        if isinstance(item, dict):
+            oid = item.get("object_id")
+            content = item.get("content")
+            if isinstance(oid, str) and isinstance(content, (bytes, bytearray)):
+                raw_objects.append(ObjectPayload(object_id=oid, content=bytes(content)))
+
     bundle = PackBundle(
         commits=raw_dict.get("commits") or [],
         snapshots=raw_dict.get("snapshots") or [],
-        objects=raw_dict.get("objects") or [],
+        objects=raw_objects,
         branch_heads=raw_dict.get("branch_heads") or {},
     )
 

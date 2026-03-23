@@ -6,12 +6,12 @@ list-heads, round-trip, stress: 50-commit bundle.
 
 from __future__ import annotations
 
-import base64
 import datetime
 import hashlib
 import json
 import pathlib
 
+import msgpack
 import pytest
 from tests.cli_test_helper import CliRunner
 
@@ -108,7 +108,7 @@ def test_bundle_create_basic(tmp_path: pathlib.Path) -> None:
     result = runner.invoke(cli, ["bundle", "create", str(out)], env=_env(tmp_path))
     assert result.exit_code == 0
     assert out.exists()
-    data = json.loads(out.read_text(encoding="utf-8"))
+    data = msgpack.unpackb(out.read_bytes(), raw=False)
     assert "commits" in data
     assert len(data["commits"]) >= 1
 
@@ -141,11 +141,11 @@ def test_bundle_verify_corrupt(tmp_path: pathlib.Path) -> None:
     out = tmp_path / "corrupt.bundle"
     runner.invoke(cli, ["bundle", "create", str(out)], env=_env(tmp_path))
 
-    # Tamper with an object's content_b64.
-    raw = json.loads(out.read_text(encoding="utf-8"))
+    # Tamper with an object's content bytes.
+    raw = msgpack.unpackb(out.read_bytes(), raw=False)
     if raw.get("objects"):
-        raw["objects"][0]["content_b64"] = base64.b64encode(b"tampered!").decode("ascii")
-    out.write_text(json.dumps(raw), encoding="utf-8")
+        raw["objects"][0]["content"] = b"tampered!"
+    out.write_bytes(msgpack.packb(raw, use_bin_type=True))
 
     result = runner.invoke(cli, ["bundle", "verify", str(out)], env=_env(tmp_path))
     assert result.exit_code != 0
@@ -259,7 +259,7 @@ def test_bundle_stress_50_commits(tmp_path: pathlib.Path) -> None:
     result = runner.invoke(cli, ["bundle", "create", str(out)], env=_env(tmp_path))
     assert result.exit_code == 0
 
-    raw = json.loads(out.read_text(encoding="utf-8"))
+    raw = msgpack.unpackb(out.read_bytes(), raw=False)
     assert len(raw.get("commits", [])) == 50
 
     verify_result = runner.invoke(cli, ["bundle", "verify", str(out), "-q"], env=_env(tmp_path))

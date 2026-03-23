@@ -1,20 +1,20 @@
 """Tests for ``muse plumbing pack-objects`` and ``muse plumbing unpack-objects``.
 
 Covers: single-commit pack, HEAD expansion, ``--have`` pruning, pack-unpack
-round-trip (idempotent), invalid-JSON stdin rejection, empty stdin, JSON output
-schema, counts reported by unpack-objects, and a stress round-trip with 50
-commits and 50 objects.
+round-trip (idempotent), invalid-msgpack stdin rejection, empty stdin, msgpack
+output schema, counts reported by unpack-objects, and a stress round-trip with
+50 commits and 50 objects.
 """
 
 from __future__ import annotations
 
-import base64
 import datetime
 import hashlib
 import json
 import pathlib
 import sys
 
+import msgpack
 import pytest
 from tests.cli_test_helper import CliRunner
 
@@ -99,16 +99,16 @@ def _obj(repo: pathlib.Path, content: bytes) -> str:
     return oid
 
 
-def _pack(repo: pathlib.Path, cid: str) -> str:
-    """Run pack-objects for a single commit and return the raw JSON bundle."""
+def _pack(repo: pathlib.Path, cid: str) -> bytes:
+    """Run pack-objects for a single commit and return the raw msgpack bundle."""
     result = runner.invoke(cli, ["plumbing", "pack-objects", cid], env=_env(repo))
     assert result.exit_code == 0, result.output
-    return result.stdout
+    return result.stdout_bytes
 
 
-def _unpack(repo: pathlib.Path, bundle_json: str) -> dict[str, int]:
+def _unpack(repo: pathlib.Path, bundle_bytes: bytes) -> dict[str, int]:
     result = runner.invoke(
-        cli, ["plumbing", "unpack-objects"], input=bundle_json, env=_env(repo)
+        cli, ["plumbing", "unpack-objects"], input=bundle_bytes, env=_env(repo)
     )
     assert result.exit_code == 0, result.output
     parsed: dict[str, int] = json.loads(result.stdout)
@@ -127,7 +127,7 @@ class TestPackObjectsUnit:
         cid = _commit(repo, "head-test", sid)
         result = runner.invoke(cli, ["plumbing", "pack-objects", "HEAD"], env=_env(repo))
         assert result.exit_code == 0, result.output
-        bundle = json.loads(result.stdout)
+        bundle = msgpack.unpackb(result.stdout_bytes, raw=False)
         assert any(c["commit_id"] == cid for c in bundle.get("commits", []))
 
     def test_head_on_empty_branch_exits_user_error(self, tmp_path: pathlib.Path) -> None:
@@ -148,23 +148,22 @@ class TestPackObjectsSchema:
         cid = _commit(repo, "schema", sid)
         result = runner.invoke(cli, ["plumbing", "pack-objects", cid], env=_env(repo))
         assert result.exit_code == 0
-        bundle = json.loads(result.stdout)
+        bundle = msgpack.unpackb(result.stdout_bytes, raw=False)
         assert "commits" in bundle
         assert "snapshots" in bundle
         assert "objects" in bundle
 
-    def test_objects_are_base64_encoded(self, tmp_path: pathlib.Path) -> None:
+    def test_objects_are_raw_bytes(self, tmp_path: pathlib.Path) -> None:
         content = b"hello object"
         repo = _init_repo(tmp_path)
         oid = _obj(repo, content)
         sid = _snap(repo, {"f.mid": oid})
-        cid = _commit(repo, "obj-base64", sid)
+        cid = _commit(repo, "obj-bytes", sid)
         result = runner.invoke(cli, ["plumbing", "pack-objects", cid], env=_env(repo))
         assert result.exit_code == 0
-        bundle = json.loads(result.stdout)
+        bundle = msgpack.unpackb(result.stdout_bytes, raw=False)
         obj_entry = next(o for o in bundle["objects"] if o["object_id"] == oid)
-        decoded = base64.b64decode(obj_entry["content_b64"])
-        assert decoded == content
+        assert obj_entry["content"] == content
 
     def test_bundle_commit_record_present(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
@@ -172,7 +171,7 @@ class TestPackObjectsSchema:
         cid = _commit(repo, "bundled", sid)
         result = runner.invoke(cli, ["plumbing", "pack-objects", cid], env=_env(repo))
         assert result.exit_code == 0
-        bundle = json.loads(result.stdout)
+        bundle = msgpack.unpackb(result.stdout_bytes, raw=False)
         commit_ids = [c["commit_id"] for c in bundle["commits"]]
         assert cid in commit_ids
 
@@ -193,7 +192,7 @@ class TestPackObjectsHave:
             cli, ["plumbing", "pack-objects", "--have", c0, c1], env=_env(repo)
         )
         assert result.exit_code == 0
-        bundle = json.loads(result.stdout)
+        bundle = msgpack.unpackb(result.stdout_bytes, raw=False)
         commit_ids = {c["commit_id"] for c in bundle.get("commits", [])}
         assert c1 in commit_ids
         assert c0 not in commit_ids
@@ -263,16 +262,19 @@ class TestUnpackObjects:
         assert counts1["commits_written"] == 1
         assert counts2["commits_written"] == 0
 
-    def test_invalid_json_stdin_exits_user_error(self, tmp_path: pathlib.Path) -> None:
+    def test_invalid_msgpack_stdin_exits_user_error(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
         result = runner.invoke(
-            cli, ["plumbing", "unpack-objects"], input="NOT JSON!", env=_env(repo)
+            cli, ["plumbing", "unpack-objects"], input=b"\xff\xff NOT VALID", env=_env(repo)
         )
         assert result.exit_code == ExitCode.USER_ERROR
 
     def test_empty_bundle_unpacks_cleanly(self, tmp_path: pathlib.Path) -> None:
         repo = _init_repo(tmp_path)
-        empty = json.dumps({"commits": [], "snapshots": [], "objects": [], "branch_heads": {}})
+        empty = msgpack.packb(
+            {"commits": [], "snapshots": [], "objects": [], "branch_heads": {}},
+            use_bin_type=True,
+        )
         counts = _unpack(repo, empty)
         assert counts["commits_written"] == 0
         assert counts["objects_written"] == 0
@@ -297,10 +299,10 @@ class TestPackUnpackStress:
             cids.append(cid)
             parent = cid
 
-        bundle_json = runner.invoke(
+        bundle_bytes = runner.invoke(
             cli, ["plumbing", "pack-objects", cids[-1]], env=_env(src)
-        ).stdout
-        counts = _unpack(dst, bundle_json)
+        ).stdout_bytes
+        counts = _unpack(dst, bundle_bytes)
         assert counts["commits_written"] == 50
 
         # All 50 commits readable in destination.
@@ -316,10 +318,10 @@ class TestPackUnpackStress:
         manifest = {f"f{i}.mid": oids[i] for i in range(50)}
         sid = _snap(src, manifest)
         cid = _commit(src, "50-objs", sid)
-        bundle_json = runner.invoke(
+        bundle_bytes = runner.invoke(
             cli, ["plumbing", "pack-objects", cid], env=_env(src)
-        ).stdout
-        counts = _unpack(dst, bundle_json)
+        ).stdout_bytes
+        counts = _unpack(dst, bundle_bytes)
         assert counts["objects_written"] == 50
         for oid in oids:
             assert has_object(dst, oid)

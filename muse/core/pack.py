@@ -6,21 +6,22 @@ history locally:
 
 - :class:`CommitDict` records (full metadata)
 - :class:`SnapshotDict` records (file manifests)
-- :class:`ObjectPayload` entries (raw blob bytes, base64-encoded for JSON)
+- :class:`ObjectPayload` entries (raw blob bytes)
 - ``branch_heads`` mapping (branch name → commit ID, reflecting remote state)
 
 :func:`build_pack` collects all data reachable from a set of commit IDs.
 :func:`apply_pack` writes a bundle into a local ``.muse/`` directory.
 
-JSON + base64 encoding trades some efficiency for universal debuggability and
-zero external dependencies. A binary-encoded transport can be plugged in later
-by swapping the ``HttpTransport`` implementation behind the ``MuseTransport``
-Protocol in :mod:`muse.core.transport`.
+MWP wire encoding
+--------------------
+Object bytes are transmitted as raw ``bytes`` in :class:`ObjectPayload`.
+The :class:`~muse.core.transport.HttpTransport` serialises the pack using
+``msgpack`` (``Content-Type: application/x-msgpack``) which handles binary
+natively — no base64 inflation or encoding overhead.
 """
 
 from __future__ import annotations
 
-import base64
 import collections
 import logging
 import pathlib
@@ -47,10 +48,10 @@ logger = logging.getLogger(__name__)
 
 
 class ObjectPayload(TypedDict):
-    """A single content-addressed blob, base64-encoded for JSON transport."""
+    """A single content-addressed blob with raw bytes for msgpack transport."""
 
     object_id: str
-    content_b64: str
+    content: bytes
 
 
 class PackBundle(TypedDict, total=False):
@@ -136,23 +137,26 @@ def build_pack(
     commit_ids: list[str],
     *,
     have: list[str] | None = None,
+    only_objects: set[str] | None = None,
 ) -> PackBundle:
     """Assemble a :class:`PackBundle` from *commit_ids*, excluding commits in *have*.
 
     Performs a BFS walk of the commit graph from every ID in *commit_ids*,
     stopping at any commit already in *have*.  Collects all snapshot manifests
-    and object blobs reachable from the selected commits.  Object bytes are
-    base64-encoded for JSON transport.
+    and object blobs reachable from the selected commits.
 
     Missing objects or snapshots are logged and skipped — the caller decides
     whether that constitutes an error.
 
     Args:
-        repo_root:  Root of the Muse repository.
-        commit_ids: Tip commit IDs to include (e.g. current branch HEAD).
-        have:       Commit IDs already known to the receiver.  The BFS stops
-                    at these, reducing bundle size.  Pass ``None`` or ``[]``
-                    to send the full history.
+        repo_root:    Root of the Muse repository.
+        commit_ids:   Tip commit IDs to include (e.g. current branch HEAD).
+        have:         Commit IDs already known to the receiver.  The BFS stops
+                      at these, reducing bundle size.  Pass ``None`` or ``[]``
+                      to send the full history.
+        only_objects: When set, only include objects whose IDs are in this set.
+                      Used after a ``POST /filter-objects`` negotiation so the
+                      client only uploads objects the remote is missing.
 
     Returns:
         A :class:`PackBundle` ready for serialisation and transfer.
@@ -194,18 +198,19 @@ def build_pack(
         snapshot_dicts.append(snap.to_dict())
         all_object_ids.update(snap.manifest.values())
 
+    # When only_objects is provided (post filter-objects negotiation) skip
+    # any object the remote already has — only transmit the missing delta.
+    candidate_ids = (
+        all_object_ids & only_objects if only_objects is not None else all_object_ids
+    )
+
     object_payloads: list[ObjectPayload] = []
-    for oid in sorted(all_object_ids):
+    for oid in sorted(candidate_ids):
         raw = read_object(repo_root, oid)
         if raw is None:
             logger.warning("⚠️ build_pack: blob %s absent from store — skipping", oid[:8])
             continue
-        object_payloads.append(
-            ObjectPayload(
-                object_id=oid,
-                content_b64=base64.b64encode(raw).decode("ascii"),
-            )
-        )
+        object_payloads.append(ObjectPayload(object_id=oid, content=raw))
 
     bundle: PackBundle = {
         "commits": [c.to_dict() for c in commits_to_send],
@@ -219,6 +224,63 @@ def build_pack(
         len(object_payloads),
     )
     return bundle
+
+
+# ---------------------------------------------------------------------------
+# Object ID collection — for pre-push deduplication negotiation
+# ---------------------------------------------------------------------------
+
+
+def collect_object_ids(
+    repo_root: pathlib.Path,
+    commit_ids: list[str],
+    *,
+    have: list[str] | None = None,
+) -> list[str]:
+    """Return all object IDs reachable from *commit_ids*, excluding *have*.
+
+    Identical BFS walk to :func:`build_pack` but without reading object bytes.
+    Used by ``muse push`` to call ``POST /filter-objects`` before building the
+    full pack — the client discovers which objects are missing on the remote
+    and then calls :func:`build_pack` with ``only_objects`` set to that subset.
+    This avoids loading any blob content until we know it is actually needed.
+
+    Args:
+        repo_root:  Root of the Muse repository.
+        commit_ids: Tip commit IDs to examine.
+        have:       Commit IDs already known to the receiver (BFS stops here).
+
+    Returns:
+        Sorted list of object IDs reachable from the delta.
+    """
+    have_set: set[str] = set(have or [])
+    commits_to_examine: list[CommitRecord] = []
+    seen: set[str] = set(have_set)
+    queue: collections.deque[str] = collections.deque(
+        cid for cid in commit_ids if cid not in seen
+    )
+    while queue:
+        cid = queue.popleft()
+        if cid in seen:
+            continue
+        seen.add(cid)
+        commit = read_commit(repo_root, cid)
+        if commit is None:
+            continue
+        commits_to_examine.append(commit)
+        if commit.parent_commit_id and commit.parent_commit_id not in seen:
+            queue.append(commit.parent_commit_id)
+        if commit.parent2_commit_id and commit.parent2_commit_id not in seen:
+            queue.append(commit.parent2_commit_id)
+
+    snapshot_ids: set[str] = {c.snapshot_id for c in commits_to_examine}
+    all_object_ids: set[str] = set()
+    for sid in snapshot_ids:
+        snap = read_snapshot(repo_root, sid)
+        if snap is not None:
+            all_object_ids.update(snap.manifest.values())
+
+    return sorted(all_object_ids)
 
 
 # ---------------------------------------------------------------------------
@@ -247,14 +309,9 @@ def apply_pack(repo_root: pathlib.Path, bundle: PackBundle) -> ApplyResult:
 
     for obj in bundle.get("objects") or []:
         oid = obj.get("object_id", "")
-        b64 = obj.get("content_b64", "")
-        if not oid or not b64:
+        raw = obj.get("content", b"")
+        if not oid or not raw:
             logger.warning("⚠️ apply_pack: blob entry missing fields — skipped")
-            continue
-        try:
-            raw = base64.b64decode(b64)
-        except Exception as exc:
-            logger.warning("⚠️ apply_pack: bad base64 for %s: %s", oid[:8], exc)
             continue
         if write_object(repo_root, oid, raw):
             objects_written += 1
