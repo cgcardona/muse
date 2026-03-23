@@ -63,18 +63,20 @@ def _fetch_remote_info_safe(
         return None
 
 
-def _all_remote_heads(remote: str, root: pathlib.Path) -> list[str]:
-    """Return all commit IDs we know the remote already has.
+def _all_known_have_anchors(root: pathlib.Path) -> list[str]:
+    """Return every commit ID cached in any remote's tracking refs.
 
-    When pushing a new branch (no tracking ref yet), using these as ``have``
-    anchors avoids re-sending every object in the repo — only the delta
-    since any known remote commit is transmitted.
+    When pushing a new branch (or to a remote with no local tracking cache),
+    these commits are our best guess at what the remote already holds.  Any
+    remote the user has previously pushed to shares commit ancestry with other
+    remotes — using all cached heads as ``have`` anchors ensures ``build_pack``
+    only transmits the delta since the nearest shared ancestor.
     """
-    remote_dir = root / ".muse" / "remotes" / remote
-    if not remote_dir.is_dir():
+    remotes_dir = root / ".muse" / "remotes"
+    if not remotes_dir.is_dir():
         return []
     heads: list[str] = []
-    for ref_file in remote_dir.iterdir():
+    for ref_file in remotes_dir.rglob("*"):
         if ref_file.is_file():
             commit_id = ref_file.read_text().strip()
             if commit_id:
@@ -139,12 +141,14 @@ def run(args: argparse.Namespace) -> None:
     remote_branch_heads = remote_info["branch_heads"] if remote_info else {}
 
     # The "have" list tells build_pack which commit graphs the remote already
-    # holds.  Start with the live remote state, then fall back to cached local
-    # tracking refs, then finally to all known remote tracking pointers.
+    # holds.  Priority:
+    #   1. Live branch heads from GET /refs (authoritative, remote-specific)
+    #   2. All cached tracking refs across every configured remote — since
+    #      remotes share ancestry, any commit the local machine has previously
+    #      pushed to *any* remote is a safe stop-point for build_pack.
     have: list[str] = list(remote_branch_heads.values())
     if not have:
-        cached = get_remote_head(remote, push_branch, root)
-        have = [cached] if cached else _all_remote_heads(remote, root)
+        have = _all_known_have_anchors(root)
 
     remote_head = remote_branch_heads.get(push_branch) or get_remote_head(remote, push_branch, root)
 
