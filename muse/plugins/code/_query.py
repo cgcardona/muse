@@ -44,6 +44,17 @@ _SUFFIX_LANG: dict[str, str] = {
     ".cpp": "C++", ".cc": "C++", ".cxx": "C++", ".hpp": "C++", ".hxx": "C++",
     ".rb": "Ruby",
     ".kt": "Kotlin", ".kts": "Kotlin",
+    ".swift": "Swift",
+    ".md": "Markdown", ".rst": "reStructuredText", ".txt": "Text",
+    ".toml": "TOML",
+    ".yaml": "YAML", ".yml": "YAML",
+    ".json": "JSON", ".jsonc": "JSON",
+    ".css": "CSS", ".scss": "SCSS",
+    ".html": "HTML", ".htm": "HTML",
+    ".sql": "SQL",
+    ".sh": "Shell", ".bash": "Shell", ".zsh": "Shell",
+    ".proto": "Protobuf",
+    ".tf": "Terraform",
 }
 
 
