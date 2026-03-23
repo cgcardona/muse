@@ -27,6 +27,7 @@ from muse.core.store import (
 )
 from muse.core.validation import sanitize_display
 from muse.core.workdir import apply_manifest
+from muse.cli.guard import require_clean_workdir
 from muse.domain import SnapshotManifest
 from muse.plugins.registry import read_domain, resolve_plugin
 
@@ -51,6 +52,8 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
     )
     parser.add_argument("ref", help="Commit ID to apply.")
     parser.add_argument("-n", "--no-commit", action="store_true", dest="no_commit", help="Apply but do not commit.")
+    parser.add_argument("--force", action="store_true",
+                        help="Proceed even if the working tree has uncommitted changes.")
     parser.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
     parser.set_defaults(func=run)
 
@@ -63,12 +66,14 @@ def run(args: argparse.Namespace) -> None:
     """
     ref: str = args.ref
     no_commit: bool = args.no_commit
+    force: bool = args.force
     fmt: str = args.fmt
 
     if fmt not in ("text", "json"):
         print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
         raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
+    require_clean_workdir(root, "cherry-pick", force=force)
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
     domain = read_domain(root)

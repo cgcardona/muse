@@ -267,12 +267,20 @@ class TestBranch:
         result = runner.invoke(cli, ["branch"])
         assert "feature/chorus" in result.output
 
-    def test_delete_branch(self, repo: pathlib.Path) -> None:
+    def test_delete_branch_force(self, repo: pathlib.Path) -> None:
+        """Force-delete an unmerged branch with -D."""
         runner.invoke(cli, ["branch", "feature/x"])
-        result = runner.invoke(cli, ["branch", "--delete", "feature/x"])
+        result = runner.invoke(cli, ["branch", "-D", "feature/x"])
         assert result.exit_code == 0
         result = runner.invoke(cli, ["branch"])
         assert "feature/x" not in result.output
+
+    def test_delete_branch_safe_blocks_unmerged(self, repo: pathlib.Path) -> None:
+        """Safe delete (-d) must reject a branch that has not been merged."""
+        runner.invoke(cli, ["branch", "feature/unmerged"])
+        result = runner.invoke(cli, ["branch", "-d", "feature/unmerged"])
+        assert result.exit_code != 0
+        assert "not fully merged" in result.output
 
 
 class TestCheckout:
