@@ -1098,6 +1098,125 @@ class TestIterativeDFS:
 
 
 # ---------------------------------------------------------------------------
+# muse code symbols
+# ---------------------------------------------------------------------------
+
+
+class TestSymbols:
+    """Tests for ``muse code symbols``."""
+
+    def test_symbols_basic_output(self, code_repo: pathlib.Path) -> None:
+        """Basic invocation lists functions and classes from HEAD snapshot."""
+        result = runner.invoke(cli, ["code", "symbols"])
+        assert result.exit_code == 0, result.output
+        # billing.py contains Invoice class and process_order / send_email functions.
+        assert "Invoice" in result.output
+        assert "process_order" in result.output
+        assert "symbols across" in result.output
+
+    def test_symbols_count_flag(self, code_repo: pathlib.Path) -> None:
+        """``--count`` prints a total count and language breakdown, no symbol table."""
+        result = runner.invoke(cli, ["code", "symbols", "--count"])
+        assert result.exit_code == 0, result.output
+        assert "symbols" in result.output
+        assert "Python" in result.output
+        # Should NOT print individual symbol lines.
+        assert "Invoice" not in result.output
+
+    def test_symbols_json_flag(self, code_repo: pathlib.Path) -> None:
+        """``--json`` emits valid JSON keyed by file path."""
+        result = runner.invoke(cli, ["code", "symbols", "--json"])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert isinstance(data, dict)
+        assert any("billing.py" in k for k in data)
+        entries = next(v for k, v in data.items() if "billing.py" in k)
+        assert any(e["kind"] in ("class", "method", "function") for e in entries)
+
+    def test_symbols_kind_filter_class(self, code_repo: pathlib.Path) -> None:
+        """``--kind class`` shows only class-kind symbols."""
+        result = runner.invoke(cli, ["code", "symbols", "--kind", "class"])
+        assert result.exit_code == 0, result.output
+        assert "Invoice" in result.output
+        assert "process_order" not in result.output
+
+    def test_symbols_kind_filter_function(self, code_repo: pathlib.Path) -> None:
+        """``--kind function`` shows only top-level functions, not methods."""
+        result = runner.invoke(cli, ["code", "symbols", "--kind", "function"])
+        assert result.exit_code == 0, result.output
+        assert "process_order" in result.output
+        assert "send_email" in result.output
+        assert "Invoice" not in result.output
+
+    def test_symbols_invalid_kind_errors(self, code_repo: pathlib.Path) -> None:
+        """``--kind`` with an invalid value exits with USER_ERROR and helpful message."""
+        result = runner.invoke(cli, ["code", "symbols", "--kind", "potato"])
+        assert result.exit_code != 0
+        assert "Unknown kind" in result.output or "Unknown kind" in (result.stderr or "")
+
+    def test_symbols_file_filter(self, code_repo: pathlib.Path) -> None:
+        """``--file`` restricts output to a single file."""
+        result = runner.invoke(cli, ["code", "symbols", "--file", "billing.py"])
+        assert result.exit_code == 0, result.output
+        assert "symbols across" in result.output
+
+    def test_symbols_nonexistent_file_filter_returns_empty(self, code_repo: pathlib.Path) -> None:
+        """``--file`` for a file not in the snapshot yields 'no semantic symbols found'."""
+        result = runner.invoke(cli, ["code", "symbols", "--file", "nonexistent.py"])
+        assert result.exit_code == 0, result.output
+        assert "no semantic symbols found" in result.output
+
+    def test_symbols_language_filter(self, code_repo: pathlib.Path) -> None:
+        """``--language Python`` includes Python symbols; other languages excluded."""
+        result = runner.invoke(cli, ["code", "symbols", "--language", "Python"])
+        assert result.exit_code == 0, result.output
+        assert "Invoice" in result.output
+
+    def test_symbols_language_filter_no_match(self, code_repo: pathlib.Path) -> None:
+        """``--language Go`` on a Python-only repo yields 'no semantic symbols found'."""
+        result = runner.invoke(cli, ["code", "symbols", "--language", "Go"])
+        assert result.exit_code == 0, result.output
+        assert "no semantic symbols found" in result.output
+
+    def test_symbols_hashes_flag(self, code_repo: pathlib.Path) -> None:
+        """``--hashes`` appends content hash abbreviations to each symbol row."""
+        result = runner.invoke(cli, ["code", "symbols", "--hashes"])
+        assert result.exit_code == 0, result.output
+        # Hash suffix is 8 hex chars followed by ".."
+        assert ".." in result.output
+
+    def test_symbols_commit_ref(self, code_repo: pathlib.Path) -> None:
+        """``--commit HEAD`` resolves correctly and matches the default output."""
+        default = runner.invoke(cli, ["code", "symbols"])
+        head = runner.invoke(cli, ["code", "symbols", "--commit", "HEAD"])
+        assert default.exit_code == 0
+        assert head.exit_code == 0
+        assert default.output == head.output
+
+    def test_symbols_count_and_json_mutually_exclusive(self, code_repo: pathlib.Path) -> None:
+        """``--count`` and ``--json`` cannot be combined."""
+        result = runner.invoke(cli, ["code", "symbols", "--count", "--json"])
+        assert result.exit_code != 0
+
+    def test_symbols_json_schema(self, code_repo: pathlib.Path) -> None:
+        """JSON output includes the expected fields on every entry."""
+        result = runner.invoke(cli, ["code", "symbols", "--json"])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        for entries in data.values():
+            for entry in entries:
+                for field in ("address", "kind", "name", "qualified_name",
+                              "lineno", "content_id", "body_hash", "signature_id"):
+                    assert field in entry, f"missing field '{field}' in JSON entry"
+
+    def test_symbols_invalid_ref_errors(self, code_repo: pathlib.Path) -> None:
+        """``--commit`` with a non-existent ref exits non-zero with a clear message."""
+        result = runner.invoke(cli, ["code", "symbols", "--commit", "deadbeef"])
+        assert result.exit_code != 0
+        assert "not found" in result.output or "not found" in (result.stderr or "")
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
