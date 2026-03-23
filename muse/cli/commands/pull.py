@@ -21,6 +21,7 @@ import logging
 import pathlib
 import sys
 
+from muse.cli._completers import branch_completer, remote_completer
 from muse.cli.config import get_auth_token, get_remote, get_remote_head, get_upstream, set_remote_head
 from muse.core.errors import ExitCode
 from muse.core.merge_engine import find_merge_base, write_merge_state
@@ -70,9 +71,15 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("remote", nargs="?", default="origin", help="Remote name to pull from (default: origin).")
-    parser.add_argument("--branch", "-b", default=None,
-                        help="Remote branch to pull (default: tracked branch or current branch).")
+    remote_arg = parser.add_argument("remote", nargs="?", default="origin",
+                                     help="Remote name to pull from (default: origin).")
+    remote_arg.completer = remote_completer  # type: ignore[attr-defined]
+    branch_pos_arg = parser.add_argument("branch_pos", nargs="?", default=None, metavar="BRANCH",
+                                         help="Remote branch to pull (default: tracked branch or current branch). Same as --branch.")
+    branch_pos_arg.completer = branch_completer  # type: ignore[attr-defined]
+    branch_flag_arg = parser.add_argument("--branch", "-b", default=None, dest="branch_flag",
+                                          help="Remote branch to pull (default: tracked branch or current branch).")
+    branch_flag_arg.completer = branch_completer  # type: ignore[attr-defined]
     parser.add_argument("--no-merge", action="store_true", dest="no_merge",
                         help="Only fetch; do not merge into the current branch.")
     parser.add_argument("-m", "--message", default=None, help="Override the merge commit message.")
@@ -86,7 +93,7 @@ def run(args: argparse.Namespace) -> None:
     Pass ``--no-merge`` to stop after the fetch step.
     """
     remote: str = args.remote
-    branch: str | None = args.branch
+    branch: str | None = getattr(args, "branch_flag", None) or getattr(args, "branch_pos", None)
     no_merge: bool = args.no_merge
     message: str | None = args.message
 

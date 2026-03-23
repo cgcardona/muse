@@ -26,6 +26,7 @@ import logging
 import pathlib
 import sys
 
+from muse.cli._completers import branch_completer, remote_completer
 from muse.cli.config import (
     get_auth_token,
     get_remote,
@@ -47,6 +48,25 @@ def _current_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
+def _all_remote_heads(remote: str, root: pathlib.Path) -> list[str]:
+    """Return all commit IDs we know the remote already has.
+
+    When pushing a new branch (no tracking ref yet), using these as ``have``
+    anchors avoids re-sending every object in the repo — only the delta
+    since any known remote commit is transmitted.
+    """
+    remote_dir = root / ".muse" / "remotes" / remote
+    if not remote_dir.is_dir():
+        return []
+    heads: list[str] = []
+    for ref_file in remote_dir.iterdir():
+        if ref_file.is_file():
+            commit_id = ref_file.read_text().strip()
+            if commit_id:
+                heads.append(commit_id)
+    return heads
+
+
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the push subcommand."""
     parser = subparsers.add_parser(
@@ -55,8 +75,15 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("remote", nargs="?", default="origin", help="Remote name to push to (default: origin).")
-    parser.add_argument("--branch", "-b", default=None, help="Local branch to push (default: current branch).")
+    remote_arg = parser.add_argument("remote", nargs="?", default="origin",
+                                     help="Remote name to push to (default: origin).")
+    remote_arg.completer = remote_completer  # type: ignore[attr-defined]
+    branch_pos_arg = parser.add_argument("branch_pos", nargs="?", default=None, metavar="BRANCH",
+                                         help="Branch to push (default: current branch). Same as --branch.")
+    branch_pos_arg.completer = branch_completer  # type: ignore[attr-defined]
+    branch_flag_arg = parser.add_argument("--branch", "-b", default=None, dest="branch_flag",
+                                          help="Branch to push (default: current branch).")
+    branch_flag_arg.completer = branch_completer  # type: ignore[attr-defined]
     parser.add_argument("-u", "--set-upstream", action="store_true", dest="set_upstream_flag",
                         help="Record upstream tracking for this branch.")
     parser.add_argument("--force", action="store_true", help="Force push even if the remote has diverged.")
@@ -70,7 +97,7 @@ def run(args: argparse.Namespace) -> None:
     ``--force`` is specified.
     """
     remote: str = args.remote
-    branch: str | None = args.branch
+    branch: str | None = getattr(args, "branch_flag", None) or getattr(args, "branch_pos", None)
     set_upstream_flag: bool = args.set_upstream_flag
     force: bool = args.force
 
@@ -93,7 +120,14 @@ def run(args: argparse.Namespace) -> None:
 
     # Determine what the remote already has (via tracking pointer).
     remote_head = get_remote_head(remote, push_branch, root)
-    have: list[str] = [remote_head] if remote_head else []
+    if remote_head:
+        have: list[str] = [remote_head]
+    else:
+        # New branch — the remote has no tracking ref for it yet, but it
+        # already holds every object reachable from other branches we've
+        # pushed before.  Use all known remote heads as "have" anchors so
+        # we only send the delta rather than re-uploading the entire repo.
+        have = _all_remote_heads(remote, root)
 
     if remote_head == local_head:
         print(f"Everything up to date. Remote {remote}/{push_branch} is already at {local_head[:8]}.")
