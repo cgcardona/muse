@@ -140,15 +140,18 @@ def run(args: argparse.Namespace) -> None:
     remote_info = _fetch_remote_info_safe(transport, url, token)
     remote_branch_heads = remote_info["branch_heads"] if remote_info else {}
 
-    # The "have" list tells build_pack which commit graphs the remote already
-    # holds.  Priority:
-    #   1. Live branch heads from GET /refs (authoritative, remote-specific)
-    #   2. All cached tracking refs across every configured remote — since
-    #      remotes share ancestry, any commit the local machine has previously
-    #      pushed to *any* remote is a safe stop-point for build_pack.
-    have: list[str] = list(remote_branch_heads.values())
-    if not have:
-        have = _all_known_have_anchors(root)
+    # Collect candidate have-anchors from two sources:
+    #   1. Live branch heads from GET /refs (what the remote claims to have)
+    #   2. All cached tracking refs across every configured remote (commits we
+    #      know are shared ancestry because we've pushed them before)
+    # Then filter to only commits that exist in the LOCAL object store —
+    # build_pack's BFS can only stop at commits it can walk through locally.
+    # Commits from the live remote often don't exist locally (e.g. GitHub
+    # merge commits never fetched), so without filtering they become no-ops
+    # and build_pack falls back to walking the entire history.
+    candidate_have = list(remote_branch_heads.values()) + _all_known_have_anchors(root)
+    commits_dir = root / ".muse" / "commits"
+    have: list[str] = [c for c in candidate_have if (commits_dir / f"{c}.json").exists()]
 
     remote_head = remote_branch_heads.get(push_branch) or get_remote_head(remote, push_branch, root)
 
