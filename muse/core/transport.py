@@ -107,7 +107,7 @@ _TIMEOUT_SECONDS = 60
 # Maximum number of objects to include in a single POST /push/objects call.
 # Must stay strictly below the server's MAX_OBJECTS_PER_PUSH limit (1 000)
 # to leave head room for Pydantic validation overhead and future additions.
-CHUNK_OBJECTS: int = 900
+CHUNK_OBJECTS: int = 400
 
 
 # ---------------------------------------------------------------------------
