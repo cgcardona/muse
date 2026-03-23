@@ -36,6 +36,7 @@ The code domain plugin treats a codebase as a **typed, content-addressed symbol 
 
 ---
 
+<a id="1-selective-staging"></a>
 ## 1. Selective Staging (`muse code add`)
 
 The code domain adds a **Git-style staging index** to Muse.  By default,
@@ -166,6 +167,7 @@ muse commit -m "feat: add auth + models"
 
 ---
 
+<a id="2-symbol-identity-model"></a>
 ## 2. Symbol Identity Model
 
 Every symbol carries four content-addressed hashes and two stable keys:
@@ -196,6 +198,7 @@ Two symbols are classified by comparing their four hashes:
 
 ---
 
+<a id="3-provenance--topology-commands"></a>
 ## 3. Provenance & Topology Commands
 
 ### `muse code lineage ADDRESS`
@@ -361,6 +364,7 @@ muse code semantic-cherry-pick src/billing.py::compute_total --from v1.0 --dry-r
 
 ---
 
+<a id="4-query--temporal-search"></a>
 ## 4. Query & Temporal Search
 
 ### `muse code query PREDICATE...`
@@ -459,6 +463,7 @@ muse code query-history kind=class --json
 
 ---
 
+<a id="5-index-infrastructure"></a>
 ## 5. Index Infrastructure
 
 ### `muse code index status`
@@ -528,6 +533,7 @@ Maps `body_hash → list[symbol_address]`.  Enables O(1) clone detection and `mu
 
 ---
 
+<a id="6-symbol-identity-detail"></a>
 ## 6. Symbol Identity Detail
 
 ### New `SymbolRecord` fields
@@ -575,6 +581,7 @@ With `--json`, emits `schema_version: 2` with a richer classification:
 
 ---
 
+<a id="7-multi-agent-coordination-layer"></a>
 ## 7. Multi-Agent Coordination Layer
 
 The coordination layer enables thousands of agents to work on the same codebase simultaneously without stepping on each other.  It is **purely advisory** — the VCS engine never reads coordination data for correctness decisions.  Agents that ignore it still produce correct commits.
@@ -738,6 +745,7 @@ muse coord reconcile --json
 
 ---
 
+<a id="8-merge-engine--architectural-enforcement"></a>
 ## 8. Merge Engine & Architectural Enforcement
 
 ### `ConflictRecord` — Structured Conflict Taxonomy
@@ -854,6 +862,7 @@ Every public function in `source_pattern` must have a corresponding test functio
 
 ---
 
+<a id="9-semantic-versioning"></a>
 ## 9. Semantic Versioning
 
 Muse automatically assigns semantic version bumps at commit time based on the `StructuredDelta`.
@@ -897,6 +906,7 @@ Breaking: src/billing.py::compute_total, src/billing.py::Invoice (+2 more)
 
 ---
 
+<a id="10-call-graph-tier-commands"></a>
 ## 10. Call-Graph Tier Commands
 
 ### `muse code impact ADDRESS [OPTIONS]`
@@ -1096,6 +1106,7 @@ muse code-check --rules my_rules.toml  # custom rules file inside the repo
 
 ---
 
+<a id="11-architecture-internals"></a>
 ## 11. Architecture Internals
 
 ### Module Map
@@ -1144,6 +1155,7 @@ muse/
 
 ---
 
+<a id="12-type-reference"></a>
 ## 12. Type Reference
 
 ### `SymbolRecord` (TypedDict)
