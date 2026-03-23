@@ -151,7 +151,13 @@ def run(args: argparse.Namespace) -> None:
     # and build_pack falls back to walking the entire history.
     candidate_have = list(remote_branch_heads.values()) + _all_known_have_anchors(root)
     commits_dir = root / ".muse" / "commits"
-    have: list[str] = [c for c in candidate_have if (commits_dir / f"{c}.json").exists()]
+    # Exclude local_head itself — if it appears in `have` (e.g. because another
+    # remote already has this branch), build_pack stops immediately and sends
+    # nothing, even though the target remote doesn't have the branch yet.
+    have: list[str] = [
+        c for c in candidate_have
+        if c != local_head and (commits_dir / f"{c}.json").exists()
+    ]
 
     remote_head = remote_branch_heads.get(push_branch) or get_remote_head(remote, push_branch, root)
 
