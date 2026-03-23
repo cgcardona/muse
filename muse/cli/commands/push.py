@@ -258,7 +258,14 @@ def run(args: argparse.Namespace) -> None:
         if c != local_head and (commits_dir / f"{c}.json").exists()
     ]
 
-    remote_head = remote_branch_heads.get(push_branch) or get_remote_head(remote, push_branch, root)
+    # Use the live remote head when we have it; only fall back to the locally
+    # cached tracking ref when the remote was unreachable (remote_info is None).
+    # If we did reach the remote and the branch simply isn't there yet, treat it
+    # as a new branch (remote_head = None) so we don't skip the push.
+    if remote_info is not None:
+        remote_head: str | None = remote_branch_heads.get(push_branch)
+    else:
+        remote_head = get_remote_head(remote, push_branch, root)
 
     if remote_head == local_head:
         print(f"Everything up to date. Remote {remote}/{push_branch} is already at {local_head[:8]}.")
