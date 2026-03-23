@@ -33,7 +33,6 @@ import logging
 import pathlib
 import sys
 
-from muse.cli._completers import branch_completer
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
 from muse.core.store import get_head_commit_id, read_commit, read_current_branch
@@ -180,8 +179,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    args_arg = parser.add_argument("args", nargs="*", help="Branch name(s) — context-sensitive.")
-    args_arg.completer = branch_completer  # type: ignore[attr-defined]
+    parser.add_argument("args", nargs="*", help="Branch name(s) — context-sensitive.")
 
     # Mutually exclusive operation flags (mirrors git branch).
     ops = parser.add_mutually_exclusive_group()
