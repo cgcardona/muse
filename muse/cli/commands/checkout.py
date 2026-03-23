@@ -29,6 +29,7 @@ from muse.core.store import (
 )
 from muse.core.reflog import append_reflog
 from muse.core.validation import contain_path, sanitize_display, validate_branch_name
+from muse.cli.guard import require_clean_workdir
 from muse.domain import SnapshotManifest
 from muse.plugins.registry import read_domain, resolve_plugin
 
@@ -136,6 +137,7 @@ def run(args: argparse.Namespace) -> None:
         print(f"❌ Unknown --format '{_sd(fmt)}'. Choose text or json.", file=sys.stderr)
         raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
+    require_clean_workdir(root, "checkout", force=force)
     repo_id = _read_repo_id(root)
     current_branch = _read_current_branch(root)
     muse_dir = root / ".muse"

@@ -300,7 +300,7 @@ class TestMergeDispatch:
 
             result = runner.invoke(cli, ["merge", "feature"])
             assert result.exit_code == 0
-            assert "Merged" in result.output
+            assert "Merge" in result.output
 
     def test_merge_conflict_uses_plugin_conflict_paths(self, repo: pathlib.Path) -> None:
         _write(repo, "beat.mid", "original")

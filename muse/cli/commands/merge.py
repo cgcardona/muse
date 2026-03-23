@@ -40,10 +40,63 @@ from muse.core.store import (
 from muse.core.reflog import append_reflog
 from muse.core.validation import sanitize_display, validate_branch_name
 from muse.core.workdir import apply_manifest
+from muse.cli.guard import require_clean_workdir
 from muse.domain import MergeResult, SnapshotManifest, StructuredMergePlugin
 from muse.plugins.registry import read_domain, resolve_plugin
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# ANSI helpers
+# ---------------------------------------------------------------------------
+
+_RESET  = "\033[0m"
+_BOLD   = "\033[1m"
+_DIM    = "\033[2m"
+_GREEN  = "\033[32m"
+_RED    = "\033[31m"
+_YELLOW = "\033[33m"
+_CYAN   = "\033[36m"
+
+
+def _c(text: str, *codes: str, tty: bool) -> str:
+    """Wrap *text* in ANSI escape *codes* only when writing to a TTY."""
+    if not tty:
+        return text
+    return "".join(codes) + text + _RESET
+
+
+def _diff_stats(
+    old: dict[str, str],
+    new: dict[str, str],
+) -> tuple[int, int, int]:
+    """Return (added, modified, deleted) file counts between two manifests."""
+    added    = sum(1 for k in new if k not in old)
+    deleted  = sum(1 for k in old if k not in new)
+    modified = sum(1 for k in new if k in old and old[k] != new[k])
+    return added, modified, deleted
+
+
+def _print_file_stats(
+    added: int,
+    modified: int,
+    deleted: int,
+    tty: bool,
+) -> None:
+    """Emit the 'N files changed (A added, M modified, D deleted)' summary line."""
+    total = added + modified + deleted
+    if total == 0:
+        return
+    files_word = "file" if total == 1 else "files"
+    parts: list[str] = []
+    if added:
+        parts.append(_c(f"{added} added", _GREEN, tty=tty))
+    if modified:
+        parts.append(f"{modified} modified")
+    if deleted:
+        parts.append(_c(f"{deleted} deleted", _RED, tty=tty))
+    detail = ", ".join(parts)
+    print(f" {_c(str(total), _BOLD, tty=tty)} {files_word} changed  ({detail})")
 
 
 def _read_branch(root: pathlib.Path) -> str:
@@ -85,6 +138,8 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
                         help="Automatically apply cached rerere resolutions to matching conflicts (default: on).")
     parser.add_argument("--no-rerere-autoupdate", action="store_false", dest="rerere_autoupdate",
                         help="Disable rerere auto-update.")
+    parser.add_argument("--force", action="store_true",
+                        help="Proceed even if the working tree has uncommitted changes (data-loss risk).")
     parser.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
     parser.set_defaults(func=run)
 
@@ -100,12 +155,14 @@ def run(args: argparse.Namespace) -> None:
     no_ff: bool = args.no_ff
     message: str | None = args.message
     rerere_autoupdate: bool = args.rerere_autoupdate
+    force: bool = args.force
     fmt: str = args.fmt
 
     if fmt not in ("text", "json"):
         print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
         raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
+    require_clean_workdir(root, "merge", force=force)
     repo_id = _read_repo_id(root)
     current_branch = _read_branch(root)
     domain = read_domain(root)
@@ -138,10 +195,12 @@ def run(args: argparse.Namespace) -> None:
 
     if base_commit_id == ours_commit_id and not no_ff:
         theirs_commit = read_commit(root, theirs_commit_id)
+        ff_manifest: dict[str, str] = {}
         if theirs_commit:
             ff_snap = read_snapshot(root, theirs_commit.snapshot_id)
             if ff_snap:
-                _restore_from_manifest(root, ff_snap.manifest)
+                ff_manifest = ff_snap.manifest
+                _restore_from_manifest(root, ff_manifest)
         try:
             validate_branch_name(current_branch)
         except ValueError as exc:
@@ -157,7 +216,22 @@ def run(args: argparse.Namespace) -> None:
             print(json.dumps({"status": "fast_forward", "commit_id": theirs_commit_id,
                               "branch": branch, "current_branch": current_branch, "conflicts": []}))
         else:
-            print(f"Fast-forward to {theirs_commit_id[:8]}")
+            tty = sys.stdout.isatty()
+            # Compute manifest diff for the stat line.
+            ours_commit_rec = read_commit(root, ours_commit_id)
+            ours_ff_manifest: dict[str, str] = {}
+            if ours_commit_rec:
+                ours_snap_rec = read_snapshot(root, ours_commit_rec.snapshot_id)
+                if ours_snap_rec:
+                    ours_ff_manifest = ours_snap_rec.manifest
+            added, modified, deleted = _diff_stats(ours_ff_manifest, ff_manifest)
+            print(
+                f"{_c('Updating', _DIM, tty=tty)} "
+                f"{_c(ours_commit_id[:8], _YELLOW, tty=tty)}.."
+                f"{_c(theirs_commit_id[:8], _YELLOW, tty=tty)}"
+            )
+            print(_c("Fast-forward", _BOLD, tty=tty) + f"  {sanitize_display(branch)} → {sanitize_display(current_branch)}")
+            _print_file_stats(added, modified, deleted, tty=tty)
         return
 
     ours_manifest = get_head_snapshot_manifest(root, repo_id, current_branch) or {}
@@ -313,4 +387,11 @@ def run(args: argparse.Namespace) -> None:
             "conflicts": [],
         }))
     else:
-        print(f"Merged '{sanitize_display(branch)}' into '{sanitize_display(current_branch)}' ({commit_id[:8]})")
+        tty = sys.stdout.isatty()
+        added, modified, deleted = _diff_stats(ours_manifest, merged_manifest)
+        print(_c("Merge", _BOLD, tty=tty) + f" made by the three-way strategy.")
+        print(
+            f"  {sanitize_display(branch)} → {sanitize_display(current_branch)}"
+            f"  {_c(commit_id[:8], _YELLOW, tty=tty)}"
+        )
+        _print_file_stats(added, modified, deleted, tty=tty)

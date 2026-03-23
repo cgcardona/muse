@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import hashlib
 import logging
 import pathlib
 import shutil
@@ -53,6 +52,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from muse.core.object_store import write_object
+from muse.core.reflog import append_reflog
 from muse.core.store import (
     CommitRecord,
     SnapshotRecord,
@@ -61,7 +61,7 @@ from muse.core.store import (
     write_head_branch,
     write_snapshot,
 )
-from muse.core.snapshot import compute_commit_id, compute_snapshot_id
+from muse.core.snapshot import compute_commit_id, compute_snapshot_id, walk_workdir
 
 logger = logging.getLogger("git2muse")
 
@@ -226,26 +226,15 @@ def _extract_tree_to(
 # ---------------------------------------------------------------------------
 
 
-def _sha256_file(path: pathlib.Path) -> str:
-    h = hashlib.sha256()
-    h.update(path.read_bytes())
-    return h.hexdigest()
-
-
 def _build_manifest(workdir: pathlib.Path) -> dict[str, str]:
-    """Walk *workdir* and return {rel_path: sha256} manifest."""
-    manifest: dict[str, str] = {}
-    for fpath in sorted(workdir.rglob("*")):
-        if not fpath.is_file():
-            continue
-        if fpath.is_symlink():
-            continue
-        rel = str(fpath.relative_to(workdir))
-        first = rel.split("/")[0]
-        if first.startswith("."):
-            continue
-        manifest[rel] = _sha256_file(fpath)
-    return manifest
+    """Walk *workdir* using Muse's canonical walker and return a manifest.
+
+    Delegates to :func:`muse.core.snapshot.walk_workdir` so the exclusion
+    rules, hidden-file logic, and path normalisation are always in sync with
+    what ``muse commit`` produces.  Using the same walker prevents the tool
+    from drifting out of sync as Muse evolves.
+    """
+    return walk_workdir(workdir)
 
 
 def _store_objects(
@@ -369,8 +358,16 @@ def _replay_commit(
     )
     write_commit(repo_root, record)
 
-    # Advance branch HEAD.
+    # Advance branch HEAD and record in reflog so `muse reflog` works.
     _set_branch_head(repo_root, muse_branch, commit_id)
+    append_reflog(
+        repo_root,
+        muse_branch,
+        old_id=parent_muse_id,
+        new_id=commit_id,
+        author=author,
+        operation=f"git2muse: {message[:60]}",
+    )
 
     return commit_id
 

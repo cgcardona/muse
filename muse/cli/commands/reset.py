@@ -20,6 +20,7 @@ from muse.core.store import read_current_branch, read_snapshot, resolve_commit_r
 from muse.core.reflog import append_reflog
 from muse.core.validation import sanitize_display, validate_branch_name
 from muse.core.workdir import apply_manifest
+from muse.cli.guard import require_clean_workdir
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,8 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
     parser.add_argument("ref", help="Commit ID or branch to reset to.")
     parser.add_argument("--hard", action="store_true", help="Reset branch pointer AND restore state/.")
     parser.add_argument("--soft", action="store_true", help="Reset branch pointer only (default).")
+    parser.add_argument("--force", action="store_true",
+                        help="With --hard: proceed even if the working tree has uncommitted changes.")
     parser.add_argument("--format", "-f", default="text", dest="fmt", help="Output format: text or json.")
     parser.set_defaults(func=run)
 
@@ -56,12 +59,16 @@ def run(args: argparse.Namespace) -> None:
     ref: str = args.ref
     hard: bool = args.hard
     soft: bool = args.soft
+    force: bool = args.force
     fmt: str = args.fmt
 
     if fmt not in ("text", "json"):
         print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
         raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
+    # Only --hard modifies the working tree; --soft just moves the branch pointer.
+    if hard:
+        require_clean_workdir(root, "reset --hard", force=force)
     repo_id = _read_repo_id(root)
     branch = _read_branch(root)
 

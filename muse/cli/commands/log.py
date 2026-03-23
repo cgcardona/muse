@@ -39,6 +39,7 @@ Filters: --since, --until, --author, --section, --track, --emotion
 from __future__ import annotations
 
 import argparse
+import heapq
 import json
 import logging
 import pathlib
@@ -48,7 +49,14 @@ from datetime import datetime, timedelta, timezone
 
 from muse.core.errors import ExitCode
 from muse.core.repo import require_repo
-from muse.core.store import CommitRecord, get_commit_snapshot_manifest, get_commits_for_branch, read_current_branch
+from muse.core.store import (
+    CommitRecord,
+    get_commit_snapshot_manifest,
+    get_commits_for_branch,
+    get_head_commit_id,
+    read_commit,
+    read_current_branch,
+)
 from muse.core.validation import sanitize_display
 
 logger = logging.getLogger(__name__)
@@ -139,6 +147,213 @@ def _format_date(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S UTC") if dt.tzinfo else str(dt)
 
 
+# ---------------------------------------------------------------------------
+# DAG graph rendering helpers
+# ---------------------------------------------------------------------------
+
+
+def _branch_tips(root: pathlib.Path) -> dict[str, list[str]]:
+    """Return ``{commit_id: [branch_name, …]}`` for all local branch tips."""
+    heads_dir = root / ".muse" / "refs" / "heads"
+    if not heads_dir.exists():
+        return {}
+    tips: dict[str, list[str]] = {}
+    for p in heads_dir.rglob("*"):
+        if p.is_file():
+            cid = p.read_text().strip()
+            name = p.relative_to(heads_dir).as_posix()
+            if cid:
+                tips.setdefault(cid, []).append(name)
+    return tips
+
+
+def _collect_all_commits(
+    root: pathlib.Path, start_ids: list[str]
+) -> dict[str, CommitRecord]:
+    """BFS from *start_ids*, returning every reachable commit."""
+    seen: dict[str, CommitRecord] = {}
+    queue = list(start_ids)
+    while queue:
+        cid = queue.pop(0)
+        if cid in seen:
+            continue
+        rec = read_commit(root, cid)
+        if rec is None:
+            continue
+        seen[cid] = rec
+        for parent in (rec.parent_commit_id, rec.parent2_commit_id):
+            if parent and parent not in seen:
+                queue.append(parent)
+    return seen
+
+
+def _topo_sort(commits: dict[str, CommitRecord]) -> list[CommitRecord]:
+    """Return commits newest-first using Kahn's algorithm.
+
+    In-degree counts the number of *child* commits that reference each commit
+    as a parent, so commits with no children (branch tips) are processed first.
+    Ties are broken by timestamp (most recent first).
+    """
+    in_degree: dict[str, int] = {cid: 0 for cid in commits}
+    for rec in commits.values():
+        for parent in (rec.parent_commit_id, rec.parent2_commit_id):
+            if parent and parent in commits:
+                in_degree[parent] += 1
+
+    # Seeds: commits nobody points to (branch tips / leaves)
+    heap: list[tuple[float, str]] = []
+    for cid, deg in in_degree.items():
+        if deg == 0:
+            ts = -commits[cid].committed_at.timestamp()
+            heapq.heappush(heap, (ts, cid))
+
+    result: list[CommitRecord] = []
+    while heap:
+        _, cid = heapq.heappop(heap)
+        result.append(commits[cid])
+        rec = commits[cid]
+        for parent in (rec.parent_commit_id, rec.parent2_commit_id):
+            if parent and parent in commits:
+                in_degree[parent] -= 1
+                if in_degree[parent] == 0:
+                    ts = -commits[parent].committed_at.timestamp()
+                    heapq.heappush(heap, (ts, parent))
+    return result
+
+
+def _deco_str(
+    cid: str,
+    head_cid: str,
+    current: str,
+    tips: dict[str, list[str]],
+    tty: bool,
+) -> str:
+    """Format the ``(HEAD -> branch, other-branch)`` decoration for a commit."""
+    branches = tips.get(cid, [])
+    if not branches:
+        return ""
+    labels: list[str] = []
+    if cid == head_cid and current in branches:
+        head = _c("HEAD", _BOLD, _CYAN, tty=tty)
+        br = _c(current, _BOLD, _GREEN, tty=tty)
+        labels.append(f"{head}{_c(' -> ', _RESET, tty=tty)}{br}")
+        for b in branches:
+            if b != current:
+                labels.append(_c(b, _BOLD, _GREEN, tty=tty))
+    else:
+        for b in branches:
+            labels.append(_c(b, _BOLD, _GREEN, tty=tty))
+    inner = ", ".join(labels)
+    return f" {_c('(', _YELLOW, tty=tty)}{inner}{_c(')', _YELLOW, tty=tty)}"
+
+
+def _render_graph(
+    root: pathlib.Path,
+    branch: str,
+    all_branches: bool,
+    tty: bool,
+) -> None:
+    """Render a lane-based ASCII DAG, git-log-style."""
+    current = read_current_branch(root)
+    tips = _branch_tips(root)
+
+    if all_branches:
+        start_ids = list(tips.keys())
+    else:
+        head = get_head_commit_id(root, branch)
+        start_ids = [head] if head else []
+
+    if not start_ids:
+        print("(no commits)")
+        return
+
+    all_commits = _collect_all_commits(root, start_ids)
+    if not all_commits:
+        print("(no commits)")
+        return
+
+    head_cid = get_head_commit_id(root, current) or ""
+    sorted_commits = _topo_sort(all_commits)
+
+    # lanes: list of commit IDs we're "awaiting" (open lines of descent).
+    # None marks a closed/empty column slot.
+    lanes: list[str | None] = []
+
+    for idx, commit in enumerate(sorted_commits):
+        cid = commit.commit_id
+        parents = [
+            p for p in (commit.parent_commit_id, commit.parent2_commit_id)
+            if p and p in all_commits
+        ]
+
+        # Assign this commit to a column.
+        col = lanes.index(cid) if cid in lanes else -1
+        if col == -1:
+            # New tip — place in the first empty slot or append.
+            if None in lanes:
+                col = lanes.index(None)
+                lanes[col] = cid
+            else:
+                col = len(lanes)
+                lanes.append(cid)
+
+        # Build the graph character row.
+        width = len(lanes)
+        row: list[str] = []
+        for i in range(width):
+            if i == col:
+                row.append(_c("*", _BOLD, tty=tty))
+            elif lanes[i] is not None:
+                row.append("|")
+            else:
+                row.append(" ")
+
+        graph_prefix = " ".join(row).rstrip()
+        short_hash = _c(cid[:8], _YELLOW, tty=tty)
+        deco = _deco_str(cid, head_cid, current, tips, tty)
+        msg = sanitize_display(commit.message.splitlines()[0])
+        print(f"{graph_prefix} {short_hash}{deco} {msg}")
+
+        # Update lanes for the next commit:
+        # replace this commit's slot with its first parent;
+        # insert additional parents (merge) into empty slots or new columns.
+        if parents:
+            lanes[col] = parents[0]
+            for extra in parents[1:]:
+                if extra not in lanes:
+                    if None in lanes:
+                        lanes[lanes.index(None)] = extra
+                    else:
+                        lanes.append(extra)
+        else:
+            lanes[col] = None  # root commit — close this lane
+
+        # Draw a connector line between commits (skip after the last one).
+        if idx < len(sorted_commits) - 1:
+            # Detect merge: current commit has two parents → next line needs `|\`
+            is_merge = len(parents) >= 2
+            connector: list[str] = []
+            for i in range(len(lanes)):
+                if i == col and is_merge:
+                    connector.append("|\\")
+                elif lanes[i] is not None:
+                    connector.append("| ")
+                else:
+                    connector.append("  ")
+            line = "".join(connector).rstrip()
+            if line:
+                print(line)
+
+        # Trim trailing empty slots to keep the lane list compact.
+        while lanes and lanes[-1] is None:
+            lanes.pop()
+
+
+# ---------------------------------------------------------------------------
+# CLI registration
+# ---------------------------------------------------------------------------
+
+
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     """Register the log subcommand."""
     parser = subparsers.add_parser(
@@ -149,7 +364,9 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
     )
     parser.add_argument("ref", nargs="?", default=None, help="Branch or commit to start from.")
     parser.add_argument("--oneline", action="store_true", help="One line per commit.")
-    parser.add_argument("--graph", action="store_true", help="ASCII graph.")
+    parser.add_argument("--graph", "-g", action="store_true", help="ASCII DAG graph.")
+    parser.add_argument("--all", "-A", action="store_true", dest="all_branches",
+                        help="Include all local branches in the graph (implies --graph).")
     parser.add_argument("--stat", action="store_true", help="Show file change summary.")
     parser.add_argument("--patch", "-p", action="store_true", help="Show file change summary (added/removed/modified counts) alongside each commit.")
     parser.add_argument("-n", "--max-count", type=int, default=_DEFAULT_LIMIT, dest="limit", help="Limit number of commits.")
@@ -174,6 +391,7 @@ def run(args: argparse.Namespace) -> None:
     ref: str | None = args.ref
     oneline: bool = args.oneline
     graph: bool = args.graph
+    all_branches: bool = args.all_branches
     stat: bool = args.stat
     patch: bool = args.patch
     limit: int = args.limit
@@ -185,6 +403,17 @@ def run(args: argparse.Namespace) -> None:
     emotion: str | None = args.emotion
     fmt: str = args.fmt
 
+    # --all implies --graph
+    if all_branches:
+        graph = True
+
+    # Support git-style -<n> shorthand (e.g. `muse log -5` as alias for `-n 5`).
+    # argparse captures "-5" as the positional `ref` since it looks like an option;
+    # detect that pattern here and reinterpret it as a limit.
+    if ref is not None and ref.lstrip("-").isdigit() and ref.startswith("-"):
+        limit = int(ref.lstrip("-"))
+        ref = None
+
     if fmt not in ("text", "json"):
         print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
         raise SystemExit(ExitCode.USER_ERROR)
@@ -193,7 +422,13 @@ def run(args: argparse.Namespace) -> None:
         raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
+    # `ref` may have been cleared above if it was a `-<n>` shorthand.
     branch = ref or _read_branch(root)
+
+    # Graph mode bypasses the normal linear walk entirely.
+    if graph and fmt == "text":
+        _render_graph(root, branch=branch, all_branches=all_branches, tty=sys.stdout.isatty())
+        return
 
     since_dt = _parse_date(since) if since else None
     until_dt = _parse_date(until) if until else None
@@ -255,15 +490,12 @@ def run(args: argparse.Namespace) -> None:
         decoration = _ref_label(branch, is_head, tty)
 
         short_hash = _c(c.commit_id[:8], _YELLOW, tty=tty)
-        msg = sanitize_display(c.message)
+        # Always use first line only for the subject; full body printed below in default mode.
+        subject = sanitize_display(c.message.splitlines()[0])
         author_display = sanitize_display(c.author)
 
         if oneline:
-            print(f"{short_hash}{decoration} {msg}")
-
-        elif graph:
-            bullet = _c("*", _BOLD, tty=tty)
-            print(f"{bullet} {short_hash}{decoration} {msg}")
+            print(f"{short_hash}{decoration} {subject}")
 
         else:
             commit_word = _c("commit", _YELLOW, tty=tty)
@@ -291,7 +523,7 @@ def run(args: argparse.Namespace) -> None:
                 ]
                 print(f"Meta:   {', '.join(meta_parts)}")
 
-            print(f"\n    {msg}\n")
+            print(f"\n    {sanitize_display(c.message)}\n")
 
             if stat or patch:
                 added, removed = _file_diff(root, c)

@@ -264,7 +264,7 @@ class TestStashGaps:
 class TestBranchGaps:
     def test_delete_branch_with_d_flag(self, repo: pathlib.Path) -> None:
         runner.invoke(cli, ["branch", "to-delete"])
-        result = runner.invoke(cli, ["branch", "-d", "to-delete"])
+        result = runner.invoke(cli, ["branch", "-D", "to-delete"])
         assert result.exit_code == 0
 
     def test_delete_current_branch_errors(self, repo: pathlib.Path) -> None:

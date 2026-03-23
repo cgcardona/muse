@@ -1,42 +1,49 @@
-"""muse symbols — list every semantic symbol in a snapshot.
+"""muse code symbols \033[1m—\033[0m list every semantic symbol in a snapshot.
 
-This command is unique to Muse: Git stores files as blobs of text and has no
-concept of the functions, classes, or methods inside them.  ``muse symbols``
-exposes the *semantic interior* of every source file in a commit — the full
-symbol graph that the code plugin builds at commit time.
+Muse tracks the semantic interior of every source file — the full symbol graph
+the code plugin builds at commit time — giving each function, class, method,
+and variable a stable, content-addressed identity independent of line numbers
+or formatting.
 
 Output (default — human-readable table)::
 
-    src/utils.py
-      function  calculate_total     line 12  a3f2c9..
-      function  _validate_amount    line 28  cb4afa..
-      class     Invoice             line 45  1d2e3f..
-      method    Invoice.to_dict     line 52  4a5b6c..
-      method    Invoice.from_dict   line 61  7d8e9f..
+    \033[1msrc/utils.py\033[0m
+      \033[34mfn        \033[0m  calculate_total                           \033[2mline  12\033[0m
+      \033[34mfn        \033[0m  _validate_amount                          \033[2mline  28\033[0m
+      \033[1m\033[33mclass     \033[0m  Invoice                                   \033[2mline  45\033[0m
+      \033[36mmethod    \033[0m  Invoice.to_dict                           \033[2mline  52\033[0m
+      \033[36mmethod    \033[0m  Invoice.from_dict                         \033[2mline  61\033[0m
 
-    src/models.py
-      class     User                line  8  b1c2d3..
-      method    User.__init__       line 10  e4f5a6..
-      method    User.save           line 19  b7c8d9..
+    \033[1msrc/models.py\033[0m
+      \033[1m\033[33mclass     \033[0m  User                                      \033[2mline   8\033[0m
+      \033[36mmethod    \033[0m  User.__init__                             \033[2mline  10\033[0m
+      \033[36mmethod    \033[0m  User.save                                 \033[2mline  19\033[0m
 
-    12 symbols across 2 files  (Python: 12)
+    \033[1m12\033[0m symbols across 2 files  (Python: 12)
 
 Flags:
 
-``--commit <ref>``
+\033[1m--commit <ref>\033[0m
     Inspect a specific commit instead of HEAD.
 
-``--kind <kind>``
-    Filter to symbols of a specific kind (``function``, ``class``,
-    ``method``, ``async_method``, ``variable``, ``import``).
+\033[1m--kind <kind>\033[0m
+    Filter to a specific symbol kind:
+    function, async_function, class, method, async_method,
+    variable, import, section, rule.
 
-``--file <path>``
+\033[1m--file <path>\033[0m
     Show symbols from a single file only.
 
-``--count``
+\033[1m--language <lang>\033[0m
+    Show symbols from files of this language only (e.g. Python, Go, Rust).
+
+\033[1m--count\033[0m
     Print only the total symbol count and per-language breakdown.
 
-``--json``
+\033[1m--hashes\033[0m
+    Include content hashes alongside each symbol.
+
+\033[1m--json\033[0m
     Emit the full symbol table as JSON for tooling integration.
 """
 
@@ -47,128 +54,116 @@ import json
 import logging
 import pathlib
 import sys
-from typing import Literal
 
 from muse.core.errors import ExitCode
-from muse.core.object_store import read_object
 from muse.core.repo import require_repo
 from muse.core.store import (
     get_commit_snapshot_manifest,
-    read_commit,
     read_current_branch,
     resolve_commit_ref,
 )
-from muse.plugins.code.ast_parser import (
-    SEMANTIC_EXTENSIONS,
-    SymbolRecord,
-    SymbolTree,
-    parse_symbols,
-)
+from muse.plugins.code._query import language_of, symbols_for_snapshot
+from muse.plugins.code.ast_parser import SymbolTree
 
 logger = logging.getLogger(__name__)
 
-_KindFilter = Literal[
-    "function", "async_function", "class", "method", "async_method",
-    "variable", "import",
-]
+# ---------------------------------------------------------------------------
+# ANSI colour helpers — only emitted when stdout is a TTY.
+# ---------------------------------------------------------------------------
 
-_KIND_ICON: dict[str, str] = {
-    "function": "fn",
-    "async_function": "fn~",
-    "class": "class",
-    "method": "method",
-    "async_method": "method~",
-    "variable": "var",
-    "import": "import",
+_RESET  = "\033[0m"
+_BOLD   = "\033[1m"
+_DIM    = "\033[2m"
+_CYAN   = "\033[36m"
+_YELLOW = "\033[33m"
+_BLUE   = "\033[34m"
+_GREEN  = "\033[32m"
+_MAGENTA = "\033[35m"
+_WHITE  = "\033[37m"
+
+
+def _c(text: str, *codes: str, tty: bool) -> str:
+    """Wrap *text* in ANSI *codes* when *tty* is True."""
+    if not tty:
+        return text
+    return "".join(codes) + text + _RESET
+
+
+# Maps symbol kind → (short icon, ANSI colour codes).
+_KIND_DISPLAY: dict[str, tuple[str, list[str]]] = {
+    "function":      ("fn",       [_BLUE]),
+    "async_function": ("fn~",     [_BLUE, _DIM]),
+    "class":         ("class",    [_YELLOW, _BOLD]),
+    "method":        ("method",   [_CYAN]),
+    "async_method":  ("method~",  [_CYAN, _DIM]),
+    "variable":      ("var",      [_DIM]),
+    "import":        ("import",   [_DIM]),
+    "section":       ("section",  [_GREEN]),
+    "rule":          ("rule",     [_MAGENTA]),
 }
+
+_VALID_KINDS: frozenset[str] = frozenset(_KIND_DISPLAY)
+
+# ---------------------------------------------------------------------------
+# Repository helpers
+# ---------------------------------------------------------------------------
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
     return str(json.loads((root / ".muse" / "repo.json").read_text())["repo_id"])
 
 
-def _read_branch(root: pathlib.Path) -> str:
-    return read_current_branch(root)
+# ---------------------------------------------------------------------------
+# Output helpers
+# ---------------------------------------------------------------------------
 
 
-def _is_semantic(file_path: str) -> bool:
-    suffix = pathlib.PurePosixPath(file_path).suffix.lower()
-    return suffix in SEMANTIC_EXTENSIONS
-
-
-def _symbols_for_snapshot(
-    root: pathlib.Path,
-    manifest: dict[str, str],
-    kind_filter: str | None,
-    file_filter: str | None,
-) -> dict[str, SymbolTree]:
-    """Extract symbol trees for all semantic files in *manifest*.
-
-    Returns a dict mapping file_path → SymbolTree, with empty trees omitted.
-    """
-    result: dict[str, SymbolTree] = {}
-    for file_path, object_id in sorted(manifest.items()):
-        if not _is_semantic(file_path):
-            continue
-        if file_filter and file_path != file_filter:
-            continue
-        raw = read_object(root, object_id)
-        if raw is None:
-            logger.debug("Object %s missing from store — skipping %s", object_id[:8], file_path)
-            continue
-        tree = parse_symbols(raw, file_path)
-        if kind_filter:
-            tree = {addr: rec for addr, rec in tree.items() if rec["kind"] == kind_filter}
-        if tree:
-            result[file_path] = tree
-    return result
-
-
-def _language_of(file_path: str) -> str:
-    suffix = pathlib.PurePosixPath(file_path).suffix.lower()
-    _SUFFIX_LANG: dict[str, str] = {
-        ".py": "Python", ".pyi": "Python",
-        ".ts": "TypeScript", ".tsx": "TypeScript",
-        ".js": "JavaScript", ".jsx": "JavaScript",
-        ".mjs": "JavaScript", ".cjs": "JavaScript",
-        ".go": "Go",
-        ".rs": "Rust",
-        ".java": "Java",
-        ".cs": "C#",
-        ".c": "C", ".h": "C",
-        ".cpp": "C++", ".cc": "C++", ".cxx": "C++", ".hpp": "C++", ".hxx": "C++",
-        ".rb": "Ruby",
-        ".kt": "Kotlin", ".kts": "Kotlin",
-    }
-    return _SUFFIX_LANG.get(suffix, suffix)
+def _lang_counts(symbol_map: dict[str, SymbolTree]) -> dict[str, int]:
+    """Return a language-name → symbol-count mapping for *symbol_map*."""
+    counts: dict[str, int] = {}
+    for file_path, tree in symbol_map.items():
+        lang = language_of(file_path)
+        counts[lang] = counts.get(lang, 0) + len(tree)
+    return counts
 
 
 def _print_human(
     symbol_map: dict[str, SymbolTree],
     show_hashes: bool,
+    tty: bool,
 ) -> None:
-    total = 0
-    lang_counts: dict[str, int] = {}
-
-    for file_path, tree in symbol_map.items():
-        lang = _language_of(file_path)
-        lang_counts[lang] = lang_counts.get(lang, 0) + len(tree)
-        total += len(tree)
-
-        print(f"\n{file_path}")
-        for addr, rec in sorted(tree.items(), key=lambda kv: kv[1]["lineno"]):
-            icon = _KIND_ICON.get(rec["kind"], rec["kind"])
-            name = rec["qualified_name"]
-            line = rec["lineno"]
-            hash_suffix = f"  {rec['content_id'][:8]}.." if show_hashes else ""
-            print(f"  {icon:<10}  {name:<40}  line {line:>4}{hash_suffix}")
-
+    """Render symbol_map as a human-readable, optionally coloured table."""
     if not symbol_map:
         print("  (no semantic symbols found)")
         return
 
-    lang_str = "  ".join(f"{lang}: {count}" for lang, count in sorted(lang_counts.items()))
-    print(f"\n{total} symbol(s) across {len(symbol_map)} file(s)  ({lang_str})")
+    total = 0
+    for file_path, tree in symbol_map.items():
+        total += len(tree)
+        print(f"\n{_c(file_path, _BOLD, tty=tty)}")
+        for _addr, rec in sorted(tree.items(), key=lambda kv: kv[1]["lineno"]):
+            kind = rec["kind"]
+            icon, colour_codes = _KIND_DISPLAY.get(kind, (kind, []))
+            name = rec["qualified_name"]
+            lineno = rec["lineno"]
+            icon_str = _c(f"{icon:<10}", *colour_codes, tty=tty)
+            name_str = f"{name:<40}"
+            line_str = _c(f"line {lineno:>4}", _DIM, tty=tty)
+            hash_suffix = (
+                _c(f"  {rec['content_id'][:8]}..", _DIM, tty=tty)
+                if show_hashes
+                else ""
+            )
+            print(f"  {icon_str}  {name_str}  {line_str}{hash_suffix}")
+
+    counts = _lang_counts(symbol_map)
+    lang_str = ", ".join(f"{lang}: {count:,}" for lang, count in sorted(counts.items()))
+    sym_word = "symbol" if total == 1 else "symbols"
+    file_word = "file" if len(symbol_map) == 1 else "files"
+    print(
+        f"\n{_c(f'{total:,}', _BOLD, tty=tty)} {sym_word} across "
+        f"{len(symbol_map):,} {file_word}  ({lang_str})"
+    )
 
 
 def _emit_json(symbol_map: dict[str, SymbolTree]) -> None:
@@ -189,6 +184,11 @@ def _emit_json(symbol_map: dict[str, SymbolTree]) -> None:
             })
         out[file_path] = entries
     print(json.dumps(out, indent=2))
+
+
+# ---------------------------------------------------------------------------
+# Argument parser registration
+# ---------------------------------------------------------------------------
 
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -213,7 +213,8 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         metavar="KIND",
         help=(
             "Filter to symbols of a specific kind "
-            "(function, class, method, async_method, variable, import)."
+            "(function, async_function, class, method, async_method, "
+            "variable, import, section, rule)."
         ),
     )
     parser.add_argument(
@@ -223,10 +224,40 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         metavar="PATH",
         help="Show symbols from a single file only.",
     )
-    parser.add_argument("--count", dest="count_only", action="store_true", help="Print only the total count and language breakdown.")
-    parser.add_argument("--hashes", dest="show_hashes", action="store_true", help="Include content hashes in the output.")
-    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit the full symbol table as JSON.")
+    parser.add_argument(
+        "--language", "-l",
+        dest="language_filter",
+        default=None,
+        metavar="LANG",
+        help="Show symbols from files of this language only (e.g. Python, Go, Rust).",
+    )
+    parser.add_argument(
+        "--hashes",
+        dest="show_hashes",
+        action="store_true",
+        help="Include content hashes in the output.",
+    )
+
+    output_group = parser.add_mutually_exclusive_group()
+    output_group.add_argument(
+        "--count",
+        dest="count_only",
+        action="store_true",
+        help="Print only the total symbol count and language breakdown.",
+    )
+    output_group.add_argument(
+        "--json",
+        dest="as_json",
+        action="store_true",
+        help="Emit the full symbol table as JSON.",
+    )
+
     parser.set_defaults(func=run)
+
+
+# ---------------------------------------------------------------------------
+# Command entry point
+# ---------------------------------------------------------------------------
 
 
 def run(args: argparse.Namespace) -> None:
@@ -244,13 +275,23 @@ def run(args: argparse.Namespace) -> None:
     ref: str | None = args.ref
     kind_filter: str | None = args.kind_filter
     file_filter: str | None = args.file_filter
+    language_filter: str | None = args.language_filter
     count_only: bool = args.count_only
     show_hashes: bool = args.show_hashes
     as_json: bool = args.as_json
+    tty: bool = sys.stdout.isatty()
+
+    if kind_filter is not None and kind_filter not in _VALID_KINDS:
+        valid = ", ".join(sorted(_VALID_KINDS))
+        print(
+            f"❌ Unknown kind '{kind_filter}'. Valid kinds: {valid}",
+            file=sys.stderr,
+        )
+        raise SystemExit(ExitCode.USER_ERROR)
 
     root = require_repo()
     repo_id = _read_repo_id(root)
-    branch = _read_branch(root)
+    branch = read_current_branch(root)
 
     commit = resolve_commit_ref(root, repo_id, branch, ref)
     if commit is None:
@@ -263,21 +304,26 @@ def run(args: argparse.Namespace) -> None:
         print(f"❌ Snapshot for commit {commit.commit_id[:8]} has no files.", file=sys.stderr)
         raise SystemExit(ExitCode.USER_ERROR)
 
-    symbol_map = _symbols_for_snapshot(root, manifest, kind_filter, file_filter)
+    symbol_map = symbols_for_snapshot(
+        root,
+        manifest,
+        kind_filter=kind_filter,
+        file_filter=file_filter,
+        language_filter=language_filter,
+    )
 
     if count_only:
         total = sum(len(t) for t in symbol_map.values())
-        lang_counts: dict[str, int] = {}
-        for file_path, tree in symbol_map.items():
-            lang = _language_of(file_path)
-            lang_counts[lang] = lang_counts.get(lang, 0) + len(tree)
-        lang_str = "  ".join(f"{lang}: {count}" for lang, count in sorted(lang_counts.items()))
-        print(f"{total} symbol(s)  ({lang_str})")
+        counts = _lang_counts(symbol_map)
+        lang_str = ", ".join(f"{lang}: {count:,}" for lang, count in sorted(counts.items()))
+        sym_word = "symbol" if total == 1 else "symbols"
+        print(f"{total:,} {sym_word}  ({lang_str})")
         return
 
     if as_json:
         _emit_json(symbol_map)
         return
 
-    print(f'commit {commit.commit_id[:8]}  "{commit.message}"')
-    _print_human(symbol_map, show_hashes)
+    header = f'commit {commit.commit_id[:8]}  "{commit.message}"'
+    print(_c(header, _DIM, tty=tty))
+    _print_human(symbol_map, show_hashes, tty)
