@@ -84,16 +84,16 @@ def _make_commit(root: pathlib.Path, branch: str = "main", message: str = "init"
 class TestBranchUnit:
     def test_list_branches_empty_repo(self, tmp_path: pathlib.Path) -> None:
         root = _init_repo(tmp_path)
-        from muse.cli.commands.branch import _list_branches
-        assert _list_branches(root) == []
+        from muse.cli.commands.branch import _list_local_branches
+        assert _list_local_branches(root) == []
 
     def test_list_branches_after_create(self, tmp_path: pathlib.Path) -> None:
         root = _init_repo(tmp_path)
         refs_dir = root / ".muse" / "refs" / "heads"
         (refs_dir / "main").write_text("a" * 64, encoding="utf-8")
         (refs_dir / "dev").write_text("b" * 64, encoding="utf-8")
-        from muse.cli.commands.branch import _list_branches
-        assert _list_branches(root) == ["dev", "main"]
+        from muse.cli.commands.branch import _list_local_branches
+        assert _list_local_branches(root) == ["dev", "main"]
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +121,7 @@ class TestBranchIntegration:
     def test_verbose_shows_commit_sha(self, tmp_path: pathlib.Path) -> None:
         root = _init_repo(tmp_path)
         commit_id = _make_commit(root, "main")
-        result = runner.invoke(cli, ["branch", "--verbose"], env=_env(root), catch_exceptions=False)
+        result = runner.invoke(cli, ["branch", "-v"], env=_env(root), catch_exceptions=False)
         assert commit_id[:8] in result.output
 
     def test_delete_branch(self, tmp_path: pathlib.Path) -> None:
