@@ -4,6 +4,28 @@ Computes the set of commits the remote lacks (local branch HEAD vs the last
 known remote tracking pointer), bundles them with all referenced snapshots and
 objects, and uploads the bundle to MuseHub.
 
+Chunked push
+------------
+
+When the bundle contains more objects than the server's per-request limit
+(:data:`~muse.core.transport.CHUNK_OBJECTS` = 900), ``muse push`` splits the
+push into two phases:
+
+**Phase 1 — object pre-upload:**
+    Objects (binary blobs) are uploaded in batches via
+    ``POST {url}/push/objects``.  Each batch is ≤ 900 objects.  Objects are
+    content-addressed (SHA-256), so retrying a batch is always safe — the
+    server skips blobs it already holds.
+
+**Phase 2 — commit push:**
+    A single ``POST {url}/push`` carries commits and snapshots with an empty
+    ``objects`` list.  Because blobs were pre-uploaded in Phase 1, this request
+    is small regardless of how many files changed.  Branch refs are updated
+    atomically here.
+
+For small pushes (≤ 900 objects) the two phases collapse into the existing
+single ``POST {url}/push`` call — no behaviour change.
+
 Fast-forward check
 ------------------
 
@@ -34,10 +56,10 @@ from muse.cli.config import (
     set_upstream,
 )
 from muse.core.errors import ExitCode
-from muse.core.pack import PackBundle, RemoteInfo, build_pack
+from muse.core.pack import ObjectPayload, PackBundle, PushResult, RemoteInfo, build_pack
 from muse.core.repo import require_repo
 from muse.core.store import get_head_commit_id, read_current_branch
-from muse.core.transport import MuseTransport, TransportError, make_transport
+from muse.core.transport import CHUNK_OBJECTS, MuseTransport, TransportError, make_transport
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +67,83 @@ logger = logging.getLogger(__name__)
 def _current_branch(root: pathlib.Path) -> str:
     """Return the current branch name from ``.muse/HEAD``."""
     return read_current_branch(root)
+
+
+def _push_chunked(
+    transport: MuseTransport,
+    url: str,
+    token: str | None,
+    bundle: PackBundle,
+    branch: str,
+    force: bool,
+) -> PushResult:
+    """Upload *bundle* to *url*, pre-uploading objects in chunks when necessary.
+
+    When the bundle contains more than :data:`~muse.core.transport.CHUNK_OBJECTS`
+    objects the push is split into two phases so no single HTTP request exceeds
+    the server's per-request object limit:
+
+    Phase 1 — object chunks (``POST {url}/push/objects``):
+        Objects are uploaded in batches of ≤ :data:`CHUNK_OBJECTS`.  Each
+        batch is idempotent — the server skips blobs it already holds.  If any
+        chunk upload fails the whole push is aborted before branch refs are
+        touched.
+
+    Phase 2 — commit push (``POST {url}/push``):
+        A single request carries commits and snapshots with ``objects=[]``.
+        Because blobs were pre-uploaded, this request is small regardless of
+        how many files changed.  Branch refs are updated atomically here.
+
+    For small pushes (≤ :data:`CHUNK_OBJECTS` objects) the two phases collapse
+    into a single ``POST {url}/push`` — identical to the old behaviour.
+    """
+    objects: list[ObjectPayload] = list(bundle.get("objects") or [])
+
+    if len(objects) <= CHUNK_OBJECTS:
+        # Fast path: small push fits in one request.
+        return transport.push_pack(url, token, bundle, branch, force)
+
+    # ── Phase 1: pre-upload objects in chunks ────────────────────────────────
+    total_chunks = (len(objects) + CHUNK_OBJECTS - 1) // CHUNK_OBJECTS
+    total_stored = 0
+    total_skipped = 0
+
+    for chunk_idx in range(total_chunks):
+        chunk_start = chunk_idx * CHUNK_OBJECTS
+        chunk: list[ObjectPayload] = objects[chunk_start : chunk_start + CHUNK_OBJECTS]
+        chunk_num = chunk_idx + 1
+        print(
+            f"  Uploading objects chunk {chunk_num}/{total_chunks} "
+            f"({len(chunk)} object(s)) …"
+        )
+        resp = transport.push_objects(url, token, chunk)
+        total_stored += resp["stored"]
+        total_skipped += resp["skipped"]
+
+    logger.info(
+        "✅ push/objects complete: %d stored, %d skipped across %d chunk(s)",
+        total_stored,
+        total_skipped,
+        total_chunks,
+    )
+
+    # ── Phase 2: push commits + snapshots, no objects ─────────────────────────
+    # Preserve branch_heads from the original bundle so LocalFileTransport can
+    # determine the new tip without recomputing it from the commit list.
+    slim_bundle: PackBundle = {
+        "commits": bundle.get("commits") or [],
+        "snapshots": bundle.get("snapshots") or [],
+        "objects": [],
+    }
+    branch_heads = bundle.get("branch_heads")
+    if branch_heads:
+        slim_bundle["branch_heads"] = branch_heads
+
+    print(
+        f"  Pushing {len(slim_bundle.get('commits') or [])} commit(s) "
+        f"and {len(slim_bundle.get('snapshots') or [])} snapshot(s) …"
+    )
+    return transport.push_pack(url, token, slim_bundle, branch, force)
 
 
 def _fetch_remote_info_safe(
@@ -170,7 +269,7 @@ def run(args: argparse.Namespace) -> None:
     bundle: PackBundle = build_pack(root, [local_head], have=have)
 
     try:
-        result = transport.push_pack(url, token, bundle, push_branch, force)
+        result = _push_chunked(transport, url, token, bundle, push_branch, force)
     except TransportError as exc:
         if exc.status_code == 409:
             print(

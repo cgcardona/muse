@@ -111,6 +111,21 @@ class ApplyResult(TypedDict):
     objects_skipped: int
 
 
+class ObjectsChunkResponse(TypedDict):
+    """Response from ``POST {url}/push/objects`` — one chunk of a chunked push.
+
+    Returned by both :class:`~muse.core.transport.HttpTransport` and
+    :class:`~muse.core.transport.LocalFileTransport` after pre-uploading a
+    batch of content-addressed objects.
+
+    ``stored``  — objects written to storage in this call.
+    ``skipped`` — objects already present on the remote (idempotent no-ops).
+    """
+
+    stored: int
+    skipped: int
+
+
 # ---------------------------------------------------------------------------
 # Pack building
 # ---------------------------------------------------------------------------
