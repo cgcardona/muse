@@ -17,7 +17,7 @@ from tests.cli_test_helper import CliRunner
 
 from muse._version import __version__
 cli = None  # argparse migration — CliRunner ignores this arg
-from muse.cli.config import get_remote_head, get_upstream
+from muse.cli.config import get_remote_head, get_upstream, set_remote_head
 from muse.core.object_store import write_object
 from muse.core.pack import PackBundle, RemoteInfo
 from muse.core.store import (
@@ -162,6 +162,30 @@ class TestFetch:
         tracking = get_remote_head("origin", "main", repo)
         assert tracking == "remote_commit1"
 
+    def test_fetch_defaults_to_current_branch_not_upstream_name(
+        self, repo: pathlib.Path
+    ) -> None:
+        """Regression: fetch with no --branch must use the current branch name,
+        not the upstream *remote* name (which get_upstream() returns)."""
+        # Set upstream so get_upstream("main", root) would return "origin".
+        (repo / ".muse" / "config.toml").write_text(
+            '[remotes.origin]\nurl = "https://hub.example.com/repos/r1"\nbranch = "main"\n'
+        )
+        # Remote has "main" → fetch must succeed, not look for branch "origin".
+        info = _make_remote_info({"main": "remote_commit1"})
+        bundle = _make_bundle("remote_commit1")
+        transport_mock = unittest.mock.MagicMock()
+        transport_mock.fetch_remote_info.return_value = info
+        transport_mock.fetch_pack.return_value = bundle
+
+        with unittest.mock.patch(
+            "muse.cli.commands.fetch.make_transport", return_value=transport_mock
+        ):
+            result = runner.invoke(cli, ["fetch", "origin"])
+
+        assert result.exit_code == 0, result.output
+        assert "Fetched" in result.output
+
     def test_fetch_no_remote_configured_fails(
         self, repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -177,11 +201,24 @@ class TestFetch:
         with unittest.mock.patch(
             "muse.cli.commands.fetch.make_transport", return_value=transport_mock
         ):
-            # Options must precede positional args in add_typer groups.
             result = runner.invoke(cli, ["fetch", "--branch", "nonexistent", "origin"])
 
         assert result.exit_code != 0
         assert "does not exist on remote" in result.output
+
+    def test_fetch_branch_not_on_remote_shows_available(self, repo: pathlib.Path) -> None:
+        """Error output should hint at which branches actually exist."""
+        info = _make_remote_info({"main": "abc", "dev": "def"})
+        transport_mock = unittest.mock.MagicMock()
+        transport_mock.fetch_remote_info.return_value = info
+
+        with unittest.mock.patch(
+            "muse.cli.commands.fetch.make_transport", return_value=transport_mock
+        ):
+            result = runner.invoke(cli, ["fetch", "--branch", "nonexistent", "origin"])
+
+        assert result.exit_code != 0
+        assert "Available branches" in result.output
 
     def test_fetch_transport_error_propagates(self, repo: pathlib.Path) -> None:
         transport_mock = unittest.mock.MagicMock()
@@ -194,6 +231,84 @@ class TestFetch:
 
         assert result.exit_code != 0
         assert "Cannot reach remote" in result.output
+
+    def test_fetch_already_up_to_date(self, repo: pathlib.Path) -> None:
+        """When local tracking ref matches remote HEAD, no pack is fetched."""
+        # Pre-seed the tracking ref to match the remote.
+        set_remote_head("origin", "main", "remote_commit1", repo)
+        info = _make_remote_info({"main": "remote_commit1"})
+        transport_mock = unittest.mock.MagicMock()
+        transport_mock.fetch_remote_info.return_value = info
+
+        with unittest.mock.patch(
+            "muse.cli.commands.fetch.make_transport", return_value=transport_mock
+        ):
+            result = runner.invoke(cli, ["fetch", "origin"])
+
+        assert result.exit_code == 0
+        assert "up to date" in result.output
+        transport_mock.fetch_pack.assert_not_called()
+
+    def test_fetch_prune_removes_stale_refs(self, repo: pathlib.Path) -> None:
+        """--prune deletes tracking refs for branches that no longer exist on remote."""
+        # Simulate a stale tracking ref for "old-feature".
+        set_remote_head("origin", "old-feature", "deadbeef", repo)
+        # Remote only has "main".
+        info = _make_remote_info({"main": "remote_commit1"})
+        bundle = _make_bundle("remote_commit1")
+        transport_mock = unittest.mock.MagicMock()
+        transport_mock.fetch_remote_info.return_value = info
+        transport_mock.fetch_pack.return_value = bundle
+
+        with unittest.mock.patch(
+            "muse.cli.commands.fetch.make_transport", return_value=transport_mock
+        ):
+            result = runner.invoke(cli, ["fetch", "--prune", "origin"])
+
+        assert result.exit_code == 0
+        assert "deleted" in result.output
+        # Stale tracking ref must be gone.
+        assert get_remote_head("origin", "old-feature", repo) is None
+
+    def test_fetch_dry_run_writes_nothing(self, repo: pathlib.Path) -> None:
+        """--dry-run must not write objects or update any tracking ref."""
+        info = _make_remote_info({"main": "remote_commit1"})
+        transport_mock = unittest.mock.MagicMock()
+        transport_mock.fetch_remote_info.return_value = info
+
+        with unittest.mock.patch(
+            "muse.cli.commands.fetch.make_transport", return_value=transport_mock
+        ):
+            result = runner.invoke(cli, ["fetch", "--dry-run", "origin"])
+
+        assert result.exit_code == 0
+        assert "Would fetch" in result.output
+        # No pack was requested and no tracking ref written.
+        transport_mock.fetch_pack.assert_not_called()
+        assert get_remote_head("origin", "main", repo) is None
+
+    def test_fetch_all_fetches_every_remote(self, repo: pathlib.Path) -> None:
+        """--all must contact every configured remote."""
+        # Add a second remote.
+        config_path = repo / ".muse" / "config.toml"
+        config_path.write_text(
+            '[remotes.origin]\nurl = "https://hub.example.com/repos/r1"\n'
+            '[remotes.upstream]\nurl = "https://hub.example.com/repos/r2"\n'
+        )
+        info = _make_remote_info({"main": "remote_commit1"})
+        bundle = _make_bundle("remote_commit1")
+        transport_mock = unittest.mock.MagicMock()
+        transport_mock.fetch_remote_info.return_value = info
+        transport_mock.fetch_pack.return_value = bundle
+
+        with unittest.mock.patch(
+            "muse.cli.commands.fetch.make_transport", return_value=transport_mock
+        ):
+            result = runner.invoke(cli, ["fetch", "--all"])
+
+        assert result.exit_code == 0
+        # fetch_remote_info called once per remote.
+        assert transport_mock.fetch_remote_info.call_count == 2
 
 
 # ---------------------------------------------------------------------------
