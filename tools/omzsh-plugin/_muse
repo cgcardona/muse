@@ -1,176 +1,432 @@
 #compdef muse
-# _muse — ZSH completion for the muse CLI
-# ==============================================================================
-# Relies on MUSE_REPO_ROOT exported by muse.plugin.zsh. All file reads are
-# pure ZSH globbing — no subprocesses, no ls, no eval.
-# ==============================================================================
+# Zsh completion for the Muse CLI.
+#
+# Installation (pick one):
+#   1. Symlink into a directory already on $fpath:
+#        ln -sf /path/to/muse/completions/_muse ~/.zsh/completions/_muse
+#   2. Oh-My-Zsh users — copy or symlink into the custom completions dir:
+#        ln -sf /path/to/muse/completions/_muse \
+#               ~/.oh-my-zsh/completions/_muse
+#   3. Add the completions directory directly to $fpath in ~/.zshrc:
+#        fpath=(/path/to/muse/completions $fpath)
+#        autoload -Uz compinit && compinit
+#
+# After installing, reload completions:
+#   exec zsh   OR   autoload -Uz compinit && compinit -u
 
-# List branch names from .muse/refs/heads/ using ZSH globbing (no subprocess).
-function _muse_branches() {
-  local refs_dir="${MUSE_REPO_ROOT}/.muse/refs/heads"
-  [[ -d "$refs_dir" ]] || return
-  local -a branches
-  branches=("${refs_dir}"/*(N:t))  # (N) = nullglob, :t = tail (basename)
-  (( ${#branches} )) && _describe 'branch' branches
+# ---------------------------------------------------------------------------
+# Helpers — read repo state directly from the filesystem; no subprocess.
+# ---------------------------------------------------------------------------
+
+# Walk up from $PWD and return the .muse directory path, or "" if not found.
+_muse_dot_muse() {
+    local dir="$PWD"
+    while [[ "$dir" != "/" ]]; do
+        if [[ -f "$dir/.muse/repo.json" ]]; then
+            print -r -- "$dir/.muse"
+            return 0
+        fi
+        dir="${dir:h}"
+    done
+    return 1
 }
 
-# List tag names from .muse/refs/tags/.
-function _muse_tags() {
-  local tags_dir="${MUSE_REPO_ROOT}/.muse/refs/tags"
-  [[ -d "$tags_dir" ]] || return
-  local -a tags
-  tags=("${tags_dir}"/*(N:t))
-  (( ${#tags} )) && _describe 'tag' tags
+# Emit branch names by listing .muse/refs/heads/ — zero subprocesses.
+_muse_branches() {
+    local dot_muse
+    dot_muse="$(_muse_dot_muse)" || return
+    local heads_dir="$dot_muse/refs/heads"
+    [[ -d "$heads_dir" ]] || return
+    local -a branches
+    # ${heads_dir}/**/*(N:t) recurses and strips directory prefix.
+    branches=(${(f)"$(find "$heads_dir" -type f 2>/dev/null | sed "s|$heads_dir/||")"})
+    (( ${#branches} )) && _describe 'branches' branches
 }
 
-# List remote names from .muse/remotes/.
-function _muse_remotes() {
-  local remotes_dir="${MUSE_REPO_ROOT}/.muse/remotes"
-  [[ -d "$remotes_dir" ]] || return
-  local -a remotes
-  remotes=("${remotes_dir}"/*(N:t))
-  (( ${#remotes} )) && _describe 'remote' remotes
+# Emit remote names from .muse/config.toml — zero subprocesses.
+_muse_remotes() {
+    local dot_muse
+    dot_muse="$(_muse_dot_muse)" || { _values 'remote' 'origin' 'local'; return; }
+    local cfg="$dot_muse/config.toml"
+    local -a remotes
+    if [[ -f "$cfg" ]]; then
+        # Extract remote names from [remotes.<name>] section headers.
+        remotes=(${(f)"$(grep -E '^\[remotes\.' "$cfg" 2>/dev/null \
+            | sed -E 's/\[remotes\.([^]]+)\]/\1/')"})
+    fi
+    if (( ${#remotes} )); then
+        _describe 'remotes' remotes
+    else
+        _values 'remote' 'origin' 'local'
+    fi
 }
 
-# Main completion function.
-function _muse() {
-  local state line
-  typeset -A opt_args
+# ---------------------------------------------------------------------------
+# Command lists (kept in sync with muse/cli/app.py)
+# ---------------------------------------------------------------------------
 
-  _arguments -C \
-    '(-h --help)'{-h,--help}'[show help]' \
-    '(-V --version)'{-V,--version}'[show version]' \
-    '1: :->command' \
-    '*:: :->args'
+local -a _muse_top_cmds=(
+    'plumbing:Tier 1 machine-readable plumbing commands'
+    'init:Initialise a new Muse repository'
+    'status:Show working-tree drift against HEAD'
+    'log:Display commit history'
+    'commit:Record the current state as a new version'
+    'diff:Compare working tree against HEAD or two commits'
+    'show:Inspect a commit'
+    'branch:List, create, or delete branches'
+    'checkout:Switch branches or restore from a commit'
+    'merge:Three-way merge a branch into HEAD'
+    'reset:Move HEAD to a prior commit'
+    'revert:Undo a prior commit'
+    'cherry-pick:Apply a specific commit on top of HEAD'
+    'stash:Shelve uncommitted changes'
+    'tag:Attach and query semantic tags'
+    'push:Upload commits and objects to a remote'
+    'pull:Fetch from a remote and merge'
+    'fetch:Download commits from a remote'
+    'clone:Create a local copy of a remote repository'
+    'remote:Manage remote connections'
+    'auth:Identity management'
+    'hub:MuseHub fabric connection'
+    'config:Local repository configuration'
+    'domains:Domain plugin dashboard'
+    'attributes:Display .museattributes rules'
+    'annotate:Attach CRDT annotations to a commit'
+    'blame:Show per-line commit provenance'
+    'reflog:History of HEAD and branch-ref movements'
+    'rerere:Reuse recorded conflict resolutions'
+    'gc:Remove unreachable objects'
+    'archive:Export a historical snapshot'
+    'bisect:Binary search commit history'
+    'worktree:Manage multiple branch checkouts'
+    'workspace:Compose multiple Muse repositories'
+    'rebase:Replay commits onto a new base'
+    'clean:Remove untracked files'
+    'describe:Label a commit by its nearest tag'
+    'shortlog:Summarise history by author or agent'
+    'verify:Check repository integrity'
+    'snapshot:Explicit snapshot management'
+    'bundle:Pack commits into a portable bundle'
+    'content-grep:Search tracked file content'
+    'whoami:Show current identity'
+    'check:Run domain invariant checks'
+    'cat:Print a single tracked symbol'
+    'midi:MIDI domain semantic commands'
+    'code:Code domain semantic commands'
+    'coord:Multi-agent coordination commands'
+)
 
-  case "$state" in
-    command)
-      local -a cmds
-      cmds=(
-        'init:initialise a new muse repository'
-        'status:show working-tree status'
-        'log:show commit history'
-        'diff:show changes between commits or working tree'
-        'show:show a commit or object'
-        'commit:record changes to the repository'
-        'branch:list, create, or delete branches'
-        'checkout:switch branches or restore files'
-        'merge:join two branches'
-        'reset:reset HEAD to a given state'
-        'revert:create a new commit that undoes a prior commit'
-        'cherry-pick:apply a commit onto the current branch'
-        'stash:stash uncommitted changes'
-        'tag:create, list, or delete tags'
-        'blame:annotate lines with commit info'
-        'reflog:show reference log'
-        'gc:run repository maintenance'
-        'remote:manage remote repositories'
-        'fetch:download objects and refs from a remote'
-        'pull:fetch and integrate from a remote'
-        'push:update remote refs and send objects'
-        'clone:clone a repository'
-        'config:read or write repository config'
-        'domains:list registered domain plugins'
-        'workspace:manage multi-domain workspaces'
-        'worktree:manage linked working trees'
-        'archive:create an archive of repository contents'
-        'annotate:add structured annotations to commits'
-        'attributes:manage path attribute rules'
-        'check:run repository integrity checks'
-        'hub:interact with Muse Hub repositories'
-        'auth:manage authentication credentials'
-        'midi:MIDI domain subcommands'
-        'code:code domain subcommands'
-        'plumbing:low-level plumbing commands'
-      )
-      _describe 'muse command' cmds
-      ;;
+local -a _muse_plumbing_cmds=(
+    'hash-object:SHA-256 a file and optionally store it'
+    'cat-object:Emit raw bytes of a stored object'
+    'rev-parse:Resolve branch or HEAD to a commit ID'
+    'ls-files:List tracked files and object IDs'
+    'read-commit:Emit full commit JSON'
+    'read-snapshot:Emit full snapshot JSON'
+    'commit-tree:Create a commit from an explicit snapshot ID'
+    'update-ref:Move a branch HEAD to a specific commit'
+    'commit-graph:Emit the commit DAG as JSON'
+    'pack-objects:Build a PackBundle to stdout'
+    'unpack-objects:Read a PackBundle from stdin'
+    'ls-remote:List remote branch heads'
+    'merge-base:Find the lowest common ancestor of two commits'
+    'snapshot-diff:Diff two snapshot manifests'
+    'domain-info:Inspect the active domain plugin'
+    'show-ref:List all refs and their commit IDs'
+    'check-ignore:Test paths against .museignore rules'
+    'check-attr:Query merge-strategy attributes for paths'
+    'verify-object:Re-hash stored objects to detect corruption'
+    'symbolic-ref:Read or write HEAD symbolic reference'
+    'for-each-ref:Iterate all refs with rich commit metadata'
+    'name-rev:Map commit IDs to descriptive names'
+    'check-ref-format:Validate branch or ref names'
+    'verify-pack:Verify the integrity of a PackBundle'
+)
 
-    args)
-      case "${line[1]}" in
-        checkout|merge|cherry-pick|branch|revert|reset)
-          _muse_branches
-          ;;
-        push|pull|fetch)
-          local -a remote_args
-          remote_args=()
-          _muse_remotes
-          ;;
-        tag)
-          case "${line[2]}" in
-            -d|--delete) _muse_tags ;;
-            *) _muse_tags ;;
-          esac
-          ;;
-        blame|show|diff)
-          _muse_branches
-          ;;
-        config)
-          if (( ${#line} == 2 )); then
-            local -a keys
-            keys=(
-              'core.domain:active domain plugin'
-              'core.user:commit author name'
-              'core.email:commit author email'
-              'core.editor:preferred editor'
-              'core.pager:preferred pager'
-              'core.autocrlf:line-ending conversion'
-              'core.filemode:track execute permission'
-              'push.default:default push behaviour'
-              'merge.conflictstyle:conflict marker style'
-              'log.oneline:default log format'
-            )
-            _describe 'config key' keys
-          fi
-          ;;
-        stash)
-          local -a stash_cmds
-          stash_cmds=(
-            'push:stash the working tree'
-            'pop:apply and drop the latest stash'
-            'apply:apply a stash without dropping it'
-            'list:list stash entries'
-            'drop:discard a stash entry'
-            'show:inspect a stash entry'
-          )
-          _describe 'stash subcommand' stash_cmds
-          ;;
-        remote)
-          local -a remote_cmds
-          remote_cmds=(
-            'add:add a remote'
-            'remove:remove a remote'
-            'rename:rename a remote'
-            'list:list configured remotes'
-            'show:show remote info'
-            'set-url:change a remote URL'
-          )
-          _describe 'remote subcommand' remote_cmds
-          ;;
-        plumbing)
-          local -a plumbing_cmds
-          plumbing_cmds=(
-            'ls-files:list tracked files'
-            'cat-file:show raw object content'
-            'hash-object:compute object hash'
-            'merge-base:find common ancestor'
-            'rev-parse:resolve a ref to a SHA'
-          )
-          _describe 'plumbing subcommand' plumbing_cmds
-          ;;
-        commit)
-          _arguments \
-            '(-m --message)'{-m,--message}'[commit message]:message' \
-            '(-a --all)'{-a,--all}'[stage all changes before committing]' \
-            '--amend[amend the previous commit]' \
-            '--no-edit[reuse previous commit message]'
-          ;;
-        *)
-          _files
-          ;;
-      esac
-      ;;
-  esac
+local -a _muse_midi_cmds=(
+    'notes:List notes in a MIDI track'
+    'note-log:Show note-level history'
+    'note-blame:Show per-note commit provenance'
+    'harmony:Analyse harmonic content'
+    'piano-roll:Render a piano-roll view'
+    'note-hotspots:Find most-changed note regions'
+    'velocity-profile:Plot velocity distribution'
+    'transpose:Shift pitches by semitones'
+    'mix:Merge MIDI tracks'
+    'query:Query note events'
+    'check:Run MIDI domain checks'
+    'rhythm:Analyse rhythmic patterns'
+    'scale:Detect active scales'
+    'contour:Analyse melodic contour'
+    'density:Compute note density over time'
+    'tension:Compute harmonic tension'
+    'cadence:Detect cadence points'
+    'motif:Find recurring motifs'
+    'voice-leading:Analyse voice-leading quality'
+    'instrumentation:List instrumentation per track'
+    'tempo:Display tempo map'
+    'compare:Compare two MIDI commits'
+    'quantize:Snap notes to a rhythmic grid'
+    'humanize:Add expressive timing variation'
+    'invert:Invert intervals around an axis'
+    'retrograde:Reverse note sequence'
+    'arpeggiate:Spread chords into arpeggios'
+    'normalize:Normalise velocity levels'
+    'shard:Split a MIDI file into shards'
+    'agent-map:Show which agents modified which notes'
+    'find-phrase:Search for a melodic phrase'
+)
+
+local -a _muse_code_cmds=(
+    'cat:Print a symbol'\''s source'
+    'symbols:List symbols in the snapshot'
+    'symbol-log:Show per-symbol commit history'
+    'detect-refactor:Detect renames and extractions'
+    'grep:Search symbol names and bodies'
+    'blame:Show per-symbol commit provenance'
+    'hotspots:Find most-changed symbols'
+    'stable:Find stable (rarely changed) symbols'
+    'coupling:Show frequently co-changed symbol pairs'
+    'compare:Compare two code commits'
+    'languages:List languages in the snapshot'
+    'patch:Apply a delta patch to symbols'
+    'query:Query the symbol graph'
+    'query-history:Query across commit history'
+    'deps:Show dependency graph'
+    'find-symbol:Search for a symbol by name'
+    'impact:Estimate change impact'
+    'dead:Find unreachable symbols'
+    'coverage:Show test coverage mapping'
+    'lineage:Trace a symbol'\''s ancestry'
+    'api-surface:Enumerate public API symbols'
+    'codemap:Render the module dependency map'
+    'clones:Detect duplicate code'
+    'checkout-symbol:Restore a symbol to a prior version'
+    'semantic-cherry-pick:Apply a symbol-level change'
+    'index:Rebuild the symbol index'
+    'breakage:Detect breaking changes'
+    'invariants:Run symbol invariant checks'
+    'add:Stage files for commit'
+    'reset:Unstage files'
+    'code-check:Run code-domain checks'
+    'code-query:Run a structured code query'
+)
+
+local -a _muse_coord_cmds=(
+    'reserve:Reserve a symbol for exclusive editing'
+    'intent:Declare editing intent'
+    'forecast:Forecast merge conflicts'
+    'plan-merge:Plan a coordinated merge'
+    'shard:Partition work across agents'
+    'reconcile:Reconcile diverged agent branches'
+)
+
+# ---------------------------------------------------------------------------
+# Main dispatcher
+# ---------------------------------------------------------------------------
+
+_muse() {
+    local curcontext="$curcontext" state line
+    typeset -A opt_args
+
+    _arguments -C \
+        '(-h --help)'{-h,--help}'[Show help]' \
+        '(-V --version)'{-V,--version}'[Show version]' \
+        '1: :->command' \
+        '*:: :->args' \
+        && return 0
+
+    case $state in
+        command)
+            _describe 'muse commands' _muse_top_cmds
+            ;;
+
+        args)
+            case $words[1] in
+
+                # --- sub-namespaces -----------------------------------------
+                plumbing)
+                    _arguments '1: :->sub' '*:: :->plumbing_args'
+                    case $state in
+                        sub) _describe 'plumbing commands' _muse_plumbing_cmds ;;
+                    esac
+                    ;;
+
+                midi)
+                    _arguments '1: :->sub'
+                    case $state in
+                        sub) _describe 'midi commands' _muse_midi_cmds ;;
+                    esac
+                    ;;
+
+                code)
+                    _arguments '1: :->sub' '*:: :->code_args'
+                    case $state in
+                        sub) _describe 'code commands' _muse_code_cmds ;;
+                        code_args)
+                            case $words[1] in
+                                add|reset) _files ;;
+                            esac
+                            ;;
+                    esac
+                    ;;
+
+                coord)
+                    _arguments '1: :->sub'
+                    case $state in
+                        sub) _describe 'coord commands' _muse_coord_cmds ;;
+                    esac
+                    ;;
+
+                # --- branch-aware commands -----------------------------------
+                checkout)
+                    _arguments \
+                        '(-b --branch)'{-b,--branch}'[Create new branch]:branch:_muse_branches' \
+                        '(-f --force)'{-f,--force}'[Force checkout]' \
+                        '1: :_muse_branches'
+                    ;;
+
+                merge)
+                    _arguments \
+                        '--no-commit[Do not auto-commit after merge]' \
+                        '--squash[Squash into a single commit]' \
+                        '--strategy[Merge strategy]:strategy:(ours theirs union)' \
+                        '1: :_muse_branches'
+                    ;;
+
+                branch)
+                    _arguments \
+                        '(-d --delete)'{-d,--delete}'[Delete a branch]:branch:_muse_branches' \
+                        '(-D --force-delete)'{-D,--force-delete}'[Force-delete a branch]:branch:_muse_branches' \
+                        '(-m --move)'{-m,--move}'[Rename a branch]:branch:_muse_branches' \
+                        '1:: :_muse_branches'
+                    ;;
+
+                cherry-pick)
+                    _arguments \
+                        '(-n --no-commit)'{-n,--no-commit}'[Stage without committing]' \
+                        '1: :_muse_branches'
+                    ;;
+
+                rebase)
+                    _arguments \
+                        '--onto[New base branch]:branch:_muse_branches' \
+                        '1: :_muse_branches'
+                    ;;
+
+                # --- remote-aware commands -----------------------------------
+                push)
+                    _arguments \
+                        '(-b --branch)'{-b,--branch}'[Branch to push]:branch:_muse_branches' \
+                        '(-u --set-upstream)'{-u,--set-upstream}'[Set upstream tracking]' \
+                        '--force[Force push even if remote diverged]' \
+                        '1:: :_muse_remotes' \
+                        '2:: :_muse_branches'
+                    ;;
+
+                pull)
+                    _arguments \
+                        '(-b --branch)'{-b,--branch}'[Branch to pull into]:branch:_muse_branches' \
+                        '--rebase[Rebase instead of merge]' \
+                        '--no-commit[Do not auto-commit after merge]' \
+                        '1:: :_muse_remotes' \
+                        '2:: :_muse_branches'
+                    ;;
+
+                fetch)
+                    _arguments \
+                        '(-b --branch)'{-b,--branch}'[Specific branch to fetch]:branch:_muse_branches' \
+                        '--all[Fetch from all configured remotes]' \
+                        '1:: :_muse_remotes'
+                    ;;
+
+                clone)
+                    _arguments \
+                        '(-b --branch)'{-b,--branch}'[Branch to check out after clone]:branch' \
+                        '--name[Override repo directory name]:name' \
+                        '1: :_urls'
+                    ;;
+
+                # --- simple flag commands ------------------------------------
+                commit)
+                    _arguments \
+                        '(-m --message)'{-m,--message}'[Commit message]:message' \
+                        '--allow-empty[Allow a commit with no changes]' \
+                        '--sign[Sign the commit]' \
+                        '(-f --format)'{-f,--format}'[Output format]:fmt:(text json)'
+                    ;;
+
+                status)
+                    _arguments \
+                        '(-s --short)'{-s,--short}'[Condensed output]' \
+                        '--porcelain[Machine-readable output]' \
+                        '(-b --branch)'{-b,--branch}'[Show branch only]' \
+                        '(-f --format)'{-f,--format}'[Output format]:fmt:(text json)'
+                    ;;
+
+                log)
+                    _arguments \
+                        '(-n --max-count)'{-n,--max-count}'[Limit number of commits]:count' \
+                        '--oneline[Compact one-line output]' \
+                        '--graph[Show commit graph]' \
+                        '(-f --format)'{-f,--format}'[Output format]:fmt:(text json)'
+                    ;;
+
+                diff)
+                    _arguments \
+                        '--stat[Show diffstat summary]' \
+                        '(-f --format)'{-f,--format}'[Output format]:fmt:(text json)' \
+                        '1:: :_muse_branches' \
+                        '2:: :_muse_branches'
+                    ;;
+
+                show)
+                    _arguments \
+                        '(-f --format)'{-f,--format}'[Output format]:fmt:(text json)' \
+                        '1:: :_muse_branches'
+                    ;;
+
+                reset)
+                    _arguments \
+                        '--hard[Discard working tree changes]' \
+                        '--soft[Keep working tree changes staged]' \
+                        '1:: :_muse_branches'
+                    ;;
+
+                tag)
+                    _arguments \
+                        '(-d --delete)'{-d,--delete}'[Delete a tag]' \
+                        '(-l --list)'{-l,--list}'[List tags]' \
+                        '(-f --format)'{-f,--format}'[Output format]:fmt:(text json)'
+                    ;;
+
+                stash)
+                    _arguments \
+                        '1:: :(push pop list drop show apply)'
+                    ;;
+
+                remote)
+                    _arguments \
+                        '1:: :(add remove list rename set-url show)'
+                    ;;
+
+                auth)
+                    _arguments \
+                        '1:: :(login logout whoami)'
+                    ;;
+
+                hub)
+                    _arguments \
+                        '1:: :(connect disconnect status ping)'
+                    ;;
+
+                config)
+                    _arguments \
+                        '1:: :(show get set edit)'
+                    ;;
+            esac
+            ;;
+    esac
 }
 
 _muse "$@"

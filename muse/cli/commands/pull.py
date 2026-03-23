@@ -70,8 +70,11 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("remote", nargs="?", default="origin", help="Remote name to pull from (default: origin).")
-    parser.add_argument("--branch", "-b", default=None,
+    parser.add_argument("remote", nargs="?", default="origin",
+                        help="Remote name to pull from (default: origin).")
+    parser.add_argument("branch_pos", nargs="?", default=None, metavar="BRANCH",
+                        help="Remote branch to pull (default: tracked branch or current branch). Same as --branch.")
+    parser.add_argument("--branch", "-b", default=None, dest="branch_flag",
                         help="Remote branch to pull (default: tracked branch or current branch).")
     parser.add_argument("--no-merge", action="store_true", dest="no_merge",
                         help="Only fetch; do not merge into the current branch.")
@@ -86,7 +89,7 @@ def run(args: argparse.Namespace) -> None:
     Pass ``--no-merge`` to stop after the fetch step.
     """
     remote: str = args.remote
-    branch: str | None = args.branch
+    branch: str | None = getattr(args, "branch_flag", None) or getattr(args, "branch_pos", None)
     no_merge: bool = args.no_merge
     message: str | None = args.message
 
