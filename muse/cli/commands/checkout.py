@@ -15,7 +15,6 @@ import logging
 import pathlib
 import sys
 
-from muse.cli._completers import branch_completer, ref_completer
 from muse.core.errors import ExitCode
 from muse.core.object_store import restore_object
 from muse.core.repo import require_repo
@@ -114,8 +113,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    target_arg = parser.add_argument("target", help="Branch name or commit ID to check out.")
-    target_arg.completer = ref_completer  # type: ignore[attr-defined]
+    parser.add_argument("target", help="Branch name or commit ID to check out.")
     parser.add_argument("-b", "--create", action="store_true", help="Create a new branch.")
     parser.add_argument("--force", "-f", action="store_true", help="Discard uncommitted changes.")
     parser.add_argument("--format", default="text", dest="fmt", help="Output format: text or json.")

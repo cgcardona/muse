@@ -26,7 +26,6 @@ dependencies = [
     "tree-sitter-markdown>=0.5.1",
     "tree-sitter-html>=0.23.2",
     "tree-sitter-css>=0.25.0",
-    "argcomplete>=3.3.0",
     # Swift: py-tree-sitter-swift must be built from source; omitted here to
     # avoid breaking CI on machines without Xcode CLT.  Install manually with:
     #   pip install py-tree-sitter-swift

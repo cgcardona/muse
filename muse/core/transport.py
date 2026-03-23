@@ -88,7 +88,14 @@ import urllib.request
 import urllib.response
 from typing import IO, Protocol, runtime_checkable
 
-from muse.core.pack import FetchRequest, ObjectPayload, PackBundle, PushResult, RemoteInfo
+from muse.core.pack import (
+    FetchRequest,
+    ObjectPayload,
+    ObjectsChunkResponse,
+    PackBundle,
+    PushResult,
+    RemoteInfo,
+)
 from muse.core.store import CommitDict, SnapshotDict
 from muse.core.validation import MAX_RESPONSE_BYTES, contain_path, validate_branch_name
 from muse.domain import SemVerBump
@@ -96,6 +103,11 @@ from muse.domain import SemVerBump
 logger = logging.getLogger(__name__)
 
 _TIMEOUT_SECONDS = 60
+
+# Maximum number of objects to include in a single POST /push/objects call.
+# Must stay strictly below the server's MAX_OBJECTS_PER_PUSH limit (1 000)
+# to leave head room for Pydantic validation overhead and future additions.
+CHUNK_OBJECTS: int = 900
 
 
 # ---------------------------------------------------------------------------
@@ -267,6 +279,38 @@ class MuseTransport(Protocol):
         """
         ...
 
+    def push_objects(
+        self,
+        url: str,
+        token: str | None,
+        objects: list[ObjectPayload],
+    ) -> ObjectsChunkResponse:
+        """Pre-upload a batch of content-addressed objects via ``POST {url}/push/objects``.
+
+        This is Phase 1 of a chunked push.  The caller splits the full object
+        list into batches of at most :data:`CHUNK_OBJECTS` and calls this once
+        per batch.  After all batches succeed, the caller issues a single
+        ``push_pack`` (Phase 2) with an empty ``objects`` list — the final push
+        only carries commits and snapshots, which are small.
+
+        Objects are idempotent: the server skips any it already holds and
+        counts them in ``skipped``.  Uploading the same object twice is always
+        safe.
+
+        Args:
+            url:     Remote repository URL.
+            token:   Bearer token, or ``None``.
+            objects: Batch of objects to upload (``len ≤ CHUNK_OBJECTS``).
+
+        Returns:
+            :class:`~muse.core.pack.ObjectsChunkResponse` with ``stored`` and
+            ``skipped`` counts.
+
+        Raises:
+            :class:`TransportError` on HTTP 4xx/5xx or network failure.
+        """
+        ...
+
 
 # ---------------------------------------------------------------------------
 # HTTP/1.1 implementation (stdlib, zero extra dependencies)
@@ -388,17 +432,33 @@ class HttpTransport:
         """Upload a PackBundle via ``POST {url}/push``."""
         endpoint = f"{url.rstrip('/')}/push"
         logger.debug(
-            "transport: POST %s (branch=%s, force=%s, commits=%d)",
+            "transport: POST %s (branch=%s, force=%s, commits=%d, objects=%d)",
             endpoint,
             branch,
             force,
             len(bundle.get("commits") or []),
+            len(bundle.get("objects") or []),
         )
         payload = {"bundle": bundle, "branch": branch, "force": force}
         body_bytes = json.dumps(payload).encode("utf-8")
         req = self._build_request("POST", endpoint, token, body_bytes)
         raw = self._execute(req)
         return _parse_push_result(raw)
+
+    def push_objects(
+        self,
+        url: str,
+        token: str | None,
+        objects: list[ObjectPayload],
+    ) -> ObjectsChunkResponse:
+        """Pre-upload an object batch via ``POST {url}/push/objects``."""
+        endpoint = f"{url.rstrip('/')}/push/objects"
+        logger.debug("transport: POST %s (objects=%d)", endpoint, len(objects))
+        payload: dict[str, list[ObjectPayload]] = {"objects": objects}
+        body_bytes = json.dumps(payload).encode("utf-8")
+        req = self._build_request("POST", endpoint, token, body_bytes)
+        raw = self._execute(req)
+        return _parse_objects_response(raw)
 
 
 # ---------------------------------------------------------------------------
@@ -521,6 +581,20 @@ def _parse_push_result(raw: bytes) -> PushResult:
         ok=bool(ok_val) if isinstance(ok_val, bool) else False,
         message=str(msg_val) if isinstance(msg_val, str) else "",
         branch_heads=branch_heads,
+    )
+
+
+def _parse_objects_response(raw: bytes) -> ObjectsChunkResponse:
+    """Parse ``POST /push/objects`` response into an :class:`~muse.core.pack.ObjectsChunkResponse`."""
+    _assert_json_content(raw, "/push/objects")
+    parsed = json.loads(raw)
+    if not isinstance(parsed, dict):
+        return ObjectsChunkResponse(stored=0, skipped=0)
+    stored_val = parsed.get("stored")
+    skipped_val = parsed.get("skipped")
+    return ObjectsChunkResponse(
+        stored=int(stored_val) if isinstance(stored_val, int) else 0,
+        skipped=int(skipped_val) if isinstance(skipped_val, int) else 0,
     )
 
 
@@ -915,6 +989,41 @@ class LocalFileTransport:
             message=f"local push to {url!r} succeeded",
             branch_heads=get_all_branch_heads(remote_root),
         )
+
+    def push_objects(
+        self,
+        url: str,
+        token: str | None,  # noqa: ARG002
+        objects: list[ObjectPayload],
+    ) -> ObjectsChunkResponse:
+        """Write objects directly into the remote's local object store.
+
+        Mirrors the server-side ``POST /push/objects`` behaviour: objects are
+        content-addressed and idempotent — already-present objects are skipped.
+        No branch refs are touched; only blob bytes are written.
+        """
+        import base64
+
+        from muse.core.object_store import write_object
+
+        remote_root = self._repo_root(url)
+        stored = 0
+        skipped = 0
+        for obj in objects:
+            oid = obj.get("object_id", "")
+            b64 = obj.get("content_b64", "")
+            if not oid or not b64:
+                continue
+            try:
+                raw = base64.b64decode(b64)
+            except Exception as exc:
+                logger.warning("push_objects: bad base64 for %s: %s", oid[:8], exc)
+                continue
+            if write_object(remote_root, oid, raw):
+                stored += 1
+            else:
+                skipped += 1
+        return ObjectsChunkResponse(stored=stored, skipped=skipped)
 
 
 # ---------------------------------------------------------------------------

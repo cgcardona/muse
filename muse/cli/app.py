@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Muse CLI — entry point for the ``muse`` console script.
 
 Three-tier command architecture
@@ -460,15 +459,6 @@ def main(argv: list[str] | None = None) -> None:
     plan_merge.register(coord_subs)
     shard.register(coord_subs)
     reconcile.register(coord_subs)
-
-    # ------------------------------------------------------------------
-    # Shell tab-completion (argcomplete)
-    # ------------------------------------------------------------------
-    try:
-        import argcomplete
-        argcomplete.autocomplete(parser)
-    except ImportError:
-        pass
 
     # ------------------------------------------------------------------
     # Parse and dispatch

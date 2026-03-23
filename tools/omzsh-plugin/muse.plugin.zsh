@@ -272,10 +272,11 @@ alias mpush='muse push'
 alias mrm='muse remote'
 
 # ── §7  Completion ────────────────────────────────────────────────────────────
+# Add the plugin directory to fpath so ZSH's own compinit (called by oh-my-zsh
+# after all plugins load) can find the _muse completion function. Never call
+# compinit here — calling it twice under oh-my-zsh breaks completion entirely.
 if [[ -f "${0:A:h}/_muse" ]]; then
   fpath=("${0:A:h}" $fpath)
-  autoload -Uz compinit
-  compdef _muse muse 2>/dev/null
 fi
 
 # ── §8  Init ──────────────────────────────────────────────────────────────────

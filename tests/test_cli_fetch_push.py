@@ -363,11 +363,9 @@ class TestPush:
         assert "diverged" in result.output
 
     def test_push_already_up_to_date(self, repo: pathlib.Path) -> None:
-        # Set tracking head to the same commit as local HEAD.
-        (repo / ".muse" / "remotes" / "origin").mkdir(parents=True)
-        (repo / ".muse" / "remotes" / "origin" / "main").write_text("commit1")
-
+        # Remote reports the same HEAD as our local branch → nothing to push.
         transport_mock = unittest.mock.MagicMock()
+        transport_mock.fetch_remote_info.return_value = _make_remote_info({"main": "commit1"})
         with unittest.mock.patch(
             "muse.cli.commands.push.make_transport", return_value=transport_mock
         ):

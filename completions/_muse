@@ -15,31 +15,48 @@
 #   exec zsh   OR   autoload -Uz compinit && compinit -u
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Helpers — read repo state directly from the filesystem; no subprocess.
 # ---------------------------------------------------------------------------
 
-# Emit branch names from the nearest Muse repo, or nothing if not in one.
-_muse_branches() {
-    local -a branches
-    if muse plumbing show-ref &>/dev/null; then
-        branches=(${(f)"$(muse plumbing show-ref 2>/dev/null \
-            | python3 -c \
-            'import sys,json; d=json.load(sys.stdin); [print(r["ref"].replace("refs/heads/","")) for r in d["refs"]]' \
-            2>/dev/null)"})
-        _describe 'branches' branches
-    fi
+# Walk up from $PWD and return the .muse directory path, or "" if not found.
+_muse_dot_muse() {
+    local dir="$PWD"
+    while [[ "$dir" != "/" ]]; do
+        if [[ -f "$dir/.muse/repo.json" ]]; then
+            print -r -- "$dir/.muse"
+            return 0
+        fi
+        dir="${dir:h}"
+    done
+    return 1
 }
 
-# Emit remote names from the Muse config.
+# Emit branch names by listing .muse/refs/heads/ — zero subprocesses.
+_muse_branches() {
+    local dot_muse
+    dot_muse="$(_muse_dot_muse)" || return
+    local heads_dir="$dot_muse/refs/heads"
+    [[ -d "$heads_dir" ]] || return
+    local -a branches
+    # ${heads_dir}/**/*(N:t) recurses and strips directory prefix.
+    branches=(${(f)"$(find "$heads_dir" -type f 2>/dev/null | sed "s|$heads_dir/||")"})
+    (( ${#branches} )) && _describe 'branches' branches
+}
+
+# Emit remote names from .muse/config.toml — zero subprocesses.
 _muse_remotes() {
+    local dot_muse
+    dot_muse="$(_muse_dot_muse)" || { _values 'remote' 'origin' 'local'; return; }
+    local cfg="$dot_muse/config.toml"
     local -a remotes
-    local cfg
-    cfg="$(muse remote 2>/dev/null | awk '{print $1}')"
-    if [[ -n $cfg ]]; then
-        remotes=(${(f)cfg})
+    if [[ -f "$cfg" ]]; then
+        # Extract remote names from [remotes.<name>] section headers.
+        remotes=(${(f)"$(grep -E '^\[remotes\.' "$cfg" 2>/dev/null \
+            | sed -E 's/\[remotes\.([^]]+)\]/\1/')"})
+    fi
+    if (( ${#remotes} )); then
         _describe 'remotes' remotes
     else
-        # Always offer the built-in special remotes.
         _values 'remote' 'origin' 'local'
     fi
 }
