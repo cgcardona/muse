@@ -34,10 +34,10 @@ from muse.cli.config import (
     set_upstream,
 )
 from muse.core.errors import ExitCode
-from muse.core.pack import build_pack
+from muse.core.pack import PackBundle, RemoteInfo, build_pack
 from muse.core.repo import require_repo
 from muse.core.store import get_head_commit_id, read_current_branch
-from muse.core.transport import TransportError, make_transport
+from muse.core.transport import MuseTransport, TransportError, make_transport
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,22 @@ logger = logging.getLogger(__name__)
 def _current_branch(root: pathlib.Path) -> str:
     """Return the current branch name from ``.muse/HEAD``."""
     return read_current_branch(root)
+
+
+def _fetch_remote_info_safe(
+    transport: MuseTransport,
+    url: str,
+    token: str | None,
+) -> RemoteInfo | None:
+    """Call GET /refs on the remote and return its current branch heads.
+
+    Returns ``None`` on any transport error so callers can fall back
+    gracefully instead of aborting the whole push.
+    """
+    try:
+        return transport.fetch_remote_info(url, token)
+    except TransportError:
+        return None
 
 
 def _all_remote_heads(remote: str, root: pathlib.Path) -> list[str]:
@@ -114,16 +130,23 @@ def run(args: argparse.Namespace) -> None:
         print(f"❌ Branch '{push_branch}' has no commits to push.")
         raise SystemExit(ExitCode.USER_ERROR)
 
-    # Determine what the remote already has (via tracking pointer).
-    remote_head = get_remote_head(remote, push_branch, root)
-    if remote_head:
-        have: list[str] = [remote_head]
-    else:
-        # New branch — the remote has no tracking ref for it yet, but it
-        # already holds every object reachable from other branches we've
-        # pushed before.  Use all known remote heads as "have" anchors so
-        # we only send the delta rather than re-uploading the entire repo.
-        have = _all_remote_heads(remote, root)
+    transport = make_transport(url)
+
+    # Ask the remote what it already has so we never send redundant objects.
+    # This single GET /refs call is cheap and gives us authoritative have-anchors
+    # regardless of whether we've cached tracking refs locally.
+    remote_info = _fetch_remote_info_safe(transport, url, token)
+    remote_branch_heads = remote_info["branch_heads"] if remote_info else {}
+
+    # The "have" list tells build_pack which commit graphs the remote already
+    # holds.  Start with the live remote state, then fall back to cached local
+    # tracking refs, then finally to all known remote tracking pointers.
+    have: list[str] = list(remote_branch_heads.values())
+    if not have:
+        cached = get_remote_head(remote, push_branch, root)
+        have = [cached] if cached else _all_remote_heads(remote, root)
+
+    remote_head = remote_branch_heads.get(push_branch) or get_remote_head(remote, push_branch, root)
 
     if remote_head == local_head:
         print(f"Everything up to date. Remote {remote}/{push_branch} is already at {local_head[:8]}.")
@@ -131,9 +154,8 @@ def run(args: argparse.Namespace) -> None:
 
     print(f"Pushing {push_branch} → {remote}/{push_branch} …")
 
-    bundle = build_pack(root, [local_head], have=have)
+    bundle: PackBundle = build_pack(root, [local_head], have=have)
 
-    transport = make_transport(url)
     try:
         result = transport.push_pack(url, token, bundle, push_branch, force)
     except TransportError as exc:
