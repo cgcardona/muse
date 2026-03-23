@@ -407,6 +407,13 @@ def run(args: argparse.Namespace) -> None:
     if all_branches:
         graph = True
 
+    # Support git-style -<n> shorthand (e.g. `muse log -5` as alias for `-n 5`).
+    # argparse captures "-5" as the positional `ref` since it looks like an option;
+    # detect that pattern here and reinterpret it as a limit.
+    if ref is not None and ref.lstrip("-").isdigit() and ref.startswith("-"):
+        limit = int(ref.lstrip("-"))
+        ref = None
+
     if fmt not in ("text", "json"):
         print(f"❌ Unknown --format '{sanitize_display(fmt)}'. Choose text or json.", file=sys.stderr)
         raise SystemExit(ExitCode.USER_ERROR)
@@ -415,6 +422,7 @@ def run(args: argparse.Namespace) -> None:
         raise SystemExit(ExitCode.USER_ERROR)
     root = require_repo()
     repo_id = _read_repo_id(root)
+    # `ref` may have been cleared above if it was a `-<n>` shorthand.
     branch = ref or _read_branch(root)
 
     # Graph mode bypasses the normal linear walk entirely.
@@ -482,11 +490,12 @@ def run(args: argparse.Namespace) -> None:
         decoration = _ref_label(branch, is_head, tty)
 
         short_hash = _c(c.commit_id[:8], _YELLOW, tty=tty)
-        msg = sanitize_display(c.message)
+        # Always use first line only for the subject; full body printed below in default mode.
+        subject = sanitize_display(c.message.splitlines()[0])
         author_display = sanitize_display(c.author)
 
         if oneline:
-            print(f"{short_hash}{decoration} {msg}")
+            print(f"{short_hash}{decoration} {subject}")
 
         else:
             commit_word = _c("commit", _YELLOW, tty=tty)
@@ -514,7 +523,7 @@ def run(args: argparse.Namespace) -> None:
                 ]
                 print(f"Meta:   {', '.join(meta_parts)}")
 
-            print(f"\n    {msg}\n")
+            print(f"\n    {sanitize_display(c.message)}\n")
 
             if stat or patch:
                 added, removed = _file_diff(root, c)
