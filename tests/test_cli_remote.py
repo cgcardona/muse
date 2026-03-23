@@ -143,6 +143,15 @@ class TestRemoteList:
         assert result.exit_code == 0
         assert "https://hub.muse.io/repos/r1" in result.output
 
+    def test_list_verbose_shows_fetch_and_push(self, repo: pathlib.Path) -> None:
+        runner.invoke(cli, ["remote", "add", "origin", "https://hub.muse.io/repos/r1"])
+        result = runner.invoke(cli, ["remote", "-v"])
+        assert result.exit_code == 0
+        assert "(fetch)" in result.output
+        assert "(push)" in result.output
+        lines = [l for l in result.output.splitlines() if "hub.muse.io" in l]
+        assert len(lines) == 2, "verbose should print one fetch line and one push line"
+
 
 # ---------------------------------------------------------------------------
 # remote get-url
