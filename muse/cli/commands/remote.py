@@ -44,7 +44,7 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("-v", "--verbose", action="store_true",
-                        help="Show URL and upstream tracking branch.")
+                        help="Show fetch and push URLs with commit hash (like git remote -v).")
     subs = parser.add_subparsers(dest="subcommand", metavar="SUBCOMMAND")
 
     add_p = subs.add_parser("add", help="Register a new remote repository connection.")
@@ -82,13 +82,16 @@ def run(args: argparse.Namespace) -> None:
     if not remotes:
         print("No remotes configured. Use 'muse remote add <name> <url>'.")
         return
+    name_width = max(len(r["name"]) for r in remotes)
     for r in remotes:
         if verbose:
             upstream = get_upstream(r["name"], root)
             head = get_remote_head(r["name"], upstream or "main", root)
             head_str = f" @ {head[:8]}" if head else ""
             tracking = f" -> {r['name']}/{upstream}" if upstream else ""
-            print(f"{r['name']}\t{r['url']}{tracking}{head_str}")
+            label = f"{r['name']:<{name_width}}"
+            print(f"{label}\t{r['url']}{tracking}{head_str} (fetch)")
+            print(f"{label}\t{r['url']}{tracking}{head_str} (push)")
         else:
             print(r["name"])
 
