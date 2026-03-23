@@ -1,30 +1,34 @@
 """muse push — upload local commits, snapshots, and objects to a remote.
 
-Computes the set of commits the remote lacks (local branch HEAD vs the last
-known remote tracking pointer), bundles them with all referenced snapshots and
-objects, and uploads the bundle to MuseHub.
+MWP push protocol
+--------------------
 
-Chunked push
-------------
+``muse push`` uses the Muse Wire Protocol for all remotes that support it,
+falling back transparently to the legacy path for older servers.
 
-When the bundle contains more objects than the server's per-request limit
-(:data:`~muse.core.transport.CHUNK_OBJECTS` = 900), ``muse push`` splits the
-push into two phases:
+**Phase 0 — ref discovery:**
+    ``GET {url}/refs`` returns current branch heads.  This cheap call also
+    establishes the ``have`` anchors used in commit negotiation.
 
-**Phase 1 — object pre-upload:**
-    Objects (binary blobs) are uploaded in batches via
-    ``POST {url}/push/objects``.  Each batch is ≤ 900 objects.  Objects are
-    content-addressed (SHA-256), so retrying a batch is always safe — the
-    server skips blobs it already holds.
+**Phase 1 — object deduplication (MWP):**
+    ``POST {url}/filter-objects`` accepts the full list of object IDs the
+    client intends to push.  The server returns only the *missing* subset.
+    For incremental pushes this reduces the object payload to near-zero.
 
-**Phase 2 — commit push:**
+**Phase 2 — large-object presign (MWP):**
+    Objects above :data:`~muse.core.transport.LARGE_OBJECT_THRESHOLD` (64 KB)
+    are uploaded directly to S3/R2 via presigned PUT URLs — they never transit
+    the API server.  ``local://`` remotes return all IDs in ``inline`` and
+    fall back to the pack body automatically.
+
+**Phase 3 — parallel object upload:**
+    Remaining (small) objects are batched into chunks of
+    :data:`~muse.core.transport.CHUNK_OBJECTS` and uploaded in parallel using
+    ``concurrent.futures.ThreadPoolExecutor`` (4 workers by default).
+
+**Phase 4 — commit push:**
     A single ``POST {url}/push`` carries commits and snapshots with an empty
-    ``objects`` list.  Because blobs were pre-uploaded in Phase 1, this request
-    is small regardless of how many files changed.  Branch refs are updated
-    atomically here.
-
-For small pushes (≤ 900 objects) the two phases collapse into the existing
-single ``POST {url}/push`` call — no behaviour change.
+    ``objects`` list (blobs are already on the remote after Phases 1-3).
 
 Fast-forward check
 ------------------
@@ -46,7 +50,8 @@ from __future__ import annotations
 import argparse
 import logging
 import pathlib
-import sys
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from muse.cli.config import (
     get_auth_token,
@@ -56,10 +61,24 @@ from muse.cli.config import (
     set_upstream,
 )
 from muse.core.errors import ExitCode
-from muse.core.pack import ObjectPayload, PackBundle, PushResult, RemoteInfo, build_pack
+from muse.core.object_store import read_object
+from muse.core.pack import (
+    ObjectPayload,
+    PackBundle,
+    PushResult,
+    RemoteInfo,
+    build_pack,
+    collect_object_ids,
+)
 from muse.core.repo import require_repo
 from muse.core.store import get_head_commit_id, read_current_branch
-from muse.core.transport import CHUNK_OBJECTS, MuseTransport, TransportError, make_transport
+from muse.core.transport import (
+    CHUNK_OBJECTS,
+    LARGE_OBJECT_THRESHOLD,
+    MuseTransport,
+    TransportError,
+    make_transport,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,67 +88,154 @@ def _current_branch(root: pathlib.Path) -> str:
     return read_current_branch(root)
 
 
-def _push_chunked(
+def _upload_chunk(
     transport: MuseTransport,
     url: str,
     token: str | None,
-    bundle: PackBundle,
-    branch: str,
-    force: bool,
-) -> PushResult:
-    """Upload *bundle* to *url*, pre-uploading objects in chunks when necessary.
+    chunk: list[ObjectPayload],
+    chunk_num: int,
+    total_chunks: int,
+) -> tuple[int, int]:
+    """Upload one chunk of objects and return (stored, skipped)."""
+    print(
+        f"  Uploading objects chunk {chunk_num}/{total_chunks} "
+        f"({len(chunk)} object(s)) …"
+    )
+    resp = transport.push_objects(url, token, chunk)
+    return resp["stored"], resp["skipped"]
 
-    When the bundle contains more than :data:`~muse.core.transport.CHUNK_OBJECTS`
-    objects the push is split into two phases so no single HTTP request exceeds
-    the server's per-request object limit:
 
-    Phase 1 — object chunks (``POST {url}/push/objects``):
-        Objects are uploaded in batches of ≤ :data:`CHUNK_OBJECTS`.  Each
-        batch is idempotent — the server skips blobs it already holds.  If any
-        chunk upload fails the whole push is aborted before branch refs are
-        touched.
+def _upload_presigned(oid: str, url: str, raw: bytes) -> None:
+    """PUT *raw* bytes directly to a presigned S3/R2 URL (MWP Phase 3)."""
+    req = urllib.request.Request(url=url, data=raw, method="PUT")
+    with urllib.request.urlopen(req, timeout=300) as _resp:
+        pass
 
-    Phase 2 — commit push (``POST {url}/push``):
-        A single request carries commits and snapshots with ``objects=[]``.
-        Because blobs were pre-uploaded, this request is small regardless of
-        how many files changed.  Branch refs are updated atomically here.
 
-    For small pushes (≤ :data:`CHUNK_OBJECTS` objects) the two phases collapse
-    into a single ``POST {url}/push`` — identical to the old behaviour.
+def _push_objects_parallel(
+    transport: MuseTransport,
+    url: str,
+    token: str | None,
+    root: pathlib.Path,
+    objects: list[ObjectPayload],
+    max_workers: int = 4,
+) -> tuple[int, int]:
+    """Upload *objects* in parallel chunks (MWP Phase 3 + parallel Phase 4).
+
+    Returns total (stored, skipped) across all chunks.
     """
-    objects: list[ObjectPayload] = list(bundle.get("objects") or [])
+    if not objects:
+        return 0, 0
 
-    if len(objects) <= CHUNK_OBJECTS:
-        # Fast path: small push fits in one request.
-        return transport.push_pack(url, token, bundle, branch, force)
-
-    # ── Phase 1: pre-upload objects in chunks ────────────────────────────────
-    total_chunks = (len(objects) + CHUNK_OBJECTS - 1) // CHUNK_OBJECTS
+    chunks: list[list[ObjectPayload]] = [
+        objects[i : i + CHUNK_OBJECTS] for i in range(0, len(objects), CHUNK_OBJECTS)
+    ]
+    total_chunks = len(chunks)
     total_stored = 0
     total_skipped = 0
 
-    for chunk_idx in range(total_chunks):
-        chunk_start = chunk_idx * CHUNK_OBJECTS
-        chunk: list[ObjectPayload] = objects[chunk_start : chunk_start + CHUNK_OBJECTS]
-        chunk_num = chunk_idx + 1
-        print(
-            f"  Uploading objects chunk {chunk_num}/{total_chunks} "
-            f"({len(chunk)} object(s)) …"
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {
+            pool.submit(_upload_chunk, transport, url, token, chunk, idx + 1, total_chunks): idx
+            for idx, chunk in enumerate(chunks)
+        }
+        for fut in as_completed(futures):
+            stored, skipped = fut.result()
+            total_stored += stored
+            total_skipped += skipped
+
+    return total_stored, total_skipped
+
+
+def _push_mwp(
+    transport: MuseTransport,
+    url: str,
+    token: str | None,
+    root: pathlib.Path,
+    local_head: str,
+    have: list[str],
+    branch: str,
+    force: bool,
+) -> tuple[PushResult, int, int]:
+    """Full MWP push: dedup negotiation → presign → parallel upload → commit push.
+
+    MWP phases executed here:
+      Phase 1 — ``POST /filter-objects``: discover which objects are missing.
+      Phase 2 — ``POST /presign``: get presigned PUT URLs for large objects.
+      Phase 3 — parallel direct-to-storage upload for large objects.
+      Phase 4 — parallel chunked ``POST /push/objects`` for small objects.
+      Phase 5 — ``POST /push`` with commits + snapshots, empty objects list.
+    """
+    # ── Phase 1: object deduplication ────────────────────────────────────────
+    all_candidate_ids = collect_object_ids(root, [local_head], have=have)
+    try:
+        missing_ids_list = transport.filter_objects(url, token, all_candidate_ids)
+        missing_ids: set[str] = set(missing_ids_list)
+        skipped_count = len(all_candidate_ids) - len(missing_ids)
+        if skipped_count:
+            print(f"  Object dedup: {skipped_count} already on remote, {len(missing_ids)} to upload.")
+    except TransportError:
+        # Older server without /filter-objects — send everything.
+        logger.debug("filter-objects not supported, falling back to full upload")
+        missing_ids = set(all_candidate_ids)
+
+    # ── Phase 2: presigned URLs for large objects ─────────────────────────────
+    large_ids: list[str] = []
+    small_ids: set[str] = set(missing_ids)
+
+    try:
+        large_candidates = [
+            oid for oid in missing_ids
+            if (raw := read_object(root, oid)) is not None and len(raw) > LARGE_OBJECT_THRESHOLD
+        ]
+        if large_candidates:
+            presign_resp = transport.presign_objects(url, token, large_candidates, "put")
+            presigned_map = presign_resp["presigned"]
+            inline_ids = set(presign_resp["inline"])
+
+            if presigned_map:
+                print(f"  Uploading {len(presigned_map)} large object(s) directly …")
+                large_ids = [oid for oid in large_candidates if oid in presigned_map]
+                large_id_set = set(large_ids)
+                small_ids = missing_ids - large_id_set
+
+                with ThreadPoolExecutor(max_workers=8) as pool:
+                    futs = {
+                        pool.submit(
+                            _upload_presigned,
+                            oid,
+                            presigned_map[oid],
+                            read_object(root, oid) or b"",
+                        ): oid
+                        for oid in large_ids
+                    }
+                    for fut in as_completed(futs):
+                        fut.result()  # re-raise any upload error
+            else:
+                # Backend is local:// or presign not supported — include all as small.
+                small_ids = missing_ids | inline_ids
+    except TransportError:
+        logger.debug("presign not supported, all objects go through pack")
+
+    # ── Build pack with only missing small objects ─────────────────────────────
+    bundle = build_pack(root, [local_head], have=have, only_objects=small_ids)
+
+    small_objects: list[ObjectPayload] = list(bundle.get("objects") or [])
+
+    # ── Phase 3/4: parallel upload of small objects ───────────────────────────
+    if small_objects:
+        total_chunks = (len(small_objects) + CHUNK_OBJECTS - 1) // CHUNK_OBJECTS
+        stored, skipped = _push_objects_parallel(
+            transport, url, token, root, small_objects, max_workers=4
         )
-        resp = transport.push_objects(url, token, chunk)
-        total_stored += resp["stored"]
-        total_skipped += resp["skipped"]
+        logger.info(
+            "✅ push/objects complete: %d stored, %d skipped across %d chunk(s)",
+            stored, skipped, total_chunks,
+        )
+    else:
+        print("  No objects to upload.")
 
-    logger.info(
-        "✅ push/objects complete: %d stored, %d skipped across %d chunk(s)",
-        total_stored,
-        total_skipped,
-        total_chunks,
-    )
-
-    # ── Phase 2: push commits + snapshots, no objects ─────────────────────────
-    # Preserve branch_heads from the original bundle so LocalFileTransport can
-    # determine the new tip without recomputing it from the commit list.
+    # ── Phase 5: push commits + snapshots ─────────────────────────────────────
     slim_bundle: PackBundle = {
         "commits": bundle.get("commits") or [],
         "snapshots": bundle.get("snapshots") or [],
@@ -139,11 +245,14 @@ def _push_chunked(
     if branch_heads:
         slim_bundle["branch_heads"] = branch_heads
 
+    commits_count = len(slim_bundle.get("commits") or [])
     print(
-        f"  Pushing {len(slim_bundle.get('commits') or [])} commit(s) "
+        f"  Pushing {commits_count} commit(s) "
         f"and {len(slim_bundle.get('snapshots') or [])} snapshot(s) …"
     )
-    return transport.push_pack(url, token, slim_bundle, branch, force)
+    result = transport.push_pack(url, token, slim_bundle, branch, force)
+    total_objects = len(small_objects) + len(large_ids)
+    return result, commits_count, total_objects
 
 
 def _fetch_remote_info_safe(
@@ -258,7 +367,14 @@ def run(args: argparse.Namespace) -> None:
         if c != local_head and (commits_dir / f"{c}.json").exists()
     ]
 
-    remote_head = remote_branch_heads.get(push_branch) or get_remote_head(remote, push_branch, root)
+    # Use the live remote head when we have it; only fall back to the locally
+    # cached tracking ref when the remote was unreachable (remote_info is None).
+    # If we did reach the remote and the branch simply isn't there yet, treat it
+    # as a new branch (remote_head = None) so we don't skip the push.
+    if remote_info is not None:
+        remote_head: str | None = remote_branch_heads.get(push_branch)
+    else:
+        remote_head = get_remote_head(remote, push_branch, root)
 
     if remote_head == local_head:
         print(f"Everything up to date. Remote {remote}/{push_branch} is already at {local_head[:8]}.")
@@ -266,10 +382,10 @@ def run(args: argparse.Namespace) -> None:
 
     print(f"Pushing {push_branch} → {remote}/{push_branch} …")
 
-    bundle: PackBundle = build_pack(root, [local_head], have=have)
-
     try:
-        result = _push_chunked(transport, url, token, bundle, push_branch, force)
+        result, commits_sent, objects_sent = _push_mwp(
+            transport, url, token, root, local_head, have, push_branch, force
+        )
     except TransportError as exc:
         if exc.status_code == 409:
             print(
@@ -292,8 +408,6 @@ def run(args: argparse.Namespace) -> None:
         set_upstream(push_branch, remote, root)
         print(f"  Upstream set: {push_branch} → {remote}/{push_branch}")
 
-    commits_sent = len(bundle.get("commits") or [])
-    objects_sent = len(bundle.get("objects") or [])
     print(
         f"✅ Pushed {commits_sent} commit(s), {objects_sent} object(s) "
         f"to {remote}/{push_branch} ({updated_head[:8]})"

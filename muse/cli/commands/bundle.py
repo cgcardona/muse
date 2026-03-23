@@ -1,15 +1,15 @@
 """``muse bundle`` — pack and unpack commits for single-file transport.
 
-A bundle is a self-contained JSON file carrying commits, snapshots, and
-objects.  It is the porcelain equivalent of ``muse plumbing pack-objects`` /
-``unpack-objects``, with friendlier names and the key value-add of
+A bundle is a self-contained msgpack binary file carrying commits, snapshots,
+and objects.  It is the porcelain equivalent of ``muse plumbing pack-objects``
+/ ``unpack-objects``, with friendlier names and the key value-add of
 auto-updating local branch refs after ``unbundle``.
 
 Use bundles to transfer a repository slice between machines without a network
 connection — copy the file over SSH, USB, or email.
 
-Bundle format: identical to the plumbing ``PackBundle`` JSON (same schema).
-The format is stable and human-inspectable.
+Bundle format: binary msgpack encoding of the ``PackBundle`` TypedDict.
+Objects are stored as raw bytes (no base64 overhead).
 
 Subcommands::
 
@@ -28,12 +28,13 @@ Exit codes::
 from __future__ import annotations
 
 import argparse
-import base64
 import hashlib
 import json
 import logging
 import pathlib
 import sys
+
+import msgpack
 
 from muse.core.errors import ExitCode
 from muse.core.object_store import has_object, write_object
@@ -81,19 +82,22 @@ def _resolve_refs(
 
 
 def _load_bundle(file_path: pathlib.Path) -> PackBundle:
+    """Read a msgpack bundle file and return a :class:`~muse.core.pack.PackBundle`."""
     try:
-        raw = file_path.read_text(encoding="utf-8")
-        parsed = json.loads(raw)
+        raw_bytes = file_path.read_bytes()
+        parsed = msgpack.unpackb(raw_bytes, raw=False)
     except FileNotFoundError:
         print(f"❌ Bundle file not found: {file_path}", file=sys.stderr)
         raise SystemExit(ExitCode.USER_ERROR)
-    except json.JSONDecodeError as exc:
-        print(f"❌ Bundle is not valid JSON: {exc}", file=sys.stderr)
+    except Exception as exc:
+        print(f"❌ Bundle is not valid msgpack: {exc}", file=sys.stderr)
         raise SystemExit(ExitCode.USER_ERROR)
 
     if not isinstance(parsed, dict):
         print("❌ Bundle has unexpected structure.", file=sys.stderr)
         raise SystemExit(ExitCode.USER_ERROR)
+
+    from muse.core.pack import ObjectPayload
 
     bundle: PackBundle = {}
     if "commits" in parsed and isinstance(parsed["commits"], list):
@@ -101,7 +105,14 @@ def _load_bundle(file_path: pathlib.Path) -> PackBundle:
     if "snapshots" in parsed and isinstance(parsed["snapshots"], list):
         bundle["snapshots"] = parsed["snapshots"]
     if "objects" in parsed and isinstance(parsed["objects"], list):
-        bundle["objects"] = parsed["objects"]
+        objects: list[ObjectPayload] = []
+        for item in parsed["objects"]:
+            if isinstance(item, dict):
+                oid = item.get("object_id")
+                content = item.get("content")
+                if isinstance(oid, str) and isinstance(content, (bytes, bytearray)):
+                    objects.append(ObjectPayload(object_id=oid, content=bytes(content)))
+        bundle["objects"] = objects
     if "branch_heads" in parsed and isinstance(parsed["branch_heads"], dict):
         bundle["branch_heads"] = {
             k: v for k, v in parsed["branch_heads"].items()
@@ -236,7 +247,7 @@ def run_create(args: argparse.Namespace) -> None:
         bundle["branch_heads"] = heads
 
     out_path = pathlib.Path(file)
-    out_path.write_text(json.dumps(bundle, indent=2), encoding="utf-8")
+    out_path.write_bytes(msgpack.packb(bundle, use_bin_type=True))
 
     n_commits = len(bundle.get("commits", []))
     n_objects = len(bundle.get("objects", []))
@@ -325,15 +336,9 @@ def run_verify(args: argparse.Namespace) -> None:
     bundle_obj_ids: set[str] = set()
     for obj in bundle.get("objects", []):
         obj_id = obj["object_id"]
-        content_b64 = obj["content_b64"]
-        if not obj_id or not content_b64:
-            failures.append("objects list: entry has empty object_id or content_b64")
-            continue
-        try:
-            raw = base64.b64decode(content_b64)
-        except Exception:
-            failures.append(f"object {obj_id[:12]}: base64 decode error")
-            objects_checked += 1
+        raw = obj["content"]
+        if not obj_id or not raw:
+            failures.append("objects list: entry has empty object_id or content")
             continue
         actual = hashlib.sha256(raw).hexdigest()
         if actual != obj_id:

@@ -413,7 +413,7 @@ class TestPackUnpackStress:
         unpack_result = runner.invoke(
             cli,
             ["plumbing", "unpack-objects"],
-            input=pack_result.stdout,
+            input=pack_result.stdout_bytes,
             env=_env(dst),
         )
         assert unpack_result.exit_code == 0

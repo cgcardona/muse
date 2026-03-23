@@ -28,15 +28,19 @@ def _strip_ansi(text: str) -> str:
 class _StdinWithBuffer(io.StringIO):
     """Text-mode stdin backed by StringIO, with a ``.buffer`` BytesIO sibling.
 
-    Some plumbing commands (e.g. ``unpack-objects``) read raw bytes from
-    ``sys.stdin.buffer``.  Plain ``StringIO`` has no ``.buffer``; subclassing
-    it lets us assign to ``sys.stdin`` without a type annotation workaround
-    while still exposing the binary-read surface.
+    Accepts either a ``str`` (text) or ``bytes`` (binary).  When binary is
+    provided the text surface is left empty — commands that read from
+    ``sys.stdin.buffer`` (e.g. ``unpack-objects``) get the raw bytes while
+    text-mode reads get an empty string.
     """
 
-    def __init__(self, text: str) -> None:
-        super().__init__(text)
-        self.buffer = io.BytesIO(text.encode())
+    def __init__(self, text: str | bytes) -> None:
+        if isinstance(text, bytes):
+            super().__init__("")
+            self.buffer = io.BytesIO(text)
+        else:
+            super().__init__(text)
+            self.buffer = io.BytesIO(text.encode())
 
     def isatty(self) -> bool:
         return False
@@ -119,7 +123,7 @@ class CliRunner:
         _cli: None,
         args: list[str],
         catch_exceptions: bool = True,
-        input: str | None = None,
+        input: str | bytes | None = None,
         env: dict[str, str] | None = None,
     ) -> InvokeResult:
         """Invoke ``main(args)`` and return captured output + exit code."""

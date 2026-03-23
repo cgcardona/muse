@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import base64
 import datetime
 import hashlib
 import json
 import pathlib
 
+import msgpack
 import pytest
 from tests.cli_test_helper import CliRunner
 
@@ -38,35 +38,35 @@ def _env(repo: pathlib.Path) -> dict[str, str]:
     return {"MUSE_REPO_ROOT": str(repo)}
 
 
-def _make_bundle(objects: list[dict[str, str]] | None = None) -> str:
-    """Build a minimal PackBundle JSON string for testing."""
-    bundle: dict[str, list[dict[str, str]]] = {
+def _make_bundle(objects: list[dict[str, bytes | str]] | None = None) -> bytes:
+    """Build a minimal PackBundle msgpack binary for testing."""
+    bundle: dict[str, list[dict[str, bytes | str]]] = {
         "objects": objects or [],
         "commits": [],
         "snapshots": [],
     }
-    return json.dumps(bundle)
+    return msgpack.packb(bundle, use_bin_type=True)
 
 
-def _good_object() -> dict[str, str]:
-    """Return an ObjectPayload dict with a valid hash."""
+def _good_object() -> dict[str, bytes | str]:
+    """Return an ObjectPayload dict with a valid hash and raw bytes content."""
     data = b"hello world"
     oid = hashlib.sha256(data).hexdigest()
-    return {"object_id": oid, "content_b64": base64.b64encode(data).decode()}
+    return {"object_id": oid, "content": data}
 
 
-def _bad_hash_object() -> dict[str, str]:
+def _bad_hash_object() -> dict[str, bytes | str]:
     """Return an ObjectPayload dict where the hash does NOT match the content."""
     data = b"hello world"
     wrong_oid = "a" * 64
-    return {"object_id": wrong_oid, "content_b64": base64.b64encode(data).decode()}
+    return {"object_id": wrong_oid, "content": data}
 
 
 class TestVerifyPack:
     def test_empty_bundle_passes(self, tmp_path: pathlib.Path) -> None:
         _init_repo(tmp_path)
-        bundle_file = tmp_path / "bundle.json"
-        bundle_file.write_text(_make_bundle(), encoding="utf-8")
+        bundle_file = tmp_path / "bundle.muse"
+        bundle_file.write_bytes(_make_bundle())
         result = runner.invoke(
             cli, ["plumbing", "verify-pack", "--file", str(bundle_file)], env=_env(tmp_path)
         )
@@ -77,8 +77,8 @@ class TestVerifyPack:
 
     def test_good_objects_pass(self, tmp_path: pathlib.Path) -> None:
         _init_repo(tmp_path)
-        bundle_file = tmp_path / "bundle.json"
-        bundle_file.write_text(_make_bundle([_good_object()]), encoding="utf-8")
+        bundle_file = tmp_path / "bundle.muse"
+        bundle_file.write_bytes(_make_bundle([_good_object()]))
         result = runner.invoke(
             cli,
             ["plumbing", "verify-pack", "--file", str(bundle_file), "--no-local"],
@@ -91,8 +91,8 @@ class TestVerifyPack:
 
     def test_bad_hash_detected(self, tmp_path: pathlib.Path) -> None:
         _init_repo(tmp_path)
-        bundle_file = tmp_path / "bundle.json"
-        bundle_file.write_text(_make_bundle([_bad_hash_object()]), encoding="utf-8")
+        bundle_file = tmp_path / "bundle.muse"
+        bundle_file.write_bytes(_make_bundle([_bad_hash_object()]))
         result = runner.invoke(
             cli,
             ["plumbing", "verify-pack", "--file", str(bundle_file), "--no-local"],
@@ -107,8 +107,8 @@ class TestVerifyPack:
 
     def test_text_format_clean(self, tmp_path: pathlib.Path) -> None:
         _init_repo(tmp_path)
-        bundle_file = tmp_path / "bundle.json"
-        bundle_file.write_text(_make_bundle(), encoding="utf-8")
+        bundle_file = tmp_path / "bundle.muse"
+        bundle_file.write_bytes(_make_bundle())
         result = runner.invoke(
             cli,
             ["plumbing", "verify-pack", "--file", str(bundle_file), "--format", "text", "--no-local"],
@@ -119,8 +119,8 @@ class TestVerifyPack:
 
     def test_text_format_failure(self, tmp_path: pathlib.Path) -> None:
         _init_repo(tmp_path)
-        bundle_file = tmp_path / "bundle.json"
-        bundle_file.write_text(_make_bundle([_bad_hash_object()]), encoding="utf-8")
+        bundle_file = tmp_path / "bundle.muse"
+        bundle_file.write_bytes(_make_bundle([_bad_hash_object()]))
         result = runner.invoke(
             cli,
             ["plumbing", "verify-pack", "--file", str(bundle_file), "--format", "text", "--no-local"],
@@ -131,8 +131,8 @@ class TestVerifyPack:
 
     def test_quiet_mode_clean_exits_zero(self, tmp_path: pathlib.Path) -> None:
         _init_repo(tmp_path)
-        bundle_file = tmp_path / "bundle.json"
-        bundle_file.write_text(_make_bundle(), encoding="utf-8")
+        bundle_file = tmp_path / "bundle.muse"
+        bundle_file.write_bytes(_make_bundle())
         result = runner.invoke(
             cli,
             ["plumbing", "verify-pack", "--file", str(bundle_file), "--quiet", "--no-local"],
@@ -143,8 +143,8 @@ class TestVerifyPack:
 
     def test_quiet_mode_failure_exits_nonzero(self, tmp_path: pathlib.Path) -> None:
         _init_repo(tmp_path)
-        bundle_file = tmp_path / "bundle.json"
-        bundle_file.write_text(_make_bundle([_bad_hash_object()]), encoding="utf-8")
+        bundle_file = tmp_path / "bundle.muse"
+        bundle_file.write_bytes(_make_bundle([_bad_hash_object()]))
         result = runner.invoke(
             cli,
             ["plumbing", "verify-pack", "--file", str(bundle_file), "-q", "--no-local"],
@@ -153,10 +153,10 @@ class TestVerifyPack:
         assert result.exit_code != 0
         assert result.output.strip() == ""
 
-    def test_malformed_json_errors(self, tmp_path: pathlib.Path) -> None:
+    def test_malformed_msgpack_errors(self, tmp_path: pathlib.Path) -> None:
         _init_repo(tmp_path)
-        bundle_file = tmp_path / "bundle.json"
-        bundle_file.write_text("not valid json{{", encoding="utf-8")
+        bundle_file = tmp_path / "bundle.muse"
+        bundle_file.write_bytes(b"\xff\xff NOT VALID MSGPACK")
         result = runner.invoke(
             cli, ["plumbing", "verify-pack", "--file", str(bundle_file)], env=_env(tmp_path)
         )
@@ -166,8 +166,8 @@ class TestVerifyPack:
         """Mix of good and bad objects — all_ok should be False."""
         _init_repo(tmp_path)
         objs = [_good_object(), _bad_hash_object()]
-        bundle_file = tmp_path / "bundle.json"
-        bundle_file.write_text(_make_bundle(objs), encoding="utf-8")
+        bundle_file = tmp_path / "bundle.muse"
+        bundle_file.write_bytes(_make_bundle(objs))
         result = runner.invoke(
             cli,
             ["plumbing", "verify-pack", "--file", str(bundle_file), "--no-local"],
