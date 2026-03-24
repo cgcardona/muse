@@ -1,9 +1,9 @@
-"""muse plumbing pack-objects — build a PackBundle JSON and write to stdout.
+"""muse plumbing pack-objects — build a PackBundle and write to stdout.
 
 Collects a set of commits (and all referenced snapshots and objects) into a
-single JSON PackBundle suitable for transport to a remote.  Analogous to
-``git pack-objects`` but uses JSON + base64 rather than a binary packfile
-format — optimised for agent pipelines and HTTP transport.
+single msgpack PackBundle suitable for transport to a remote.  Analogous to
+``git pack-objects`` using a binary packfile format — efficient binary
+encoding with raw bytes for object content (no base64 overhead).
 
 Usage::
 
@@ -12,7 +12,7 @@ Usage::
 The ``--have`` IDs are commits the receiver already has.  Objects reachable
 exclusively from ``--have`` ancestors are pruned from the bundle.
 
-Output: a PackBundle JSON object written to stdout (pipe to a file or HTTP
+Output: a PackBundle msgpack binary written to stdout (pipe to a file or HTTP
 request body).
 
 Plumbing contract
@@ -29,6 +29,8 @@ import argparse
 import json
 import logging
 import sys
+
+import msgpack
 
 from muse.core.errors import ExitCode
 from muse.core.pack import build_pack
@@ -88,4 +90,4 @@ def run(args: argparse.Namespace) -> None:
             resolved_wants.append(w)
 
     bundle = build_pack(root, commit_ids=resolved_wants, have=have)
-    json.dump(bundle, sys.stdout)
+    sys.stdout.buffer.write(msgpack.packb(bundle, use_bin_type=True))

@@ -39,7 +39,13 @@ from muse.core.store import (
     write_commit,
     write_snapshot,
 )
-from muse.core.transport import TransportError, make_transport
+from muse.core.transport import (
+    HttpTransport,
+    LocalFileTransport,
+    NEGOTIATE_DEPTH,
+    TransportError,
+    make_transport,
+)
 from muse.core.workdir import apply_manifest
 from muse.domain import SnapshotManifest, StructuredMergePlugin
 from muse.plugins.registry import read_domain, resolve_plugin
@@ -50,6 +56,40 @@ logger = logging.getLogger(__name__)
 def _current_branch(root: pathlib.Path) -> str:
     """Return the current branch name from ``.muse/HEAD``."""
     return read_current_branch(root)
+
+
+def _negotiate_have(
+    transport: "HttpTransport | LocalFileTransport",
+    url: str,
+    token: str | None,
+    want: list[str],
+    all_local: list[str],
+) -> list[str]:
+    """Return the minimal have-list via MWP depth-limited negotiation.
+
+    Each round sends at most :data:`~muse.core.transport.NEGOTIATE_DEPTH`
+    recent ancestors.  The server responds with which it recognises and
+    whether ``ready`` (common base found).  Repeats until ready or all local
+    commits are exhausted.  Falls back to the full list on the last round so
+    the fetch always succeeds even if negotiation converges slowly.
+    """
+    if not all_local:
+        return []
+
+    offset = 0
+
+    while offset < len(all_local):
+        batch = all_local[offset : offset + NEGOTIATE_DEPTH]
+        resp = transport.negotiate(url, token, want=want, have=batch)
+        ack = resp["ack"]
+        if resp["ready"]:
+            # Return acknowledged IDs — server can now compute the delta.
+            return ack or batch
+        offset += NEGOTIATE_DEPTH
+
+    # Exhausted all local commits without finding common base — send everything
+    # so the server can determine what to send.
+    return all_local
 
 
 def _read_repo_id(root: pathlib.Path) -> str:
@@ -105,7 +145,7 @@ def run(args: argparse.Namespace) -> None:
     current_branch = _current_branch(root)
     target_branch = branch or get_upstream(current_branch, root) or current_branch
 
-    transport = make_transport(url)
+    transport: HttpTransport | LocalFileTransport = make_transport(url)
 
     # ── Fetch ────────────────────────────────────────────────────────────────
     try:
@@ -119,12 +159,26 @@ def run(args: argparse.Namespace) -> None:
         print(f"❌ Branch '{target_branch}' does not exist on remote '{remote}'.")
         raise SystemExit(ExitCode.USER_ERROR)
 
-    local_commit_ids = [c.commit_id for c in get_all_commits(root)]
     print(f"Fetching {remote}/{target_branch} …")
+
+    # ── MWP Phase 5: depth-limited commit negotiation ───────────────────────
+    # Instead of sending every local commit ID (O(history)), walk backwards
+    # in rounds of NEGOTIATE_DEPTH until the server signals ready.
+    # Fall back to full have-list for servers without /negotiate.
+    have_for_fetch: list[str]
+    try:
+        all_local = [c.commit_id for c in get_all_commits(root)]
+        have_for_fetch = _negotiate_have(
+            transport, url, token, [remote_commit_id], all_local
+        )
+    except TransportError:
+        # Older server without /negotiate — send full list (legacy behaviour).
+        logger.debug("negotiate not supported, falling back to full have list")
+        have_for_fetch = [c.commit_id for c in get_all_commits(root)]
 
     try:
         bundle = transport.fetch_pack(
-            url, token, want=[remote_commit_id], have=local_commit_ids
+            url, token, want=[remote_commit_id], have=have_for_fetch
         )
     except TransportError as exc:
         print(f"❌ Fetch failed: {exc}")

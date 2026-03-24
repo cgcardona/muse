@@ -9,7 +9,9 @@ Transport implementations
 
 :class:`HttpTransport`
     Synchronous HTTPS transport using stdlib ``urllib.request``.  Used for
-    ``https://`` remote URLs (MuseHub server required).
+    ``https://`` remote URLs (MuseHub server required).  Encodes all request
+    bodies as ``msgpack`` (``Content-Type: application/x-msgpack``), which
+    eliminates the 33 % base64 inflation of the old JSON+base64 protocol.
 
 :class:`LocalFileTransport`
     Zero-network transport for ``file://`` URLs.  Reads and writes directly
@@ -20,22 +22,38 @@ Transport implementations
 Use :func:`make_transport` instead of constructing either class directly —
 it inspects the URL scheme and returns the appropriate implementation.
 
-MuseHub API contract (HttpTransport)
--------------------------------------
+MWP — Muse Wire Protocol
+-------------------------------
 
-All endpoints live under the remote repository URL
-(e.g. ``https://hub.muse.io/repos/{repo_id}``).
+All endpoints live under the remote repository URL.  MWP introduces five
+new phases on top of the original refs/fetch/push trio:
 
-    GET  {url}/refs
-        Response: JSON :class:`~muse.core.pack.RemoteInfo`
++-----------------------------------+----------------------------------------+
+| Endpoint                          | Purpose                                |
++===================================+========================================+
+| GET  {url}/refs                   | Pre-flight: branch heads + metadata    |
++-----------------------------------+----------------------------------------+
+| POST {url}/filter-objects         | Phase 1: dedup — missing object IDs   |
++-----------------------------------+----------------------------------------+
+| POST {url}/presign                | Phase 3: presigned S3/R2 PUT/GET URLs |
++-----------------------------------+----------------------------------------+
+| POST {url}/push/objects           | Pre-upload object chunks (small objs) |
++-----------------------------------+----------------------------------------+
+| POST {url}/push                   | Phase 5: commit + snapshot push        |
++-----------------------------------+----------------------------------------+
+| POST {url}/fetch                  | Download commit delta pack             |
++-----------------------------------+----------------------------------------+
+| POST {url}/negotiate              | Phase 5: depth-limited have/ack loop  |
++-----------------------------------+----------------------------------------+
 
-    POST {url}/fetch
-        Body:     JSON :class:`~muse.core.pack.FetchRequest`
-        Response: JSON :class:`~muse.core.pack.PackBundle`
+Wire encoding
+~~~~~~~~~~~~~
 
-    POST {url}/push
-        Body:     JSON ``{"bundle": PackBundle, "branch": str, "force": bool}``
-        Response: JSON :class:`~muse.core.pack.PushResult`
+Request bodies are ``msgpack``-encoded dicts (``Content-Type:
+application/x-msgpack``).  The ``Accept`` header advertises both ``msgpack``
+and ``application/json`` so older servers can respond in JSON.  Objects are
+transmitted as raw ``bytes`` in :class:`~muse.core.pack.ObjectPayload`
+(``content`` field) — no base64 encoding.
 
 Authentication
 --------------
@@ -63,7 +81,6 @@ HttpTransport:
 - Refuses all HTTP redirects (prevents credential leakage to other hosts).
 - Rejects non-HTTPS URLs when a token is present (prevents cleartext exposure).
 - Caps response bodies at ``MAX_RESPONSE_BYTES`` (64 MiB) to prevent OOM.
-- Validates JSON content-type before parsing.
 
 LocalFileTransport:
 - Calls ``.resolve()`` on all filesystem paths (canonicalises symlinks and
@@ -86,7 +103,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import urllib.response
-from typing import IO, Protocol, runtime_checkable
+from typing import IO, Protocol, TypedDict, runtime_checkable
+
+import msgpack
 
 from muse.core.pack import (
     FetchRequest,
@@ -104,10 +123,56 @@ logger = logging.getLogger(__name__)
 
 _TIMEOUT_SECONDS = 60
 
+# Recursive type alias for msgpack-serializable values.
+# Covers every type that msgpack can encode/decode natively — no base64,
+# no `object`, no `Any`.  Python 3.12+ `type` statement creates a proper
+# TypeAlias that mypy treats as a first-class recursive type.
+type _MsgVal = (
+    str | int | float | bool | bytes | None
+    | list[_MsgVal]
+    | dict[str, _MsgVal]
+)
+
 # Maximum number of objects to include in a single POST /push/objects call.
 # Must stay strictly below the server's MAX_OBJECTS_PER_PUSH limit (1 000)
 # to leave head room for Pydantic validation overhead and future additions.
-CHUNK_OBJECTS: int = 900
+CHUNK_OBJECTS: int = 400
+
+# Objects above this byte threshold are candidates for presigned-URL upload
+# (MWP Phase 3) — they bypass the API server and go directly to S3/R2.
+# Objects at or below this size are included inline in the pack body.
+LARGE_OBJECT_THRESHOLD: int = 64 * 1024  # 64 KiB
+
+# Depth of the have-list sent per round of commit negotiation (MWP Phase 5).
+# Caps the negotiation payload at ≤ NEGOTIATE_DEPTH commit IDs per request,
+# keeping negotiation O(depth) rather than O(history).
+NEGOTIATE_DEPTH: int = 64
+
+
+# ---------------------------------------------------------------------------
+# MWP response TypedDicts
+# ---------------------------------------------------------------------------
+
+
+class FilterResponse(TypedDict):
+    """Response from ``POST {url}/filter-objects`` — MWP Phase 1."""
+
+    missing: list[str]
+
+
+class PresignResponse(TypedDict):
+    """Response from ``POST {url}/presign`` — MWP Phase 3."""
+
+    presigned: dict[str, str]   # object_id → presigned URL
+    inline: list[str]           # IDs whose backend does not support presigned URLs
+
+
+class NegotiateResponse(TypedDict):
+    """Response from ``POST {url}/negotiate`` — MWP Phase 5."""
+
+    ack: list[str]
+    common_base: str | None
+    ready: bool
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +376,92 @@ class MuseTransport(Protocol):
         """
         ...
 
+    def filter_objects(
+        self,
+        url: str,
+        token: str | None,
+        object_ids: list[str],
+    ) -> list[str]:
+        """Return the subset of *object_ids* the remote does NOT already hold.
+
+        MWP Phase 1 — object-level deduplication negotiation.  Before
+        uploading any objects the client calls this with the full candidate
+        list; the server responds with only the IDs it is missing.  The
+        client then calls :func:`~muse.core.pack.build_pack` with
+        ``only_objects`` set to that subset so no redundant blobs are sent.
+
+        Args:
+            url:        Remote repository URL.
+            token:      Bearer token, or ``None``.
+            object_ids: All object IDs the client intends to upload.
+
+        Returns:
+            Subset of *object_ids* missing on the remote.
+
+        Raises:
+            :class:`TransportError` on HTTP 4xx/5xx or network failure.
+        """
+        ...
+
+    def presign_objects(
+        self,
+        url: str,
+        token: str | None,
+        object_ids: list[str],
+        direction: str,
+    ) -> PresignResponse:
+        """Return presigned S3/R2 URLs for large-object direct transfer.
+
+        MWP Phase 3 — objects above :data:`LARGE_OBJECT_THRESHOLD` bypass
+        the API server.  The client uploads PUT presigned URLs directly to
+        object storage, dramatically reducing API server load.
+
+        When the backend is ``local://`` all IDs are returned in ``inline``
+        and the client falls back to the normal pack flow.
+
+        Args:
+            url:        Remote repository URL.
+            token:      Bearer token, or ``None``.
+            object_ids: IDs of large objects to presign.
+            direction:  ``"put"`` for push, ``"get"`` for pull.
+
+        Returns:
+            :class:`PresignResponse` with ``presigned`` URL map and ``inline``
+            fallback list.
+
+        Raises:
+            :class:`TransportError` on HTTP 4xx/5xx or network failure.
+        """
+        ...
+
+    def negotiate(
+        self,
+        url: str,
+        token: str | None,
+        want: list[str],
+        have: list[str],
+    ) -> NegotiateResponse:
+        """Depth-limited commit negotiation (MWP Phase 5).
+
+        Replaces sending the full local commit list as ``have``.  Each round
+        sends ≤ :data:`NEGOTIATE_DEPTH` recent ancestors.  The server responds
+        with which it recognises (``ack``), the common base commit (if found),
+        and whether ``ready`` — i.e. enough context to compute the delta.
+
+        Args:
+            url:   Remote repository URL.
+            token: Bearer token, or ``None``.
+            want:  Branch tips the client wants to receive.
+            have:  Recent local commit IDs (≤ NEGOTIATE_DEPTH per round).
+
+        Returns:
+            :class:`NegotiateResponse` with ``ack``, ``common_base``, ``ready``.
+
+        Raises:
+            :class:`TransportError` on HTTP 4xx/5xx or network failure.
+        """
+        ...
+
 
 # ---------------------------------------------------------------------------
 # HTTP/1.1 implementation (stdlib, zero extra dependencies)
@@ -330,6 +481,7 @@ class HttpTransport:
         url: str,
         token: str | None,
         body_bytes: bytes | None = None,
+        content_type: str = "application/x-msgpack",
     ) -> urllib.request.Request:
         # Never send a bearer token over cleartext HTTP — the token would be
         # visible to any network observer on the path.
@@ -343,9 +495,12 @@ class HttpTransport:
                 "Ensure the remote URL uses https://.",
                 0,
             )
-        headers: dict[str, str] = {"Accept": "application/json"}
+        # Advertise msgpack support so the server can respond in binary.
+        headers: dict[str, str] = {
+            "Accept": "application/x-msgpack, application/json",
+        }
         if body_bytes is not None:
-            headers["Content-Type"] = "application/json"
+            headers["Content-Type"] = content_type
         if token:
             headers["Authorization"] = f"Bearer {token}"
         return urllib.request.Request(
@@ -354,6 +509,22 @@ class HttpTransport:
             headers=headers,
             method=method,
         )
+
+    @staticmethod
+    def _decode(raw: bytes) -> dict[str, _MsgVal]:
+        """Decode a msgpack server response into a plain dict.
+
+        Raises :class:`TransportError` if the payload is not valid msgpack.
+        """
+        if not raw:
+            return {}
+        try:
+            result: _MsgVal = msgpack.unpackb(raw, raw=False)
+        except Exception as exc:
+            raise TransportError(f"Server returned invalid msgpack: {exc}", 0) from exc
+        if not isinstance(result, dict):
+            return {}
+        return result
 
     def _execute(self, req: urllib.request.Request) -> bytes:
         """Send *req* and return raw response bytes.
@@ -416,7 +587,7 @@ class HttpTransport:
             "transport: POST %s (want=%d, have=%d)", endpoint, len(want), len(have)
         )
         payload: FetchRequest = {"want": want, "have": have}
-        body_bytes = json.dumps(payload).encode("utf-8")
+        body_bytes: bytes = msgpack.packb(payload, use_bin_type=True)
         req = self._build_request("POST", endpoint, token, body_bytes)
         raw = self._execute(req)
         return _parse_bundle(raw)
@@ -439,8 +610,9 @@ class HttpTransport:
             len(bundle.get("commits") or []),
             len(bundle.get("objects") or []),
         )
-        payload = {"bundle": bundle, "branch": branch, "force": force}
-        body_bytes = json.dumps(payload).encode("utf-8")
+        body_bytes: bytes = msgpack.packb(
+            {"bundle": bundle, "branch": branch, "force": force}, use_bin_type=True
+        )
         req = self._build_request("POST", endpoint, token, body_bytes)
         raw = self._execute(req)
         return _parse_push_result(raw)
@@ -454,11 +626,83 @@ class HttpTransport:
         """Pre-upload an object batch via ``POST {url}/push/objects``."""
         endpoint = f"{url.rstrip('/')}/push/objects"
         logger.debug("transport: POST %s (objects=%d)", endpoint, len(objects))
-        payload: dict[str, list[ObjectPayload]] = {"objects": objects}
-        body_bytes = json.dumps(payload).encode("utf-8")
+        body_bytes: bytes = msgpack.packb({"objects": objects}, use_bin_type=True)
         req = self._build_request("POST", endpoint, token, body_bytes)
         raw = self._execute(req)
         return _parse_objects_response(raw)
+
+    def filter_objects(
+        self,
+        url: str,
+        token: str | None,
+        object_ids: list[str],
+    ) -> list[str]:
+        """Return missing object IDs via ``POST {url}/filter-objects`` (MWP Phase 1)."""
+        endpoint = f"{url.rstrip('/')}/filter-objects"
+        logger.debug("transport: POST %s (candidates=%d)", endpoint, len(object_ids))
+        body_bytes: bytes = msgpack.packb({"object_ids": object_ids}, use_bin_type=True)
+        req = self._build_request("POST", endpoint, token, body_bytes)
+        raw = self._execute(req)
+        parsed = self._decode(raw)
+        missing_raw = parsed.get("missing")
+        return [m for m in missing_raw if isinstance(m, str)] if isinstance(missing_raw, list) else []
+
+    def presign_objects(
+        self,
+        url: str,
+        token: str | None,
+        object_ids: list[str],
+        direction: str,
+    ) -> PresignResponse:
+        """Return presigned S3/R2 URLs via ``POST {url}/presign`` (MWP Phase 3)."""
+        endpoint = f"{url.rstrip('/')}/presign"
+        logger.debug(
+            "transport: POST %s (objects=%d, direction=%s)", endpoint, len(object_ids), direction
+        )
+        body_bytes: bytes = msgpack.packb(
+            {"object_ids": object_ids, "direction": direction}, use_bin_type=True
+        )
+        req = self._build_request("POST", endpoint, token, body_bytes)
+        raw = self._execute(req)
+        parsed = self._decode(raw)
+        presigned_raw = parsed.get("presigned", {})
+        inline_raw = parsed.get("inline", [])
+        presigned: dict[str, str] = (
+            {str(k): str(v) for k, v in presigned_raw.items()}
+            if isinstance(presigned_raw, dict)
+            else {}
+        )
+        inline: list[str] = (
+            [str(x) for x in inline_raw] if isinstance(inline_raw, list) else []
+        )
+        return PresignResponse(presigned=presigned, inline=inline)
+
+    def negotiate(
+        self,
+        url: str,
+        token: str | None,
+        want: list[str],
+        have: list[str],
+    ) -> NegotiateResponse:
+        """Depth-limited commit negotiation via ``POST {url}/negotiate`` (MWP Phase 5)."""
+        endpoint = f"{url.rstrip('/')}/negotiate"
+        logger.debug(
+            "transport: POST %s (want=%d, have=%d)", endpoint, len(want), len(have)
+        )
+        body_bytes: bytes = msgpack.packb({"want": want, "have": have}, use_bin_type=True)
+        req = self._build_request("POST", endpoint, token, body_bytes)
+        raw = self._execute(req)
+        parsed = self._decode(raw)
+        ack_raw = parsed.get("ack", [])
+        ack = [str(x) for x in ack_raw] if isinstance(ack_raw, list) else []
+        common_base_raw = parsed.get("common_base")
+        common_base = str(common_base_raw) if isinstance(common_base_raw, str) else None
+        ready_raw = parsed.get("ready", False)
+        return NegotiateResponse(
+            ack=ack,
+            common_base=common_base,
+            ready=bool(ready_raw),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -488,12 +732,7 @@ def _assert_json_content(raw: bytes, endpoint: str) -> None:
 
 def _parse_remote_info(raw: bytes) -> RemoteInfo:
     """Parse ``GET /refs`` response bytes into a :class:`~muse.core.pack.RemoteInfo`."""
-    _assert_json_content(raw, "/refs")
-    parsed = json.loads(raw)
-    if not isinstance(parsed, dict):
-        return RemoteInfo(
-            repo_id="", domain="midi", branch_heads={}, default_branch="main"
-        )
+    parsed = HttpTransport._decode(raw)
     repo_id_val = parsed.get("repo_id")
     domain_val = parsed.get("domain")
     default_branch_val = parsed.get("default_branch")
@@ -515,11 +754,8 @@ def _parse_remote_info(raw: bytes) -> RemoteInfo:
 
 def _parse_bundle(raw: bytes) -> PackBundle:
     """Parse ``POST /fetch`` response bytes into a :class:`~muse.core.pack.PackBundle`."""
-    _assert_json_content(raw, "/fetch")
-    parsed = json.loads(raw)
+    parsed = HttpTransport._decode(raw)
     bundle: PackBundle = {}
-    if not isinstance(parsed, dict):
-        return bundle
 
     # Commits — each item is a raw dict that CommitRecord.from_dict() will validate.
     commits_raw = parsed.get("commits")
@@ -539,16 +775,19 @@ def _parse_bundle(raw: bytes) -> PackBundle:
                 snapshots.append(_coerce_snapshot_dict(item))
         bundle["snapshots"] = snapshots
 
-    # Objects
+    # Objects — raw bytes in "content" (MWP msgpack wire format)
     objects_raw = parsed.get("objects")
     if isinstance(objects_raw, list):
         objects: list[ObjectPayload] = []
         for item in objects_raw:
-            if isinstance(item, dict):
-                oid = item.get("object_id")
-                b64 = item.get("content_b64")
-                if isinstance(oid, str) and isinstance(b64, str):
-                    objects.append(ObjectPayload(object_id=oid, content_b64=b64))
+            if not isinstance(item, dict):
+                continue
+            oid = item.get("object_id")
+            if not isinstance(oid, str):
+                continue
+            content_raw = item.get("content")
+            if isinstance(content_raw, (bytes, bytearray)):
+                objects.append(ObjectPayload(object_id=oid, content=bytes(content_raw)))
         bundle["objects"] = objects
 
     # Branch heads
@@ -565,10 +804,7 @@ def _parse_bundle(raw: bytes) -> PackBundle:
 
 def _parse_push_result(raw: bytes) -> PushResult:
     """Parse ``POST /push`` response bytes into a :class:`~muse.core.pack.PushResult`."""
-    _assert_json_content(raw, "/push")
-    parsed = json.loads(raw)
-    if not isinstance(parsed, dict):
-        return PushResult(ok=False, message="Invalid server response", branch_heads={})
+    parsed = HttpTransport._decode(raw)
     ok_val = parsed.get("ok")
     msg_val = parsed.get("message")
     heads_raw = parsed.get("branch_heads")
@@ -586,10 +822,7 @@ def _parse_push_result(raw: bytes) -> PushResult:
 
 def _parse_objects_response(raw: bytes) -> ObjectsChunkResponse:
     """Parse ``POST /push/objects`` response into an :class:`~muse.core.pack.ObjectsChunkResponse`."""
-    _assert_json_content(raw, "/push/objects")
-    parsed = json.loads(raw)
-    if not isinstance(parsed, dict):
-        return ObjectsChunkResponse(stored=0, skipped=0)
+    parsed = HttpTransport._decode(raw)
     stored_val = parsed.get("stored")
     skipped_val = parsed.get("skipped")
     return ObjectsChunkResponse(
@@ -608,10 +841,8 @@ def _parse_objects_response(raw: bytes) -> ObjectsChunkResponse:
 # ---------------------------------------------------------------------------
 
 
-# Wire-value union — all types that can appear as dict values in a JSON
-# object parsed from the Muse wire format.  Using this explicit union instead
-# of `object` or `Any` satisfies both mypy --strict and typing_audit.
-_WireVal = str | int | float | bool | None | list[str] | dict[str, str]
+# _WireVal is now an alias for _MsgVal — kept for readability at call sites.
+_WireVal = _MsgVal
 
 
 def _str(val: _WireVal) -> str:
@@ -1002,8 +1233,6 @@ class LocalFileTransport:
         content-addressed and idempotent — already-present objects are skipped.
         No branch refs are touched; only blob bytes are written.
         """
-        import base64
-
         from muse.core.object_store import write_object
 
         remote_root = self._repo_root(url)
@@ -1011,19 +1240,73 @@ class LocalFileTransport:
         skipped = 0
         for obj in objects:
             oid = obj.get("object_id", "")
-            b64 = obj.get("content_b64", "")
-            if not oid or not b64:
-                continue
-            try:
-                raw = base64.b64decode(b64)
-            except Exception as exc:
-                logger.warning("push_objects: bad base64 for %s: %s", oid[:8], exc)
+            raw = obj.get("content", b"")
+            if not oid or not raw:
                 continue
             if write_object(remote_root, oid, raw):
                 stored += 1
             else:
                 skipped += 1
         return ObjectsChunkResponse(stored=stored, skipped=skipped)
+
+    def filter_objects(
+        self,
+        url: str,
+        token: str | None,  # noqa: ARG002
+        object_ids: list[str],
+    ) -> list[str]:
+        """Return object IDs missing from the remote's local store (MWP Phase 1)."""
+        from muse.core.object_store import read_object
+
+        remote_root = self._repo_root(url)
+        missing: list[str] = []
+        for oid in object_ids:
+            if read_object(remote_root, oid) is None:
+                missing.append(oid)
+        return missing
+
+    def presign_objects(
+        self,
+        url: str,
+        token: str | None,  # noqa: ARG002
+        object_ids: list[str],
+        direction: str,  # noqa: ARG002
+    ) -> PresignResponse:
+        """Local transport has no object storage backend — return all as inline."""
+        return PresignResponse(presigned={}, inline=list(object_ids))
+
+    def negotiate(
+        self,
+        url: str,
+        token: str | None,  # noqa: ARG002
+        want: list[str],
+        have: list[str],
+    ) -> NegotiateResponse:
+        """Commit negotiation against a local repo (MWP Phase 5)."""
+        from muse.core.store import read_commit as _rc
+
+        remote_root = self._repo_root(url)
+        have_set = set(have)
+
+        # Which of the client's have-IDs exist on the remote?
+        ack = [cid for cid in have if _rc(remote_root, cid) is not None]
+        ack_set = set(ack)
+
+        common_base: str | None = None
+        for cid in want:
+            # Walk parents looking for an acked ancestor.
+            commit = _rc(remote_root, cid)
+            if commit is None:
+                continue
+            for pid in filter(None, [commit.parent_commit_id, commit.parent2_commit_id]):
+                if pid in ack_set:
+                    common_base = pid
+                    break
+            if common_base:
+                break
+
+        ready = common_base is not None or not have_set
+        return NegotiateResponse(ack=ack, common_base=common_base, ready=ready)
 
 
 # ---------------------------------------------------------------------------
