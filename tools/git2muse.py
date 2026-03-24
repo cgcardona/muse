@@ -476,12 +476,20 @@ def main(argv: list[str] | None = None) -> int:
     verbose: bool = args.verbose
     branch_arg: str = args.branch
 
-    # Verify .muse/ exists.
+    # Auto-initialise if .muse/ doesn't exist yet.
     if not (repo_root / ".muse" / "repo.json").exists():
-        logger.error(
-            "❌ No .muse/repo.json found in %s — run 'muse init' first.", repo_root
-        )
-        return 1
+        logger.info("No .muse/repo.json found — running 'muse init --domain code' …")
+        if not dry_run:
+            result = subprocess.run(
+                ["muse", "init", "--domain", "code"],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                logger.error("❌ muse init failed:\n%s", result.stderr)
+                return 1
+            logger.info("✅ muse init --domain code succeeded")
 
     repo_id = _load_repo_id(repo_root)
     logger.info("✅ Muse repo ID: %s", repo_id)
