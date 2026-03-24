@@ -14,11 +14,19 @@ A Muse release is richer than a Git tag:
 
 Usage::
 
-    muse release add <tag>              — create a local release at HEAD
-    muse release list                   — list local releases
-    muse release show <tag>             — inspect one release
-    muse release push <tag>             — push a release to a remote
-    muse release delete <tag>           — delete a draft release
+    muse release add <tag>                       — create a local release at HEAD
+    muse release list                            — list local releases
+    muse release show <tag>                      — inspect one release
+    muse release push <tag>                      — push a release to a remote
+    muse release delete <tag>                    — delete a local release record
+    muse release delete <tag> --remote <remote>  — retract a release from a remote
+
+Deletion semantics::
+
+    Deleting a release removes the named label only. The underlying commit and
+    snapshot remain in the content-addressed object store forever — they are
+    still reachable by their SHA-256 and are fully reproducible. Only the
+    named pointer is removed, not the content it referenced.
 
 Examples::
 
@@ -27,6 +35,8 @@ Examples::
     muse release push v1.2.0 --remote origin
     muse release list --channel stable
     muse release show v1.2.0 --format json
+    muse release delete v1.2.0-beta.1
+    muse release delete v1.2.0 --remote origin
 """
 
 from __future__ import annotations
@@ -280,9 +290,20 @@ def run_show(args: argparse.Namespace) -> None:
 
 
 def run_push(args: argparse.Namespace) -> None:
-    """Push a local release to a remote."""
+    """Push a local release to a remote, enriched with a semantic analysis report.
+
+    Before transmitting the release payload, Muse runs the full code-domain
+    analysis (language breakdown, symbol inventory, API surface diff, file
+    hotspots, refactoring events, provenance aggregation) against the local
+    object store and attaches the result as ``semantic_report``.  MuseHub
+    stores it verbatim and renders it in the release detail page.
+
+    Pass ``--no-analysis`` to skip the analysis step (useful for non-code
+    repos or when speed matters more than the enriched UI).
+    """
     tag: str = args.tag
     remote: str = args.remote
+    no_analysis: bool = getattr(args, "no_analysis", False)
 
     from muse.cli.config import get_auth_token
     from muse.core.transport import TransportError, make_transport
@@ -294,6 +315,25 @@ def run_push(args: argparse.Namespace) -> None:
     if release is None:
         print(f"❌ Release '{sanitize_display(tag)}' not found locally. Run 'muse release add' first.", file=sys.stderr)
         raise SystemExit(ExitCode.NOT_FOUND)
+
+    if not no_analysis:
+        from muse.plugins.code.release_analysis import compute_release_analysis
+
+        # Find the previous release's snapshot to enable API surface diffing.
+        existing = list_releases(root, repo_id, include_drafts=False)
+        prev_snapshot_id: str | None = None
+        for r in existing:
+            if r.tag != tag and r.snapshot_id:
+                prev_snapshot_id = r.snapshot_id
+                break
+
+        print(f"  Analysing {sanitize_display(tag)}…", end=" ", flush=True)
+        report = compute_release_analysis(root, release, prev_snapshot_id)
+        release.semantic_report = report
+        lang_summary = ", ".join(
+            f"{s['language']} ({s['files']}f)" for s in report["languages"][:3]
+        )
+        print(f"✓ {report['total_symbols']} symbols · {lang_summary}")
 
     url = _resolve_remote_url(root, remote)
     token = get_auth_token(root, url)
@@ -309,41 +349,64 @@ def run_push(args: argparse.Namespace) -> None:
 
 
 def run_delete(args: argparse.Namespace) -> None:
-    """Delete a draft release.
+    """Delete a release label locally and optionally retract it from a remote.
 
-    Published (non-draft) releases cannot be deleted — they are immutable by
-    design to preserve reproducibility.
+    Deletion removes only the named pointer — the underlying commit and
+    snapshot remain in the content-addressed object store forever.  They
+    are still fully reproducible by their SHA-256; only the label is gone.
+
+    Published releases require explicit confirmation (type the tag name) so
+    accidental retractions of stable releases are hard to do silently.
     """
     tag: str = args.tag
     yes: bool = args.yes
+    remote: str = args.remote or ""
 
     root = require_repo()
     repo_id = _repo_id(root)
 
     release = get_release_for_tag(root, repo_id, tag)
     if release is None:
-        print(f"❌ Release '{sanitize_display(tag)}' not found.", file=sys.stderr)
+        print(f"❌ Release '{sanitize_display(tag)}' not found locally.", file=sys.stderr)
         raise SystemExit(ExitCode.NOT_FOUND)
 
-    if not release.is_draft:
+    # Published releases need a stronger confirmation — type the tag name.
+    if not release.is_draft and not yes:
         print(
-            f"❌ Release '{sanitize_display(tag)}' is published and cannot be deleted. "
-            "Only draft releases may be deleted.",
-            file=sys.stderr,
+            f"⚠️  '{sanitize_display(tag)}' is a published release. "
+            "Deleting it removes the label; the underlying commit is unaffected."
         )
-        raise SystemExit(ExitCode.USER_ERROR)
-
-    if not yes:
+        answer = input(f"Type the tag name to confirm deletion: ").strip()
+        if answer != tag:
+            print("Aborted.")
+            return
+    elif release.is_draft and not yes:
         answer = input(f"Delete draft release '{sanitize_display(tag)}'? [y/N] ").strip().lower()
         if answer not in ("y", "yes"):
             print("Aborted.")
             return
 
+    # Retract from the remote first so a local-only failure doesn't leave
+    # the local record orphaned relative to the remote.
+    if remote:
+        from muse.cli.config import get_auth_token
+        from muse.core.transport import TransportError, make_transport
+
+        url = _resolve_remote_url(root, remote)
+        token = get_auth_token(root, url)
+        transport = make_transport(url)
+        try:
+            transport.delete_release_remote(url, token, tag)
+        except TransportError as exc:
+            print(f"❌ Remote retraction failed: {exc}", file=sys.stderr)
+            raise SystemExit(ExitCode.REMOTE_ERROR)
+        print(f"✅ Release {tag} retracted from {sanitize_display(remote)}.")
+
     deleted = delete_release(root, repo_id, release.release_id)
     if deleted:
-        print(f"✅ Draft release {tag} deleted.")
+        print(f"✅ Release {tag} deleted locally.")
     else:
-        print(f"❌ Release '{sanitize_display(tag)}' could not be deleted.", file=sys.stderr)
+        print(f"❌ Local release '{sanitize_display(tag)}' could not be deleted.", file=sys.stderr)
         raise SystemExit(ExitCode.USER_ERROR)
 
 
@@ -402,10 +465,23 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
     push_p = subs.add_parser("push", help="Push a release to a remote.")
     push_p.add_argument("tag", help="Version tag to push (e.g. v1.2.0).")
     push_p.add_argument("--remote", default="origin", help="Remote name (default: origin).")
+    push_p.add_argument(
+        "--no-analysis",
+        action="store_true",
+        dest="no_analysis",
+        help="Skip semantic analysis (faster; omits the enriched UI report on MuseHub).",
+    )
     push_p.set_defaults(func=run_push)
 
     # --- delete ---
-    del_p = subs.add_parser("delete", help="Delete a draft release.")
-    del_p.add_argument("tag", help="Version tag to delete (e.g. v1.2.0-beta.1).")
-    del_p.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt.")
+    del_p = subs.add_parser(
+        "delete",
+        help="Delete a release label locally and optionally retract it from a remote.",
+    )
+    del_p.add_argument("tag", help="Version tag to delete (e.g. v1.2.0).")
+    del_p.add_argument("--remote", default="", help="Also retract from this remote (e.g. origin).")
+    del_p.add_argument(
+        "--yes", "-y", action="store_true",
+        help="Skip confirmation (drafts) or tag-name confirmation (published).",
+    )
     del_p.set_defaults(func=run_delete)

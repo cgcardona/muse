@@ -55,7 +55,7 @@ import pathlib
 import re
 import uuid
 from dataclasses import dataclass, field
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 from muse.core.validation import (
     sanitize_glob_prefix,
@@ -120,6 +120,82 @@ class ChangelogEntry(TypedDict):
     model_id: str
 
 
+class LanguageStat(TypedDict):
+    """File and symbol counts for a single programming language in a snapshot."""
+
+    language: str
+    files: int
+    symbols: int
+
+
+class SymbolKindCount(TypedDict):
+    """Count of symbols of a specific kind in a snapshot."""
+
+    kind: str
+    count: int
+
+
+class ApiChangeSummary(TypedDict):
+    """A single public-API symbol that was added, removed, or modified."""
+
+    address: str
+    language: str
+    kind: str    # matches SymbolKind literals
+    change: str  # "added" | "removed" | "modified"
+
+
+class FileHotspot(TypedDict):
+    """A file and the number of times it was touched across the release's commits."""
+
+    file_path: str
+    change_count: int
+    language: str
+
+
+class RefactorEventSummary(TypedDict):
+    """A single structural refactoring event detected across the release's commits."""
+
+    kind: str      # "rename" | "move" | "add" | "delete" | "patch"
+    address: str
+    detail: str
+    commit_id: str
+
+
+class SemanticReleaseReport(TypedDict):
+    """Semantic analysis of a release, computed at push time from the object store.
+
+    Populated by ``muse.plugins.code.release_analysis.compute_release_analysis``
+    before the release is transmitted to a remote.  MuseHub stores it verbatim
+    and renders it in the release detail page.
+
+    All list fields default to ``[]`` and all int fields default to ``0`` so
+    that a partial or failed analysis still produces a valid, displayable report.
+    """
+
+    # Snapshot composition
+    languages: list[LanguageStat]
+    total_files: int
+    semantic_files: int    # files with AST-level symbol support
+    total_symbols: int
+    symbols_by_kind: list[SymbolKindCount]
+
+    # Delta (what changed in this release vs previous release)
+    files_changed: int
+    api_added: list[ApiChangeSummary]
+    api_removed: list[ApiChangeSummary]
+    api_modified: list[ApiChangeSummary]
+    file_hotspots: list[FileHotspot]
+    refactor_events: list[RefactorEventSummary]
+
+    # Provenance aggregated from changelog commits
+    breaking_changes: list[str]    # deduplicated across all changelog entries
+    human_commits: int
+    agent_commits: int
+    unique_agents: list[str]
+    unique_models: list[str]
+    reviewers: list[str]
+
+
 class ReleaseDict(TypedDict):
     """JSON-serialisable representation of a ReleaseRecord."""
 
@@ -138,6 +214,7 @@ class ReleaseDict(TypedDict):
     is_draft: bool
     gpg_signature: str
     created_at: str
+    semantic_report: NotRequired[SemanticReleaseReport]
 
 # ---------------------------------------------------------------------------
 # HEAD file — typed I/O
@@ -584,12 +661,13 @@ class ReleaseRecord:
     model_id: str = ""
     is_draft: bool = False
     gpg_signature: str = ""
+    semantic_report: SemanticReleaseReport | None = None
     created_at: datetime.datetime = field(
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
 
     def to_dict(self) -> ReleaseDict:
-        return ReleaseDict(
+        d = ReleaseDict(
             release_id=self.release_id,
             repo_id=self.repo_id,
             tag=self.tag,
@@ -606,6 +684,9 @@ class ReleaseRecord:
             gpg_signature=self.gpg_signature,
             created_at=self.created_at.isoformat(),
         )
+        if self.semantic_report is not None:
+            d["semantic_report"] = self.semantic_report
+        return d
 
     @classmethod
     def from_dict(cls, d: ReleaseDict) -> "ReleaseRecord":
@@ -614,6 +695,7 @@ class ReleaseRecord:
         except (ValueError, KeyError):
             created_at = datetime.datetime.now(datetime.timezone.utc)
         channel = _CHANNEL_MAP.get(d.get("channel", "stable"), "stable")
+        raw_report = d.get("semantic_report")
         return cls(
             release_id=d["release_id"],
             repo_id=d["repo_id"],
@@ -629,6 +711,7 @@ class ReleaseRecord:
             model_id=d.get("model_id", ""),
             is_draft=bool(d.get("is_draft", False)),
             gpg_signature=d.get("gpg_signature", ""),
+            semantic_report=raw_report if isinstance(raw_report, dict) else None,
             created_at=created_at,
         )
 

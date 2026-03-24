@@ -673,14 +673,44 @@ class TestReleaseCLI:
         assert result.exit_code == 0
         assert "deleted" in result.output.lower()
 
-    def test_release_delete_published_rejected(self, tmp_path: pathlib.Path) -> None:
+    def test_release_delete_published_with_yes(self, tmp_path: pathlib.Path) -> None:
+        """Published releases can be deleted when --yes bypasses the tag-name prompt."""
         root, repo_id = _init_repo(tmp_path)
         _make_commit(root, repo_id)
         runner.invoke(None, ["release", "add", "v1.0.0"], env=_env(root))
 
         result = runner.invoke(None, ["release", "delete", "v1.0.0", "--yes"], env=_env(root))
-        assert result.exit_code != 0
-        assert "published" in result.output.lower()
+        assert result.exit_code == 0
+        assert "deleted" in result.output.lower()
+
+        # Confirm it's gone from the list.
+        list_result = runner.invoke(None, ["release", "list"], env=_env(root))
+        assert "v1.0.0" not in list_result.output
+
+    def test_release_delete_published_prompt_abort(self, tmp_path: pathlib.Path) -> None:
+        """Published releases require typing the tag name; wrong input aborts."""
+        root, repo_id = _init_repo(tmp_path)
+        _make_commit(root, repo_id)
+        runner.invoke(None, ["release", "add", "v1.0.0"], env=_env(root))
+
+        # Simulate user typing something other than the exact tag name.
+        result = runner.invoke(None, ["release", "delete", "v1.0.0"], input="nope\n", env=_env(root))
+        assert result.exit_code == 0
+        assert "aborted" in result.output.lower()
+
+        # Release must still exist.
+        list_result = runner.invoke(None, ["release", "list"], env=_env(root))
+        assert "v1.0.0" in list_result.output
+
+    def test_release_delete_published_prompt_confirm(self, tmp_path: pathlib.Path) -> None:
+        """Typing the exact tag name at the prompt confirms deletion."""
+        root, repo_id = _init_repo(tmp_path)
+        _make_commit(root, repo_id)
+        runner.invoke(None, ["release", "add", "v1.0.0"], env=_env(root))
+
+        result = runner.invoke(None, ["release", "delete", "v1.0.0"], input="v1.0.0\n", env=_env(root))
+        assert result.exit_code == 0
+        assert "deleted" in result.output.lower()
 
     def test_release_channel_filter(self, tmp_path: pathlib.Path) -> None:
         root, repo_id = _init_repo(tmp_path)

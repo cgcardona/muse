@@ -524,6 +524,28 @@ class MuseTransport(Protocol):
         """
         ...
 
+    def delete_release_remote(
+        self,
+        url: str,
+        token: str | None,
+        tag: str,
+    ) -> None:
+        """Retract a release from the remote via ``DELETE {url}/releases/{tag}``.
+
+        Removes only the named label from the remote registry.  The underlying
+        commit and snapshot objects are **not** affected.
+
+        Args:
+            url:   Remote repository URL.
+            token: Bearer token (owner credentials required).
+            tag:   Semver tag of the release to retract (e.g. ``"v1.2.0"``).
+
+        Raises:
+            :class:`TransportError` on HTTP 4xx/5xx, network failure, or if
+            the release does not exist on the remote.
+        """
+        ...
+
 
 # ---------------------------------------------------------------------------
 # HTTP/1.1 implementation (stdlib, zero extra dependencies)
@@ -820,6 +842,18 @@ class HttpTransport:
         raw = self._execute(req)
         parsed = self._decode(raw)
         return _parse_releases_list(parsed)
+
+    def delete_release_remote(
+        self,
+        url: str,
+        token: str | None,
+        tag: str,
+    ) -> None:
+        """Retract a release via ``DELETE {url}/releases/{tag}``."""
+        endpoint = f"{url.rstrip('/')}/releases/{urllib.parse.quote(tag, safe='')}"
+        logger.debug("transport: DELETE %s", endpoint)
+        req = self._build_request("DELETE", endpoint, token)
+        self._execute(req)
 
 
 # ---------------------------------------------------------------------------
@@ -1568,6 +1602,28 @@ class LocalFileTransport:
         channel_arg: ReleaseChannel | None = _channel_map.get(channel, None) if channel else None
         records = list_releases(remote_root, repo_id, channel=channel_arg, include_drafts=include_drafts)
         return [r.to_dict() for r in records]
+
+    def delete_release_remote(
+        self,
+        url: str,
+        token: str | None,  # noqa: ARG002
+        tag: str,
+    ) -> None:
+        """Delete a release record from the remote's local release store."""
+        from muse.core.store import delete_release, get_release_for_tag
+
+        remote_root = self._repo_root(url)
+        repo_json_path = remote_root / ".muse" / "repo.json"
+        try:
+            repo_data = json.loads(repo_json_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise TransportError(f"Cannot read remote repo.json: {exc}", 0) from exc
+        repo_id = str(repo_data.get("repo_id", ""))
+        release = get_release_for_tag(remote_root, repo_id, tag)
+        if release is None:
+            raise TransportError(f"Release '{tag}' not found on remote.", 404)
+        if not delete_release(remote_root, repo_id, release.release_id):
+            raise TransportError(f"Failed to delete release '{tag}' on remote.", 0)
 
 
 # ---------------------------------------------------------------------------
