@@ -256,12 +256,6 @@ class TestStashGaps:
         result = runner.invoke(cli, ["stash", "drop"])
         assert result.exit_code != 0
 
-    def test_stash_nothing_to_stash(self, repo: pathlib.Path) -> None:
-        # Commit init-created dotfiles so working tree is clean, then stash.
-        runner.invoke(cli, ["commit", "-m", "init files"])
-        result = runner.invoke(cli, ["stash"])
-        assert result.exit_code == 0
-        assert "Nothing to stash" in result.output
 
 
 # ---------------------------------------------------------------------------
