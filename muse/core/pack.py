@@ -33,10 +33,15 @@ from muse.core.store import (
     CommitRecord,
     SnapshotDict,
     SnapshotRecord,
+    TagDict,
+    TagRecord,
+    get_all_tags,
+    get_tags_for_commit,
     read_commit,
     read_snapshot,
     write_commit,
     write_snapshot,
+    write_tag,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,6 +59,16 @@ class ObjectPayload(TypedDict):
     content: bytes
 
 
+class WireTag(TypedDict):
+    """A tag record serialised for wire transfer inside a :class:`PackBundle`."""
+
+    tag_id: str
+    repo_id: str
+    commit_id: str
+    tag: str
+    created_at: str
+
+
 class PackBundle(TypedDict, total=False):
     """The unit of exchange between the Muse CLI and a remote.
 
@@ -64,6 +79,8 @@ class PackBundle(TypedDict, total=False):
     commits: list[CommitDict]
     snapshots: list[SnapshotDict]
     objects: list[ObjectPayload]
+    #: Tags attached to any commit included in this bundle.
+    tags: list[WireTag]
     #: Remote branch heads at the time the bundle was produced.
     branch_heads: dict[str, str]
 
@@ -132,12 +149,33 @@ class ObjectsChunkResponse(TypedDict):
 # ---------------------------------------------------------------------------
 
 
+def _tags_for_commits(
+    repo_root: pathlib.Path, commit_ids: list[str], repo_id: str
+) -> list[WireTag]:
+    """Return all tags attached to *commit_ids* as serialisable :class:`WireTag` dicts."""
+    seen_tag_ids: set[str] = set()
+    wire_tags: list[WireTag] = []
+    for cid in commit_ids:
+        for tag in get_tags_for_commit(repo_root, repo_id, cid):
+            if tag.tag_id not in seen_tag_ids:
+                seen_tag_ids.add(tag.tag_id)
+                wire_tags.append(WireTag(
+                    tag_id=tag.tag_id,
+                    repo_id=tag.repo_id,
+                    commit_id=tag.commit_id,
+                    tag=tag.tag,
+                    created_at=tag.created_at.isoformat(),
+                ))
+    return wire_tags
+
+
 def build_pack(
     repo_root: pathlib.Path,
     commit_ids: list[str],
     *,
     have: list[str] | None = None,
     only_objects: set[str] | None = None,
+    repo_id: str = "",
 ) -> PackBundle:
     """Assemble a :class:`PackBundle` from *commit_ids*, excluding commits in *have*.
 
@@ -157,6 +195,8 @@ def build_pack(
         only_objects: When set, only include objects whose IDs are in this set.
                       Used after a ``POST /filter-objects`` negotiation so the
                       client only uploads objects the remote is missing.
+        repo_id:      Repository UUID used to look up tags.  When omitted, tags
+                      are not included in the bundle.
 
     Returns:
         A :class:`PackBundle` ready for serialisation and transfer.
@@ -212,16 +252,23 @@ def build_pack(
             continue
         object_payloads.append(ObjectPayload(object_id=oid, content=raw))
 
+    sent_commit_ids = [c.commit_id for c in commits_to_send]
+    wire_tags = _tags_for_commits(repo_root, sent_commit_ids, repo_id) if repo_id else []
+
     bundle: PackBundle = {
         "commits": [c.to_dict() for c in commits_to_send],
         "snapshots": snapshot_dicts,
         "objects": object_payloads,
     }
+    if wire_tags:
+        bundle["tags"] = wire_tags
+
     logger.info(
-        "✅ Built pack: %d commits, %d snapshots, %d objects",
+        "✅ Built pack: %d commits, %d snapshots, %d objects, %d tags",
         len(commits_to_send),
         len(snapshot_dicts),
         len(object_payloads),
+        len(wire_tags),
     )
     return bundle
 
@@ -337,6 +384,19 @@ def apply_pack(repo_root: pathlib.Path, bundle: PackBundle) -> ApplyResult:
                 commits_written += 1
         except (KeyError, ValueError) as exc:
             logger.warning("⚠️ apply_pack: malformed commit — skipped: %s", exc)
+
+    for wire_tag in bundle.get("tags") or []:
+        try:
+            tag_record = TagRecord.from_dict(TagDict(
+                tag_id=wire_tag["tag_id"],
+                repo_id=wire_tag["repo_id"],
+                commit_id=wire_tag["commit_id"],
+                tag=wire_tag["tag"],
+                created_at=wire_tag["created_at"],
+            ))
+            write_tag(repo_root, tag_record)
+        except (KeyError, ValueError) as exc:
+            logger.warning("⚠️ apply_pack: malformed tag — skipped: %s", exc)
 
     logger.info(
         "✅ Applied pack: %d new blobs, %d new snapshots, %d new commits (%d blobs skipped)",

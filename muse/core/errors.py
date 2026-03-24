@@ -12,12 +12,16 @@ class ExitCode(enum.IntEnum):
     1 — user error (bad arguments, invalid input)
     2 — repo-not-found / config invalid
     3 — server / internal error
+    4 — requested item not found
+    5 — remote communication error
     """
 
     SUCCESS = 0
     USER_ERROR = 1
     REPO_NOT_FOUND = 2
     INTERNAL_ERROR = 3
+    NOT_FOUND = 4
+    REMOTE_ERROR = 5
 
 
 class MuseCLIError(Exception):

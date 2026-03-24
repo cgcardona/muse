@@ -7,13 +7,14 @@ Layout
 ------
 
     .muse/
-        commits/<commit_id>.json     — one JSON file per commit
-        snapshots/<snapshot_id>.json — one JSON file per snapshot manifest
-        tags/<repo_id>/<tag_id>.json — tag records
-        objects/<sha2>/<sha62>       — content-addressed blobs (via object_store.py)
-        refs/heads/<branch>          — branch HEAD pointers (plain text commit IDs)
-        HEAD                         — "ref: refs/heads/main" | "commit: <sha256>"
-        repo.json                    — repository identity
+        commits/<commit_id>.json          — one JSON file per commit
+        snapshots/<snapshot_id>.json      — one JSON file per snapshot manifest
+        tags/<repo_id>/<tag_id>.json      — tag records
+        releases/<repo_id>/<release_id>.json — release records
+        objects/<sha2>/<sha62>            — content-addressed blobs (via object_store.py)
+        refs/heads/<branch>               — branch HEAD pointers (plain text commit IDs)
+        HEAD                              — "ref: refs/heads/main" | "commit: <sha256>"
+        repo.json                         — repository identity
 
 Commit JSON schema
 ------------------
@@ -69,6 +70,74 @@ logger = logging.getLogger(__name__)
 _COMMITS_DIR = "commits"
 _SNAPSHOTS_DIR = "snapshots"
 _TAGS_DIR = "tags"
+_RELEASES_DIR = "releases"
+
+# ---------------------------------------------------------------------------
+# Release types — semver, channels, changelog
+# ---------------------------------------------------------------------------
+
+#: Named release channels. More expressive than a boolean ``is_prerelease``.
+ReleaseChannel = Literal["stable", "beta", "alpha", "nightly"]
+
+_VALID_CHANNELS: frozenset[str] = frozenset({"stable", "beta", "alpha", "nightly"})
+
+_CHANNEL_MAP: dict[str, ReleaseChannel] = {
+    "stable": "stable",
+    "beta": "beta",
+    "alpha": "alpha",
+    "nightly": "nightly",
+}
+
+#: Semver pre-release / build suffixes use only alphanumerics, hyphens, dots.
+_SEMVER_PRE_RE = re.compile(r"^[0-9A-Za-z\-\.]*$")
+
+
+class SemVerTag(TypedDict):
+    """Parsed semantic version components."""
+
+    major: int
+    minor: int
+    patch: int
+    pre: str    # "" for stable releases; "beta.1", "alpha.2", etc.
+    build: str  # "" unless a build metadata suffix is present
+
+
+class ChangelogEntry(TypedDict):
+    """One commit's contribution to a release changelog.
+
+    Auto-populated by walking the commit graph from the previous release tag
+    to the current HEAD.  The ``sem_ver_bump`` field drives grouping in the
+    rendered changelog so callers never need to parse commit messages.
+    """
+
+    commit_id: str
+    message: str
+    sem_ver_bump: SemVerBump
+    breaking_changes: list[str]
+    author: str
+    committed_at: str
+    agent_id: str
+    model_id: str
+
+
+class ReleaseDict(TypedDict):
+    """JSON-serialisable representation of a ReleaseRecord."""
+
+    release_id: str
+    repo_id: str
+    tag: str
+    semver: SemVerTag
+    channel: str
+    commit_id: str
+    snapshot_id: str
+    title: str
+    body: str
+    changelog: list[ChangelogEntry]
+    agent_id: str
+    model_id: str
+    is_draft: bool
+    gpg_signature: str
+    created_at: str
 
 # ---------------------------------------------------------------------------
 # HEAD file — typed I/O
@@ -482,6 +551,88 @@ class TagRecord:
         )
 
 
+@dataclass
+class ReleaseRecord:
+    """A versioned release attached to a commit.
+
+    A release is richer than a Git tag:
+
+    - ``semver`` is a parsed struct (major/minor/patch/pre/build) — queryable
+      by version component without string parsing.
+    - ``channel`` replaces the boolean ``is_prerelease`` flag with a named
+      distribution channel: stable | beta | alpha | nightly.
+    - ``changelog`` is auto-generated from the typed ``sem_ver_bump`` and
+      ``breaking_changes`` fields on commits since the previous release, so no
+      conventional-commit parsing is needed.
+    - ``snapshot_id`` makes the release byte-for-byte reproducible from the
+      content-addressed object store forever.
+    - ``agent_id`` / ``model_id`` surface AI provenance from the tip commit.
+    - ``gpg_signature`` signs the release for tamper-evident distribution.
+    """
+
+    release_id: str
+    repo_id: str
+    tag: str
+    semver: SemVerTag
+    channel: ReleaseChannel
+    commit_id: str
+    snapshot_id: str
+    title: str
+    body: str
+    changelog: list[ChangelogEntry]
+    agent_id: str = ""
+    model_id: str = ""
+    is_draft: bool = False
+    gpg_signature: str = ""
+    created_at: datetime.datetime = field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+    def to_dict(self) -> ReleaseDict:
+        return ReleaseDict(
+            release_id=self.release_id,
+            repo_id=self.repo_id,
+            tag=self.tag,
+            semver=self.semver,
+            channel=self.channel,
+            commit_id=self.commit_id,
+            snapshot_id=self.snapshot_id,
+            title=self.title,
+            body=self.body,
+            changelog=list(self.changelog),
+            agent_id=self.agent_id,
+            model_id=self.model_id,
+            is_draft=self.is_draft,
+            gpg_signature=self.gpg_signature,
+            created_at=self.created_at.isoformat(),
+        )
+
+    @classmethod
+    def from_dict(cls, d: ReleaseDict) -> "ReleaseRecord":
+        try:
+            created_at = datetime.datetime.fromisoformat(d["created_at"])
+        except (ValueError, KeyError):
+            created_at = datetime.datetime.now(datetime.timezone.utc)
+        channel = _CHANNEL_MAP.get(d.get("channel", "stable"), "stable")
+        return cls(
+            release_id=d["release_id"],
+            repo_id=d["repo_id"],
+            tag=d["tag"],
+            semver=d["semver"],
+            channel=channel,
+            commit_id=d["commit_id"],
+            snapshot_id=d["snapshot_id"],
+            title=d.get("title", ""),
+            body=d.get("body", ""),
+            changelog=list(d.get("changelog") or []),
+            agent_id=d.get("agent_id", ""),
+            model_id=d.get("model_id", ""),
+            is_draft=bool(d.get("is_draft", False)),
+            gpg_signature=d.get("gpg_signature", ""),
+            created_at=created_at,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Path helpers
 # ---------------------------------------------------------------------------
@@ -501,6 +652,12 @@ def _tags_dir(repo_root: pathlib.Path, repo_id: str) -> pathlib.Path:
     if "/" in repo_id or "\\" in repo_id or ".." in repo_id or not repo_id:
         raise ValueError(f"repo_id {repo_id!r} contains unsafe path components.")
     return repo_root / ".muse" / _TAGS_DIR / repo_id
+
+
+def _releases_dir(repo_root: pathlib.Path, repo_id: str) -> pathlib.Path:
+    if "/" in repo_id or "\\" in repo_id or ".." in repo_id or not repo_id:
+        raise ValueError(f"repo_id {repo_id!r} contains unsafe path components.")
+    return repo_root / ".muse" / _RELEASES_DIR / repo_id
 
 
 def _commit_path(repo_root: pathlib.Path, commit_id: str) -> pathlib.Path:
@@ -921,6 +1078,189 @@ def get_all_tags(repo_root: pathlib.Path, repo_id: str) -> list[TagRecord]:
         except (json.JSONDecodeError, KeyError, TypeError):
             continue
     return results
+
+
+# ---------------------------------------------------------------------------
+# Semver helpers
+# ---------------------------------------------------------------------------
+
+#: Strict semver regex (vMAJOR.MINOR.PATCH[-pre][+build]).
+_SEMVER_RE = re.compile(
+    r"^v?(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)"
+    r"(?:-(?P<pre>[0-9A-Za-z\-]+(?:\.[0-9A-Za-z\-]+)*))?"
+    r"(?:\+(?P<build>[0-9A-Za-z\-]+(?:\.[0-9A-Za-z\-]+)*))?$"
+)
+
+
+def parse_semver(version: str) -> SemVerTag:
+    """Parse *version* into a :class:`SemVerTag`.
+
+    Accepts both ``v1.2.3`` and ``1.2.3`` forms.  Raises :exc:`ValueError`
+    for any string that does not conform to Semantic Versioning 2.0.0.
+    """
+    m = _SEMVER_RE.fullmatch(version.strip())
+    if not m:
+        raise ValueError(
+            f"Version {version!r} is not valid semver (expected vMAJOR.MINOR.PATCH[-pre][+build])."
+        )
+    return SemVerTag(
+        major=int(m.group("major")),
+        minor=int(m.group("minor")),
+        patch=int(m.group("patch")),
+        pre=m.group("pre") or "",
+        build=m.group("build") or "",
+    )
+
+
+def semver_to_str(sv: SemVerTag) -> str:
+    """Render a :class:`SemVerTag` back to a canonical version string."""
+    base = f"v{sv['major']}.{sv['minor']}.{sv['patch']}"
+    if sv["pre"]:
+        base = f"{base}-{sv['pre']}"
+    if sv["build"]:
+        base = f"{base}+{sv['build']}"
+    return base
+
+
+def semver_channel(sv: SemVerTag) -> ReleaseChannel:
+    """Infer the release channel from a semver pre-release label.
+
+    If the caller does not supply an explicit channel, this provides a
+    sensible default: pre-releases starting with 'alpha' → alpha,
+    'beta' → beta, 'nightly' → nightly, anything else → stable.
+    """
+    pre = sv["pre"].lower()
+    if pre.startswith("alpha"):
+        return "alpha"
+    if pre.startswith("beta"):
+        return "beta"
+    if pre.startswith("nightly"):
+        return "nightly"
+    return "stable"
+
+
+# ---------------------------------------------------------------------------
+# Release operations
+# ---------------------------------------------------------------------------
+
+
+def write_release(repo_root: pathlib.Path, release: ReleaseRecord) -> None:
+    """Persist a release record to ``.muse/releases/<repo_id>/<release_id>.json``."""
+    releases_dir = _releases_dir(repo_root, release.repo_id)
+    releases_dir.mkdir(parents=True, exist_ok=True)
+    path = releases_dir / f"{release.release_id}.json"
+    path.write_text(json.dumps(release.to_dict(), indent=2) + "\n", encoding="utf-8")
+    logger.debug("✅ Stored release %r (%s)", release.tag, release.release_id[:8])
+
+
+def read_release(
+    repo_root: pathlib.Path, repo_id: str, release_id: str
+) -> ReleaseRecord | None:
+    """Load a release by its UUID, or ``None`` if it does not exist."""
+    path = _releases_dir(repo_root, repo_id) / f"{release_id}.json"
+    if not path.exists():
+        return None
+    try:
+        return ReleaseRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        logger.warning("⚠️ Corrupt release file %s: %s", path, exc)
+        return None
+
+
+def get_release_for_tag(
+    repo_root: pathlib.Path, repo_id: str, tag: str
+) -> ReleaseRecord | None:
+    """Return the release whose version tag matches *tag*, or ``None``.
+
+    Searches all releases including drafts so callers can inspect or delete
+    a draft before it is published.
+    """
+    for release in list_releases(repo_root, repo_id, include_drafts=True):
+        if release.tag == tag:
+            return release
+    return None
+
+
+def list_releases(
+    repo_root: pathlib.Path,
+    repo_id: str,
+    channel: ReleaseChannel | None = None,
+    include_drafts: bool = False,
+) -> list[ReleaseRecord]:
+    """Return all releases, newest first.
+
+    Args:
+        repo_root:     Repository root.
+        repo_id:       Repository UUID.
+        channel:       Filter by channel; ``None`` returns all channels.
+        include_drafts: When ``False`` (default) draft releases are hidden.
+    """
+    releases_dir = _releases_dir(repo_root, repo_id)
+    if not releases_dir.exists():
+        return []
+    results: list[ReleaseRecord] = []
+    for path in releases_dir.glob("*.json"):
+        try:
+            r = ReleaseRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, KeyError, TypeError):
+            continue
+        if r.is_draft and not include_drafts:
+            continue
+        if channel is not None and r.channel != channel:
+            continue
+        results.append(r)
+    results.sort(key=lambda r: r.created_at, reverse=True)
+    return results
+
+
+def delete_release(repo_root: pathlib.Path, repo_id: str, release_id: str) -> bool:
+    """Delete a release record.  Returns ``True`` if it existed.
+
+    Callers are responsible for enforcing that only draft releases may be
+    deleted.  This function performs no such guard — enforce at the CLI/API
+    layer.
+    """
+    path = _releases_dir(repo_root, repo_id) / f"{release_id}.json"
+    if path.exists():
+        path.unlink()
+        logger.debug("🗑️ Deleted release %s", release_id)
+        return True
+    return False
+
+
+def build_changelog(
+    repo_root: pathlib.Path,
+    from_commit_id: str | None,
+    to_commit_id: str,
+    max_commits: int = 500,
+) -> list[ChangelogEntry]:
+    """Walk the commit graph from *to_commit_id* back to *from_commit_id*.
+
+    Returns a list of :class:`ChangelogEntry` dicts, oldest first, excluding
+    merge commits and ``sem_ver_bump="none"`` commits (they carry no user-visible
+    change).  *from_commit_id* is excluded; *to_commit_id* is included.
+
+    Args:
+        repo_root:       Repository root.
+        from_commit_id:  The last release commit (exclusive start), or ``None``
+                         for a first release (walks back to the initial commit).
+        to_commit_id:    The HEAD commit to release (inclusive end).
+        max_commits:     Safety cap — changelog never exceeds this many entries.
+    """
+    raw = walk_commits_between(repo_root, to_commit_id, from_commit_id, max_commits)
+    entries: list[ChangelogEntry] = []
+    for commit in reversed(raw):  # oldest first
+        entries.append(ChangelogEntry(
+            commit_id=commit.commit_id,
+            message=commit.message,
+            sem_ver_bump=commit.sem_ver_bump,
+            breaking_changes=list(commit.breaking_changes),
+            author=commit.author,
+            committed_at=commit.committed_at.isoformat(),
+            agent_id=commit.agent_id,
+            model_id=commit.model_id,
+        ))
+    return entries
 
 
 # ---------------------------------------------------------------------------

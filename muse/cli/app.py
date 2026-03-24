@@ -190,6 +190,7 @@ from muse.cli.commands import (
     rebase,
     reconcile,
     reflog,
+    release as release_cmd,
     remote,
     rerere,
     reserve,
@@ -344,6 +345,7 @@ def main(argv: list[str] | None = None) -> None:
     worktree.register(subparsers)
     workspace.register(subparsers)
     rebase.register(subparsers)
+    release_cmd.register(subparsers)
     clean.register(subparsers)
     describe.register(subparsers)
     shortlog.register(subparsers)
