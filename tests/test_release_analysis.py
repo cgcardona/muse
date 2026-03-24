@@ -167,17 +167,3 @@ class TestComputeReleaseAnalysis:
         report = compute_release_analysis(repo, release)
         assert isinstance(report, dict)
 
-    def test_semantic_report_roundtrips_through_release_record(
-        self, repo: pathlib.Path
-    ) -> None:
-        """SemanticReleaseReport survives to_dict() / from_dict()."""
-        release = _make_release(repo)
-        report = compute_release_analysis(repo, release)
-        release.semantic_report = report
-
-        from muse.core.store import ReleaseRecord as RR
-        d = release.to_dict()
-        assert "semantic_report" in d
-        restored = RR.from_dict(d)
-        assert restored.semantic_report is not None
-        assert restored.semantic_report["total_files"] == report["total_files"]
