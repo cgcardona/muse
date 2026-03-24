@@ -185,6 +185,13 @@ Strong, explicit types are the contract that makes the codebase navigable by hum
 
 **Agents own all broken tests — not just theirs.** If you see a failing test, fix it or block the PR. "This was already broken" is not an acceptable response.
 
+**Test efficiency — mandatory protocol:**
+1. Run the full suite **once** to find all failures.
+2. Fix every failure found.
+3. Re-run **only the files that were failing** — not the full suite — to confirm the fix.
+4. Only run the full suite again as the final pre-PR gate.
+Never re-run the full suite repeatedly to diagnose a single failure. Read the output, fix it, run the specific file.
+
 ---
 
 ## Verification Checklist

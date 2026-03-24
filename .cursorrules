@@ -156,6 +156,15 @@ Before merging a PR:
 - Hardcoded paths or repo IDs outside `.muse/repo.json`.
 - `print()` for diagnostics — use `logging`.
 
+## Test efficiency — mandatory protocol
+
+1. Run the full suite **once** to find all failures.
+2. Fix every failure found.
+3. Re-run **only the specific failing file(s)** — not the full suite — to confirm the fix: `pytest tests/test_foo.py -v`
+4. Run the full suite only as the final pre-PR gate.
+
+Never re-run the full suite repeatedly to chase a single failure. Read the output, fix it, run the specific file.
+
 ## Quick reference
 
 | Area | Module | Tests |
