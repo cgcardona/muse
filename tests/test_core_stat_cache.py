@@ -373,16 +373,29 @@ class TestWalkWorkdirCacheIntegration:
         # Should not set dirty because mtime/size unchanged.
         assert cache._dirty is False
 
-    def test_walk_excludes_hidden_paths_from_cache(self, tmp_path: pathlib.Path) -> None:
+    def test_walk_excludes_secrets_from_cache(self, tmp_path: pathlib.Path) -> None:
+        """Secrets excluded by built-in blocklist must not appear in the manifest."""
         muse_dir = tmp_path / ".muse"
         muse_dir.mkdir()
         _write(tmp_path / "visible.py")
-        _write(tmp_path / ".hidden.py")
+        _write(tmp_path / ".env")
 
         manifest = walk_workdir(tmp_path)
 
         assert "visible.py" in manifest
-        assert ".hidden.py" not in manifest
+        assert ".env" not in manifest
+
+    def test_walk_tracks_non_secret_dotfiles(self, tmp_path: pathlib.Path) -> None:
+        """Non-secret dotfiles like .cursorrules are now tracked by default."""
+        muse_dir = tmp_path / ".muse"
+        muse_dir.mkdir()
+        _write(tmp_path / ".cursorrules")
+        _write(tmp_path / ".editorconfig")
+
+        manifest = walk_workdir(tmp_path)
+
+        assert ".cursorrules" in manifest
+        assert ".editorconfig" in manifest
 
     def test_walk_without_muse_dir_still_works(self, tmp_path: pathlib.Path) -> None:
         """walk_workdir must work correctly even with no .muse directory."""

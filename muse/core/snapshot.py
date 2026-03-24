@@ -31,18 +31,89 @@ Symlinks in the working tree are excluded from snapshots. Following a
 symlink that points outside state/ would silently commit the contents
 of arbitrary filesystem paths.
 
-Hidden directories (any path component starting with ``.``) are also excluded
-to prevent accidental inclusion of ``.git/``, ``.env``, and similar.
+Exclusion policy
+----------------
+Dotfiles and dot-directories are **tracked by default** — ``.cursorrules``,
+``.editorconfig``, ``.eslintrc`` are intentional project configuration that
+collaborators need.  Exclusion is driven entirely by ``.museignore`` plus the
+built-in secrets blocklist below.  The only hard-coded directory skip is
+``.muse/`` itself (internal VCS storage) and a performance-only list of
+directories that are universally noise (``node_modules/``, ``__pycache__/``,
+``.venv/`` etc.).
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import pathlib
 import stat as _stat
 
+from muse.core.ignore import is_ignored, load_ignore_config, resolve_patterns
 from muse.core.stat_cache import load_cache
+
+# Directories that are always pruned before os.walk descends into them.
+# These are either internal VCS storage (.muse) or universally-noisy
+# directories whose contents are never meaningful project source.
+# Kept as a frozenset for O(1) lookup inside the hot walk loop.
+_ALWAYS_PRUNE_DIRS: frozenset[str] = frozenset(
+    {
+        ".muse",
+        ".git",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".tox",
+        ".nox",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        ".coverage",
+        "htmlcov",
+        "dist",
+        "build",
+    }
+)
+
+# Built-in secrets blocklist — applied even when .museignore is absent.
+# This is the last line of defence: these files must never appear in a
+# snapshot regardless of what a user configures in .museignore.
+_BUILTIN_SECRET_PATTERNS: list[str] = [
+    ".env",
+    ".env.*",
+    ".envrc",
+    "*.pem",
+    "*.key",
+    "*.p12",
+    "*.pfx",
+    ".DS_Store",
+    "Thumbs.db",
+]
+
+
+def _load_ignore_patterns(workdir: pathlib.Path) -> list[str]:
+    """Return the combined ignore pattern list for *workdir*.
+
+    Reads ``.museignore`` from *workdir* and detects the active domain from
+    ``.muse/repo.json``.  Falls back to ``"code"`` when either file is absent.
+    The built-in secrets blocklist is always prepended so it cannot be
+    overridden by user configuration.
+    """
+    domain = "code"
+    repo_json = workdir / ".muse" / "repo.json"
+    if repo_json.exists():
+        try:
+            raw = json.loads(repo_json.read_text(encoding="utf-8"))
+            if isinstance(raw, dict) and isinstance(raw.get("domain"), str):
+                domain = raw["domain"]
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    config = load_ignore_config(workdir)
+    user_patterns = resolve_patterns(config, domain)
+    return _BUILTIN_SECRET_PATTERNS + user_patterns
 
 _SEP = "\x00"
 
@@ -61,7 +132,10 @@ def hash_file(path: pathlib.Path) -> str:
 
 
 def build_snapshot_manifest(workdir: pathlib.Path) -> dict[str, str]:
-    """Alias for ``walk_workdir`` — preferred name in public API."""
+    """Return ``{rel_path: object_id}`` for every tracked file in *workdir*.
+
+    Preferred public name; delegates to :func:`walk_workdir`.
+    """
     return walk_workdir(workdir)
 
 
@@ -69,37 +143,36 @@ def walk_workdir(workdir: pathlib.Path) -> dict[str, str]:
     """Walk *workdir* recursively and return ``{rel_path: object_id}``.
 
     Exclusions (all silent, no warning emitted):
-    - Symlinks — following them could commit content from outside state/.
-    - Directories — only regular files are included.
-    - Hidden files — names starting with ``.``.
-    - Hidden directories — any path component starting with ``.``.
+    - Symlinks — following them could commit content from outside the repo.
+    - Non-regular files — only regular files are included.
+    - Paths matched by ``.museignore`` or the built-in secrets blocklist.
+    - Directories in ``_ALWAYS_PRUNE_DIRS`` — internal VCS storage and
+      universally-noisy directories (node_modules, __pycache__, .venv, …).
+
+    Dotfiles and dot-directories are tracked unless excluded by the above
+    rules.  ``.cursorrules``, ``.editorconfig``, ``.eslintrc`` etc. are
+    intentional project configuration; the blanket dot-skip that Git-adjacent
+    tools inherited is not carried forward here.
 
     Paths use POSIX separators regardless of host OS for cross-platform
     reproducibility.
 
-    When a ``.muse/`` directory exists under *workdir*, the stat cache is
-    consulted to skip re-hashing files whose ``(mtime, size)`` is unchanged
-    since the last walk.  The cache is saved atomically after every walk so
-    subsequent calls benefit immediately.
-
     Performance note: ``os.walk`` with in-place ``dirnames`` pruning is used
-    instead of ``pathlib.rglob`` so that hidden directories (e.g. ``.venv/``,
-    ``.muse/objects/``, ``node_modules/``) are never descended into.  On a
-    Python project with a virtualenv, ``rglob`` would visit tens of thousands
-    of site-package files before the hidden-dir filter could discard them.
+    instead of ``pathlib.rglob`` so that large noisy directories are never
+    descended into.  The stat cache further skips re-hashing files whose
+    ``(mtime, size)`` is unchanged since the last walk.
     """
+    ignore_patterns = _load_ignore_patterns(workdir)
     cache = load_cache(workdir)
     manifest: dict[str, str] = {}
     root_str = str(workdir)
     prefix_len = len(root_str) + 1  # +1 for the path separator
 
     for dirpath, dirnames, filenames in os.walk(root_str, followlinks=False):
-        # Prune hidden subdirectories in-place before os.walk descends into them.
-        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+        # Prune always-ignored directories in-place before os.walk descends.
+        dirnames[:] = sorted(d for d in dirnames if d not in _ALWAYS_PRUNE_DIRS)
 
         for fname in sorted(filenames):
-            if fname.startswith("."):
-                continue
             abs_str = os.path.join(dirpath, fname)
             try:
                 st = os.lstat(abs_str)
@@ -112,6 +185,8 @@ def walk_workdir(workdir: pathlib.Path) -> dict[str, str]:
             rel = abs_str[prefix_len:]
             if os.sep != "/":
                 rel = rel.replace(os.sep, "/")
+            if is_ignored(rel, ignore_patterns):
+                continue
             manifest[rel] = cache.get_cached(rel, abs_str, st.st_mtime, st.st_size)
 
     cache.prune(set(manifest))

@@ -43,6 +43,33 @@ _muse_branches() {
     (( ${#branches} )) && _describe 'branches' branches
 }
 
+# Emit release tag names by reading .muse/releases/<repo_id>/*.json — one python3.
+_muse_release_tags() {
+    local dot_muse
+    dot_muse="$(_muse_dot_muse)" || return
+    local -a tags
+    tags=(${(f)"$(MUSE_DOT="$dot_muse" python3 <<'PYEOF' 2>/dev/null
+import json, os, pathlib
+dot = pathlib.Path(os.environ['MUSE_DOT'])
+try:
+    repo_id = json.loads((dot / 'repo.json').read_text()).get('repo_id', '')
+    releases_dir = dot / 'releases' / repo_id
+    if releases_dir.is_dir():
+        for p in sorted(releases_dir.iterdir()):
+            if p.suffix == '.json':
+                try:
+                    t = json.loads(p.read_text()).get('tag', '')
+                    if t:
+                        print(t)
+                except Exception:
+                    pass
+except Exception:
+    pass
+PYEOF
+)"})
+    (( ${#tags} )) && _describe 'release tags' tags
+}
+
 # Emit remote names from .muse/config.toml — zero subprocesses.
 _muse_remotes() {
     local dot_muse
@@ -81,6 +108,7 @@ local -a _muse_top_cmds=(
     'cherry-pick:Apply a specific commit on top of HEAD'
     'stash:Shelve uncommitted changes'
     'tag:Attach and query semantic tags'
+    'release:Create, list, show, and push versioned releases'
     'push:Upload commits and objects to a remote'
     'pull:Fetch from a remote and merge'
     'fetch:Download commits from a remote'
@@ -398,6 +426,60 @@ _muse() {
                         '(-d --delete)'{-d,--delete}'[Delete a tag]' \
                         '(-l --list)'{-l,--list}'[List tags]' \
                         '(-f --format)'{-f,--format}'[Output format]:fmt:(text json)'
+                    ;;
+
+                release)
+                    _arguments -C \
+                        '1: :->sub' \
+                        '*:: :->release_args'
+                    case $state in
+                        sub)
+                            local -a _muse_release_subcmds=(
+                                'add:Create a new release from a tag'
+                                'list:List all releases'
+                                'show:Display a release'
+                                'push:Push a release to a remote'
+                                'delete:Delete a draft release'
+                            )
+                            _describe 'release subcommands' _muse_release_subcmds
+                            ;;
+                        release_args)
+                            case $words[1] in
+                                add)
+                                    _arguments \
+                                        '--title[Release title]:title' \
+                                        '--body[Release notes]:body' \
+                                        '--channel[Release channel]:channel:(stable beta alpha nightly)' \
+                                        '--draft[Mark as draft]' \
+                                        '--remote[Push to remote after creating]:remote:_muse_remotes' \
+                                        '1: :_muse_release_tags'
+                                    ;;
+                                show)
+                                    _arguments \
+                                        '(-f --format)'{-f,--format}'[Output format]:fmt:(text json)' \
+                                        '1: :_muse_release_tags'
+                                    ;;
+                                push)
+                                    _arguments \
+                                        '--remote[Remote to push to]:remote:_muse_remotes' \
+                                        '1: :_muse_release_tags' \
+                                        '2:: :_muse_remotes'
+                                    ;;
+                                delete)
+                                    _arguments \
+                                        '--remote[Also retract from this remote]:remote:_muse_remotes' \
+                                        '(-y --yes)'{-y,--yes}'[Skip confirmation]' \
+                                        '1: :_muse_release_tags'
+                                    ;;
+                                list)
+                                    _arguments \
+                                        '--channel[Filter by channel]:channel:(stable beta alpha nightly)' \
+                                        '--remote[List releases on a remote]:remote:_muse_remotes' \
+                                        '(-f --format)'{-f,--format}'[Output format]:fmt:(text json)'
+                                    ;;
+                            esac
+                            ;;
+                    esac
                     ;;
 
                 stash)

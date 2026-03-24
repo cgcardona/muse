@@ -4,10 +4,10 @@
 
 Muse — domain-agnostic version control for multidimensional state. Version control is the abstraction; music is the first domain; genomics, scientific simulation, 3D spatial design, and spacetime simulation are next.
 
-- **Entry point:** `muse` CLI (Typer). No web server, no HTTP API, no database.
+- **Entry point:** `muse` CLI. No web server, no HTTP API, no database.
 - **Stack:** Python 3.14, Typer, file-based content-addressed storage (`.muse/`), synchronous I/O throughout.
 - **Plugin contract:** `MuseDomainPlugin` protocol in `muse/domain.py`. Every new domain is a new plugin — the core engine never changes.
-- **Version:** single source of truth in `pyproject.toml`.
+- **Version control:** Muse and MuseHub exclusively. Git and GitHub are not used.
 
 ## No legacy. No deprecated. No exceptions.
 
@@ -20,41 +20,95 @@ This is the single most repeated rule. It is a hard constraint enforced on every
 
 When you remove something, remove it completely: implementation, tests, docs, config.
 
-## Branch discipline — absolute rule
+## Version control — Muse only. Git and GitHub are not used.
 
-**Never do any work directly on `dev` or `main`.**
+All code changes, branching, merging, and releases happen through Muse commands. Git and GitHub do not exist in this workflow. Never run `git`, `gh`, or reference GitHub.
+
+### Starting work
+
+```
+muse status                     # where am I, what's dirty
+muse branch feat/my-thing       # create branch
+muse checkout feat/my-thing     # switch to it
+```
+
+### While working
+
+```
+muse status                     # constantly — like breathing
+muse diff                       # what exactly changed, symbol-level
+muse code add .                 # stage what you want in the next snapshot
+muse commit -m "..."            # typed event: Muse proposes MAJOR/MINOR/PATCH
+```
+
+### Before merging
+
+```
+muse fetch origin               # pull down what's changed upstream
+muse status                     # shows if you're behind
+muse merge --dry-run main       # will this conflict? what's the semver impact?
+```
+
+### Merging
+
+```
+muse merge main                 # if dry-run was clean
+```
+
+### Releasing
+
+```
+# Create a local release at HEAD (--title and --body are required by convention)
+muse release add <tag> --title "<title>" --body "<description>"
+
+# Optionally set channel (default is inferred from semver pre-release label)
+muse release add <tag> --title "<title>" --body "<description>" --channel stable
+
+# Push to a remote
+muse release push <tag> --remote local
+
+# Full delete-and-recreate cycle (e.g. after a DB migration or data fix):
+muse release delete <tag> --remote local --yes
+muse release add <tag> --title "<title>" --body "<description>"
+muse release push <tag> --remote local
+```
+
+### The mental model
+
+Git tracks line changes in files. Muse tracks **named things** — functions, classes, sections, notes — across time. The file is the container; the symbol is the unit of meaning.
+
+- `muse diff` shows `Invoice.calculate()` was modified, not that lines 42–67 changed.
+- `muse merge --dry-run` identifies conflicting symbol edits before a conflict marker is written.
+- `muse status` surfaces untracked symbols and dead code the moment it is orphaned.
+- `muse commit` is a **typed event** — Muse proposes MAJOR/MINOR/PATCH based on what changed structurally.
+
+### Branch discipline
+
+**Never work directly on `main`.**
 
 Full task lifecycle:
-1. `git status` — must be clean before branching.
-2. `git checkout -b fix/<description>` or `feat/<description>` — always branch first.
+1. `muse status` — must be clean before branching.
+2. `muse branch feat/<description>` then `muse checkout feat/<description>` — always branch first.
 3. Do the work, commit on the branch.
-4. **Verify locally before opening a PR — in this exact order:**
-   ```bash
-   mypy muse/                                                           # zero errors
-   python tools/typing_audit.py --dirs muse/ tests/ --max-any 0        # zero violations
-   pytest tests/ -v                                                     # all green
+4. **Verify locally before merging — in this exact order:**
    ```
-5. Open a PR against `dev` via `gh pr create` or the GitHub MCP tool.
-6. **Wait for CI to go green.** Do not merge while any check is yellow (pending) or red (failing). Fix the branch and push again if CI fails — never merge around a failure.
-7. Merge only when CI is green (`squash` for feature→dev, `merge` for dev→main).
-8. Delete remote branch, delete local branch, `git pull origin dev`.
+   mypy muse/                                                    # zero errors
+   python tools/typing_audit.py --dirs muse/ tests/ --max-any 0 # zero violations
+   pytest tests/ -v                                              # all green
+   ```
+5. `muse merge --dry-run main` — confirm clean.
+6. `muse checkout main && muse merge feat/<description>`
+7. `muse release add <tag> --title "<title>" --body "<description>"` then `muse release push <tag> --remote local`.
 
-## GitHub interactions — MCP first
+## MuseHub interactions
 
-The `user-github` MCP server is available in every session. Prefer MCP tools over `gh` CLI.
+MuseHub at `http://localhost:10003` is the remote repository server. The `user-github` MCP server can be used for **MuseHub issue tracking only** (not for code commits or releases — those go through Muse).
 
-| Operation | MCP tool |
-|-----------|----------|
-| Read an issue | `issue_read` |
-| Create / edit an issue | `issue_write` |
-| List issues | `list_issues` |
-| Read a PR | `pull_request_read` |
-| Create a PR | `create_pull_request` |
-| Merge a PR | `merge_pull_request` |
-| List / create branches | `list_branches`, `create_branch` |
-| Get current user | `get_me` |
-
-Only fall back to `gh` CLI for operations the MCP server does not cover.
+| Operation | Tool |
+|-----------|------|
+| Browse releases | `http://localhost:10003/<owner>/<repo>/releases` |
+| Push a release | `muse release push <tag> --remote local` |
+| Delete a remote release | `muse release delete <tag> --remote local --yes` |
 
 ## Architecture (do not weaken)
 
@@ -87,6 +141,18 @@ tests/               → pytest suite
 - `muse.core.*` is domain-agnostic. It never imports from `muse.plugins.*`.
 - `muse.plugins.music.plugin` is the only file that may import domain-specific logic.
 - New domains are new directories under `muse/plugins/`. The core engine is never modified.
+
+## Frontend separation of concerns — absolute rule (applies to MuseHub contributions)
+
+When working on any MuseHub template or static asset, every concern belongs in exactly one layer:
+
+| Layer | Where | What |
+|-------|-------|------|
+| **Structure** | `templates/musehub/pages/*.html`, `fragments/*.html` | Jinja2 markup only — no `<style>`, no `<script>` |
+| **Behaviour** | `templates/musehub/static/js/*.js` | All JS / Alpine / HTMX |
+| **Style** | `templates/musehub/static/scss/_*.scss` | All CSS — compiled to `app.css` via `app.scss` |
+
+**Never put `<style>` blocks or inline `style="..."` (beyond truly dynamic values) in a template.** If you find them, extract them to the matching SCSS partial in the same commit.
 
 ## Code standards
 
@@ -123,31 +189,23 @@ Strong types are the contract. There are no exceptions.
 | `Optional[X]` | `X \| None` |
 | `List[X]`, `Dict[K,V]` | `list[X]`, `dict[K, V]` |
 
-### The known-keys rule
-
-`dict[K, V]` is correct when any key is valid at runtime (a genuine dynamic table). If you know the keys at write time, use a `TypedDict` and name them. `dict[str, Any]` with a known key structure is the highest-signal red flag — structured data being treated as unstructured.
-
 ## Verification checklist
 
-Run locally before opening any PR — in this exact order:
+Run before every merge — in this exact order:
 
-- [ ] On a feature branch, not `dev` or `main`
+- [ ] On a feature branch, not `main`
 - [ ] `mypy muse/` — zero errors, strict mode
 - [ ] `python tools/typing_audit.py --dirs muse/ tests/ --max-any 0` — zero violations
 - [ ] `pytest tests/ -v` — all green
 - [ ] No `Any`, bare collections, `cast()`, `# type: ignore`, `Optional[X]`, legacy `List`/`Dict`
-- [ ] No dead code, no legacy patterns, no references to prior projects
+- [ ] No dead code, no legacy patterns
 - [ ] Affected docs updated in the same commit
 - [ ] No secrets, no `print()`, no orphaned imports
 
-Before merging a PR:
-
-- [ ] All GitHub Actions checks are **green** — never merge on yellow (pending) or red (failing)
-
 ## Anti-patterns (never do these)
 
-- Working directly on `dev` or `main`.
-- Merging a PR while CI is yellow (pending) or red (failing) — wait for green.
+- Using `git`, `gh`, or GitHub for anything. Muse and MuseHub are the only VCS tools.
+- Working directly on `main`.
 - `Any`, `object`, bare collections, `cast()`, `# type: ignore` — absolute bans.
 - `Optional[X]`, `List[X]`, `Dict[K,V]` — use modern syntax.
 - `async`/`await` anywhere in `muse/` — the CLI is synchronous by design.
@@ -160,10 +218,8 @@ Before merging a PR:
 
 1. Run the full suite **once** to find all failures.
 2. Fix every failure found.
-3. Re-run **only the specific failing file(s)** — not the full suite — to confirm the fix: `pytest tests/test_foo.py -v`
-4. Run the full suite only as the final pre-PR gate.
-
-Never re-run the full suite repeatedly to chase a single failure. Read the output, fix it, run the specific file.
+3. Re-run **only the specific failing file(s)** to confirm the fix: `pytest tests/test_foo.py -v`
+4. Run the full suite only as the final pre-merge gate.
 
 ## Quick reference
 

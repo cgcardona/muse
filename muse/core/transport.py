@@ -114,8 +114,9 @@ from muse.core.pack import (
     PackBundle,
     PushResult,
     RemoteInfo,
+    WireTag,
 )
-from muse.core.store import CommitDict, SnapshotDict
+from muse.core.store import ChangelogEntry, CommitDict, ReleaseDict, SemVerTag, SnapshotDict
 from muse.core.validation import MAX_RESPONSE_BYTES, contain_path, validate_branch_name
 from muse.domain import SemVerBump
 
@@ -462,6 +463,89 @@ class MuseTransport(Protocol):
         """
         ...
 
+    def push_tags(
+        self,
+        url: str,
+        token: str | None,
+        tags: list[WireTag],
+    ) -> int:
+        """Push local tags to the remote via ``POST {url}/tags``.
+
+        Tags are immutable once created on the remote — the server skips any
+        it already holds.  Returns the number of tags newly stored.
+
+        Args:
+            url:   Remote repository URL.
+            token: Bearer token, or ``None``.
+            tags:  Tags to push.
+
+        Raises:
+            :class:`TransportError` on HTTP 4xx/5xx or network failure.
+        """
+        ...
+
+    def create_release(
+        self,
+        url: str,
+        token: str | None,
+        release: ReleaseDict,
+    ) -> str:
+        """Create a release on the remote via ``POST {url}/releases``.
+
+        Returns the ``release_id`` assigned by the server.
+
+        Args:
+            url:     Remote repository URL.
+            token:   Bearer token.
+            release: Fully-populated :class:`~muse.core.store.ReleaseDict`.
+
+        Raises:
+            :class:`TransportError` on HTTP 4xx/5xx or network failure.
+        """
+        ...
+
+    def list_releases_remote(
+        self,
+        url: str,
+        token: str | None,
+        channel: str | None = None,
+        include_drafts: bool = False,
+    ) -> list[ReleaseDict]:
+        """Fetch releases from the remote via ``GET {url}/releases``.
+
+        Args:
+            url:           Remote repository URL.
+            token:         Bearer token, or ``None``.
+            channel:       Filter by release channel; ``None`` returns all.
+            include_drafts: Include draft releases when ``True``.
+
+        Raises:
+            :class:`TransportError` on HTTP 4xx/5xx or network failure.
+        """
+        ...
+
+    def delete_release_remote(
+        self,
+        url: str,
+        token: str | None,
+        tag: str,
+    ) -> None:
+        """Retract a release from the remote via ``DELETE {url}/releases/{tag}``.
+
+        Removes only the named label from the remote registry.  The underlying
+        commit and snapshot objects are **not** affected.
+
+        Args:
+            url:   Remote repository URL.
+            token: Bearer token (owner credentials required).
+            tag:   Semver tag of the release to retract (e.g. ``"v1.2.0"``).
+
+        Raises:
+            :class:`TransportError` on HTTP 4xx/5xx, network failure, or if
+            the release does not exist on the remote.
+        """
+        ...
+
 
 # ---------------------------------------------------------------------------
 # HTTP/1.1 implementation (stdlib, zero extra dependencies)
@@ -704,6 +788,73 @@ class HttpTransport:
             ready=bool(ready_raw),
         )
 
+    def push_tags(
+        self,
+        url: str,
+        token: str | None,
+        tags: list[WireTag],
+    ) -> int:
+        """Push tags via ``POST {url}/tags``."""
+        endpoint = f"{url.rstrip('/')}/tags"
+        logger.debug("transport: POST %s (tags=%d)", endpoint, len(tags))
+        body_bytes: bytes = msgpack.packb({"tags": list(tags)}, use_bin_type=True)
+        req = self._build_request("POST", endpoint, token, body_bytes)
+        raw = self._execute(req)
+        parsed = self._decode(raw)
+        stored_val = parsed.get("stored")
+        return int(stored_val) if isinstance(stored_val, int) else 0
+
+    def create_release(
+        self,
+        url: str,
+        token: str | None,
+        release: ReleaseDict,
+    ) -> str:
+        """Create a release via ``POST {url}/releases``."""
+        endpoint = f"{url.rstrip('/')}/releases"
+        logger.debug("transport: POST %s (tag=%s)", endpoint, release.get("tag", ""))
+        # ReleaseDict contains no bytes fields so JSON encoding works directly.
+        body_bytes: bytes = json.dumps(release).encode("utf-8")
+        req = self._build_request("POST", endpoint, token, body_bytes, content_type="application/json")
+        raw = self._execute(req)
+        parsed = self._decode(raw)
+        release_id_val = parsed.get("release_id")
+        return str(release_id_val) if isinstance(release_id_val, str) else ""
+
+    def list_releases_remote(
+        self,
+        url: str,
+        token: str | None,
+        channel: str | None = None,
+        include_drafts: bool = False,
+    ) -> list[ReleaseDict]:
+        """List releases via ``GET {url}/releases``."""
+        qs_parts: list[str] = []
+        if channel:
+            qs_parts.append(f"channel={urllib.parse.quote(channel)}")
+        if include_drafts:
+            qs_parts.append("include_drafts=1")
+        endpoint = f"{url.rstrip('/')}/releases"
+        if qs_parts:
+            endpoint = f"{endpoint}?{'&'.join(qs_parts)}"
+        logger.debug("transport: GET %s", endpoint)
+        req = self._build_request("GET", endpoint, token)
+        raw = self._execute(req)
+        parsed = self._decode(raw)
+        return _parse_releases_list(parsed)
+
+    def delete_release_remote(
+        self,
+        url: str,
+        token: str | None,
+        tag: str,
+    ) -> None:
+        """Retract a release via ``DELETE {url}/releases/{tag}``."""
+        endpoint = f"{url.rstrip('/')}/releases/{urllib.parse.quote(tag, safe='')}"
+        logger.debug("transport: DELETE %s", endpoint)
+        req = self._build_request("DELETE", endpoint, token)
+        self._execute(req)
+
 
 # ---------------------------------------------------------------------------
 # Response parsers — JSON bytes → typed TypedDicts
@@ -829,6 +980,83 @@ def _parse_objects_response(raw: bytes) -> ObjectsChunkResponse:
         stored=int(stored_val) if isinstance(stored_val, int) else 0,
         skipped=int(skipped_val) if isinstance(skipped_val, int) else 0,
     )
+
+
+def _coerce_sem_ver_bump(raw: _MsgVal) -> SemVerBump:
+    """Safely coerce a raw value to a :class:`~muse.domain.SemVerBump` literal."""
+    if raw == "major":
+        return "major"
+    if raw == "minor":
+        return "minor"
+    if raw == "patch":
+        return "patch"
+    return "none"
+
+
+def _parse_releases_list(parsed: dict[str, _MsgVal]) -> list[ReleaseDict]:
+    """Extract a list of :class:`~muse.core.store.ReleaseDict` from a parsed response."""
+    releases_raw = parsed.get("releases")
+    if not isinstance(releases_raw, list):
+        return []
+    results: list[ReleaseDict] = []
+    for item in releases_raw:
+        if not isinstance(item, dict):
+            continue
+        try:
+            semver_raw = item.get("semver")
+            if isinstance(semver_raw, dict):
+                sv_major = semver_raw.get("major")
+                sv_minor = semver_raw.get("minor")
+                sv_patch = semver_raw.get("patch")
+                sv_pre = semver_raw.get("pre")
+                sv_build = semver_raw.get("build")
+                semver: SemVerTag = SemVerTag(
+                    major=int(sv_major) if isinstance(sv_major, int) else 0,
+                    minor=int(sv_minor) if isinstance(sv_minor, int) else 0,
+                    patch=int(sv_patch) if isinstance(sv_patch, int) else 0,
+                    pre=sv_pre if isinstance(sv_pre, str) else "",
+                    build=sv_build if isinstance(sv_build, str) else "",
+                )
+            else:
+                semver = SemVerTag(major=0, minor=0, patch=0, pre="", build="")
+            changelog_raw = item.get("changelog") or []
+            changelog: list[ChangelogEntry] = []
+            if isinstance(changelog_raw, list):
+                for entry in changelog_raw:
+                    if not isinstance(entry, dict):
+                        continue
+                    bc_raw = entry.get("breaking_changes")
+                    bc_list: list[str] = [str(b) for b in bc_raw if isinstance(b, str)] if isinstance(bc_raw, list) else []
+                    changelog.append(ChangelogEntry(
+                        commit_id=str(entry.get("commit_id", "")),
+                        message=str(entry.get("message", "")),
+                        sem_ver_bump=_coerce_sem_ver_bump(entry.get("sem_ver_bump")),
+                        breaking_changes=bc_list,
+                        author=str(entry.get("author", "")),
+                        committed_at=str(entry.get("committed_at", "")),
+                        agent_id=str(entry.get("agent_id", "")),
+                        model_id=str(entry.get("model_id", "")),
+                    ))
+            results.append(ReleaseDict(
+                release_id=str(item.get("release_id", "")),
+                repo_id=str(item.get("repo_id", "")),
+                tag=str(item.get("tag", "")),
+                semver=semver,
+                channel=str(item.get("channel", "stable")),
+                commit_id=str(item.get("commit_id", "")),
+                snapshot_id=str(item.get("snapshot_id", "")),
+                title=str(item.get("title", "")),
+                body=str(item.get("body", "")),
+                changelog=changelog,
+                agent_id=str(item.get("agent_id", "")),
+                model_id=str(item.get("model_id", "")),
+                is_draft=bool(item.get("is_draft", False)),
+                gpg_signature=str(item.get("gpg_signature", "")),
+                created_at=str(item.get("created_at", "")),
+            ))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -1307,6 +1535,95 @@ class LocalFileTransport:
 
         ready = common_base is not None or not have_set
         return NegotiateResponse(ack=ack, common_base=common_base, ready=ready)
+
+    def push_tags(
+        self,
+        url: str,
+        token: str | None,  # noqa: ARG002
+        tags: list[WireTag],
+    ) -> int:
+        """Write tags directly into the remote's local tag store."""
+        from muse.core.store import TagDict, TagRecord, write_tag
+
+        remote_root = self._repo_root(url)
+        stored = 0
+        for wire_tag in tags:
+            try:
+                tag_record = TagRecord.from_dict(TagDict(
+                    tag_id=wire_tag["tag_id"],
+                    repo_id=wire_tag["repo_id"],
+                    commit_id=wire_tag["commit_id"],
+                    tag=wire_tag["tag"],
+                    created_at=wire_tag["created_at"],
+                ))
+                write_tag(remote_root, tag_record)
+                stored += 1
+            except (KeyError, ValueError) as exc:
+                logger.warning("⚠️ local-transport push_tags: bad tag — %s", exc)
+        return stored
+
+    def create_release(
+        self,
+        url: str,
+        token: str | None,  # noqa: ARG002
+        release: ReleaseDict,
+    ) -> str:
+        """Write a release directly into the remote's local release store."""
+        from muse.core.store import ReleaseRecord, write_release
+
+        remote_root = self._repo_root(url)
+        try:
+            release_record = ReleaseRecord.from_dict(release)
+            write_release(remote_root, release_record)
+            return release_record.release_id
+        except (KeyError, ValueError) as exc:
+            raise TransportError(f"create_release: invalid release data — {exc}", 0) from exc
+
+    def list_releases_remote(
+        self,
+        url: str,
+        token: str | None,  # noqa: ARG002
+        channel: str | None = None,
+        include_drafts: bool = False,
+    ) -> list[ReleaseDict]:
+        """Read releases from the remote's local release store."""
+        from muse.core.store import ReleaseChannel, list_releases
+
+        remote_root = self._repo_root(url)
+        repo_json_path = remote_root / ".muse" / "repo.json"
+        try:
+            repo_data = json.loads(repo_json_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise TransportError(f"Cannot read remote repo.json: {exc}", 0) from exc
+        repo_id = str(repo_data.get("repo_id", ""))
+        _channel_map: dict[str, ReleaseChannel] = {
+            "stable": "stable", "beta": "beta", "alpha": "alpha", "nightly": "nightly",
+        }
+        channel_arg: ReleaseChannel | None = _channel_map.get(channel, None) if channel else None
+        records = list_releases(remote_root, repo_id, channel=channel_arg, include_drafts=include_drafts)
+        return [r.to_dict() for r in records]
+
+    def delete_release_remote(
+        self,
+        url: str,
+        token: str | None,  # noqa: ARG002
+        tag: str,
+    ) -> None:
+        """Delete a release record from the remote's local release store."""
+        from muse.core.store import delete_release, get_release_for_tag
+
+        remote_root = self._repo_root(url)
+        repo_json_path = remote_root / ".muse" / "repo.json"
+        try:
+            repo_data = json.loads(repo_json_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise TransportError(f"Cannot read remote repo.json: {exc}", 0) from exc
+        repo_id = str(repo_data.get("repo_id", ""))
+        release = get_release_for_tag(remote_root, repo_id, tag)
+        if release is None:
+            raise TransportError(f"Release '{tag}' not found on remote.", 404)
+        if not delete_release(remote_root, repo_id, release.release_id):
+            raise TransportError(f"Failed to delete release '{tag}' on remote.", 0)
 
 
 # ---------------------------------------------------------------------------

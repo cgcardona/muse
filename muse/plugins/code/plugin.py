@@ -93,6 +93,7 @@ from muse._version import __version__
 from muse.core.attributes import load_attributes, resolve_strategy
 from muse.core.diff_algorithms import snapshot_diff
 from muse.core.ignore import is_ignored, load_ignore_config, resolve_patterns
+from muse.core.snapshot import _BUILTIN_SECRET_PATTERNS
 from muse.core.object_store import read_object
 from muse.core.op_transform import merge_op_lists, ops_commute
 from muse.core.stat_cache import load_cache
@@ -153,6 +154,9 @@ _ALWAYS_IGNORE_DIRS: frozenset[str] = frozenset({
     ".venv",
     "venv",
     ".tox",
+    ".nox",
+    ".coverage",
+    "htmlcov",
     "dist",
     "build",
     ".eggs",
@@ -229,21 +233,15 @@ class CodePlugin:
             return live_state
 
         workdir = live_state
-        patterns = resolve_patterns(load_ignore_config(workdir), _DOMAIN_NAME)
+        patterns = _BUILTIN_SECRET_PATTERNS + resolve_patterns(load_ignore_config(workdir), _DOMAIN_NAME)
         cache = load_cache(workdir)
         files: dict[str, str] = {}
         root_str = str(workdir)
         prefix_len = len(root_str) + 1
 
         for dirpath, dirnames, filenames in os.walk(root_str, followlinks=False):
-            # Prune always-ignored and hidden directories before descending.
-            dirnames[:] = sorted(
-                d for d in dirnames
-                if not d.startswith(".") and d not in _ALWAYS_IGNORE_DIRS
-            )
+            dirnames[:] = sorted(d for d in dirnames if d not in _ALWAYS_IGNORE_DIRS)
             for fname in sorted(filenames):
-                if fname.startswith("."):
-                    continue
                 abs_str = os.path.join(dirpath, fname)
                 try:
                     st = os.lstat(abs_str)
@@ -289,20 +287,15 @@ class CodePlugin:
         so every on-disk file is reflected at its current content hash.
         Used by ``muse diff --working``.
         """
-        patterns = resolve_patterns(load_ignore_config(root), _DOMAIN_NAME)
+        patterns = _BUILTIN_SECRET_PATTERNS + resolve_patterns(load_ignore_config(root), _DOMAIN_NAME)
         cache = load_cache(root)
         files: dict[str, str] = {}
         root_str = str(root)
         prefix_len = len(root_str) + 1
 
         for dirpath, dirnames, filenames in os.walk(root_str, followlinks=False):
-            dirnames[:] = sorted(
-                d for d in dirnames
-                if not d.startswith(".") and d not in _ALWAYS_IGNORE_DIRS
-            )
+            dirnames[:] = sorted(d for d in dirnames if d not in _ALWAYS_IGNORE_DIRS)
             for fname in sorted(filenames):
-                if fname.startswith("."):
-                    continue
                 abs_str = os.path.join(dirpath, fname)
                 try:
                     st = os.lstat(abs_str)
@@ -357,19 +350,14 @@ class CodePlugin:
         staged: dict[str, StagedEntry] = dict(stage)
 
         # Build the full working-tree manifest (reuse snapshot logic).
-        patterns = resolve_patterns(load_ignore_config(root), _DOMAIN_NAME)
+        patterns = _BUILTIN_SECRET_PATTERNS + resolve_patterns(load_ignore_config(root), _DOMAIN_NAME)
         cache = load_cache(root)
         workdir_files: dict[str, str] = {}
         root_str = str(root)
         prefix_len = len(root_str) + 1
         for dirpath, dirnames, filenames in os.walk(root_str, followlinks=False):
-            dirnames[:] = sorted(
-                d for d in dirnames
-                if not d.startswith(".") and d not in _ALWAYS_IGNORE_DIRS
-            )
+            dirnames[:] = sorted(d for d in dirnames if d not in _ALWAYS_IGNORE_DIRS)
             for fname in sorted(filenames):
-                if fname.startswith("."):
-                    continue
                 abs_str = os.path.join(dirpath, fname)
                 try:
                     st = os.lstat(abs_str)
