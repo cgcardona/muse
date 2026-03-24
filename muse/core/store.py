@@ -55,7 +55,7 @@ import pathlib
 import re
 import uuid
 from dataclasses import dataclass, field
-from typing import Literal, NotRequired, TypedDict
+from typing import Literal, TypedDict
 
 from muse.core.validation import (
     sanitize_glob_prefix,
@@ -214,7 +214,6 @@ class ReleaseDict(TypedDict):
     is_draft: bool
     gpg_signature: str
     created_at: str
-    semantic_report: NotRequired[SemanticReleaseReport]
 
 # ---------------------------------------------------------------------------
 # HEAD file — typed I/O
@@ -661,7 +660,6 @@ class ReleaseRecord:
     model_id: str = ""
     is_draft: bool = False
     gpg_signature: str = ""
-    semantic_report: SemanticReleaseReport | None = None
     created_at: datetime.datetime = field(
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
@@ -684,8 +682,6 @@ class ReleaseRecord:
             gpg_signature=self.gpg_signature,
             created_at=self.created_at.isoformat(),
         )
-        if self.semantic_report is not None:
-            d["semantic_report"] = self.semantic_report
         return d
 
     @classmethod
@@ -695,7 +691,6 @@ class ReleaseRecord:
         except (ValueError, KeyError):
             created_at = datetime.datetime.now(datetime.timezone.utc)
         channel = _CHANNEL_MAP.get(d.get("channel", "stable"), "stable")
-        raw_report = d.get("semantic_report")
         return cls(
             release_id=d["release_id"],
             repo_id=d["repo_id"],
@@ -711,7 +706,6 @@ class ReleaseRecord:
             model_id=d.get("model_id", ""),
             is_draft=bool(d.get("is_draft", False)),
             gpg_signature=d.get("gpg_signature", ""),
-            semantic_report=raw_report if isinstance(raw_report, dict) else None,
             created_at=created_at,
         )
 

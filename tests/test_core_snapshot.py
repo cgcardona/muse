@@ -56,11 +56,31 @@ class TestBuildSnapshotManifest:
         manifest = build_snapshot_manifest(workdir)
         assert "tracks/bass.mid" in manifest
 
-    def test_hidden_files_excluded(self, workdir: pathlib.Path) -> None:
+    def test_secrets_excluded_by_builtin_blocklist(self, workdir: pathlib.Path) -> None:
+        """Built-in secrets blocklist protects even without a .museignore file."""
+        (workdir / ".env").write_bytes(b"SECRET=abc")
         (workdir / ".DS_Store").write_bytes(b"junk")
         (workdir / "beat.mid").write_bytes(b"drums")
         manifest = build_snapshot_manifest(workdir)
+        assert ".env" not in manifest
         assert ".DS_Store" not in manifest
+        assert "beat.mid" in manifest
+
+    def test_dotfiles_tracked_when_not_ignored(self, workdir: pathlib.Path) -> None:
+        """Non-secret dotfiles like .cursorrules are tracked by default."""
+        (workdir / ".cursorrules").write_bytes(b"# rules")
+        (workdir / ".editorconfig").write_bytes(b"[*]\nindent_size=4")
+        manifest = build_snapshot_manifest(workdir)
+        assert ".cursorrules" in manifest
+        assert ".editorconfig" in manifest
+
+    def test_museignore_excludes_custom_pattern(self, workdir: pathlib.Path) -> None:
+        """A pattern in .museignore excludes the matched file."""
+        (workdir / ".museignore").write_bytes(b'[global]\npatterns = ["*.secret"]\n')
+        (workdir / "api.secret").write_bytes(b"token")
+        (workdir / "beat.mid").write_bytes(b"drums")
+        manifest = build_snapshot_manifest(workdir)
+        assert "api.secret" not in manifest
         assert "beat.mid" in manifest
 
     def test_deterministic_order(self, workdir: pathlib.Path) -> None:

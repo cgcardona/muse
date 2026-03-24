@@ -290,20 +290,16 @@ def run_show(args: argparse.Namespace) -> None:
 
 
 def run_push(args: argparse.Namespace) -> None:
-    """Push a local release to a remote, enriched with a semantic analysis report.
+    """Push a local release to a remote.
 
-    Before transmitting the release payload, Muse runs the full code-domain
-    analysis (language breakdown, symbol inventory, API surface diff, file
-    hotspots, refactoring events, provenance aggregation) against the local
-    object store and attaches the result as ``semantic_report``.  MuseHub
-    stores it verbatim and renders it in the release detail page.
-
-    Pass ``--no-analysis`` to skip the analysis step (useful for non-code
-    repos or when speed matters more than the enriched UI).
+    Transmits the lightweight ``ReleaseRecord`` payload to MuseHub, which then
+    runs the full semantic analysis (language breakdown, symbol inventory, API
+    surface diff, file hotspots, refactoring events, provenance) as a server-
+    side background task.  The push completes immediately; the enriched release
+    detail page populates within seconds.
     """
     tag: str = args.tag
     remote: str = args.remote
-    no_analysis: bool = getattr(args, "no_analysis", False)
 
     from muse.cli.config import get_auth_token
     from muse.core.transport import TransportError, make_transport
@@ -315,25 +311,6 @@ def run_push(args: argparse.Namespace) -> None:
     if release is None:
         print(f"❌ Release '{sanitize_display(tag)}' not found locally. Run 'muse release add' first.", file=sys.stderr)
         raise SystemExit(ExitCode.NOT_FOUND)
-
-    if not no_analysis:
-        from muse.plugins.code.release_analysis import compute_release_analysis
-
-        # Find the previous release's snapshot to enable API surface diffing.
-        existing = list_releases(root, repo_id, include_drafts=False)
-        prev_snapshot_id: str | None = None
-        for r in existing:
-            if r.tag != tag and r.snapshot_id:
-                prev_snapshot_id = r.snapshot_id
-                break
-
-        print(f"  Analysing {sanitize_display(tag)}…", end=" ", flush=True)
-        report = compute_release_analysis(root, release, prev_snapshot_id)
-        release.semantic_report = report
-        lang_summary = ", ".join(
-            f"{s['language']} ({s['files']}f)" for s in report["languages"][:3]
-        )
-        print(f"✓ {report['total_symbols']} symbols · {lang_summary}")
 
     url = _resolve_remote_url(root, remote)
     token = get_auth_token(root, url)
@@ -465,12 +442,6 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
     push_p = subs.add_parser("push", help="Push a release to a remote.")
     push_p.add_argument("tag", help="Version tag to push (e.g. v1.2.0).")
     push_p.add_argument("--remote", default="origin", help="Remote name (default: origin).")
-    push_p.add_argument(
-        "--no-analysis",
-        action="store_true",
-        dest="no_analysis",
-        help="Skip semantic analysis (faster; omits the enriched UI report on MuseHub).",
-    )
     push_p.set_defaults(func=run_push)
 
     # --- delete ---

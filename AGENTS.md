@@ -17,7 +17,8 @@ You do NOT:
 - Redesign architecture unless explicitly requested.
 - Introduce new dependencies without justification and user approval.
 - Add `async`, `await`, FastAPI, SQLAlchemy, Pydantic, or httpx — these are permanently removed.
-- Work directly on `dev` or `main`. Ever.
+- Use `git`, `gh`, or GitHub for anything — Muse and MuseHub are the only VCS tools.
+- Work directly on `main`. Ever.
 
 ---
 
@@ -46,7 +47,7 @@ muse/
     repo.py          → require_repo() — walk up from cwd to find .muse/
     errors.py        → ExitCode enum
   cli/
-    app.py           → Typer root — registers all 14 core commands
+    app.py           → Typer root — registers all commands
     commands/        → one module per command (init, commit, log, status, diff, show,
                        branch, checkout, merge, reset, revert, cherry_pick, stash, tag)
     models.py        → re-exports store types for backward-import compatibility
@@ -56,7 +57,7 @@ muse/
     music/
       plugin.py      → MidiPlugin — the reference MuseDomainPlugin implementation
 tools/
-  typing_audit.py    → regex + AST violation scanner; CI runs with --max-any 0
+  typing_audit.py    → regex + AST violation scanner; run with --max-any 0
 tests/
   test_core_store.py        → CommitRecord / SnapshotRecord / TagRecord CRUD
   test_core_snapshot.py     → hashing, manifest building, workdir diff
@@ -75,57 +76,121 @@ tests/
 
 ---
 
-## Branch Discipline — Absolute Rule
+## Version Control — Muse Only
 
-**`dev` and `main` are read-only. Every piece of work happens on a feature branch.**
+**Git and GitHub are not used.** All branching, committing, merging, and releasing happen through Muse. Never run `git`, `gh`, or reference GitHub Actions.
 
-### Full task lifecycle
+### The mental model
 
-1. **Start clean.** `git status` — must show `nothing to commit, working tree clean`.
-2. **Branch first.** `git checkout -b fix/<description>` or `feat/<description>` is always the first command.
-3. **Do the work.** Commit on the branch.
-4. **Verify locally** — in this exact order:
-   ```bash
-   mypy muse/                                                        # zero errors, strict mode
-   python tools/typing_audit.py --dirs muse/ tests/ --max-any 0     # zero typing violations
-   pytest tests/ -v                                                  # all 99+ tests green
+Git tracks line changes in files. Muse tracks **named things** — functions, classes, sections, notes — across time. The file is the container; the symbol is the unit of meaning.
+
+- `muse diff` shows `Invoice.calculate()` was modified, not that lines 42–67 changed.
+- `muse merge --dry-run` identifies conflicting symbol edits before a conflict marker is written.
+- `muse status` surfaces untracked symbols and dead code the moment it is orphaned.
+- `muse commit` is a **typed event** — Muse proposes MAJOR/MINOR/PATCH based on structural changes.
+
+### Starting work
+
+```
+muse status                     # where am I, what's dirty
+muse branch feat/my-thing       # create branch
+muse checkout feat/my-thing     # switch to it
+```
+
+### While working
+
+```
+muse status                     # constantly
+muse diff                       # symbol-level diff
+muse code add .                 # stage
+muse commit -m "..."            # typed event
+```
+
+### Before merging
+
+```
+muse fetch origin
+muse status
+muse merge --dry-run main       # confirm no symbol conflicts
+```
+
+### Merging
+
+```
+muse checkout main
+muse merge feat/my-thing
+```
+
+### Releasing
+
+```
+# Create a local release at HEAD (--title and --body are required by convention)
+muse release add <tag> --title "<title>" --body "<description>"
+
+# Optionally pin the channel (default inferred from semver pre-release label)
+muse release add <tag> --title "<title>" --body "<description>" --channel stable
+
+# Push to a remote
+muse release push <tag> --remote local
+
+# Full delete-and-recreate cycle (e.g. after a DB migration or data fix):
+muse release delete <tag> --remote local --yes
+muse release add <tag> --title "<title>" --body "<description>"
+muse release push <tag> --remote local
+```
+
+### Branch discipline — absolute rule
+
+**`main` is not for direct work. Every task lives on a branch.**
+
+Full lifecycle:
+1. `muse status` — clean before branching.
+2. `muse branch feat/<desc>` then `muse checkout feat/<desc>`.
+3. Do the work. Commit on the branch.
+4. **Verify** before merging — in this exact order:
    ```
-5. **Open a PR** against `dev` via `gh pr create` or the GitHub MCP tool.
-6. **Wait for CI to go green.** Do not merge while any check is yellow (pending) or red (failing). If CI fails, fix the branch and push again — never merge around a failure.
-7. **Merge only when CI is green.** Feature→dev: squash. Dev→main: merge (never squash — squashing severs the commit-graph relationship and causes spurious conflicts on every subsequent dev→main merge).
-8. **Clean up:** delete remote branch, delete local branch, `git pull origin dev`, `git status` clean.
+   mypy muse/                                                        # zero errors
+   python tools/typing_audit.py --dirs muse/ tests/ --max-any 0     # zero violations
+   pytest tests/ -v                                                  # all green
+   ```
+5. `muse merge --dry-run main` — confirm clean.
+6. `muse checkout main && muse merge feat/<desc>`.
+7. `muse release add <tag> --title "<title>" --body "<description>"` then `muse release push <tag> --remote local`.
 
 ### Enforcement protocol
 
 | Checkpoint | Command | Expected |
 |-----------|---------|----------|
-| Before branching | `git status` | `nothing to commit, working tree clean` |
-| Before opening PR | `mypy` + `typing_audit` + `pytest` | All pass locally |
-| Before merging | GitHub Actions on the PR | All checks green — never merge on yellow or red |
-| After task | Branch deleted, dev pulled | `git status` clean |
+| Before branching | `muse status` | clean working tree |
+| Before merging | `mypy` + `typing_audit` + `pytest` | all pass |
+| After merge | `muse status` | clean |
 
 ---
 
-## GitHub Interactions — MCP First
+## MuseHub Interactions
 
-The `user-github` MCP server is available in every session. Prefer MCP tools over `gh` CLI.
+MuseHub at `http://localhost:10003` is the remote repository server. Releases, issues, and browsing all happen here. The `user-github` MCP server may be used **for MuseHub issue tracking only** (not for code commits or releases — those go through Muse CLI).
 
-| Operation | MCP tool |
-|-----------|----------|
-| Read an issue | `issue_read` |
-| Create / edit an issue | `issue_write` |
-| Add a comment | `add_issue_comment` |
-| List issues | `list_issues` |
-| Search issues / PRs | `search_issues`, `search_pull_requests` |
-| Read a PR | `pull_request_read` |
-| Create a PR | `create_pull_request` |
-| Merge a PR | `merge_pull_request` |
-| Create a review | `pull_request_review_write` |
-| List / create branches | `list_branches`, `create_branch` |
-| Get current user | `get_me` |
-| Search code | `search_code` |
+| Operation | Tool |
+|-----------|------|
+| View releases | `http://localhost:10003/<owner>/<repo>/releases` |
+| Push release | `muse release push <tag> --remote local` |
+| Delete remote release | `muse release delete <tag> --remote local --yes` |
+| List remote releases | `muse release list --remote local` |
 
-Only fall back to `gh` CLI for operations not yet covered by the MCP server.
+---
+
+## Frontend Separation of Concerns — Absolute Rule (MuseHub contributions)
+
+When working on any MuseHub template or static asset, every concern belongs in exactly one layer. Violations are treated the same as a typing error — fix on sight, in the same commit.
+
+| Layer | Where it lives | What it does |
+|-------|---------------|--------------|
+| **Structure** | `templates/musehub/pages/*.html`, `fragments/*.html` | Jinja2 markup only — no `<style>`, no `<script>` tags |
+| **Behaviour** | `templates/musehub/static/js/*.js` | All JS / Alpine.js / HTMX logic |
+| **Style** | `templates/musehub/static/scss/_*.scss` | All CSS, compiled via `app.scss` → `app.css` |
+
+**Never put `<style>` blocks or non-dynamic inline `style="..."` attributes in a Jinja2 template.** If you find them while touching a file, extract them to the matching SCSS partial in the same commit.
 
 ---
 
@@ -158,18 +223,6 @@ Strong, explicit types are the contract that makes the codebase navigable by hum
 | `Optional[X]` | Legacy syntax | `X \| None` |
 | `List[X]`, `Dict[K,V]` | Legacy typing imports | `list[X]`, `dict[K, V]` |
 
-**The known-keys rule:** `dict[K, V]` is correct when any key is valid at runtime. If you know the keys at write time, use a `TypedDict` and name them. `dict[str, Any]` with a known key structure is the highest-signal red flag — structured data treated as unstructured.
-
-**The cast rule:** writing `cast(SomeType, value)` means the function producing `value` returns the wrong type. Do not paper over it. Go upstream, fix the return type, let the correct type flow down.
-
-### Enforcement chain
-
-| Layer | Command | Threshold |
-|-------|---------|-----------|
-| Local | `mypy muse/` | strict, 0 errors |
-| Typing ceiling | `python tools/typing_audit.py --dirs muse/ tests/ --max-any 0` | 0 violations — blocks commit |
-| CI | `mypy muse/` in GitHub Actions | 0 errors — blocks PR merge |
-
 ---
 
 ## Testing Standards
@@ -181,35 +234,30 @@ Strong, explicit types are the contract that makes the codebase navigable by hum
 | **Regression** | Reproduces a specific bug before the fix | Every bug fix, named `test_<what_broke>_<fixed_behavior>` |
 | **E2E CLI** | Full CLI invocation via `typer.testing.CliRunner` | Any user-facing command |
 
-**Test scope:** run only the test files covering changed source files. The full suite is the gate for dev→main merges.
+**Test scope:** run only the test files covering changed source files. The full suite is the gate before merging to `main`.
 
-**Agents own all broken tests — not just theirs.** If you see a failing test, fix it or block the PR. "This was already broken" is not an acceptable response.
+**Agents own all broken tests — not just theirs.** If you see a failing test, fix it or block the merge.
 
 **Test efficiency — mandatory protocol:**
 1. Run the full suite **once** to find all failures.
 2. Fix every failure found.
-3. Re-run **only the files that were failing** — not the full suite — to confirm the fix.
-4. Only run the full suite again as the final pre-PR gate.
-Never re-run the full suite repeatedly to diagnose a single failure. Read the output, fix it, run the specific file.
+3. Re-run **only the files that were failing** to confirm the fix.
+4. Run the full suite only as the final pre-merge gate.
 
 ---
 
 ## Verification Checklist
 
-Run before opening any PR:
+Run before merging to `main`:
 
-- [ ] On a feature branch — never on `dev` or `main`
+- [ ] On a feature branch — never on `main`
 - [ ] `mypy muse/` — zero errors, strict mode
 - [ ] `python tools/typing_audit.py --dirs muse/ tests/ --max-any 0` — zero violations
 - [ ] `pytest tests/ -v` — all tests green
 - [ ] No `Any`, `object`, bare collections, `cast()`, `# type: ignore`, `Optional[X]`, `List`/`Dict`
-- [ ] No dead code, no references to prior projects, no async/await
+- [ ] No dead code, no async/await
 - [ ] Affected docs updated in the same commit
 - [ ] No secrets, no `print()`, no orphaned imports
-
-Before merging a PR:
-
-- [ ] All GitHub Actions checks are **green** — never merge on yellow (pending) or red (failing)
 
 ---
 
@@ -233,13 +281,11 @@ Before merging a PR:
 
 ## Anti-Patterns (never do these)
 
-- Working directly on `dev` or `main`.
-- Merging a PR while CI is yellow (pending) or red (failing) — wait for green.
-- Merging with a known failing test.
+- Using `git`, `gh`, or GitHub for anything. Muse and MuseHub only.
+- Working directly on `main`.
 - `Any`, `object`, bare collections, `cast()`, `# type: ignore` — absolute bans.
 - `Optional[X]`, `List[X]`, `Dict[K,V]` — use modern syntax.
 - `async`/`await` anywhere in `muse/`.
 - Importing from `muse.plugins.*` inside `muse.core.*`.
 - Adding `fastapi`, `sqlalchemy`, `pydantic`, `httpx`, `asyncpg` as dependencies.
-- Referencing external prior projects — they do not exist in this codebase.
 - `print()` for diagnostics.

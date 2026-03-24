@@ -39,4 +39,8 @@ patterns = [
     "venv/",
     ".tox/",
     "*.egg-info/",
+    ".hypothesis/",
+    ".pytest_cache/",
+    ".mypy_cache/",
+    ".ruff_cache/",
 ]
